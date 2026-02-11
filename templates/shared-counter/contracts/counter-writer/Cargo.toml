@@ -1,0 +1,18 @@
+[package]
+name = "counter_writer"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "lib.rs"
+
+[[bin]]
+name = "counter_writer"
+path = "lib.rs"
+
+[dependencies]
+pvm_contract = { workspace = true }
+polkavm-derive = { workspace = true }
+parity-scale-codec = { workspace = true }
+picoalloc = { workspace = true }
+counter = { path = "../counter" }

@@ -1,0 +1,13 @@
+{
+    "name": "shared-counter-validator",
+    "version": "0.1.0",
+    "type": "module",
+    "scripts": {
+        "validate": "bun run src/validate.ts"
+    },
+    "dependencies": {
+        "polkadot-api": "^1.23.3",
+        "@polkadot-labs/hdkd": "^0.0.26",
+        "@polkadot-labs/hdkd-helpers": "^0.0.27"
+    }
+}

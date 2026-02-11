@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["contracts/*"]
+
+[workspace.dependencies]
+pvm_contract = "0.3"
+polkavm-derive = "0.31"
+parity-scale-codec = { version = "3.7", default-features = false, features = ["derive"] }
+picoalloc = "0.2"
