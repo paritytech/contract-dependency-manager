@@ -45,6 +45,11 @@ jobs:
               with:
                   name: ${{ matrix.artifact }}
                   path: ${{ matrix.artifact }}
+            - name: Generate release tag
+              id: tag
+              run: |
+                  TAG="v$(date +'%Y%m%d.%H%M%S')"
+                  echo "tag=$TAG" >> $GITHUB_OUTPUT
 
     release:
         needs: build
