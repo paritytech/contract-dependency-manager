@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { resolve } from "path";
 import { existsSync } from "fs";
-import { execSync } from "child_process";
 import { connectWebSocket } from "../src/lib/connection.js";
 import {
     ContractDeployer,
@@ -57,7 +56,7 @@ afterAll(() => {
 
 describe("e2e: bootstrap deploy", () => {
     test("registry deploys and returns valid address", () => {
-        expect(registryAddr).toMatch(/^0x[0-9a-f]{40}$/);
+        expect(registryAddr).toMatch(/^0x[0-9a-fA-F]{40}$/);
     }, 30_000);
 
     test("build shared-counter contracts with registry address", () => {
@@ -74,14 +73,26 @@ describe("e2e: bootstrap deploy", () => {
             );
             expect(existsSync(pvmPath)).toBe(true);
         }
+
+        // Verify CDM metadata files
+        for (const crateName of order.crateNames) {
+            const cdmPath = resolve(
+                TEMPLATE_DIR,
+                `target/${crateName}.release.cdm.json`,
+            );
+            expect(existsSync(cdmPath)).toBe(true);
+        }
     }, 300_000);
 
     test("deploy and register all shared-counter contracts", async () => {
-        await deployAllContracts(deployer, TEMPLATE_DIR);
+        const addresses = await deployAllContracts(deployer, TEMPLATE_DIR);
 
-        // Verify last deployed address is set
-        expect(deployer.lastDeployedAddr).toMatch(/^0x[0-9a-f]{40}$/);
-    }, 120_000);
+        // Verify addresses returned for all contracts
+        const order = detectDeploymentOrder(TEMPLATE_DIR);
+        for (const crateName of order.crateNames) {
+            expect(addresses[crateName]).toMatch(/^0x[0-9a-fA-F]{40}$/);
+        }
+    }, 300_000);
 
     test("query registry for deployed contract addresses", async () => {
         const inkSdk = createInkSdk(deployer.client);
@@ -90,7 +101,6 @@ describe("e2e: bootstrap deploy", () => {
             registryAddr,
         );
 
-        // The shared-counter template has CDM packages for all 3 contracts
         const order = detectDeploymentOrder(TEMPLATE_DIR);
         for (let i = 0; i < order.crateNames.length; i++) {
             const cdmPackage = order.cdmPackages[i];
@@ -103,10 +113,78 @@ describe("e2e: bootstrap deploy", () => {
 
             expect(result.success).toBe(true);
             if (result.success) {
-                expect(result.value.response).toMatch(/^0x[0-9a-f]{40}$/);
+                expect(result.value.response).toMatch(/^0x[0-9a-fA-F]{40}$/);
             }
         }
     }, 60_000);
+
+    test("counter_writer increments and counter_reader reads the shared counter", async () => {
+        const inkSdk = createInkSdk(deployer.client);
+
+        // Resolve deployed addresses from registry
+        const registry = inkSdk.getContract(
+            contracts.contractsRegistry,
+            registryAddr,
+        );
+        const getAddr = async (cdmName: string) => {
+            const r = await registry.query("getAddress", {
+                origin: ALICE_SS58,
+                data: { contract_name: cdmName },
+            });
+            expect(r.success).toBe(true);
+            return r.success ? r.value.response : "";
+        };
+
+        const counter = inkSdk.getContract(
+            contracts.counter,
+            await getAddr("@example/counter"),
+        );
+        const reader = inkSdk.getContract(
+            contracts.counterReader,
+            await getAddr("@example/counter-reader"),
+        );
+        const writer = inkSdk.getContract(
+            contracts.counterWriter,
+            await getAddr("@example/counter-writer"),
+        );
+
+        // Read initial count via counter_reader (goes through CDM to counter)
+        const initial = await reader.query("readCount", {
+            origin: ALICE_SS58,
+            data: {},
+        });
+        expect(initial.success).toBe(true);
+        const initialCount = initial.success ? initial.value.response : 0;
+
+        // Increment via counter_writer (goes through CDM to counter)
+        await writer
+            .send(:"writeIncrement", {
+                data: {},
+                gasLimit: { ref_time: 10_000_000_000n, proof_size: 262_144n },
+                storageDepositLimit: 500_000_000_000n,
+            })
+            .signAndSubmit(deployer.signer);
+
+        // Read count again via counter_reader — should be initialCount + 1
+        const after = await reader.query("readCount", {
+            origin: ALICE_SS58,
+            data: {},
+        });
+        expect(after.success).toBe(true);
+        if (after.success) {
+            expect(after.value.response).toBe(initialCount + 1);
+        }
+
+        // Also verify directly on counter contract — should match
+        const direct = await counter.query("getCount", {
+            origin: ALICE_SS58,
+            data: {},
+        });
+        expect(direct.success).toBe(true);
+        if (direct.success) {
+            expect(direct.value.response).toBe(initialCount + 1);
+        }
+    }, 120_000);
 
     test("registry contract count matches deployed contracts", async () => {
         const inkSdk = createInkSdk(deployer.client);

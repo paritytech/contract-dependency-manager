@@ -1,10 +1,19 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, beforeAll } from "bun:test";
 import { detectContracts, buildDependencyGraph, toposort, detectDeploymentOrder } from "../src/lib/detection.js";
 import { resolve } from "path";
+import { rmSync } from "fs";
 
 const TEMPLATE_DIR = resolve(import.meta.dir, "../templates/shared-counter");
 
 describe("detection via cargo metadata", () => {
+    beforeAll(() => {
+        // Clean any .cdm.json files from previous builds so tests start fresh
+        const targetDir = resolve(TEMPLATE_DIR, "target");
+        for (const name of ["counter", "counter_reader", "counter_writer"]) {
+            try { rmSync(resolve(targetDir, `${name}.release.cdm.json`)); } catch {}
+        }
+    });
+
     test("detects all 3 contracts in shared-counter template", () => {
         const contracts = detectContracts(TEMPLATE_DIR);
         const names = contracts.map(c => c.name).sort();

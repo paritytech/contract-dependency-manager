@@ -1,9 +1,11 @@
-.PHONY: install dev build compile compile-all build-registry test clean
+TEMPLATE_DIR = templates/shared-counter
+
+.PHONY: install dev build compile compile-all build-registry build-template test clean
 
 setup:
 	curl -sL https://raw.githubusercontent.com/paritytech/ppn-proxy/main/install.sh | bash
-	bun instal
-	bunx papi generatel
+	bun install
+	$(MAKE) build-template
 
 start-network:
 	cd ppn && make start
@@ -28,12 +30,18 @@ compile-all:
 
 build-registry:
 	cargo pvm-contract build --manifest-path Cargo.toml -p contracts
+	bunx papi sol add target/contracts.release.abi.json contractsRegistry
+
+build-template:
+	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter
+	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter_reader
+	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter_writer
+	bunx papi sol add $(TEMPLATE_DIR)/target/counter.release.abi.json counter --skip-codegen
+	bunx papi sol add $(TEMPLATE_DIR)/target/counter_reader.release.abi.json counterReader --skip-codegen
+	bunx papi sol add $(TEMPLATE_DIR)/target/counter_writer.release.abi.json counterWriter
 
 test:
-	bun test tests/detection.test.ts tests/commands.test.ts
-
-test-e2e:
-	bun test tests/e2e.test.ts
+	bun test tests/detection.test.ts tests/commands.test.ts tests/e2e.test.ts
 
 clean:
 	rm -rf dist/ target/ node_modules/

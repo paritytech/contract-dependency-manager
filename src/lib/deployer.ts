@@ -158,12 +158,14 @@ export function buildAllContracts(rootDir: string, registryAddr: string): void {
 
 /**
  * Deploy all contracts (excluding registry) and register them.
+ * Returns a map of crate name -> deployed address.
  */
 export async function deployAllContracts(
     deployer: ContractDeployer,
     rootDir: string,
-): Promise<void> {
+): Promise<Record<string, string>> {
     const order = detectDeploymentOrder(rootDir);
+    const addresses: Record<string, string> = {};
     console.log(`Deploying ${order.crateNames.length} contracts...`);
 
     for (let i = 0; i < order.crateNames.length; i++) {
@@ -172,10 +174,13 @@ export async function deployAllContracts(
         const pvmPath = resolve(rootDir, `target/${crateName}.release.polkavm`);
 
         const addr = await deployer.deploy(pvmPath);
+        addresses[crateName] = addr;
         console.log(`  Deployed ${crateName} to: ${addr}`);
 
         if (cdmPackage) {
             await deployer.register(cdmPackage);
         }
     }
+
+    return addresses;
 }

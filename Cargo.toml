@@ -3,7 +3,7 @@ resolver = "2"
 members = ["contracts/registry"]
 
 [workspace.dependencies]
-pvm_contract = "0.3"
+pvm_contract = { path = "/home/ubuntu/cargo-pvm-contract/crates/pvm_contract" }
 polkavm-derive = "0.31"
 parity-scale-codec = { version = "3.7", default-features = false, features = ["derive"] }
-picoalloc = "0.2"
+picoalloc = "5.2"

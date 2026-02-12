@@ -1,0 +1,10 @@
+{
+    "rust-analyzer.cargo.target": null,
+    "rust-analyzer.check.allTargets": false,
+    "rust-analyzer.check.workspace": false,
+    "rust-analyzer.diagnostics.disabled": ["unlinked-file"],
+    "[rust]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "rust-lang.rust-analyzer"
+    }
+}

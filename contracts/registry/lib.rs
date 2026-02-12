@@ -1,8 +1,6 @@
 #![no_main]
 #![no_std]
 
-mod allocator;
-
 use alloc::string::String;
 use parity_scale_codec::{Decode, Encode};
 use pvm::storage::Mapping;
@@ -57,11 +55,7 @@ mod contract_registry {
     /// The caller only has permission to publish a new version of `contract_name` if
     /// either the name is available or they are already the owner of the name.
     #[pvm::method]
-    pub fn publish_latest(
-        contract_name: String,
-        contract_address: Address,
-        metadata_uri: String,
-    ) {
+    pub fn publish_latest(contract_name: String, contract_address: Address, metadata_uri: String) {
         let caller = caller();
 
         // Get existing info or register new `contract_name` with caller as owner
@@ -94,14 +88,9 @@ mod contract_registry {
 
         // Store published contract data at latest version index
         let version_idx = info.version_count.saturating_sub(1);
-        Storage::published_address().insert(
-            &(contract_name.clone(), version_idx),
-            &contract_address,
-        );
-        Storage::published_metadata_uri().insert(
-            &(contract_name, version_idx),
-            &metadata_uri,
-        );
+        Storage::published_address()
+            .insert(&(contract_name.clone(), version_idx), &contract_address);
+        Storage::published_metadata_uri().insert(&(contract_name, version_idx), &metadata_uri);
     }
 
     /// Get the address of the latest published contract for a given `contract_name`.

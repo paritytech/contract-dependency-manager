@@ -1,8 +1,6 @@
 #![no_main]
 #![no_std]
 
-mod allocator;
-
 use pvm_contract as pvm;
 
 #[pvm::contract(cdm = "@example/counter-reader")]
