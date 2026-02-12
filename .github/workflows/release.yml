@@ -60,8 +60,8 @@ jobs:
             - name: Create Release
               uses: softprops/action-gh-release@v2
               with:
-                  tag_name: ${{ needs.prepare.outputs.tag }}
-                  name: Release ${{ needs.prepare.outputs.tag }}
+                  tag_name: ${{ needs.build.outputs.tag }}
+                  name: Release ${{ needs.build.outputs.tag }}
                   files: |
                       artifacts/cdm-linux-x64/cdm-linux-x64
                   generate_release_notes: true
