@@ -11,6 +11,7 @@ start-network:
 	cd ppn && make start
 
 install:
+	mkdir -p .papi/descriptors
 	bun i polkadot-api
 	bunx papi add relay -n polkadot --skip-codegen
 	bunx papi add bulletin --wasm ppn/bin/bulletin_westend_runtime.wasm --skip-codegen
