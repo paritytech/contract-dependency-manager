@@ -14,14 +14,11 @@
     "individuality": {
       "metadata": ".papi/metadata/individuality.scale"
     },
-    "assethub": {
-      "metadata": ".papi/metadata/assethub.scale"
+    "assetHub": {
+      "metadata": ".papi/metadata/assetHub.scale"
     }
   },
   "sol": {
-    "contractsRegistry": ".papi/contracts/contractsRegistry.json",
-    "counter": ".papi/contracts/counter.json",
-    "counterReader": ".papi/contracts/counterReader.json",
-    "counterWriter": ".papi/contracts/counterWriter.json"
+    "contractsRegistry": ".papi/contracts/contractsRegistry.json"
   }
 }

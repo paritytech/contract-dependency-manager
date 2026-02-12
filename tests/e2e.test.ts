@@ -158,7 +158,7 @@ describe("e2e: bootstrap deploy", () => {
 
         // Increment via counter_writer (goes through CDM to counter)
         await writer
-            .send(:"writeIncrement", {
+            .send("writeIncrement", {
                 data: {},
                 gasLimit: { ref_time: 10_000_000_000n, proof_size: 262_144n },
                 storageDepositLimit: 500_000_000_000n,

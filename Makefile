@@ -7,6 +7,16 @@ setup:
 	$(MAKE) install
 	$(MAKE) build-template
 
+generate-papi:
+	mkdir -p .papi/descriptors
+	[ -f .papi/descriptors/package.json ] || echo '{"name":"@polkadot-api/descriptors","version":"0.0.0"}' > .papi/descriptors/package.json
+	bun i polkadot-api
+	bunx papi add relay -n polkadot --skip-codegen
+	bunx papi add bulletin --wasm ppn/bin/bulletin_westend_runtime.wasm --skip-codegen
+	bunx papi add individuality --wasm ppn/bin/people_westend_individuality_runtime.wasm --skip-codegen
+	bunx papi add assetHub --wasm ppn/bin/asset_hub_westend_runtime.wasm --skip-codegen
+	bunx papi
+
 start-network:
 	cd ppn && make start
 

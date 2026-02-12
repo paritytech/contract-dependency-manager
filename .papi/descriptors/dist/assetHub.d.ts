@@ -14786,9 +14786,9 @@ type IRuntimeCalls = {
         new_balance_with_dust: RuntimeDescriptor<[balance: Anonymize<I4totqt881mlti>], Anonymize<I512dtcl0pn07c>>;
     };
 };
-export type AssethubDispatchError = Anonymize<I9vrehe8joer4l>;
+export type AssetHubDispatchError = Anonymize<I9vrehe8joer4l>;
 type IAsset = PlainDescriptor<Anonymize<If9iqq7i64mur8>>;
-export type AssethubExtensions = {};
+export type AssetHubExtensions = {};
 type PalletsTypedef = {
     __storage: IStorage;
     __tx: ICalls;
@@ -14797,27 +14797,27 @@ type PalletsTypedef = {
     __const: IConstants;
     __view: IViewFns;
 };
-export type Assethub = {
+export type AssetHub = {
     descriptors: {
         pallets: PalletsTypedef;
         apis: IRuntimeCalls;
     } & Promise<any>;
     metadataTypes: Promise<Uint8Array>;
     asset: IAsset;
-    extensions: AssethubExtensions;
+    extensions: AssetHubExtensions;
     getMetadata: () => Promise<Uint8Array>;
     genesis: string | undefined;
 };
-declare const _allDescriptors: Assethub;
+declare const _allDescriptors: AssetHub;
 export default _allDescriptors;
-export type AssethubApis = ApisFromDef<IRuntimeCalls>;
-export type AssethubQueries = QueryFromPalletsDef<PalletsTypedef>;
-export type AssethubCalls = TxFromPalletsDef<PalletsTypedef>;
-export type AssethubEvents = EventsFromPalletsDef<PalletsTypedef>;
-export type AssethubErrors = ErrorsFromPalletsDef<PalletsTypedef>;
-export type AssethubConstants = ConstFromPalletsDef<PalletsTypedef>;
-export type AssethubViewFns = ViewFnsFromPalletsDef<PalletsTypedef>;
-export type AssethubCallData = Anonymize<Iapigu5kpoksm7> & {
+export type AssetHubApis = ApisFromDef<IRuntimeCalls>;
+export type AssetHubQueries = QueryFromPalletsDef<PalletsTypedef>;
+export type AssetHubCalls = TxFromPalletsDef<PalletsTypedef>;
+export type AssetHubEvents = EventsFromPalletsDef<PalletsTypedef>;
+export type AssetHubErrors = ErrorsFromPalletsDef<PalletsTypedef>;
+export type AssetHubConstants = ConstFromPalletsDef<PalletsTypedef>;
+export type AssetHubViewFns = ViewFnsFromPalletsDef<PalletsTypedef>;
+export type AssetHubCallData = Anonymize<Iapigu5kpoksm7> & {
     value: {
         type: string;
     };
@@ -15108,7 +15108,7 @@ type AllInteractions = {
         ReviveApi: ['eth_block', 'eth_block_hash', 'eth_receipt_data', 'block_gas_limit', 'balance', 'gas_price', 'nonce', 'call', 'instantiate', 'eth_transact', 'eth_transact_with_config', 'upload_code', 'get_storage', 'get_storage_var_key', 'trace_block', 'trace_tx', 'trace_call', 'block_author', 'address', 'account_id', 'runtime_pallets_address', 'code', 'new_balance_with_dust'];
     };
 };
-export type AssethubWhitelistEntry = PalletKey | `query.${NestedKey<AllInteractions['storage']>}` | `tx.${NestedKey<AllInteractions['tx']>}` | `event.${NestedKey<AllInteractions['events']>}` | `error.${NestedKey<AllInteractions['errors']>}` | `const.${NestedKey<AllInteractions['constants']>}` | `view.${NestedKey<AllInteractions['viewFns']>}` | `api.${NestedKey<AllInteractions['apis']>}`;
+export type AssetHubWhitelistEntry = PalletKey | `query.${NestedKey<AllInteractions['storage']>}` | `tx.${NestedKey<AllInteractions['tx']>}` | `event.${NestedKey<AllInteractions['events']>}` | `error.${NestedKey<AllInteractions['errors']>}` | `const.${NestedKey<AllInteractions['constants']>}` | `view.${NestedKey<AllInteractions['viewFns']>}` | `api.${NestedKey<AllInteractions['apis']>}`;
 type PalletKey = `*.${({
     [K in keyof AllInteractions]: K extends 'apis' ? never : keyof AllInteractions[K];
 })[keyof AllInteractions]}`;
