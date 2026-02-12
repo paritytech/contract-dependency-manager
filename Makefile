@@ -4,13 +4,19 @@ TEMPLATE_DIR = templates/shared-counter
 
 setup:
 	curl -sL https://raw.githubusercontent.com/paritytech/ppn-proxy/main/install.sh | bash
-	bun install
+	$(MAKE) install
 	$(MAKE) build-template
 
 start-network:
 	cd ppn && make start
 
 install:
+	bun i polkadot-api
+	bunx papi add relay -n polkadot --skip-codegen
+	bunx papi add bulletin --wasm ppn/bin/bulletin_westend_runtime.wasm --skip-codegen
+	bunx papi add individuality --wasm ppn/bin/people_westend_individuality_runtime.wasm --skip-codegen
+	bunx papi add assethub --wasm ppn/bin/asset_hub_westend_runtime.wasm --skip-codegen
+	bunx papi
 	bun install
 
 dev:
