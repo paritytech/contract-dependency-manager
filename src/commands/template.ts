@@ -1,9 +1,19 @@
 import { Command } from "commander";
 import { resolve, join, relative, dirname } from "path";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync, copyFileSync } from "fs";
+import {
+    existsSync,
+    mkdirSync,
+    readdirSync,
+    readFileSync,
+    writeFileSync,
+    statSync,
+    copyFileSync,
+} from "fs";
 
 const template = new Command("template")
-    .description("Scaffold a CDM example project with 3 contracts and TypeScript validation")
+    .description(
+        "Scaffold a CDM example project with 3 contracts and TypeScript validation",
+    )
     .argument("[dir]", "Target directory (defaults to current directory)", ".");
 
 template.action(async (dir: string) => {
@@ -28,8 +38,10 @@ template.action(async (dir: string) => {
 
     // Check if directory is not empty
     const existingFiles = readdirSync(targetDir);
-    if (existingFiles.length > 0 && existingFiles.some(f => f !== ".git")) {
-        console.log("Warning: Target directory is not empty. Files may be overwritten.\n");
+    if (existingFiles.length > 0 && existingFiles.some((f) => f !== ".git")) {
+        console.log(
+            "Warning: Target directory is not empty. Files may be overwritten.\n",
+        );
     }
 
     // Copy all template files
@@ -46,7 +58,9 @@ template.action(async (dir: string) => {
     console.log("  # Build all contracts:");
     console.log("  cdm build");
     console.log("");
-    console.log("  # Deploy (bootstrap mode - deploys ContractRegistry first):");
+    console.log(
+        "  # Deploy (bootstrap mode - deploys ContractRegistry first):",
+    );
     console.log("  cdm deploy --bootstrap ws://localhost:9944");
     console.log("");
     console.log("  # Run the TypeScript validation:");

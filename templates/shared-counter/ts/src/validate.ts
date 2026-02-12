@@ -16,7 +16,11 @@ import { getWsProvider } from "polkadot-api/ws-provider/node";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
 import { getPolkadotSigner } from "polkadot-api/signer";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
-import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
+import {
+    DEV_PHRASE,
+    entropyToMiniSecret,
+    mnemonicToEntropy,
+} from "@polkadot-labs/hdkd-helpers";
 import { Binary, FixedSizeBinary } from "polkadot-api";
 
 const WS_URL = process.env.WS_URL ?? "ws://127.0.0.1:9944";
@@ -28,7 +32,11 @@ function prepareSigner(name: string) {
     const miniSecret = entropyToMiniSecret(entropy);
     const derive = sr25519CreateDerive(miniSecret);
     const hdkdKeyPair = derive(`//${name}`);
-    return getPolkadotSigner(hdkdKeyPair.publicKey, "Sr25519", hdkdKeyPair.sign);
+    return getPolkadotSigner(
+        hdkdKeyPair.publicKey,
+        "Sr25519",
+        hdkdKeyPair.sign,
+    );
 }
 
 async function main() {
@@ -36,7 +44,9 @@ async function main() {
 
     // Load addresses
     if (!readFileSync) {
-        console.error("Could not find addresses file. Run 'cdm deploy --bootstrap' first.");
+        console.error(
+            "Could not find addresses file. Run 'cdm deploy --bootstrap' first.",
+        );
         process.exit(1);
     }
 
@@ -45,7 +55,9 @@ async function main() {
         addresses = JSON.parse(readFileSync(ADDRESSES_PATH, "utf-8"));
     } catch {
         console.error(`Could not read ${ADDRESSES_PATH}`);
-        console.error("Run 'cdm deploy --bootstrap ws://localhost:9944' first.");
+        console.error(
+            "Run 'cdm deploy --bootstrap ws://localhost:9944' first.",
+        );
         process.exit(1);
     }
 
@@ -73,7 +85,9 @@ async function main() {
     // TODO: Once papi descriptors are generated for this project,
     // add actual contract call validation here using the Revive pallet
 
-    console.log("Validation complete! Cross-contract CDM dependencies are working.");
+    console.log(
+        "Validation complete! Cross-contract CDM dependencies are working.",
+    );
     client.destroy();
 }
 

@@ -10,7 +10,10 @@ import { DEFAULT_NODE_URL, ALICE_SS58 } from "../constants.js";
 const add = new Command("add")
     .description("Add a CDM contract library for use with polkadot-api")
     .argument("<library>", 'CDM library name (e.g., "@polkadot/reputation")')
-    .option("--registry <address>", "ContractRegistry address (or set CONTRACTS_REGISTRY_ADDR env var)")
+    .option(
+        "--registry <address>",
+        "ContractRegistry address (or set CONTRACTS_REGISTRY_ADDR env var)",
+    )
     .option("--url <url>", "Chain WebSocket URL", DEFAULT_NODE_URL)
     .option("--root <path>", "Project root directory", process.cwd());
 
@@ -23,7 +26,9 @@ type AddOptions = {
 add.action(async (library: string, opts: AddOptions) => {
     const registryAddr = opts.registry ?? process.env.CONTRACTS_REGISTRY_ADDR;
     if (!registryAddr) {
-        console.error("Error: Registry address required. Use --registry or set CONTRACTS_REGISTRY_ADDR");
+        console.error(
+            "Error: Registry address required. Use --registry or set CONTRACTS_REGISTRY_ADDR",
+        );
         process.exit(1);
     }
 
@@ -43,7 +48,10 @@ add.action(async (library: string, opts: AddOptions) => {
     // Query registry for metadata URI via ink SDK
     console.log(`Looking up "${library}" in registry...`);
     const inkSdk = createInkSdk(client);
-    const registry = inkSdk.getContract(contracts.contractsRegistry, registryAddr);
+    const registry = inkSdk.getContract(
+        contracts.contractsRegistry,
+        registryAddr,
+    );
 
     const result = await registry.query("getMetadataUri", {
         origin: ALICE_SS58,
@@ -88,9 +96,13 @@ add.action(async (library: string, opts: AddOptions) => {
     try {
         execSync("npx papi generate", { cwd: rootDir, stdio: "inherit" });
         console.log("\n=== Done! ===");
-        console.log(`\nYou can now import and use "${library}" contract types in your TypeScript code.`);
+        console.log(
+            `\nYou can now import and use "${library}" contract types in your TypeScript code.`,
+        );
     } catch {
-        console.log("\nABI saved. Run 'npx papi generate' to generate TypeScript types.");
+        console.log(
+            "\nABI saved. Run 'npx papi generate' to generate TypeScript types.",
+        );
     }
 
     client.destroy();

@@ -35,5 +35,7 @@ export function prepareSignerFromSuri(suri: string) {
 
     // For now, just support dev accounts
     // TODO: Support full mnemonics with derivation paths
-    throw new Error("Custom SURI not yet supported. Use dev account names like 'Alice' or '//Alice'");
+    throw new Error(
+        "Custom SURI not yet supported. Use dev account names like 'Alice' or '//Alice'",
+    );
 }

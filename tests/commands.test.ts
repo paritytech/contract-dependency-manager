@@ -40,9 +40,15 @@ describe("CLI commands", () => {
             execSync(`bun run ${CLI} template ${tmpDir}`, { stdio: "pipe" });
 
             expect(existsSync(join(tmpDir, "Cargo.toml"))).toBe(true);
-            expect(existsSync(join(tmpDir, "contracts/counter/lib.rs"))).toBe(true);
-            expect(existsSync(join(tmpDir, "contracts/counter-writer/lib.rs"))).toBe(true);
-            expect(existsSync(join(tmpDir, "contracts/counter-reader/lib.rs"))).toBe(true);
+            expect(existsSync(join(tmpDir, "contracts/counter/lib.rs"))).toBe(
+                true,
+            );
+            expect(
+                existsSync(join(tmpDir, "contracts/counter-writer/lib.rs")),
+            ).toBe(true);
+            expect(
+                existsSync(join(tmpDir, "contracts/counter-reader/lib.rs")),
+            ).toBe(true);
             expect(existsSync(join(tmpDir, "ts/package.json"))).toBe(true);
             expect(existsSync(join(tmpDir, "ts/src/validate.ts"))).toBe(true);
         } finally {

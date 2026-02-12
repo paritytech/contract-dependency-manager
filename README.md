@@ -5,7 +5,10 @@ A CLI tool for managing PVM smart contract dependencies on Polkadot. CDM automat
 ## Quick Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | bash
+GITHUB_TOKEN=$(printf "protocol=https\nhost=github.com\n" | git credential fill 2>/dev/null | grep "^password=" | cut -d= -f2 || true) && \
+  curl -fsSL -H "Authorization: token $(gh auth token)" \
+    -H "Accept: application/vnd.github.raw" \
+    https://api.github.com/repos/paritytech/contract-dependency-manager/contents/install.sh | bash
 ```
 
 ## Quick Start
@@ -55,6 +58,7 @@ CDM uses an on-chain **ContractRegistry** to resolve addresses at runtime:
 ## Commands
 
 ### `cdm build`
+
 Build all contracts with the ContractRegistry address baked in.
 
 ```bash
@@ -64,6 +68,7 @@ cdm build --root /path/to/workspace             # Custom workspace root
 ```
 
 ### `cdm deploy <url>`
+
 Deploy and register all contracts to a chain.
 
 ```bash
@@ -80,6 +85,7 @@ cdm deploy --skip-build ws://127.0.0.1:10020      # Use pre-built artifacts
 ```
 
 ### `cdm add <library>`
+
 Add a CDM contract library for use with polkadot-api. Queries the on-chain registry for the contract's ABI metadata and installs it locally.
 
 ```bash
@@ -88,6 +94,7 @@ cdm add @polkadot/disputes --url wss://asset-hub.polkadot.io
 ```
 
 ### `cdm template [dir]`
+
 Scaffold a complete example project with 3 contracts demonstrating cross-contract CDM dependencies.
 
 ```bash

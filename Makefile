@@ -4,7 +4,7 @@ TEMPLATE_DIR = templates/shared-counter
 
 setup:
 	curl -sL https://raw.githubusercontent.com/paritytech/ppn-proxy/main/install.sh | bash
-	$(MAKE) install
+	bun install
 	$(MAKE) build-template
 
 generate-papi:
@@ -21,7 +21,7 @@ start-network:
 	cd ppn && make start
 
 install:
-	bun install
+	bun build --compile src/cli.ts --outfile ~/.cdm/bin/cdm
 
 dev:
 	bun run src/cli.ts
