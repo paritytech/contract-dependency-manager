@@ -30,6 +30,9 @@ jobs:
 
         runs-on: ${{ matrix.os }}
 
+        outputs:
+            tag: ${{ steps.tag.outputs.tag }}
+
         steps:
             - uses: actions/checkout@v4
             - uses: oven-sh/setup-bun@v2
@@ -57,8 +60,8 @@ jobs:
             - name: Create Release
               uses: softprops/action-gh-release@v2
               with:
+                  tag_name: ${{ needs.prepare.outputs.tag }}
+                  name: Release ${{ needs.prepare.outputs.tag }}
                   files: |
                       artifacts/cdm-linux-x64/cdm-linux-x64
-                      # artifacts/cdm-darwin-x64/cdm-darwin-x64
-                      # artifacts/cdm-darwin-arm64/cdm-darwin-arm64
                   generate_release_notes: true
