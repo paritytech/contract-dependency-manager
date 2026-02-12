@@ -20,11 +20,9 @@ type BuildOptions = {
 build.action(async (opts: BuildOptions) => {
     const registry = process.env.CONTRACTS_REGISTRY_ADDR;
     if (!registry) {
-        console.error(
-            "Error: CONTRACTS_REGISTRY_ADDR environment variable is required",
+        console.warn(
+            "Warning: CONTRACTS_REGISTRY_ADDR not set, defaulting to zero address",
         );
-        console.error("Usage: CONTRACTS_REGISTRY_ADDR=0x1234... cdm build");
-        process.exit(1);
     }
 
     const rootDir = resolve(opts.root);
