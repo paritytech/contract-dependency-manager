@@ -1,24 +1,46 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+
+env:
+    BIN: ${{ github.workspace }}/bin
+    SCRIPTS: ${{ github.workspace }}/scripts
+    ZOMBIE_DIR: /tmp/zombie-test
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install
-      - run: bun run build
+    test:
+        runs-on: ubuntu-latest
+        needs: setup
+        steps:
+            - uses: actions/checkout@v4
+            - uses: oven-sh/setup-bun@v2
+            - name: Setup
+              run: make setup
+            - name: Start network
+              run: |
+                  BIN=$(realpath ppn/bin) SCRIPTS=$(realpath ppn/scripts) \
+                    ppn/bin/zombie-cli spawn -p native -d ${{ env.ZOMBIE_DIR }} \
+                    ppn/zombienet-configs/local-dev.toml & \
+                    echo "Waiting for network to start..."
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install
-      - run: bun test
+                  # Wait for network to be ready (check for zombie.json)
+                  echo "Waiting for network to start..."
+                  for i in {1..60}; do
+                      if [ -f "${{ env.ZOMBIE_DIR }}/zombie.json" ]; then
+                      echo "Network started, zombie.json found"
+                      break
+                      fi
+                      sleep 10
+                  done
+
+                  # Additional wait for nodes to be ready
+                  sleep 30
+            - name: Run tests
+              run: |
+                  bun install
+                  bun test
+                  bun test tests/e2e.test.ts
