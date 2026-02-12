@@ -21,12 +21,12 @@ jobs:
                     - target: bun-linux-x64
                       os: ubuntu-latest
                       artifact: cdm-linux-x64
-                    - target: bun-darwin-x64
-                      os: macos-latest
-                      artifact: cdm-darwin-x64
-                    - target: bun-darwin-arm64
-                      os: macos-latest
-                      artifact: cdm-darwin-arm64
+                    # - target: bun-darwin-x64
+                    #   os: macos-latest
+                    #   artifact: cdm-darwin-x64
+                    # - target: bun-darwin-arm64
+                    #   os: macos-latest
+                    #   artifact: cdm-darwin-arm64
 
         runs-on: ${{ matrix.os }}
 
