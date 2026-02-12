@@ -12,6 +12,7 @@ start-network:
 
 install:
 	mkdir -p .papi/descriptors
+	[ -f .papi/descriptors/package.json ] || echo '{"name":"@polkadot-api/descriptors","version":"0.0.0"}' > .papi/descriptors/package.json
 	bun i polkadot-api
 	bunx papi add relay -n polkadot --skip-codegen
 	bunx papi add bulletin --wasm ppn/bin/bulletin_westend_runtime.wasm --skip-codegen
