@@ -452,11 +452,23 @@ var IdentityData = import_polkadot_api._Enum;
 // .papi/descriptors/src/contracts/index.ts
 var contracts_exports = {};
 __export(contracts_exports, {
-  contractsRegistry: () => descriptor
+  contractsRegistry: () => descriptor,
+  counter: () => descriptor2,
+  counterReader: () => descriptor3,
+  counterWriter: () => descriptor4
 });
 
 // .papi/descriptors/src/contracts/contractsRegistry.ts
 var descriptor = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "publishLatest", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "contract_address", "type": "address" }, { "name": "metadata_uri", "type": "string" }], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "getAddress", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "address" }], "stateMutability": "view" }, { "type": "function", "name": "getMetadataUri", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "string" }], "stateMutability": "view" }, { "type": "function", "name": "getContractCount", "inputs": [], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }] };
+
+// .papi/descriptors/src/contracts/counter.ts
+var descriptor2 = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "increment", "inputs": [], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "getCount", "inputs": [], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }] };
+
+// .papi/descriptors/src/contracts/counterReader.ts
+var descriptor3 = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "readCount", "inputs": [], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }] };
+
+// .papi/descriptors/src/contracts/counterWriter.ts
+var descriptor4 = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "writeIncrement", "inputs": [], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "writeIncrementN", "inputs": [{ "name": "n", "type": "uint32" }], "outputs": [], "stateMutability": "nonpayable" }] };
 
 // .papi/descriptors/src/index.ts
 var metadatas = { ["0x763725f38b64ed84ae844dfc5d468258d35ef2f090dde5485d5b1afcfc9bf568"]: relay_default };

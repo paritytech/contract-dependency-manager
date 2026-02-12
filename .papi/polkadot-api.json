@@ -19,6 +19,9 @@
     }
   },
   "sol": {
-    "contractsRegistry": ".papi/contracts/contractsRegistry.json"
+    "contractsRegistry": ".papi/contracts/contractsRegistry.json",
+    "counter": ".papi/contracts/counter.json",
+    "counterReader": ".papi/contracts/counterReader.json",
+    "counterWriter": ".papi/contracts/counterWriter.json"
   }
 }
