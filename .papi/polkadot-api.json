@@ -1,0 +1,27 @@
+{
+  "version": 0,
+  "descriptorPath": ".papi/descriptors",
+  "entries": {
+    "relay": {
+      "chain": "polkadot",
+      "metadata": ".papi/metadata/relay.scale",
+      "genesis": "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
+      "codeHash": "0x763725f38b64ed84ae844dfc5d468258d35ef2f090dde5485d5b1afcfc9bf568"
+    },
+    "bulletin": {
+      "metadata": ".papi/metadata/bulletin.scale"
+    },
+    "individuality": {
+      "metadata": ".papi/metadata/individuality.scale"
+    },
+    "assethub": {
+      "metadata": ".papi/metadata/assethub.scale"
+    }
+  },
+  "sol": {
+    "contractsRegistry": ".papi/contracts/contractsRegistry.json",
+    "counter": ".papi/contracts/counter.json",
+    "counterReader": ".papi/contracts/counterReader.json",
+    "counterWriter": ".papi/contracts/counterWriter.json"
+  }
+}

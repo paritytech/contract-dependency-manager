@@ -11,14 +11,6 @@ start-network:
 	cd ppn && make start
 
 install:
-	mkdir -p .papi/descriptors
-	[ -f .papi/descriptors/package.json ] || echo '{"name":"@polkadot-api/descriptors","version":"0.0.0"}' > .papi/descriptors/package.json
-	bun i polkadot-api
-	bunx papi add relay -n polkadot --skip-codegen
-	bunx papi add bulletin --wasm ppn/bin/bulletin_westend_runtime.wasm --skip-codegen
-	bunx papi add individuality --wasm ppn/bin/people_westend_individuality_runtime.wasm --skip-codegen
-	bunx papi add assethub --wasm ppn/bin/asset_hub_westend_runtime.wasm --skip-codegen
-	bunx papi
 	bun install
 
 dev:
@@ -37,7 +29,7 @@ compile-all:
 	bun build --compile --target=bun-linux-x64 src/cli.ts --outfile dist/cdm-linux-x64
 
 build-registry:
-	cargo pvm-contract build --manifest-path Cargo.toml -p contracts
+	cargo pvm-contract build --manifest-path $(CURDIR)/Cargo.toml -p contracts
 	bunx papi sol add target/contracts.release.abi.json contractsRegistry
 
 build-template:

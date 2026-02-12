@@ -1,7 +1,11 @@
 node_modules/
+
 dist/
+!.papi/descriptors/dist/
+
+
 target/
-.papi/
+
 *.polkavm
 
 *.lock
