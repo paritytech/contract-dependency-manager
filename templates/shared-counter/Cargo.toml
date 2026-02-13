@@ -3,7 +3,7 @@ resolver = "2"
 members = ["contracts/*"]
 
 [workspace.dependencies]
-pvm_contract = { path = "/home/ubuntu/cargo-pvm-contract/crates/pvm_contract" }
+pvm_contract = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "charles/cdm-integration" }
 polkavm-derive = "0.31"
 parity-scale-codec = { version = "3.7", default-features = false, features = ["derive"] }
 picoalloc = "5.2"

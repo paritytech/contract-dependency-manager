@@ -60,6 +60,57 @@
   },
   {
     "type": "function",
+    "name": "getContractNameAt",
+    "inputs": [
+      {
+        "name": "index",
+        "type": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getOwner",
+    "inputs": [
+      {
+        "name": "contract_name",
+        "type": "string"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getVersionCount",
+    "inputs": [
+      {
+        "name": "contract_name",
+        "type": "string"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getContractCount",
     "inputs": [],
     "outputs": [

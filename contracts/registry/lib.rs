@@ -122,6 +122,30 @@ mod contract_registry {
         }
     }
 
+    /// Get the contract name at a given index.
+    #[pvm::method]
+    pub fn get_contract_name_at(index: u32) -> String {
+        Storage::contract_name_at().get(&index).unwrap_or_default()
+    }
+
+    /// Get the owner of a contract name.
+    #[pvm::method]
+    pub fn get_owner(contract_name: String) -> Address {
+        Storage::info()
+            .get(&contract_name)
+            .map(|i| i.owner)
+            .unwrap_or_default()
+    }
+
+    /// Get the version count for a contract name.
+    #[pvm::method]
+    pub fn get_version_count(contract_name: String) -> u32 {
+        Storage::info()
+            .get(&contract_name)
+            .map(|i| i.version_count)
+            .unwrap_or(0)
+    }
+
     /// Get the number of contract names registered in the registry.
     #[pvm::method]
     pub fn get_contract_count() -> u32 {

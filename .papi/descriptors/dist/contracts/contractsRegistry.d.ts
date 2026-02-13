@@ -23,6 +23,24 @@ type MessagesDescriptor = {
         };
         response: string;
     };
+    "getContractNameAt": {
+        message: {
+            "index": number;
+        };
+        response: string;
+    };
+    "getOwner": {
+        message: {
+            "contract_name": string;
+        };
+        response: Address;
+    };
+    "getVersionCount": {
+        message: {
+            "contract_name": string;
+        };
+        response: number;
+    };
     "getContractCount": {
         message: {};
         response: number;
