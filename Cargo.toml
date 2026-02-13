@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["contracts/registry"]
+members = [
+    "contracts/registry",
+    "templates/shared-counter/contracts/*"
+]
 
 [workspace.dependencies]
 pvm_contract = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "charles/cdm-integration" }

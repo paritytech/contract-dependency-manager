@@ -2,7 +2,6 @@ import { Command } from "commander";
 import { resolve } from "path";
 import { execSync } from "child_process";
 import { detectDeploymentOrder } from "../lib/detection.js";
-import { CONTRACTS_REGISTRY_CRATE } from "../constants.js";
 import { pvmContractBuild } from "../lib/deployer.js";
 
 const build = new Command("build")
@@ -31,14 +30,10 @@ build.action(async (opts: BuildOptions) => {
     console.log(`Registry: ${registry}`);
     console.log(`Root: ${rootDir}\n`);
 
-    // Always build the bootstrap registry first (no CDM needed)
-    console.log(`Building ${CONTRACTS_REGISTRY_CRATE} (bootstrap)...`);
-    pvmContractBuild(rootDir, CONTRACTS_REGISTRY_CRATE);
-
     const order = detectDeploymentOrder(rootDir);
     const contractsToBuild = opts.contracts ?? order.crateNames;
 
-    console.log(`\nBuilding ${contractsToBuild.length} CDM contracts...\n`);
+    console.log(`Building ${contractsToBuild.length} contracts...\n`);
 
     for (const crateName of contractsToBuild) {
         console.log(`Building ${crateName}...`);
@@ -47,9 +42,6 @@ build.action(async (opts: BuildOptions) => {
 
     console.log("\n=== Build Complete ===");
     console.log(`\nBuilt contracts:`);
-    console.log(
-        `  - ${CONTRACTS_REGISTRY_CRATE} -> target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`,
-    );
     for (const crateName of contractsToBuild) {
         console.log(`  - ${crateName} -> target/${crateName}.release.polkavm`);
     }
