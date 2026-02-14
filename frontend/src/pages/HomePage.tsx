@@ -13,14 +13,14 @@ export default function HomePage() {
       <section className="hero">
         <div className="hero-inner">
           <h1 className="hero-tagline">Build amazing things</h1>
-          <p className="hero-subtitle">The world's largest software registry</p>
+          <p className="hero-subtitle">The world's largest contract library</p>
         </div>
       </section>
 
       <section className="stats-row">
         <div className="stat-item">
           <div className="stat-value">{totalPackages.toLocaleString()}</div>
-          <div className="stat-label">Total Packages</div>
+          <div className="stat-label">Total Contracts</div>
         </div>
         <div className="stat-item">
           <div className="stat-value">{totalDownloads.toLocaleString()}</div>
@@ -29,7 +29,7 @@ export default function HomePage() {
       </section>
 
       <section className="featured-section">
-        <h2 className="featured-title">Featured Packages</h2>
+        <h2 className="featured-title">Featured Contracts</h2>
         <div className="featured-grid">
           {featured.map((pkg) => (
             <PackageCard key={pkg.name} pkg={pkg} />

@@ -1,4 +1,42 @@
-/* Global Reset & Base Styles */
+/* Global Reset & Base Styles — adapted from Polkadot docs */
+:root {
+  /* Fonts */
+  --font-serif: "DM Serif Display", serif;
+  --font-sans: "DM Sans", sans-serif;
+  --font-code: "Courier New", monospace;
+
+  /* Greyscale (from Polkadot docs) */
+  --grey-50: #fafaf9;
+  --grey-100: #f5f5f4;
+  --grey-200: #e7e5e4;
+  --grey-300: #d6d3d1;
+  --grey-400: #a8a29e;
+  --grey-500: #78716c;
+  --grey-600: #57534e;
+  --grey-700: #44403c;
+  --grey-800: #292524;
+  --grey-900: #1c1917;
+  --grey-950: #0f0f0f;
+
+  /* Accent */
+  --accent: #e6007a;
+  --accent-hover: #cc0066;
+
+  /* Dark theme (matching Polkadot docs custom-dark) */
+  --color-bg: var(--grey-950);
+  --color-surface: var(--grey-900);
+  --color-surface-secondary: var(--grey-800);
+  --color-text-primary: var(--grey-50);
+  --color-text-secondary: var(--grey-400);
+  --color-text-tertiary: var(--grey-600);
+  --color-border: var(--grey-800);
+  --color-border-strong: var(--grey-700);
+
+  /* Semantic */
+  --success: #059669;
+  --error: #dc2626;
+}
+
 *,
 *::before,
 *::after {
@@ -8,24 +46,27 @@
 }
 
 body {
-  font-family: "DM Sans", "DM Sans Fallback", sans-serif;
-  color: #e0e0e0;
-  background: #000000;
-  line-height: 1.6;
+  font-family: var(--font-sans);
+  color: var(--color-text-secondary);
+  background: var(--color-bg);
+  line-height: 1.625;
   min-width: 320px;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-serif), Georgia, serif;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  color: var(--color-text-primary);
+  letter-spacing: -0.02em;
 }
 
 a {
-  color: #e6007a;
-  text-decoration: none;
+  color: var(--color-text-secondary);
+  text-decoration: underline;
 }
 
 a:hover {
-  text-decoration: underline;
+  color: var(--color-text-primary);
 }
 
 /* Utility: Container */

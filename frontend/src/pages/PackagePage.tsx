@@ -64,8 +64,8 @@ export default function PackagePage() {
     return (
       <Layout>
         <div className="package-not-found">
-          <h2>404 - Package Not Found</h2>
-          <p>The package &ldquo;{name}&rdquo; could not be found.</p>
+          <h2>404 - Contract Not Found</h2>
+          <p>The contract &ldquo;{name}&rdquo; could not be found.</p>
           <Link to="/">Go back to home</Link>
         </div>
       </Layout>
@@ -129,7 +129,7 @@ export default function PackagePage() {
           {activeTab === 'dependencies' && (
             <>
               {depEntries.length === 0 ? (
-                <p className="deps-empty">This package has no dependencies.</p>
+                <p className="deps-empty">This contract has no dependencies.</p>
               ) : (
                 <ul className="deps-list">
                   {depEntries.map(([depName, version]) => (

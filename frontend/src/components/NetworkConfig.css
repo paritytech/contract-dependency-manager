@@ -12,47 +12,49 @@
 
 .network-config-label {
   font-size: 11px;
-  color: #aaa;
+  color: var(--color-text-tertiary);
   padding-left: 2px;
 }
 
 .network-config-select {
-  background: #1a1a1a;
-  color: #fff;
-  border: 1px solid #333;
-  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
   padding: 4px 8px;
   font-size: 13px;
+  font-family: inherit;
   outline: none;
   cursor: pointer;
 }
 
 .network-config-select:focus {
-  border-color: #555;
+  border-color: var(--color-text-tertiary);
 }
 
 .network-config-input {
-  background: #1a1a1a;
-  color: #fff;
-  border: 1px solid #333;
-  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
   padding: 4px 8px;
   font-size: 12px;
+  font-family: inherit;
   min-width: 200px;
   outline: none;
 }
 
 .network-config-input::placeholder {
-  color: #666;
+  color: var(--color-text-tertiary);
 }
 
 .network-config-input:focus {
-  border-color: #555;
+  border-color: var(--color-text-tertiary);
 }
 
 .network-config-input:disabled {
-  background: #111;
-  color: #888;
-  border-color: #222;
+  background: var(--color-surface-secondary);
+  color: var(--color-text-tertiary);
+  border-color: var(--color-border);
   cursor: not-allowed;
 }

@@ -10,12 +10,13 @@
 
 .search-result-count {
   font-size: 1.1rem;
-  color: #e0e0e0;
+  color: var(--color-text-secondary);
   margin-bottom: 16px;
 }
 
 .search-result-count strong {
   font-weight: 700;
+  color: var(--color-text-primary);
 }
 
 .search-sort-bar {
@@ -27,23 +28,23 @@
 .sort-btn {
   padding: 6px 16px;
   font-size: 0.85rem;
-  border: 1px solid #333;
-  background: #111;
-  color: #ccc;
-  border-radius: 4px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  border-radius: 8px;
   cursor: pointer;
   font-family: inherit;
 }
 
 .sort-btn:hover {
-  border-color: #e6007a;
-  color: #e6007a;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .sort-btn.active {
-  background: #e6007a;
+  background: var(--accent);
   color: #fff;
-  border-color: #e6007a;
+  border-color: var(--accent);
 }
 
 .search-results-list {
@@ -53,23 +54,23 @@
 }
 
 .search-results-list .package-card {
-  border-bottom: 1px solid #222;
+  border-bottom: 1px solid var(--color-border);
   border-radius: 0;
 }
 
 .search-results-list .package-card:first-child {
-  border-top: 1px solid #222;
+  border-top: 1px solid var(--color-border);
 }
 
 .search-empty {
   text-align: center;
   padding: 60px 20px;
-  color: #888;
+  color: var(--color-text-secondary);
 }
 
 .search-empty h2 {
   font-size: 1.5rem;
-  color: #fff;
+  color: var(--color-text-primary);
   margin-bottom: 8px;
 }
 

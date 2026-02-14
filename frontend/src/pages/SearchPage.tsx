@@ -41,8 +41,8 @@ export default function SearchPage() {
     return (
       <Layout>
         <div className="search-empty">
-          <h2>Search for packages</h2>
-          <p>Enter a search term to find packages on cdm.</p>
+          <h2>Search for contracts</h2>
+          <p>Enter a search term to find contracts on cdm.</p>
         </div>
       </Layout>
     );
@@ -53,7 +53,7 @@ export default function SearchPage() {
       <div className="search-page">
         <div className="search-header">
           <p className="search-result-count">
-            <strong>{results.length}</strong> package{results.length !== 1 ? 's' : ''} found for &ldquo;{query}&rdquo;
+            <strong>{results.length}</strong> contract{results.length !== 1 ? 's' : ''} found for &ldquo;{query}&rdquo;
           </p>
           <div className="search-sort-bar">
             {(['popularity', 'quality', 'maintenance'] as SortMode[]).map((mode) => (
@@ -70,7 +70,7 @@ export default function SearchPage() {
 
         {results.length === 0 ? (
           <div className="search-empty">
-            <h2>No packages found</h2>
+            <h2>No contracts found</h2>
             <p>Try a different search term.</p>
           </div>
         ) : (
