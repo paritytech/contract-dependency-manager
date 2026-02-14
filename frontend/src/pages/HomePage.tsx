@@ -1,22 +1,9 @@
-import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import PackageCard from '../components/PackageCard';
 import { packages } from '../data/packages';
 import './HomePage.css';
 
 export default function HomePage() {
-  const [query, setQuery] = useState('');
-  const navigate = useNavigate();
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    const trimmed = query.trim();
-    if (trimmed) {
-      navigate(`/search?q=${encodeURIComponent(trimmed)}`);
-    }
-  };
-
   const totalPackages = packages.length;
   const totalDownloads = packages.reduce((sum, pkg) => sum + pkg.weeklyDownloads, 0);
   const featured = packages.slice(0, 6);
@@ -27,16 +14,6 @@ export default function HomePage() {
         <div className="hero-inner">
           <h1 className="hero-tagline">Build amazing things</h1>
           <p className="hero-subtitle">The world's largest software registry</p>
-          <form className="hero-search-form" onSubmit={handleSubmit}>
-            <input
-              className="hero-search-input"
-              type="text"
-              placeholder="Search packages"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <button className="hero-search-btn" type="submit">Search</button>
-          </form>
         </div>
       </section>
 

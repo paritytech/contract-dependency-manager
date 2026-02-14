@@ -73,7 +73,7 @@ export default function PackagePage() {
   }
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(`npm i ${pkg.name}`);
+    navigator.clipboard.writeText(`cdm i ${pkg.name}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -100,7 +100,7 @@ export default function PackagePage() {
           </div>
 
           <div className="install-box">
-            <span className="install-command">npm i {pkg.name}</span>
+            <span className="install-command">cdm i {pkg.name}</span>
             <button className="install-copy-btn" onClick={handleCopy}>
               {copied ? 'Copied!' : 'Copy'}
             </button>

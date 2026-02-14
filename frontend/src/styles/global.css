@@ -8,15 +8,19 @@
 }
 
 body {
-  font-family: 'Source Sans Pro', Arial, sans-serif;
-  color: #333;
-  background: #fff;
+  font-family: "DM Sans", "DM Sans Fallback", sans-serif;
+  color: #e0e0e0;
+  background: #000000;
   line-height: 1.6;
   min-width: 320px;
 }
 
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif), Georgia, serif;
+}
+
 a {
-  color: #cb3837;
+  color: #e6007a;
   text-decoration: none;
 }
 

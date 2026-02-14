@@ -1,0 +1,58 @@
+.network-config {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.network-config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.network-config-label {
+  font-size: 11px;
+  color: #aaa;
+  padding-left: 2px;
+}
+
+.network-config-select {
+  background: #1a1a1a;
+  color: #fff;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+}
+
+.network-config-select:focus {
+  border-color: #555;
+}
+
+.network-config-input {
+  background: #1a1a1a;
+  color: #fff;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  min-width: 200px;
+  outline: none;
+}
+
+.network-config-input::placeholder {
+  color: #666;
+}
+
+.network-config-input:focus {
+  border-color: #555;
+}
+
+.network-config-input:disabled {
+  background: #111;
+  color: #888;
+  border-color: #222;
+  cursor: not-allowed;
+}

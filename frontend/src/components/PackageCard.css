@@ -1,6 +1,6 @@
 .package-card {
   padding: 20px 0;
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid #222;
 }
 
 .package-card-header {
@@ -11,7 +11,7 @@
 }
 
 .package-card-name {
-  color: #cb3837;
+  color: #e6007a;
   font-size: 20px;
   font-weight: 600;
   text-decoration: none;
@@ -22,8 +22,8 @@
 }
 
 .package-card-version {
-  background-color: #e8e8e8;
-  color: #333;
+  background-color: #1a1a1a;
+  color: #ccc;
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 3px;
@@ -31,7 +31,7 @@
 }
 
 .package-card-description {
-  color: #555;
+  color: #aaa;
   font-size: 15px;
   margin-bottom: 10px;
   line-height: 1.4;
@@ -43,19 +43,19 @@
   gap: 16px;
   flex-wrap: wrap;
   font-size: 13px;
-  color: #999;
+  color: #666;
 }
 
 .package-card-author {
-  color: #666;
+  color: #888;
 }
 
 .package-card-downloads {
-  color: #666;
+  color: #888;
 }
 
 .package-card-date {
-  color: #999;
+  color: #666;
 }
 
 .package-card-keywords {
@@ -66,8 +66,8 @@
 }
 
 .package-card-keyword {
-  background-color: #f3f3f3;
-  color: #666;
+  background-color: #1a1a1a;
+  color: #888;
   font-size: 12px;
   padding: 3px 10px;
   border-radius: 12px;
@@ -75,6 +75,6 @@
 }
 
 .package-card-keyword:hover {
-  background-color: #e0e0e0;
+  background-color: #222;
   text-decoration: none;
 }

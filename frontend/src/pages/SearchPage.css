@@ -10,7 +10,7 @@
 
 .search-result-count {
   font-size: 1.1rem;
-  color: #333;
+  color: #e0e0e0;
   margin-bottom: 16px;
 }
 
@@ -27,23 +27,23 @@
 .sort-btn {
   padding: 6px 16px;
   font-size: 0.85rem;
-  border: 1px solid #ddd;
-  background: #fff;
-  color: #333;
+  border: 1px solid #333;
+  background: #111;
+  color: #ccc;
   border-radius: 4px;
   cursor: pointer;
   font-family: inherit;
 }
 
 .sort-btn:hover {
-  border-color: #cb3837;
-  color: #cb3837;
+  border-color: #e6007a;
+  color: #e6007a;
 }
 
 .sort-btn.active {
-  background: #cb3837;
+  background: #e6007a;
   color: #fff;
-  border-color: #cb3837;
+  border-color: #e6007a;
 }
 
 .search-results-list {
@@ -53,23 +53,23 @@
 }
 
 .search-results-list .package-card {
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid #222;
   border-radius: 0;
 }
 
 .search-results-list .package-card:first-child {
-  border-top: 1px solid #e8e8e8;
+  border-top: 1px solid #222;
 }
 
 .search-empty {
   text-align: center;
   padding: 60px 20px;
-  color: #666;
+  color: #888;
 }
 
 .search-empty h2 {
   font-size: 1.5rem;
-  color: #333;
+  color: #fff;
   margin-bottom: 8px;
 }
 

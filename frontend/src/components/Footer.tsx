@@ -32,7 +32,7 @@ export default function Footer() {
         </div>
         <div className="footer-bottom">
           <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <span>&copy; npm, Inc.</span>
+          <span>&copy; cdm</span>
         </div>
       </div>
     </footer>

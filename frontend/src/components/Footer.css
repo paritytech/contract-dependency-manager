@@ -1,6 +1,7 @@
 .footer {
-  background-color: #333;
+  background-color: #0a0a0a;
   padding: 40px 20px 20px;
+  border-top: 1px solid #222;
 }
 
 .footer-inner {
@@ -31,7 +32,7 @@
 }
 
 .footer-column a {
-  color: #999;
+  color: #888;
   text-decoration: none;
   font-size: 14px;
 }
@@ -42,7 +43,7 @@
 }
 
 .footer-bottom {
-  border-top: 1px solid #555;
+  border-top: 1px solid #222;
   padding-top: 16px;
   display: flex;
   justify-content: space-between;
@@ -52,7 +53,7 @@
 }
 
 .footer-bottom a {
-  color: #999;
+  color: #888;
   text-decoration: none;
   font-size: 13px;
 }
@@ -62,6 +63,6 @@
 }
 
 .footer-bottom span {
-  color: #999;
+  color: #888;
   font-size: 13px;
 }

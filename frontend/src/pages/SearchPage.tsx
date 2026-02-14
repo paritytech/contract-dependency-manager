@@ -42,7 +42,7 @@ export default function SearchPage() {
       <Layout>
         <div className="search-empty">
           <h2>Search for packages</h2>
-          <p>Enter a search term to find packages on npm.</p>
+          <p>Enter a search term to find packages on cdm.</p>
         </div>
       </Layout>
     );
