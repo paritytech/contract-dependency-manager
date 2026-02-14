@@ -1,0 +1,80 @@
+.package-card {
+  padding: 20px 0;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.package-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.package-card-name {
+  color: #cb3837;
+  font-size: 20px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.package-card-name:hover {
+  text-decoration: underline;
+}
+
+.package-card-version {
+  background-color: #e8e8e8;
+  color: #333;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.package-card-description {
+  color: #555;
+  font-size: 15px;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.package-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #999;
+}
+
+.package-card-author {
+  color: #666;
+}
+
+.package-card-downloads {
+  color: #666;
+}
+
+.package-card-date {
+  color: #999;
+}
+
+.package-card-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.package-card-keyword {
+  background-color: #f3f3f3;
+  color: #666;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  text-decoration: none;
+}
+
+.package-card-keyword:hover {
+  background-color: #e0e0e0;
+  text-decoration: none;
+}

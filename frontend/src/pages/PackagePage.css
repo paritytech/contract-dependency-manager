@@ -1,0 +1,306 @@
+.package-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 20px;
+  display: flex;
+  gap: 40px;
+}
+
+.package-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.package-sidebar {
+  width: 300px;
+  flex-shrink: 0;
+}
+
+.package-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.package-name {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #333;
+}
+
+.package-version-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.install-box {
+  display: flex;
+  align-items: center;
+  background: #333;
+  color: #fff;
+  border-radius: 4px;
+  padding: 12px 16px;
+  margin-bottom: 24px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.9rem;
+}
+
+.install-command {
+  flex: 1;
+  user-select: all;
+}
+
+.install-copy-btn {
+  background: none;
+  border: 1px solid #666;
+  color: #ccc;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: inherit;
+  margin-left: 12px;
+  white-space: nowrap;
+}
+
+.install-copy-btn:hover {
+  border-color: #fff;
+  color: #fff;
+}
+
+.package-tabs {
+  display: flex;
+  border-bottom: 2px solid #e8e8e8;
+  margin-bottom: 24px;
+  gap: 0;
+}
+
+.package-tab {
+  padding: 10px 20px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: #666;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-family: inherit;
+}
+
+.package-tab:hover {
+  color: #333;
+}
+
+.package-tab.active {
+  color: #cb3837;
+  border-bottom-color: #cb3837;
+}
+
+.package-readme {
+  line-height: 1.7;
+  word-wrap: break-word;
+}
+
+.package-readme pre {
+  background: #f6f8fa;
+  padding: 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 16px 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.package-readme code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+.package-readme h1 {
+  font-size: 1.8rem;
+  margin: 24px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.package-readme h2 {
+  font-size: 1.4rem;
+  margin: 20px 0 10px;
+}
+
+.package-readme h3 {
+  font-size: 1.1rem;
+  margin: 16px 0 8px;
+}
+
+.package-readme p {
+  margin: 12px 0;
+}
+
+.package-readme ul,
+.package-readme ol {
+  margin: 12px 0;
+  padding-left: 24px;
+}
+
+.package-readme li {
+  margin: 4px 0;
+}
+
+.package-readme img {
+  max-width: 100%;
+}
+
+.deps-list {
+  list-style: none;
+}
+
+.deps-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid #f2f2f2;
+  font-size: 0.95rem;
+}
+
+.deps-list li a {
+  font-weight: 600;
+}
+
+.deps-list li span {
+  color: #666;
+  margin-left: 8px;
+}
+
+.deps-empty {
+  color: #666;
+  font-style: italic;
+}
+
+.versions-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.versions-table th {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 2px solid #e8e8e8;
+  font-size: 0.85rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.versions-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f2f2f2;
+  font-size: 0.95rem;
+}
+
+.sidebar-section {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.sidebar-section:last-child {
+  border-bottom: none;
+}
+
+.sidebar-section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #666;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.sidebar-value {
+  font-size: 1rem;
+  color: #333;
+}
+
+.sidebar-value.large {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.downloads-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 60px;
+  margin-top: 12px;
+}
+
+.chart-bar {
+  flex: 1;
+  background: #cb3837;
+  border-radius: 2px 2px 0 0;
+  min-height: 4px;
+  opacity: 0.7;
+}
+
+.chart-bar:last-child {
+  opacity: 1;
+}
+
+.sidebar-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sidebar-keyword {
+  display: inline-block;
+  padding: 3px 10px;
+  background: #f2f2f2;
+  color: #333;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+
+.sidebar-keyword:hover {
+  background: #e0e0e0;
+  text-decoration: none;
+}
+
+.sidebar-link {
+  display: block;
+  font-size: 0.95rem;
+  margin-bottom: 6px;
+}
+
+.package-not-found {
+  text-align: center;
+  padding: 80px 20px;
+}
+
+.package-not-found h2 {
+  font-size: 1.8rem;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.package-not-found p {
+  color: #666;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+  .package-page {
+    flex-direction: column;
+  }
+
+  .package-sidebar {
+    width: 100%;
+  }
+}
