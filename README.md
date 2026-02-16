@@ -5,10 +5,9 @@ A CLI tool for managing PVM smart contract dependencies on Polkadot. CDM automat
 ## Quick Install
 
 ```bash
-GITHUB_TOKEN=$(printf "protocol=https\nhost=github.com\n" | git credential fill 2>/dev/null | grep "^password=" | cut -d= -f2 || true) && \
-  curl -fsSL -H "Authorization: token $(gh auth token)" \
-    -H "Accept: application/vnd.github.raw" \
-    https://api.github.com/repos/paritytech/contract-dependency-manager/contents/install.sh | bash
+curl -fsSL -H "Authorization: token $(gh auth token)" \
+  -H "Accept: application/vnd.github.raw" \
+  https://api.github.com/repos/paritytech/contract-dependency-manager/contents/install.sh | bash
 ```
 
 ## Quick Start

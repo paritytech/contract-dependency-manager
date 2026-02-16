@@ -1,9 +1,10 @@
 # CDM Installer
 
+CDM_DIR="$HOME/.cdm"
 REPO="paritytech/contract-dependency-manager"
-INSTALL_DIR="${CDM_INSTALL_DIR:-$HOME/.cdm/bin}"
+BIN="cdm"
 
-# Resolve GitHub token from env or git credentials
+# 1) Resolve GitHub token from env or git credentials
 if [ -z "${GITHUB_TOKEN:-}" ]; then
     GITHUB_TOKEN=$(printf "protocol=https\nhost=github.com\n" | git credential fill 2>/dev/null | grep "^password=" | cut -d= -f2 || true)
 fi
@@ -14,27 +15,53 @@ fi
 
 AUTH="Authorization: token $GITHUB_TOKEN"
 
-case "$(uname -s)-$(uname -m)" in
-    Darwin-arm64|Darwin-aarch64) BINARY="cdm-darwin-arm64" ;;
-    Darwin-x86_64)               BINARY="cdm-darwin-x64" ;;
-    Linux-x86_64)                BINARY="cdm-linux-x64" ;;
-    *) echo "Unsupported platform: $(uname -s)-$(uname -m)"; exit 1 ;;
-esac
+# 2) Detect platform
+OS=$(uname -s); case "$OS" in Linux) OS=linux;; Darwin) OS=darwin;; *) echo "Unsupported OS: $OS"; exit 1;; esac
+ARCH=$(uname -m); case "$ARCH" in x86_64|amd64) ARCH=x64;; arm64|aarch64) ARCH=arm64;; *) echo "Unsupported arch: $ARCH"; exit 1;; esac
+ASSET="$BIN-$OS-$ARCH"
 
-LATEST=$(curl -fsSL -H "$AUTH" "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | head -1 | cut -d'"' -f4)
-[ -z "$LATEST" ] && echo "Could not determine latest release" && exit 1
+# 3) Fetch latest release (private repo — use API asset URL, not browser URL)
+TAG=${CDM_TAG:-$(curl -fsSL -H "$AUTH" "https://api.github.com/repos/$REPO/releases/latest" \
+      | sed -n 's/.*"tag_name":[[:space:]]*"\(.*\)".*/\1/p' | head -n1)}
+[ -z "$TAG" ] && echo "Could not determine latest release" && exit 1
 
-# Get the asset API URL (not browser_download_url — that 404s on private repos)
 RELEASE_JSON=$(curl -fsSL -H "$AUTH" "https://api.github.com/repos/$REPO/releases/latest")
-ASSET_URL=$(echo "$RELEASE_JSON" | grep -B3 "\"name\": \"$BINARY\"" | grep '"url"' | head -1 | cut -d'"' -f4)
-[ -z "$ASSET_URL" ] && echo "Asset $BINARY not found in release $LATEST" && exit 1
+ASSET_URL=$(echo "$RELEASE_JSON" | grep -B3 "\"name\": \"$ASSET\"" | grep '"url"' | head -1 | cut -d'"' -f4)
+[ -z "$ASSET_URL" ] && echo "Asset $ASSET not found in release $TAG" && exit 1
 
-echo "Installing CDM $LATEST ($BINARY)..."
-mkdir -p "$INSTALL_DIR"
-curl -fsSL -H "$AUTH" -H "Accept: application/octet-stream" -L "$ASSET_URL" -o "$INSTALL_DIR/cdm"
-chmod +x "$INSTALL_DIR/cdm"
+# 4) Install binary
+mkdir -p "$CDM_DIR/bin" "$HOME/.local/bin"
+curl -fsSL -H "$AUTH" -H "Accept: application/octet-stream" -L "$ASSET_URL" -o "$CDM_DIR/bin/$BIN"
+chmod +x "$CDM_DIR/bin/$BIN"
+ln -sf "$CDM_DIR/bin/$BIN" "$HOME/.local/bin/$BIN"
 
-echo "Installed to $INSTALL_DIR/cdm"
-if ! command -v cdm &>/dev/null; then
-    echo "Add to PATH: export PATH=\"$INSTALL_DIR:\$PATH\""
+echo "Installed $BIN ($OS/$ARCH) from $TAG -> $CDM_DIR/bin/$BIN"
+
+# 5) Add to PATH in all available shell profiles
+
+append_once() { # append $2 to file $1 if not already present
+  local file="$1" line="$2"
+  grep -Fqx "$line" "$file" 2>/dev/null || printf "\n%s\n" "$line" >> "$file"
+}
+
+# bash
+if command -v bash >/dev/null 2>&1; then
+  append_once "$HOME/.bashrc" 'export PATH="$HOME/.cdm/bin:$HOME/.local/bin:$PATH"'
+  append_once "$HOME/.bash_profile" '[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"'
+  echo "bash PATH configured"
 fi
+
+# zsh
+if command -v zsh >/dev/null 2>&1; then
+  append_once "$HOME/.zshrc" 'export PATH="$HOME/.cdm/bin:$HOME/.local/bin:$PATH"'
+  echo "zsh PATH configured"
+fi
+
+# fish
+if command -v fish >/dev/null 2>&1; then
+  mkdir -p "$HOME/.config/fish"
+  append_once "$HOME/.config/fish/config.fish" 'fish_add_path $HOME/.cdm/bin $HOME/.local/bin'
+  echo "fish PATH configured"
+fi
+
+echo "Restart your shell or open a new terminal to use cdm."
