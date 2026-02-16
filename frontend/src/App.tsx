@@ -10,7 +10,7 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/search" element={<SearchPage />} />
-        <Route path="/package/:name" element={<PackagePage />} />
+        <Route path="/package/*" element={<PackagePage />} />
       </Routes>
     </BrowserRouter>
   )

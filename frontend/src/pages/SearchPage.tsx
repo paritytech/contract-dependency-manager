@@ -25,7 +25,7 @@ export default function SearchPage() {
     const sorted = [...filtered];
     switch (sort) {
       case 'popularity':
-        sorted.sort((a, b) => b.weeklyDownloads - a.weeklyDownloads);
+        sorted.sort((a, b) => b.weeklyCalls - a.weeklyCalls);
         break;
       case 'quality':
         sorted.sort((a, b) => a.name.localeCompare(b.name));

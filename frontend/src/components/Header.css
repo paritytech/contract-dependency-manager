@@ -1,8 +1,8 @@
 .header {
   background-color: var(--color-bg);
-  padding: 0 24px;
+  padding: 18px 18px;
   border-bottom: 1px solid var(--color-border-strong);
-  height: 64px;
+  min-height: 64px;
   display: flex;
   align-items: center;
   position: sticky;
@@ -11,9 +11,7 @@
 }
 
 .header-inner {
-  max-width: 1200px;
   width: 100%;
-  margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -26,6 +24,8 @@
   text-decoration: none;
   flex-shrink: 0;
   gap: 8px;
+  margin: 0;
+  padding: 0;
 }
 
 .header-logo:hover {

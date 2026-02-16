@@ -6,7 +6,7 @@ interface PackageCardProps {
   pkg: Package;
 }
 
-function formatDownloads(n: number): string {
+function formatCalls(n: number): string {
   return n.toLocaleString();
 }
 
@@ -17,7 +17,7 @@ export default function PackageCard({ pkg }: PackageCardProps) {
         <Link to={`/package/${pkg.name}`} className="package-card-name">
           {pkg.name}
         </Link>
-        <span className="package-card-version">{pkg.version}</span>
+        <span className="package-card-version">v{pkg.version}</span>
       </div>
 
       {pkg.description && (
@@ -29,7 +29,7 @@ export default function PackageCard({ pkg }: PackageCardProps) {
           <span className="package-card-author">by {pkg.author}</span>
         )}
         <span className="package-card-downloads">
-          {formatDownloads(pkg.weeklyDownloads)} weekly downloads
+          {formatCalls(pkg.weeklyCalls)} weekly calls
         </span>
         <span className="package-card-date">
           published {pkg.publishedDate}

@@ -3,7 +3,7 @@ export interface Package {
   version: string;
   description: string;
   author: string;
-  weeklyDownloads: number;
+  weeklyCalls: number;
   license: string;
   keywords: string[];
   publishedDate: string;

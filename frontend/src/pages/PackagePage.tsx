@@ -54,7 +54,8 @@ function formatNumber(n: number): string {
 }
 
 export default function PackagePage() {
-  const { name } = useParams<{ name: string }>();
+  const params = useParams();
+  const name = params['*'];
   const [activeTab, setActiveTab] = useState<TabName>('readme');
   const [copied, setCopied] = useState(false);
 
@@ -80,15 +81,15 @@ export default function PackagePage() {
 
   const depEntries = Object.entries(pkg.dependencies);
 
-  // Fake weekly download data for chart
+  // Fake weekly call data for chart
   const weeklyData = [
-    Math.round(pkg.weeklyDownloads * 0.85),
-    Math.round(pkg.weeklyDownloads * 0.9),
-    Math.round(pkg.weeklyDownloads * 0.95),
-    Math.round(pkg.weeklyDownloads * 0.88),
-    pkg.weeklyDownloads,
+    Math.round(pkg.weeklyCalls * 0.85),
+    Math.round(pkg.weeklyCalls * 0.9),
+    Math.round(pkg.weeklyCalls * 0.95),
+    Math.round(pkg.weeklyCalls * 0.88),
+    pkg.weeklyCalls,
   ];
-  const maxDownload = Math.max(...weeklyData);
+  const maxCalls = Math.max(...weeklyData);
 
   return (
     <Layout>
@@ -96,7 +97,7 @@ export default function PackagePage() {
         <div className="package-main">
           <div className="package-title-row">
             <h1 className="package-name">{pkg.name}</h1>
-            <span className="package-version-badge">{pkg.version}</span>
+            <span className="package-version-badge">v{pkg.version}</span>
           </div>
 
           <div className="install-box">
@@ -154,7 +155,7 @@ export default function PackagePage() {
               <tbody>
                 {pkg.versions.map((v) => (
                   <tr key={v.version}>
-                    <td>{v.version}</td>
+                    <td>v{v.version}</td>
                     <td>{v.date}</td>
                   </tr>
                 ))}
@@ -165,14 +166,14 @@ export default function PackagePage() {
 
         <aside className="package-sidebar">
           <div className="sidebar-section">
-            <div className="sidebar-section-title">Weekly Downloads</div>
-            <div className="sidebar-value large">{formatNumber(pkg.weeklyDownloads)}</div>
+            <div className="sidebar-section-title">Weekly Calls</div>
+            <div className="sidebar-value large">{formatNumber(pkg.weeklyCalls)}</div>
             <div className="downloads-chart">
               {weeklyData.map((val, i) => (
                 <div
                   key={i}
                   className="chart-bar"
-                  style={{ height: `${(val / maxDownload) * 100}%` }}
+                  style={{ height: `${(val / maxCalls) * 100}%` }}
                 />
               ))}
             </div>
@@ -180,7 +181,7 @@ export default function PackagePage() {
 
           <div className="sidebar-section">
             <div className="sidebar-section-title">Version</div>
-            <div className="sidebar-value">{pkg.version}</div>
+            <div className="sidebar-value">v{pkg.version}</div>
           </div>
 
           <div className="sidebar-section">
