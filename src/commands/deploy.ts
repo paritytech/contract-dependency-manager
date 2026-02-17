@@ -3,94 +3,111 @@ import { resolve } from "path";
 import { existsSync, writeFileSync } from "fs";
 import {
     connectWebSocket,
-    connectSmoldot,
-    detectConnectionType,
+    connectBulletinWebSocket,
 } from "../lib/connection.js";
 import {
     ContractDeployer,
     buildAllContracts,
-    deployAllContracts,
+    Metadata,
 } from "../lib/deployer.js";
 import { detectDeploymentOrder } from "../lib/detection.js";
-import { DEFAULT_SIGNER, CONTRACTS_REGISTRY_CRATE } from "../constants.js";
+import { CONTRACTS_REGISTRY_CRATE } from "../constants.js";
+import { getChainPreset } from "../lib/known_chains.js";
 
 const deploy = new Command("deploy")
     .description("Deploy and register contracts")
-    .argument(
-        "<url>",
-        "WebSocket URL (ws://) or parachain chainspec path for smoldot",
+    .option(
+        "--assethub-url <url>",
+        "WebSocket URL for Asset Hub chain",
     )
     .option(
-        "-s, --signer <name>",
-        "Signer name for dev accounts",
-        DEFAULT_SIGNER,
+        "--bulletin-url <url>",
+        "WebSocket URL for Bulletin chain",
     )
-    .option("--suri <uri>", "Secret URI for signing (overrides --signer)")
+    .option(
+        "-n, --name <name>",
+        "Chain preset name (polkadot, paseo, preview-net, local, custom)",
+    )
+    .option(
+        "--registry-address <address>",
+        "Registry contract address (required unless --bootstrap)",
+    )
+    .option("--suri <uri>", "Secret URI for signing")
     .option("--skip-build", "Skip build phase (use existing artifacts)", false)
-    .option("--dry-run", "Show deployment plan without executing", false)
     .option(
         "--bootstrap",
         "Full bootstrap: deploy ContractRegistry first, then all CDM contracts",
         false,
-    )
-    .option(
-        "--relay-chainspec <path>",
-        "Path to relay chain chainspec (required for smoldot)",
-    )
-    .option("--root <path>", "Workspace root directory", process.cwd());
+    );
 
 type DeployOptions = {
-    signer: string;
+    assethubUrl?: string;
+    bulletinUrl?: string;
+    name?: string;
+    registryAddress?: string;
     suri?: string;
     skipBuild: boolean;
-    dryRun: boolean;
     bootstrap: boolean;
-    relayChainspec?: string;
-    root: string;
 };
 
-deploy.action(async (url: string, opts: DeployOptions) => {
-    const rootDir = resolve(opts.root);
-
-    if (opts.bootstrap) {
-        return bootstrapDeploy(url, rootDir, opts);
+deploy.action(async (opts: DeployOptions) => {
+    // Resolve chain preset
+    if (opts.name && opts.name !== "custom") {
+        const preset = getChainPreset(opts.name);
+        opts.assethubUrl = opts.assethubUrl ?? preset.assethubUrl;
+        opts.bulletinUrl = opts.bulletinUrl ?? preset.bulletinUrl;
+        opts.registryAddress = opts.registryAddress ?? preset.registryAddress;
     }
 
-    const registryAddr = process.env.CONTRACTS_REGISTRY_ADDR;
-    if (!registryAddr) {
+    // Validate required URLs are present
+    if (!opts.assethubUrl) {
+        console.error("Error: --assethub-url is required (or use --name for a preset)");
+        process.exit(1);
+    }
+    if (!opts.bulletinUrl) {
+        console.error("Error: --bulletin-url is required (or use --name for a preset)");
+        process.exit(1);
+    }
+
+    const rootDir = process.cwd();
+
+    if (opts.bootstrap) {
+        return bootstrapDeploy(rootDir, opts);
+    }
+
+    if (!opts.registryAddress) {
         console.error(
-            "Error: CONTRACTS_REGISTRY_ADDR environment variable is required",
+            "Error: --registry-address is required unless using --bootstrap",
         );
         console.error(
             "  Set it to the deployed ContractRegistry address, or use --bootstrap for a fresh deploy",
         );
         console.error("\nUsage:");
-        console.error("  CONTRACTS_REGISTRY_ADDR=0x... cdm deploy <url>");
-        console.error("  cdm deploy --bootstrap <url>");
+        console.error(
+            "  cdm deploy --assethub-url wss://... --bulletin-url wss://... --registry-address 0x...",
+        );
+        console.error(
+            "  cdm deploy --bootstrap --assethub-url wss://... --bulletin-url wss://...",
+        );
         process.exit(1);
     }
 
     console.log("=== CDM Deploy ===\n");
-    console.log(`Target: ${url}`);
-    console.log(`Registry: ${registryAddr}`);
-    console.log(`Root: ${rootDir}`);
-    console.log(`Signer: ${opts.suri ?? opts.signer}\n`);
+    console.log(`Target: ${opts.assethubUrl}`);
+    console.log(`Bulletin: ${opts.bulletinUrl}`);
+    console.log(`Registry: ${opts.registryAddress}`);
+    console.log(`Root: ${rootDir}\n`);
 
-    if (opts.dryRun) {
-        printDryRun(rootDir);
-        return;
-    }
-
-    await deployWithRegistry(url, registryAddr, rootDir, opts);
+    await deployWithRegistry(opts.registryAddress, rootDir, opts);
     console.log("\n=== Deployment Complete ===");
 });
 
 /**
  * Build, deploy, and register all CDM contracts against a known registry.
+ * Connects to bulletin to publish metadata for each contract.
  * Optionally accepts an existing deployer to reuse the connection.
  */
 async function deployWithRegistry(
-    url: string,
     registryAddr: string,
     rootDir: string,
     opts: DeployOptions,
@@ -100,12 +117,49 @@ async function deployWithRegistry(
         buildAllContracts(rootDir, registryAddr);
     }
 
-    const d = deployer ?? (await createDeployer(url, opts));
+    const d = deployer ?? (await createDeployer(opts));
     d.setRegistry(registryAddr);
 
-    const addresses = await deployAllContracts(d, rootDir);
+    // Connect to bulletin if not already connected
+    const ownsBulletin = !d.bulletinClient;
+    if (ownsBulletin) {
+        console.log("Connecting to Bulletin chain...");
+        const bulletinConn = connectBulletinWebSocket(opts.bulletinUrl!);
+        d.setBulletinConnection(bulletinConn.client, bulletinConn.api);
+        const bulletinChain = await bulletinConn.client.getChainSpecData();
+        console.log(`Connected to Bulletin: ${bulletinChain.name}\n`);
+    }
 
-    if (!deployer) d.client.destroy();
+    // Deploy and register contracts with metadata publishing
+    const order = detectDeploymentOrder(rootDir);
+    const addresses: Record<string, string> = {};
+    console.log(`Deploying ${order.crateNames.length} contracts...`);
+
+    for (let i = 0; i < order.crateNames.length; i++) {
+        const crateName = order.crateNames[i];
+        const cdmPackage = order.cdmPackages[i];
+        const pvmPath = resolve(rootDir, `target/${crateName}.release.polkavm`);
+
+        const addr = await d.deploy(pvmPath);
+        addresses[crateName] = addr;
+        console.log(`  Deployed ${crateName} to: ${addr}`);
+
+        if (cdmPackage) {
+            // Publish metadata to bulletin and register with the URI
+            const metadata: Metadata = {
+                publish_block: 0,
+                description: "",
+            };
+            const metadataUri = await d.publishMetadata(metadata);
+            console.log(`  Published metadata: ${metadataUri}`);
+            await d.register(cdmPackage, undefined, metadataUri);
+        }
+    }
+
+    if (!deployer) {
+        if (ownsBulletin) d.bulletinClient.destroy();
+        d.client.destroy();
+    }
 
     return addresses;
 }
@@ -114,24 +168,13 @@ async function deployWithRegistry(
  * Bootstrap deploy: deploy ContractRegistry first, then everything else.
  */
 async function bootstrapDeploy(
-    url: string,
     rootDir: string,
     opts: DeployOptions,
 ): Promise<void> {
     console.log("=== CDM Bootstrap Deploy ===\n");
-    console.log(`Target: ${url}`);
-    console.log(`Root: ${rootDir}`);
-    console.log(`Signer: ${opts.suri ?? opts.signer}\n`);
-
-    if (opts.dryRun) {
-        console.log("Step 1: Deploy ContractRegistry (bootstrap)");
-        console.log(
-            `  Artifact: target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm\n`,
-        );
-        console.log("Step 2: Deploy CDM contracts:");
-        printDryRun(rootDir);
-        return;
-    }
+    console.log(`Target: ${opts.assethubUrl}`);
+    console.log(`Bulletin: ${opts.bulletinUrl}`);
+    console.log(`Root: ${rootDir}\n`);
 
     const registryPvmPath = resolve(
         rootDir,
@@ -146,9 +189,16 @@ async function bootstrapDeploy(
         process.exit(1);
     }
 
-    // Connect
+    // Connect to Asset Hub
     console.log("Connecting to chain...");
-    const deployer = await createDeployer(url, opts);
+    const deployer = await createDeployer(opts);
+
+    // Connect to Bulletin
+    console.log("Connecting to Bulletin chain...");
+    const bulletinConn = connectBulletinWebSocket(opts.bulletinUrl!);
+    deployer.setBulletinConnection(bulletinConn.client, bulletinConn.api);
+    const bulletinChain = await bulletinConn.client.getChainSpecData();
+    console.log(`Connected to Bulletin: ${bulletinChain.name}\n`);
 
     // Map account (required for Revive pallet on fresh chains)
     console.log("Mapping account...");
@@ -169,7 +219,6 @@ async function bootstrapDeploy(
     // Phase 2+3: Build and deploy all CDM contracts
     console.log("Deploying CDM contracts...");
     const addresses = await deployWithRegistry(
-        url,
         registryAddr,
         rootDir,
         opts,
@@ -185,60 +234,27 @@ async function bootstrapDeploy(
     console.log(`CONTRACTS_REGISTRY_ADDR=${registryAddr}`);
     console.log(`Addresses saved to ${addrPath}`);
 
+    bulletinConn.client.destroy();
     deployer.client.destroy();
 }
 
 async function createDeployer(
-    url: string,
     opts: DeployOptions,
 ): Promise<ContractDeployer> {
     const signerName = opts.suri?.startsWith("//")
         ? opts.suri.slice(2)
-        : opts.signer;
+        : undefined;
 
     const deployer = new ContractDeployer(signerName);
 
-    const connectionType = detectConnectionType(url);
-    if (connectionType === "smoldot") {
-        if (!opts.relayChainspec) {
-            console.error(
-                "Error: --relay-chainspec is required when using smoldot",
-            );
-            process.exit(1);
-        }
-        const { client, api } = await connectSmoldot(url, opts.relayChainspec);
-        deployer.setConnection(client, api);
-    } else {
-        const { client, api } = connectWebSocket(url);
-        deployer.setConnection(client, api);
-    }
+    const { client, api } = connectWebSocket(opts.assethubUrl!);
+    deployer.setConnection(client, api);
 
     // Wait for connection
     const chain = await deployer.client.getChainSpecData();
     console.log(`Connected to: ${chain.name}\n`);
 
     return deployer;
-}
-
-function printDryRun(rootDir: string): void {
-    const order = detectDeploymentOrder(rootDir);
-    console.log("Contracts to deploy (in order):");
-    for (let i = 0; i < order.crateNames.length; i++) {
-        const pkg = order.cdmPackages[i];
-        console.log(
-            `  ${i + 1}. ${order.crateNames[i]}${pkg ? ` (${pkg})` : ""}`,
-        );
-    }
-
-    console.log("\nDependency analysis:");
-    for (const contract of order.contracts) {
-        if (contract.dependsOnCrates.length > 0) {
-            console.log(
-                `  ${contract.name} depends on: ${contract.dependsOnCrates.join(", ")}`,
-            );
-        }
-    }
-    console.log("\n(Run without --dry-run to execute deployment)");
 }
 
 export const deployCommand = deploy;

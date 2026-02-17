@@ -3,7 +3,7 @@ import { getSmProvider } from "polkadot-api/sm-provider";
 import { start } from "polkadot-api/smoldot";
 import { getWsProvider } from "polkadot-api/ws-provider/node";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
-import { AssetHub, assetHub } from "@polkadot-api/descriptors";
+import { AssetHub, assetHub, Bulletin, bulletin } from "@polkadot-api/descriptors";
 import { readFileSync } from "fs";
 
 export interface Connection {
@@ -29,6 +29,19 @@ export function detectConnectionType(url: string): "websocket" | "smoldot" {
 export function connectWebSocket(url: string): Connection {
     const client = createClient(withPolkadotSdkCompat(getWsProvider(url)));
     return { client, api: client.getTypedApi(assetHub) };
+}
+
+export interface BulletinConnection {
+    client: PolkadotClient;
+    api: TypedApi<Bulletin>;
+}
+
+/**
+ * Connect to the Bulletin chain via WebSocket.
+ */
+export function connectBulletinWebSocket(url: string): BulletinConnection {
+    const client = createClient(withPolkadotSdkCompat(getWsProvider(url)));
+    return { client, api: client.getTypedApi(bulletin) };
 }
 
 /**

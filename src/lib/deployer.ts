@@ -2,9 +2,8 @@ import {
     PolkadotClient,
     TypedApi,
     Binary,
-    FixedSizeBinary,
 } from "polkadot-api";
-import { AssetHub, contracts } from "@polkadot-api/descriptors";
+import { AssetHub, Bulletin, contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { readFileSync } from "fs";
 import { resolve } from "path";
@@ -20,12 +19,19 @@ function getRegistryContract(client: PolkadotClient, addr: string) {
 
 type RegistryContract = ReturnType<typeof getRegistryContract>;
 
+export interface Metadata {
+    publish_block: number;
+    description: string;
+}
+
 export class ContractDeployer {
     public signer: ReturnType<typeof prepareSigner>;
     public api!: TypedApi<AssetHub>;
     public client!: PolkadotClient;
     public registry!: RegistryContract;
     public lastDeployedAddr: string | null = null;
+    public bulletinApi!: TypedApi<Bulletin>;
+    public bulletinClient!: PolkadotClient;
 
     constructor(signerName: string = "Alice") {
         this.signer = prepareSigner(signerName);
@@ -34,6 +40,35 @@ export class ContractDeployer {
     setConnection(client: PolkadotClient, api: TypedApi<AssetHub>) {
         this.client = client;
         this.api = api;
+    }
+
+    setBulletinConnection(client: PolkadotClient, api: TypedApi<Bulletin>) {
+        this.bulletinClient = client;
+        this.bulletinApi = api;
+    }
+
+    async publishMetadata(metadata: Metadata): Promise<string> {
+        const jsonString = JSON.stringify(metadata);
+        const data = Binary.fromText(jsonString);
+
+        const result = await this.bulletinApi.tx.TransactionStorage.store({
+            data,
+        }).signAndSubmit(this.signer);
+
+        const storedEvents =
+            this.bulletinApi.event.TransactionStorage.Stored.filter(
+                result.events,
+            );
+        if (storedEvents.length === 0) {
+            throw new Error(
+                "Metadata publishing failed - no Stored event found",
+            );
+        }
+
+        const { index } = storedEvents[0];
+        const blockNumber = result.block.number;
+
+        return `bulletin:${blockNumber}:${index}`;
     }
 
     setRegistry(registryAddress: string) {
