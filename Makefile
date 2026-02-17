@@ -1,6 +1,6 @@
 TEMPLATE_DIR = templates/shared-counter
 
-.PHONY: install dev build compile compile-all build-registry build-template test clean
+.PHONY: install dev frontend build compile compile-all build-registry build-template test clean
 
 setup:
 	curl -sL https://raw.githubusercontent.com/paritytech/ppn-proxy/main/install.sh | bash
@@ -25,6 +25,9 @@ install:
 
 dev:
 	bun run src/cli.ts
+
+frontend:
+	cd frontend && bun run dev
 
 build:
 	bun run build
