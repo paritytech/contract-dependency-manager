@@ -96,29 +96,25 @@ mod contract_registry {
     /// Get the address of the latest published contract for a given `contract_name`.
     /// This is the primary function used by CDM runtime lookups.
     #[pvm::method]
-    pub fn get_address(contract_name: String) -> Address {
+    pub fn get_address(contract_name: String) -> Option<Address> {
         let info = Storage::info().get(&contract_name);
         if let Some(info) = info {
             let latest_version = info.version_count.saturating_sub(1);
-            Storage::published_address()
-                .get(&(contract_name, latest_version))
-                .unwrap_or_default()
+            Storage::published_address().get(&(contract_name, latest_version))
         } else {
-            Address::default()
+            None
         }
     }
 
     /// Get the metadata URI of the latest published contract for a given `contract_name`.
     #[pvm::method]
-    pub fn get_metadata_uri(contract_name: String) -> String {
+    pub fn get_metadata_uri(contract_name: String) -> Option<String> {
         let info = Storage::info().get(&contract_name);
         if let Some(info) = info {
             let latest_version = info.version_count.saturating_sub(1);
-            Storage::published_metadata_uri()
-                .get(&(contract_name, latest_version))
-                .unwrap_or_default()
+            Storage::published_metadata_uri().get(&(contract_name, latest_version))
         } else {
-            String::new()
+            None
         }
     }
 

@@ -36,7 +36,17 @@
     "outputs": [
       {
         "name": "",
-        "type": "address"
+        "type": "tuple",
+        "components": [
+          {
+            "name": "isSome",
+            "type": "bool"
+          },
+          {
+            "name": "value",
+            "type": "address"
+          }
+        ]
       }
     ],
     "stateMutability": "view"
@@ -53,7 +63,17 @@
     "outputs": [
       {
         "name": "",
-        "type": "string"
+        "type": "tuple",
+        "components": [
+          {
+            "name": "isSome",
+            "type": "bool"
+          },
+          {
+            "name": "value",
+            "type": "string"
+          }
+        ]
       }
     ],
     "stateMutability": "view"

@@ -13,12 +13,12 @@ export const KNOWN_CHAINS: Record<string, ChainPreset> = {
     "paseo": {
         assethubUrl: "wss://asset-hub-paseo-rpc.dwellir.com",
         bulletinUrl: "wss://paseo-bulletin-rpc.parity.io",
-        registryAddress: undefined, // TODO: set once deployed
+        registryAddress: "0x21fa63bfac2a77b1a6de8bd9a0c2c172a48bb5e3", // TODO: set once deployed
     },
     "preview-net": {
         assethubUrl: "wss://previewnet.substrate.dev/asset-hub",
         bulletinUrl: "wss://previewnet.substrate.dev/bulletin",
-        registryAddress: undefined, // TODO: set once deployed
+        registryAddress: "0x2c6fc00458f198f46ef072e1516b83cd56db7cf5", // TODO: set once deployed
     },
     "local": {
         assethubUrl: "ws://127.0.0.1:10020",
