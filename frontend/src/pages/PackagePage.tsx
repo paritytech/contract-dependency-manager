@@ -1,38 +1,173 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { marked } from 'marked';
 import Layout from '../components/Layout';
 import { useNetwork } from '../context/NetworkContext';
 import { useRegistry } from '../hooks/useRegistry';
+import type { AbiEntry, AbiParam } from '../data/types';
 import './PackagePage.css';
 
-type TabName = 'readme' | 'dependencies' | 'versions';
+marked.setOptions({ gfm: true, breaks: true });
 
-function simpleMarkdownToHtml(md: string): string {
-  let html = md
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" />')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>');
+type TabName = 'readme' | 'abi' | 'dependencies' | 'versions';
 
-  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+function formatParamType(param: AbiParam): string {
+  if (param.type === 'tuple' && param.components) {
+    return `(${param.components.map(c => formatParamType(c)).join(', ')})`;
+  }
+  return param.type;
+}
 
-  html = html
-    .split('\n\n')
-    .map((block) => {
-      const trimmed = block.trim();
-      if (!trimmed) return '';
-      if (/^<(h[1-6]|pre|ul|ol|li|img|div|blockquote)/.test(trimmed)) return trimmed;
-      return `<p>${trimmed}</p>`;
-    })
-    .join('\n');
+function formatSignature(entry: AbiEntry): string {
+  const name = entry.name ?? entry.type;
+  const params = (entry.inputs ?? []).map(p => formatParamType(p)).join(', ');
+  const returns = (entry.outputs ?? []).filter(o => o.type);
+  const returnStr = returns.length > 0
+    ? ` \u2192 ${returns.map(r => formatParamType(r)).join(', ')}`
+    : '';
+  return `${name}(${params})${returnStr}`;
+}
 
-  return html;
+function getBadgeClass(mutability?: string): string {
+  switch (mutability) {
+    case 'view':
+    case 'pure':
+      return 'abi-badge view';
+    case 'payable':
+      return 'abi-badge payable';
+    default:
+      return 'abi-badge nonpayable';
+  }
+}
+
+function ParamType({ param, depth = 0 }: { param: AbiParam; depth?: number }) {
+  if (param.type === 'tuple' && param.components && param.components.length > 0) {
+    return (
+      <span className="abi-tuple-type">
+        <span className="abi-type-name">{'{'}</span>
+        <span className="abi-tuple-fields">
+          {param.components.map((c, i) => (
+            <span key={i} className="abi-tuple-field" style={{ paddingLeft: `${(depth + 1) * 16}px` }}>
+              <span className="abi-param-name">{c.name}</span>
+              <span className="abi-param-colon">: </span>
+              <ParamType param={c} depth={depth + 1} />
+            </span>
+          ))}
+        </span>
+        <span className="abi-type-name" style={{ paddingLeft: `${depth * 16}px` }}>{'}'}</span>
+      </span>
+    );
+  }
+  return <span className="abi-type-name">{param.type}</span>;
+}
+
+function AbiEntryCard({ entry }: { entry: AbiEntry }) {
+  const [expanded, setExpanded] = useState(false);
+  const inputs = entry.inputs ?? [];
+  const outputs = entry.outputs ?? [];
+
+  return (
+    <div className={`abi-entry${expanded ? ' expanded' : ''}`}>
+      <button className="abi-entry-header" onClick={() => setExpanded(!expanded)}>
+        <span className={getBadgeClass(entry.stateMutability)}>
+          {(entry.stateMutability ?? 'nonpayable').toUpperCase()}
+        </span>
+        <code className="abi-fn-signature">{formatSignature(entry)}</code>
+        <span className="abi-expand-icon">{expanded ? '\u25B2' : '\u25BC'}</span>
+      </button>
+      {expanded && (
+        <div className="abi-entry-body">
+          <div className="abi-params-section">
+            <div className="abi-params-label">Parameters</div>
+            {inputs.length === 0 ? (
+              <span className="abi-params-none">No parameters</span>
+            ) : (
+              <table className="abi-params-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inputs.map((p, i) => (
+                    <tr key={i}>
+                      <td><code>{p.name || `_${i}`}</code></td>
+                      <td><code><ParamType param={p} /></code></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          {outputs.length > 0 && (
+            <div className="abi-params-section">
+              <div className="abi-params-label">Returns</div>
+              <table className="abi-params-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {outputs.map((p, i) => (
+                    <tr key={i}>
+                      <td><code>{p.name || `_${i}`}</code></td>
+                      <td><code><ParamType param={p} /></code></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AbiTab({ abi }: { abi: AbiEntry[] }) {
+  if (abi.length === 0) {
+    return <p className="deps-empty">No ABI entries found.</p>;
+  }
+
+  const grouped = new Map<string, AbiEntry[]>();
+  for (const entry of abi) {
+    const key = entry.type;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(entry);
+  }
+
+  // Order: constructor first, then functions, then everything else
+  const order = ['constructor', 'function', 'event', 'error', 'fallback', 'receive'];
+  const sortedKeys = [...grouped.keys()].sort((a, b) => {
+    const ai = order.indexOf(a);
+    const bi = order.indexOf(b);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+
+  const sectionLabels: Record<string, string> = {
+    constructor: 'Constructor',
+    function: 'Functions',
+    event: 'Events',
+    error: 'Errors',
+    fallback: 'Fallback',
+    receive: 'Receive',
+  };
+
+  return (
+    <div className="abi-tab">
+      {sortedKeys.map((key) => (
+        <div key={key} className="abi-section">
+          <h3 className="abi-section-title">{sectionLabels[key] ?? key}</h3>
+          {grouped.get(key)!.map((entry, i) => (
+            <AbiEntryCard key={`${entry.name ?? key}-${i}`} entry={entry} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function formatNumber(n: number): string {
@@ -121,13 +256,14 @@ export default function PackagePage() {
           </div>
 
           <div className="package-tabs">
-            {(['readme', 'dependencies', 'versions'] as TabName[]).map((tab) => (
+            {(['readme', 'abi', 'dependencies', 'versions'] as TabName[]).map((tab) => (
               <button
                 key={tab}
                 className={`package-tab${activeTab === tab ? ' active' : ''}`}
                 onClick={() => setActiveTab(tab)}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'abi' ? 'ABI' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'abi' && pkg.abi ? ` (${pkg.abi.length})` : ''}
                 {tab === 'dependencies' && ` (${depEntries.length})`}
               </button>
             ))}
@@ -137,10 +273,18 @@ export default function PackagePage() {
             pkg.readme ? (
               <div
                 className="package-readme"
-                dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(pkg.readme) }}
+                dangerouslySetInnerHTML={{ __html: marked.parse(pkg.readme) as string }}
               />
             ) : (
               <p className="deps-empty">No readme published yet.</p>
+            )
+          )}
+
+          {activeTab === 'abi' && (
+            pkg.abi && pkg.abi.length > 0 ? (
+              <AbiTab abi={pkg.abi} />
+            ) : (
+              <p className="deps-empty">No ABI published yet.</p>
             )
           )}
 

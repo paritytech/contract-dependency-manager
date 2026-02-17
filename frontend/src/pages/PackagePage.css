@@ -168,6 +168,32 @@
   max-width: 100%;
 }
 
+.package-readme table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 0.9rem;
+}
+
+.package-readme thead th {
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--color-surface-secondary);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  border-bottom: 2px solid var(--color-border-strong);
+}
+
+.package-readme tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.package-readme tbody tr:hover {
+  background: var(--color-surface);
+}
+
 .deps-list {
   list-style: none;
 }
@@ -303,6 +329,194 @@
 .package-not-found p {
   color: var(--color-text-secondary);
   margin-bottom: 20px;
+}
+
+/* ABI Tab - Swagger-inspired layout */
+
+.abi-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.abi-section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-tertiary);
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-family: var(--font-sans);
+}
+
+.abi-entry {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  margin-bottom: 4px;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.abi-entry:hover {
+  border-color: var(--color-border-strong);
+}
+
+.abi-entry.expanded {
+  border-color: var(--color-border-strong);
+}
+
+.abi-entry-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--color-surface);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--color-text-primary);
+}
+
+.abi-entry-header:hover {
+  background: var(--color-surface-secondary);
+}
+
+.abi-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  min-width: 72px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.abi-badge.view {
+  background: rgba(5, 150, 105, 0.15);
+  color: #34d399;
+}
+
+.abi-badge.nonpayable {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+.abi-badge.payable {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.abi-fn-signature {
+  font-family: var(--font-code);
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.abi-expand-icon {
+  font-size: 0.6rem;
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+.abi-entry-body {
+  padding: 16px 14px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.abi-params-section {
+  margin-bottom: 12px;
+}
+
+.abi-params-section:last-child {
+  margin-bottom: 0;
+}
+
+.abi-params-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-tertiary);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.abi-params-none {
+  font-size: 0.85rem;
+  color: var(--color-text-tertiary);
+  font-style: italic;
+}
+
+.abi-params-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.abi-params-table th {
+  text-align: left;
+  padding: 4px 10px;
+  font-size: 0.7rem;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 600;
+}
+
+.abi-params-table td {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.abi-params-table td code {
+  font-family: var(--font-code);
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+.abi-params-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Tuple / nested struct rendering */
+.abi-tuple-type {
+  display: inline-flex;
+  flex-direction: column;
+}
+
+.abi-tuple-fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.abi-tuple-field {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  line-height: 1.6;
+}
+
+.abi-param-name {
+  color: var(--color-text-primary);
+}
+
+.abi-param-colon {
+  color: var(--color-text-tertiary);
+}
+
+.abi-type-name {
+  color: #34d399;
 }
 
 @media (max-width: 768px) {

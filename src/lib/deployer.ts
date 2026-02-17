@@ -20,6 +20,21 @@ function getRegistryContract(client: PolkadotClient, addr: string) {
 
 type RegistryContract = ReturnType<typeof getRegistryContract>;
 
+export interface AbiParam {
+    name: string;
+    type: string;
+    components?: AbiParam[];
+}
+
+export interface AbiEntry {
+    type: string;
+    name?: string;
+    inputs: AbiParam[];
+    outputs?: AbiParam[];
+    stateMutability?: string;
+    anonymous?: boolean;
+}
+
 export interface Metadata {
     publish_block: number;
     published_at: string;
@@ -28,6 +43,7 @@ export interface Metadata {
     authors: string[];
     homepage: string;
     repository: string;
+    abi: AbiEntry[];
 }
 
 export class ContractDeployer {

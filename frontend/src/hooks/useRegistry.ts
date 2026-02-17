@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNetwork } from "../context/NetworkContext";
-import type { Package } from "../data/types";
+import type { Package, AbiEntry } from "../data/types";
 
 const ORIGIN = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
 const PAGE_SIZE = 10;
@@ -92,6 +92,7 @@ export function useRegistry() {
         let repository: string | undefined;
         let author: string | undefined;
         let lastPublished: string | undefined;
+        let abi: AbiEntry[] | undefined;
 
         if (metadataUri && ipfsGatewayUrl && !metadataUri.includes(":")) {
           try {
@@ -113,6 +114,10 @@ export function useRegistry() {
                 day: "numeric",
               });
             }
+
+            if (Array.isArray(metadata.abi)) {
+              abi = metadata.abi;
+            }
           } catch {
             // Metadata fetch failed - leave fields undefined
           }
@@ -127,6 +132,7 @@ export function useRegistry() {
           repository,
           author,
           lastPublished,
+          abi,
         });
       }
 

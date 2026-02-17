@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { resolve } from "path";
-import { existsSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import {
     connectWebSocket,
     connectBulletinWebSocket,
@@ -9,6 +9,7 @@ import {
     ContractDeployer,
     buildAllContracts,
     Metadata,
+    AbiEntry,
 } from "../lib/deployer.js";
 import { detectDeploymentOrder, type DeploymentOrder, getGitRemoteUrl, readReadmeContent } from "../lib/detection.js";
 import { CONTRACTS_REGISTRY_CRATE } from "../constants.js";
@@ -150,6 +151,16 @@ async function deployWithRegistry(
             const readmeContent = readReadmeContent(contract.readmePath);
             const repository = contract.repository ?? getGitRemoteUrl(rootDir) ?? "";
 
+            const abiPath = resolve(rootDir, `target/${crateName}.release.abi.json`);
+            let abi: AbiEntry[] = [];
+            if (existsSync(abiPath)) {
+                try {
+                    abi = JSON.parse(readFileSync(abiPath, "utf-8"));
+                } catch {
+                    console.warn(`  Warning: Could not parse ABI at ${abiPath}`);
+                }
+            }
+
             const metadata: Metadata = {
                 publish_block: 0,
                 published_at: "",
@@ -158,6 +169,7 @@ async function deployWithRegistry(
                 authors: contract.authors,
                 homepage: contract.homepage ?? "",
                 repository,
+                abi,
             };
 
             const { cid, blockNumber } = await d.publishMetadata(metadata);

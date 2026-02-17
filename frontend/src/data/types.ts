@@ -1,3 +1,18 @@
+export interface AbiParam {
+    name: string;
+    type: string;
+    components?: AbiParam[];
+}
+
+export interface AbiEntry {
+    type: string;
+    name?: string;
+    inputs: AbiParam[];
+    outputs?: AbiParam[];
+    stateMutability?: string;
+    anonymous?: boolean;
+}
+
 export interface Package {
   name: string;
   version: string;
@@ -13,4 +28,5 @@ export interface Package {
   readme?: string;
   dependencies?: Record<string, string>;
   versions?: { version: string; date: string }[];
+  abi?: AbiEntry[];
 }
