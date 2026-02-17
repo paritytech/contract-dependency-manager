@@ -6,6 +6,7 @@ import { contracts } from "@polkadot-api/descriptors";
 import { createInkSdk, ss58ToEthereum } from "@polkadot-api/sdk-ink";
 import { connectWebSocket } from "../lib/connection.js";
 import { DEFAULT_NODE_URL, ALICE_SS58 } from "../constants.js";
+import { getChainPreset } from "../lib/known_chains.js";
 
 const add = new Command("add")
     .description("Add a CDM contract library for use with polkadot-api")
@@ -14,20 +15,38 @@ const add = new Command("add")
         "--registry <address>",
         "ContractRegistry address (or set CONTRACTS_REGISTRY_ADDR env var)",
     )
+    .option(
+        "-n, --name <name>",
+        "Chain preset name (polkadot, paseo, preview-net, local)",
+    )
+    .option(
+        "--ipfs-gateway <url>",
+        "IPFS gateway URL for fetching bulletin metadata",
+    )
     .option("--url <url>", "Chain WebSocket URL", DEFAULT_NODE_URL)
     .option("--root <path>", "Project root directory", process.cwd());
 
 type AddOptions = {
     registry?: string;
+    name?: string;
+    ipfsGateway?: string;
     url: string;
     root: string;
 };
 
 add.action(async (library: string, opts: AddOptions) => {
+    // Resolve chain preset
+    if (opts.name && opts.name !== "custom") {
+        const preset = getChainPreset(opts.name);
+        opts.url = opts.url === DEFAULT_NODE_URL ? preset.assethubUrl : opts.url;
+        opts.registry = opts.registry ?? preset.registryAddress;
+        opts.ipfsGateway = opts.ipfsGateway ?? preset.ipfsGatewayUrl;
+    }
+
     const registryAddr = opts.registry ?? process.env.CONTRACTS_REGISTRY_ADDR;
     if (!registryAddr) {
         console.error(
-            "Error: Registry address required. Use --registry or set CONTRACTS_REGISTRY_ADDR",
+            "Error: Registry address required. Use --registry, --name for a preset, or set CONTRACTS_REGISTRY_ADDR",
         );
         process.exit(1);
     }
@@ -64,24 +83,36 @@ add.action(async (library: string, opts: AddOptions) => {
         process.exit(1);
     }
 
-    const metadataUri = result.value.response;
-    if (!metadataUri) {
+    const metadataCid = result.value.response;
+    if (!metadataCid) {
         console.error(`Contract "${library}" not found in registry`);
         client.destroy();
         process.exit(1);
     }
 
-    console.log(`  Metadata URI: ${metadataUri}`);
+    console.log(`  Metadata CID: ${metadataCid}`);
 
-    // Fetch ABI from metadata URI
-    console.log(`\nFetching ABI from ${metadataUri}...`);
-    const response = await fetch(metadataUri);
-    if (!response.ok) {
-        console.error(`Failed to fetch ABI: ${response.statusText}`);
+    // Fetch metadata from IPFS gateway using the CID
+    if (!opts.ipfsGateway) {
+        console.error("Error: IPFS gateway URL required to fetch metadata. Use --ipfs-gateway or --name for a preset.");
         client.destroy();
         process.exit(1);
     }
-    const abi = await response.json();
+
+    const metadataUrl = `${opts.ipfsGateway}/${metadataCid}`;
+    console.log(`\nFetching metadata from ${metadataUrl}...`);
+    const metadataResponse = await fetch(metadataUrl);
+    if (!metadataResponse.ok) {
+        console.error(`Failed to fetch metadata: ${metadataResponse.statusText}`);
+        client.destroy();
+        process.exit(1);
+    }
+    const metadata = await metadataResponse.json();
+    console.log(`  Description: ${metadata.description || "(none)"}`);
+
+    // TODO: Fetch ABI from metadata once we include it
+    // For now, the ABI is not stored in bulletin metadata
+    const abi = metadata;
 
     // Save ABI to .papi/contracts/
     const safeName = library.replace(/[@/]/g, "_").replace(/^_/, "");

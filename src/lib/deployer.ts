@@ -8,6 +8,7 @@ import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { execSync } from "child_process";
+import { CID } from "multiformats/cid";
 import { prepareSigner } from "./signer.js";
 import { detectDeploymentOrder } from "./detection.js";
 import { GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "../constants.js";
@@ -65,10 +66,16 @@ export class ContractDeployer {
             );
         }
 
-        const { index } = storedEvents[0];
-        const blockNumber = result.block.number;
+        const { cid: cidBytes } = storedEvents[0];
+        if (!cidBytes) {
+            throw new Error(
+                "Metadata publishing failed - no CID in Stored event",
+            );
+        }
 
-        return `bulletin:${blockNumber}:${index}`;
+        // cidBytes is a Binary (Vec<u8> from the chain) containing serialized CIDv1
+        const cid = CID.decode(cidBytes.asBytes());
+        return cid.toString();
     }
 
     setRegistry(registryAddress: string) {

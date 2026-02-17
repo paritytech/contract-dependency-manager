@@ -5,28 +5,33 @@ import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
 import { contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 
-const NETWORK_PRESETS: Record<string, { assethubUrl: string; bulletinUrl: string; registryAddress?: string }> = {
+const NETWORK_PRESETS: Record<string, { assethubUrl: string; bulletinUrl: string; ipfsGatewayUrl: string; registryAddress?: string }> = {
   "preview-net": {
     assethubUrl: "wss://previewnet.substrate.dev/asset-hub",
-    bulletinUrl: "wss://previewnet.substrate.dev/bulletin",
+    bulletinUrl: "wss://bulletin.dotspark.app",
+    ipfsGatewayUrl: "https://ipfs.dotspark.app/ipfs",
     registryAddress: "0x2c6fc00458f198f46ef072e1516b83cd56db7cf5",
   },
   "paseo": {
     assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
-    bulletinUrl: "wss://previewnet.substrate.dev/bulletin",
+    bulletinUrl: "wss://bulletin.dotspark.app",
+    ipfsGatewayUrl: "https://ipfs.dotspark.app/ipfs",
     registryAddress: "0x21fa63bfac2a77b1a6de8bd9a0c2c172a48bb5e3",
   },
   "polkadot": {
     assethubUrl: "wss://polkadot-asset-hub-rpc.polkadot.io",
     bulletinUrl: "wss://polkadot-bulletin-rpc.polkadot.io",
+    ipfsGatewayUrl: "https://polkadot-bulletin-rpc.polkadot.io/ipfs",
   },
   "local": {
     assethubUrl: "ws://127.0.0.1:10020",
     bulletinUrl: "ws://127.0.0.1:10030",
+    ipfsGatewayUrl: "http://127.0.0.1:8283/ipfs",
   },
   "custom": {
     assethubUrl: "",
     bulletinUrl: "",
+    ipfsGatewayUrl: "",
     registryAddress: "",
   },
 };
@@ -39,9 +44,11 @@ interface NetworkContextType {
   setNetwork: (name: string) => void;
   assethubUrl: string;
   bulletinUrl: string;
+  ipfsGatewayUrl: string;
   registryAddress: string;
   setAssethubUrl: (url: string) => void;
   setBulletinUrl: (url: string) => void;
+  setIpfsGatewayUrl: (url: string) => void;
   setRegistryAddress: (addr: string) => void;
   registry: RegistryContract | null;
   connected: boolean;
@@ -61,6 +68,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
   const [network, setNetworkState] = useState("preview-net");
   const [assethubUrl, setAssethubUrl] = useState(NETWORK_PRESETS["preview-net"].assethubUrl);
   const [bulletinUrl, setBulletinUrl] = useState(NETWORK_PRESETS["preview-net"].bulletinUrl);
+  const [ipfsGatewayUrl, setIpfsGatewayUrl] = useState(NETWORK_PRESETS["preview-net"].ipfsGatewayUrl);
   const [registryAddress, setRegistryAddress] = useState(NETWORK_PRESETS["preview-net"].registryAddress ?? "");
   const [registry, setRegistry] = useState<RegistryContract | null>(null);
   const [connected, setConnected] = useState(false);
@@ -75,6 +83,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     if (preset) {
       setAssethubUrl(preset.assethubUrl);
       setBulletinUrl(preset.bulletinUrl);
+      setIpfsGatewayUrl(preset.ipfsGatewayUrl);
       setRegistryAddress(preset.registryAddress ?? "");
     }
   }, []);
@@ -160,9 +169,11 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
         setNetwork,
         assethubUrl,
         bulletinUrl,
+        ipfsGatewayUrl,
         registryAddress,
         setAssethubUrl,
         setBulletinUrl,
+        setIpfsGatewayUrl,
         setRegistryAddress,
         registry,
         connected,

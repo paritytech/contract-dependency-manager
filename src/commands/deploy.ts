@@ -10,7 +10,7 @@ import {
     buildAllContracts,
     Metadata,
 } from "../lib/deployer.js";
-import { detectDeploymentOrder } from "../lib/detection.js";
+import { detectDeploymentOrder, type DeploymentOrder } from "../lib/detection.js";
 import { CONTRACTS_REGISTRY_CRATE } from "../constants.js";
 import { getChainPreset } from "../lib/known_chains.js";
 
@@ -138,6 +138,7 @@ async function deployWithRegistry(
     for (let i = 0; i < order.crateNames.length; i++) {
         const crateName = order.crateNames[i];
         const cdmPackage = order.cdmPackages[i];
+        const contract = order.contracts[i];
         const pvmPath = resolve(rootDir, `target/${crateName}.release.polkavm`);
 
         const addr = await d.deploy(pvmPath);
@@ -145,14 +146,14 @@ async function deployWithRegistry(
         console.log(`  Deployed ${crateName} to: ${addr}`);
 
         if (cdmPackage) {
-            // Publish metadata to bulletin and register with the URI
+            // Publish metadata to bulletin and register with the CID
             const metadata: Metadata = {
                 publish_block: 0,
-                description: "",
+                description: contract.description ?? "",
             };
-            const metadataUri = await d.publishMetadata(metadata);
-            console.log(`  Published metadata: ${metadataUri}`);
-            await d.register(cdmPackage, undefined, metadataUri);
+            const cid = await d.publishMetadata(metadata);
+            console.log(`  Published metadata CID: ${cid}`);
+            await d.register(cdmPackage, undefined, cid);
         }
     }
 

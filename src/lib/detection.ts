@@ -7,6 +7,8 @@ export interface ContractInfo {
     name: string;
     /** CDM package name (e.g., "@polkadot/reputation") - null if no CDM macro or not yet built */
     cdmPackage: string | null;
+    /** Description from Cargo.toml [package] section */
+    description: string | null;
     /** Path to contract crate directory */
     path: string;
     /** Crate names this contract depends on (from Cargo dependency graph) */
@@ -33,6 +35,7 @@ interface CargoMetadata {
 interface CargoPackage {
     name: string;
     id: string;
+    description: string | null;
     manifest_path: string;
     dependencies: CargoDependency[];
 }
@@ -128,6 +131,7 @@ export function detectContracts(rootDir: string): ContractInfo[] {
         return {
             name: pkg.name,
             cdmPackage: readCdmPackage(rootDir, pkg.name),
+            description: pkg.description,
             path: manifestDir,
             dependsOnCrates: deps,
         };

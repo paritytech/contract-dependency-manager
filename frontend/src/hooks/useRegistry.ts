@@ -14,7 +14,7 @@ function unwrapOption<T>(val: unknown): T | undefined {
 }
 
 export function useRegistry() {
-  const { registry, connected, connecting, error: networkError, network } = useNetwork();
+  const { registry, connected, connecting, error: networkError, network, ipfsGatewayUrl } = useNetwork();
   const [packages, setPackages] = useState<Package[]>([]);
   const [loading, setLoading] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
@@ -85,10 +85,22 @@ export function useRegistry() {
           ? unwrapOption<string>(metadataResult.value.response)
           : undefined;
 
+        // Fetch description from IPFS if the metadataUri is a CID (not the old bulletin:block:index format)
+        let description: string | undefined;
+        if (metadataUri && ipfsGatewayUrl && !metadataUri.includes(":")) {
+          try {
+            const response = await fetch(`${ipfsGatewayUrl}/${metadataUri}`);
+            const metadata = await response.json();
+            description = metadata.description;
+          } catch {
+            // Metadata fetch failed - leave description undefined
+          }
+        }
+
         newPackages.push({
           name,
           version: String(versionCount),
-          description: metadataUri ? `Metadata: ${metadataUri}` : undefined,
+          description,
         });
       }
 
@@ -99,7 +111,7 @@ export function useRegistry() {
     } finally {
       setLoading(false);
     }
-  }, [registry, connected, totalCount]);
+  }, [registry, connected, totalCount, ipfsGatewayUrl]);
 
   // Auto-load first batch when registry connects
   useEffect(() => {
