@@ -1,38 +1,27 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { packages } from '../data/packages';
+import { useNetwork } from '../context/NetworkContext';
+import { useRegistry } from '../hooks/useRegistry';
 import './PackagePage.css';
 
 type TabName = 'readme' | 'dependencies' | 'versions';
 
 function simpleMarkdownToHtml(md: string): string {
   let html = md
-    // Code blocks
     .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-    // Inline code
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Images
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" />')
-    // Links
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-    // H3
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    // H2
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    // H1
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    // Bold
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    // Italic
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    // Unordered list items
     .replace(/^- (.+)$/gm, '<li>$1</li>');
 
-  // Wrap consecutive <li> in <ul>
   html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
 
-  // Paragraphs: wrap lines that aren't already HTML tags
   html = html
     .split('\n\n')
     .map((block) => {
@@ -59,7 +48,32 @@ export default function PackagePage() {
   const [activeTab, setActiveTab] = useState<TabName>('readme');
   const [copied, setCopied] = useState(false);
 
+  const { network, connecting, error: networkError } = useNetwork();
+  const { packages, loading, error: registryError } = useRegistry();
+  const error = networkError || registryError;
   const pkg = packages.find((p) => p.name === name);
+
+  if (connecting || (loading && packages.length === 0)) {
+    return (
+      <Layout>
+        <div className="package-not-found">
+          <p>Connecting to {network}...</p>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout>
+        <div className="package-not-found">
+          <h2>Connection Error</h2>
+          <p>Could not connect to <strong>{network}</strong>. Check your connection settings.</p>
+          <p>{error}</p>
+        </div>
+      </Layout>
+    );
+  }
 
   if (!pkg) {
     return (
@@ -79,17 +93,16 @@ export default function PackagePage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const depEntries = Object.entries(pkg.dependencies);
+  const depEntries = Object.entries(pkg.dependencies ?? {});
+  const hasWeeklyCalls = pkg.weeklyCalls != null;
+  const calls = pkg.weeklyCalls ?? 0;
+  const weeklyData = hasWeeklyCalls
+    ? [Math.round(calls * 0.85), Math.round(calls * 0.9), Math.round(calls * 0.95), Math.round(calls * 0.88), calls]
+    : [];
+  const maxCalls = Math.max(...weeklyData, 1);
 
-  // Fake weekly call data for chart
-  const weeklyData = [
-    Math.round(pkg.weeklyCalls * 0.85),
-    Math.round(pkg.weeklyCalls * 0.9),
-    Math.round(pkg.weeklyCalls * 0.95),
-    Math.round(pkg.weeklyCalls * 0.88),
-    pkg.weeklyCalls,
-  ];
-  const maxCalls = Math.max(...weeklyData);
+  const versions = pkg.versions ?? [];
+  const hasVersions = versions.length > 0;
 
   return (
     <Layout>
@@ -121,10 +134,14 @@ export default function PackagePage() {
           </div>
 
           {activeTab === 'readme' && (
-            <div
-              className="package-readme"
-              dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(pkg.readme) }}
-            />
+            pkg.readme ? (
+              <div
+                className="package-readme"
+                dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(pkg.readme) }}
+              />
+            ) : (
+              <p className="deps-empty">No readme published yet.</p>
+            )
           )}
 
           {activeTab === 'dependencies' && (
@@ -145,74 +162,99 @@ export default function PackagePage() {
           )}
 
           {activeTab === 'versions' && (
-            <table className="versions-table">
-              <thead>
-                <tr>
-                  <th>Version</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pkg.versions.map((v) => (
-                  <tr key={v.version}>
-                    <td>v{v.version}</td>
-                    <td>{v.date}</td>
+            hasVersions ? (
+              <table className="versions-table">
+                <thead>
+                  <tr>
+                    <th>Version</th>
+                    <th>Date</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {versions.map((v) => (
+                    <tr key={v.version}>
+                      <td>v{v.version}</td>
+                      <td>{v.date}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <table className="versions-table">
+                <thead>
+                  <tr>
+                    <th>Version</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>v{pkg.version}</td>
+                  </tr>
+                </tbody>
+              </table>
+            )
           )}
         </div>
 
         <aside className="package-sidebar">
-          <div className="sidebar-section">
-            <div className="sidebar-section-title">Weekly Calls</div>
-            <div className="sidebar-value large">{formatNumber(pkg.weeklyCalls)}</div>
-            <div className="downloads-chart">
-              {weeklyData.map((val, i) => (
-                <div
-                  key={i}
-                  className="chart-bar"
-                  style={{ height: `${(val / maxCalls) * 100}%` }}
-                />
-              ))}
+          {hasWeeklyCalls && (
+            <div className="sidebar-section">
+              <div className="sidebar-section-title">Weekly Calls</div>
+              <div className="sidebar-value large">{formatNumber(calls)}</div>
+              <div className="downloads-chart">
+                {weeklyData.map((val, i) => (
+                  <div
+                    key={i}
+                    className="chart-bar"
+                    style={{ height: `${(val / maxCalls) * 100}%` }}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="sidebar-section">
             <div className="sidebar-section-title">Version</div>
             <div className="sidebar-value">v{pkg.version}</div>
           </div>
 
-          <div className="sidebar-section">
-            <div className="sidebar-section-title">License</div>
-            <div className="sidebar-value">{pkg.license}</div>
-          </div>
+          {pkg.license && (
+            <div className="sidebar-section">
+              <div className="sidebar-section-title">License</div>
+              <div className="sidebar-value">{pkg.license}</div>
+            </div>
+          )}
 
-          <div className="sidebar-section">
-            <div className="sidebar-section-title">Last Published</div>
-            <div className="sidebar-value">{pkg.lastPublished}</div>
-          </div>
+          {pkg.lastPublished && (
+            <div className="sidebar-section">
+              <div className="sidebar-section-title">Last Published</div>
+              <div className="sidebar-value">{pkg.lastPublished}</div>
+            </div>
+          )}
 
-          <div className="sidebar-section">
-            <div className="sidebar-section-title">Repository</div>
-            <a className="sidebar-link" href={pkg.repository} target="_blank" rel="noopener noreferrer">
-              {pkg.repository.replace('https://github.com/', '')}
-            </a>
-          </div>
+          {pkg.repository && (
+            <div className="sidebar-section">
+              <div className="sidebar-section-title">Repository</div>
+              <a className="sidebar-link" href={pkg.repository} target="_blank" rel="noopener noreferrer">
+                {pkg.repository.replace('https://github.com/', '')}
+              </a>
+            </div>
+          )}
 
-          <div className="sidebar-section">
-            <div className="sidebar-section-title">Homepage</div>
-            <a className="sidebar-link" href={pkg.homepage} target="_blank" rel="noopener noreferrer">
-              {pkg.homepage.replace('https://', '')}
-            </a>
-          </div>
+          {pkg.homepage && (
+            <div className="sidebar-section">
+              <div className="sidebar-section-title">Homepage</div>
+              <a className="sidebar-link" href={pkg.homepage} target="_blank" rel="noopener noreferrer">
+                {pkg.homepage.replace('https://', '')}
+              </a>
+            </div>
+          )}
 
-          {pkg.keywords.length > 0 && (
+          {(pkg.keywords ?? []).length > 0 && (
             <div className="sidebar-section">
               <div className="sidebar-section-title">Keywords</div>
               <div className="sidebar-keywords">
-                {pkg.keywords.map((kw) => (
+                {(pkg.keywords ?? []).map((kw) => (
                   <Link
                     key={kw}
                     to={`/search?q=${encodeURIComponent(kw)}`}
@@ -225,10 +267,12 @@ export default function PackagePage() {
             </div>
           )}
 
-          <div className="sidebar-section">
-            <div className="sidebar-section-title">Collaborators</div>
-            <div className="sidebar-value">{pkg.author}</div>
-          </div>
+          {pkg.author && (
+            <div className="sidebar-section">
+              <div className="sidebar-section-title">Collaborators</div>
+              <div className="sidebar-value">{pkg.author}</div>
+            </div>
+          )}
         </aside>
       </div>
     </Layout>

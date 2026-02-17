@@ -130,6 +130,30 @@
   gap: 16px;
 }
 
+.connection-error {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
+}
+
+.connection-error p:first-child {
+  font-size: 1.1rem;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+}
+
+.connection-error-detail {
+  font-size: 0.85rem;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-code);
+}
+
+.loading-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
+}
+
 @media (max-width: 768px) {
   .hero-tagline {
     font-size: 1.8rem;

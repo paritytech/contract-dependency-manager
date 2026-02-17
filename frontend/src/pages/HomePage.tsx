@@ -2,16 +2,18 @@ import { useState } from 'react';
 import Layout from '../components/Layout';
 import PackageCard from '../components/PackageCard';
 import GrainCanvas from '../components/GrainCanvas';
-import { packages } from '../data/packages';
+import { useNetwork } from '../context/NetworkContext';
+import { useRegistry } from '../hooks/useRegistry';
 import './HomePage.css';
 
 export default function HomePage() {
-  const totalPackages = packages.length;
-  const totalCalls = packages.reduce((sum, pkg) => sum + pkg.weeklyCalls, 0);
+  const { network, connecting, error: networkError } = useNetwork();
+  const { packages, loading, error: registryError, totalCount } = useRegistry();
   const featured = packages.slice(0, 6);
   const [copied, setCopied] = useState(false);
 
   const installCmd = 'curl -fsSL https://polkadot.com/install-cdm | bash';
+  const error = networkError || registryError;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(installCmd);
@@ -40,23 +42,34 @@ export default function HomePage() {
 
         <section className="stats-row">
           <div className="stat-item">
-            <div className="stat-value">{totalPackages.toLocaleString()}</div>
+            <div className="stat-value">{totalCount.toLocaleString()}</div>
             <div className="stat-label">Contracts</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-value">{totalCalls.toLocaleString()}</div>
-            <div className="stat-label">Weekly Calls</div>
           </div>
         </section>
       </div>
 
       <section className="featured-section">
         <h2 className="featured-title">Featured Contracts</h2>
-        <div className="featured-grid">
-          {featured.map((pkg) => (
-            <PackageCard key={pkg.name} pkg={pkg} />
-          ))}
-        </div>
+        {error ? (
+          <div className="connection-error">
+            <p>Could not connect to <strong>{network}</strong>. Check your connection settings.</p>
+            <p className="connection-error-detail">{error}</p>
+          </div>
+        ) : connecting || (loading && packages.length === 0) ? (
+          <div className="loading-state">
+            <p>Connecting to {network}...</p>
+          </div>
+        ) : featured.length === 0 ? (
+          <div className="loading-state">
+            <p>No contracts found.</p>
+          </div>
+        ) : (
+          <div className="featured-grid">
+            {featured.map((pkg) => (
+              <PackageCard key={pkg.name} pkg={pkg} />
+            ))}
+          </div>
+        )}
       </section>
     </Layout>
   );

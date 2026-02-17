@@ -11,8 +11,8 @@ export const KNOWN_CHAINS: Record<string, ChainPreset> = {
         registryAddress: undefined, // TODO: set once deployed
     },
     "paseo": {
-        assethubUrl: "wss://asset-hub-paseo-rpc.dwellir.com",
-        bulletinUrl: "wss://paseo-bulletin-rpc.parity.io",
+        assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
+        bulletinUrl: "wss://previewnet.substrate.dev/bulletin",
         registryAddress: "0x21fa63bfac2a77b1a6de8bd9a0c2c172a48bb5e3", // TODO: set once deployed
     },
     "preview-net": {

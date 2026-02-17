@@ -28,17 +28,21 @@ export default function PackageCard({ pkg }: PackageCardProps) {
         {pkg.author && (
           <span className="package-card-author">by {pkg.author}</span>
         )}
+        {pkg.weeklyCalls != null && (
         <span className="package-card-downloads">
           {formatCalls(pkg.weeklyCalls)} weekly calls
         </span>
+        )}
+        {pkg.publishedDate && (
         <span className="package-card-date">
           published {pkg.publishedDate}
         </span>
+        )}
       </div>
 
-      {pkg.keywords.length > 0 && (
+      {(pkg.keywords ?? []).length > 0 && (
         <div className="package-card-keywords">
-          {pkg.keywords.map((kw) => (
+          {(pkg.keywords ?? []).map((kw) => (
             <Link
               key={kw}
               to={`/search?q=${encodeURIComponent(kw)}`}
