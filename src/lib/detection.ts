@@ -9,6 +9,14 @@ export interface ContractInfo {
     cdmPackage: string | null;
     /** Description from Cargo.toml [package] section */
     description: string | null;
+    /** Authors from Cargo.toml [package] section */
+    authors: string[];
+    /** Homepage URL from Cargo.toml [package] section */
+    homepage: string | null;
+    /** Repository URL from Cargo.toml [package] section */
+    repository: string | null;
+    /** Absolute path to readme file */
+    readmePath: string | null;
     /** Path to contract crate directory */
     path: string;
     /** Crate names this contract depends on (from Cargo dependency graph) */
@@ -36,6 +44,10 @@ interface CargoPackage {
     name: string;
     id: string;
     description: string | null;
+    authors: string[];
+    homepage: string | null;
+    repository: string | null;
+    readme: string | null;
     manifest_path: string;
     dependencies: CargoDependency[];
 }
@@ -132,6 +144,12 @@ export function detectContracts(rootDir: string): ContractInfo[] {
             name: pkg.name,
             cdmPackage: readCdmPackage(rootDir, pkg.name),
             description: pkg.description,
+            authors: pkg.authors,
+            homepage: pkg.homepage,
+            repository: pkg.repository,
+            readmePath: pkg.readme
+                ? resolve(manifestDir, pkg.readme)
+                : findReadme(manifestDir),
             path: manifestDir,
             dependsOnCrates: deps,
         };
@@ -265,4 +283,46 @@ export function detectDeploymentOrder(rootDir: string): DeploymentOrder {
         cdmPackages: sortedPackages,
         contracts: sortedContracts,
     };
+}
+
+function findReadme(dir: string): string | null {
+    for (const name of ["README.md", "README.txt", "README", "readme.md"]) {
+        const p = resolve(dir, name);
+        if (existsSync(p)) return p;
+    }
+    return null;
+}
+
+export function getGitRemoteUrl(rootDir: string): string | null {
+    try {
+        let url = execSync("git remote get-url origin", {
+            cwd: rootDir,
+            encoding: "utf-8",
+            stdio: ["pipe", "pipe", "pipe"],
+        }).trim();
+        // Convert SSH to HTTPS
+        if (url.startsWith("git@")) {
+            url = url.replace(/^git@([^:]+):/, "https://$1/");
+        }
+        // Strip .git suffix
+        url = url.replace(/\.git$/, "");
+        return url;
+    } catch {
+        return null;
+    }
+}
+
+export function readReadmeContent(readmePath: string | null): string {
+    if (!readmePath || !existsSync(readmePath)) return "";
+    try {
+        const content = readFileSync(readmePath, "utf-8");
+        const MAX_SIZE = 512 * 1024;
+        if (content.length > MAX_SIZE) {
+            console.warn(`Warning: README truncated to 512KB (was ${content.length} bytes)`);
+            return content.slice(0, MAX_SIZE);
+        }
+        return content;
+    } catch {
+        return "";
+    }
 }

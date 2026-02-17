@@ -87,13 +87,34 @@ export function useRegistry() {
 
         // Fetch description from IPFS if the metadataUri is a CID (not the old bulletin:block:index format)
         let description: string | undefined;
+        let readme: string | undefined;
+        let homepage: string | undefined;
+        let repository: string | undefined;
+        let author: string | undefined;
+        let lastPublished: string | undefined;
+
         if (metadataUri && ipfsGatewayUrl && !metadataUri.includes(":")) {
           try {
             const response = await fetch(`${ipfsGatewayUrl}/${metadataUri}`);
             const metadata = await response.json();
-            description = metadata.description;
+            description = metadata.description || undefined;
+            readme = metadata.readme || undefined;
+            homepage = metadata.homepage || undefined;
+            repository = metadata.repository || undefined;
+
+            if (Array.isArray(metadata.authors) && metadata.authors.length > 0) {
+              author = metadata.authors.join(", ");
+            }
+
+            if (metadata.published_at) {
+              lastPublished = new Date(metadata.published_at).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              });
+            }
           } catch {
-            // Metadata fetch failed - leave description undefined
+            // Metadata fetch failed - leave fields undefined
           }
         }
 
@@ -101,6 +122,11 @@ export function useRegistry() {
           name,
           version: String(versionCount),
           description,
+          readme,
+          homepage,
+          repository,
+          author,
+          lastPublished,
         });
       }
 

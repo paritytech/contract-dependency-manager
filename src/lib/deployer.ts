@@ -22,7 +22,12 @@ type RegistryContract = ReturnType<typeof getRegistryContract>;
 
 export interface Metadata {
     publish_block: number;
+    published_at: string;
     description: string;
+    readme: string;
+    authors: string[];
+    homepage: string;
+    repository: string;
 }
 
 export class ContractDeployer {
@@ -48,7 +53,8 @@ export class ContractDeployer {
         this.bulletinApi = api;
     }
 
-    async publishMetadata(metadata: Metadata): Promise<string> {
+    async publishMetadata(metadata: Metadata): Promise<{ cid: string; blockNumber: number }> {
+        metadata.published_at = new Date().toISOString();
         const jsonString = JSON.stringify(metadata);
         const data = Binary.fromText(jsonString);
 
@@ -75,7 +81,7 @@ export class ContractDeployer {
 
         // cidBytes is a Binary (Vec<u8> from the chain) containing serialized CIDv1
         const cid = CID.decode(cidBytes.asBytes());
-        return cid.toString();
+        return { cid: cid.toString(), blockNumber: result.block.number };
     }
 
     setRegistry(registryAddress: string) {

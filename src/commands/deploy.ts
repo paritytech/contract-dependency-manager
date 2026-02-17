@@ -10,7 +10,7 @@ import {
     buildAllContracts,
     Metadata,
 } from "../lib/deployer.js";
-import { detectDeploymentOrder, type DeploymentOrder } from "../lib/detection.js";
+import { detectDeploymentOrder, type DeploymentOrder, getGitRemoteUrl, readReadmeContent } from "../lib/detection.js";
 import { CONTRACTS_REGISTRY_CRATE } from "../constants.js";
 import { getChainPreset } from "../lib/known_chains.js";
 
@@ -147,12 +147,21 @@ async function deployWithRegistry(
 
         if (cdmPackage) {
             // Publish metadata to bulletin and register with the CID
+            const readmeContent = readReadmeContent(contract.readmePath);
+            const repository = contract.repository ?? getGitRemoteUrl(rootDir) ?? "";
+
             const metadata: Metadata = {
                 publish_block: 0,
+                published_at: "",
                 description: contract.description ?? "",
+                readme: readmeContent,
+                authors: contract.authors,
+                homepage: contract.homepage ?? "",
+                repository,
             };
-            const cid = await d.publishMetadata(metadata);
-            console.log(`  Published metadata CID: ${cid}`);
+
+            const { cid, blockNumber } = await d.publishMetadata(metadata);
+            console.log(`  Published metadata CID: ${cid} (block #${blockNumber})`);
             await d.register(cdmPackage, undefined, cid);
         }
     }

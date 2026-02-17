@@ -218,13 +218,6 @@ export default function PackagePage() {
             <div className="sidebar-value">v{pkg.version}</div>
           </div>
 
-          {pkg.license && (
-            <div className="sidebar-section">
-              <div className="sidebar-section-title">License</div>
-              <div className="sidebar-value">{pkg.license}</div>
-            </div>
-          )}
-
           {pkg.lastPublished && (
             <div className="sidebar-section">
               <div className="sidebar-section-title">Last Published</div>
