@@ -1,5 +1,16 @@
+import { useState, useRef, useEffect } from "react";
 import "./NetworkConfig.css";
 import { useNetwork, NETWORK_PRESETS } from "../context/NetworkContext";
+
+const DISPLAY_NAMES: Record<string, string> = {
+  "preview-net": "Preview Net",
+  "paseo": "Paseo",
+  "polkadot": "Polkadot",
+  "local": "Local",
+  "custom": "Custom",
+};
+
+const NETWORK_OPTIONS = ["preview-net", "paseo", "polkadot", "local", "custom"];
 
 export default function NetworkConfig() {
   const {
@@ -15,68 +26,126 @@ export default function NetworkConfig() {
     connecting,
   } = useNetwork();
 
-  const handleNetworkChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setNetwork(e.target.value);
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const handleSelect = (key: string) => {
+    setNetwork(key);
   };
 
   const isPresetNetwork = network in NETWORK_PRESETS && network !== "custom" && network !== "local";
+  const showInputs = open && (network === "custom" || network === "local");
 
   return (
-    <div className="network-config">
-      <div className="network-config-field">
-        <label className="network-config-label">
-          Network
-          {connecting && " ..."}
-          {connected && !connecting && " \u2713"}
-        </label>
-        <select
-          className="network-config-select"
-          value={network}
-          onChange={handleNetworkChange}
+    <div className="net-selector" ref={dropdownRef}>
+      <button
+        className="net-selector-trigger"
+        onClick={() => setOpen((v) => !v)}
+        type="button"
+      >
+        <span className="net-selector-name">
+          {connecting && <span className="net-dot net-dot--connecting" />}
+          {connected && !connecting && <span className="net-dot net-dot--connected" />}
+          {!connected && !connecting && <span className="net-dot net-dot--disconnected" />}
+          {DISPLAY_NAMES[network] ?? network}
+        </span>
+        <svg
+          className={`net-selector-chevron ${open ? "net-selector-chevron--open" : ""}`}
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
         >
-          <option value="preview-net">preview-net</option>
-          <option value="paseo">paseo</option>
-          <option value="polkadot">polkadot</option>
-          <option value="local">local</option>
-          <option value="custom">custom</option>
-        </select>
-      </div>
+          <path
+            d="M4 6l4 4 4-4"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
 
-      <div className="network-config-field">
-        <label className="network-config-label">AssetHub URL</label>
-        <input
-          className="network-config-input"
-          type="text"
-          value={assethubUrl}
-          onChange={(e) => setAssethubUrl(e.target.value)}
-          disabled={network !== "custom"}
-          placeholder="ws://..."
-        />
-      </div>
+      {open && (
+        <div className="net-selector-dropdown">
+          <ul className="net-selector-list">
+            {NETWORK_OPTIONS.map((key) => (
+              <li key={key}>
+                <button
+                  className={`net-selector-option ${network === key ? "net-selector-option--active" : ""}`}
+                  onClick={() => handleSelect(key)}
+                  type="button"
+                >
+                  <span>{DISPLAY_NAMES[key]}</span>
+                  {network === key && (
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path
+                        d="M3 8.5l3.5 3.5L13 5"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
 
-      <div className="network-config-field">
-        <label className="network-config-label">Bulletin URL</label>
-        <input
-          className="network-config-input"
-          type="text"
-          value={bulletinUrl}
-          onChange={(e) => setBulletinUrl(e.target.value)}
-          disabled={network !== "custom"}
-          placeholder="ws://..."
-        />
-      </div>
-
-      <div className="network-config-field">
-        <label className="network-config-label">Registry Address</label>
-        <input
-          className="network-config-input"
-          type="text"
-          value={registryAddress}
-          onChange={(e) => setRegistryAddress(e.target.value)}
-          disabled={isPresetNetwork}
-          placeholder="0x..."
-        />
-      </div>
+          {showInputs && (
+            <div className="net-selector-fields">
+              {network === "custom" && (
+                <>
+                  <div className="net-selector-field">
+                    <label className="net-selector-field-label">AssetHub URL</label>
+                    <input
+                      className="net-selector-field-input"
+                      type="text"
+                      value={assethubUrl}
+                      onChange={(e) => setAssethubUrl(e.target.value)}
+                      placeholder="ws://..."
+                    />
+                  </div>
+                  <div className="net-selector-field">
+                    <label className="net-selector-field-label">Bulletin URL</label>
+                    <input
+                      className="net-selector-field-input"
+                      type="text"
+                      value={bulletinUrl}
+                      onChange={(e) => setBulletinUrl(e.target.value)}
+                      placeholder="ws://..."
+                    />
+                  </div>
+                </>
+              )}
+              <div className="net-selector-field">
+                <label className="net-selector-field-label">Registry Address</label>
+                <input
+                  className="net-selector-field-input"
+                  type="text"
+                  value={registryAddress}
+                  onChange={(e) => setRegistryAddress(e.target.value)}
+                  disabled={isPresetNetwork}
+                  placeholder="0x..."
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

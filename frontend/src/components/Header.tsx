@@ -11,7 +11,7 @@ export default function Header() {
           <img src={logo} alt="cdm logo" className="header-logo-img" />
           <span className="header-logo-text">Contract Hub</span>
         </Link>
-
+        <span className="header-separator">&mdash;</span>
         <NetworkConfig />
       </div>
     </header>

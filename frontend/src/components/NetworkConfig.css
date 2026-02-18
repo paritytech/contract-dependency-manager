@@ -1,58 +1,168 @@
-.network-config {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
+.net-selector {
+  position: relative;
 }
 
-.network-config-field {
+/* Trigger button */
+.net-selector-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  margin: 0;
+  cursor: pointer;
+  font-family: var(--font-serif);
+  font-size: 1.25rem;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+  border-radius: 6px;
+  transition: color 0.15s;
+}
+
+.net-selector-trigger:hover {
+  color: var(--accent);
+}
+
+.net-selector-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Connection status dot */
+.net-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.net-dot--connected {
+  background-color: #22c55e;
+}
+
+.net-dot--connecting {
+  background-color: #eab308;
+  animation: net-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.net-dot--disconnected {
+  background-color: var(--color-text-tertiary);
+}
+
+@keyframes net-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Chevron */
+.net-selector-chevron {
+  color: var(--color-text-secondary);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+.net-selector-chevron--open {
+  transform: rotate(180deg);
+}
+
+/* Dropdown panel */
+.net-selector-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 220px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 200;
+  overflow: hidden;
+}
+
+/* Option list */
+.net-selector-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+}
+
+.net-selector-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 8px 12px;
+  margin: 0;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+  border-radius: 6px;
+  transition: background-color 0.1s;
+}
+
+.net-selector-option:hover {
+  background-color: var(--color-surface-secondary);
+}
+
+.net-selector-option--active {
+  background-color: var(--color-surface-secondary);
+  color: var(--accent);
+}
+
+.net-selector-option--active svg {
+  color: var(--accent);
+}
+
+/* Input fields section */
+.net-selector-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--color-border-strong);
+}
+
+.net-selector-field {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.network-config-label {
+.net-selector-field-label {
   font-size: 11px;
   color: var(--color-text-secondary);
   padding-left: 2px;
+  font-family: var(--font-sans);
 }
 
-.network-config-select {
-  background: var(--color-surface);
+.net-selector-field-input {
+  background: var(--color-surface-secondary);
   color: var(--color-text-primary);
   border: 1px solid var(--color-border-strong);
-  border-radius: 8px;
-  padding: 4px 8px;
-  font-size: 13px;
-  font-family: inherit;
-  outline: none;
-  cursor: pointer;
-}
-
-.network-config-select:focus {
-  border-color: var(--color-text-tertiary);
-}
-
-.network-config-input {
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 8px;
-  padding: 4px 8px;
+  border-radius: 6px;
+  padding: 5px 8px;
   font-size: 12px;
-  font-family: inherit;
+  font-family: var(--font-sans);
   min-width: 200px;
   outline: none;
 }
 
-.network-config-input::placeholder {
+.net-selector-field-input::placeholder {
   color: var(--color-text-tertiary);
 }
 
-.network-config-input:focus {
+.net-selector-field-input:focus {
   border-color: var(--color-text-tertiary);
 }
 
-.network-config-input:disabled {
+.net-selector-field-input:disabled {
   background: var(--color-surface-secondary);
   color: var(--color-text-tertiary);
   border-color: var(--color-border);
