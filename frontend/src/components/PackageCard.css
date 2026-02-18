@@ -1,6 +1,9 @@
 .package-card {
   padding: 20px 0;
   border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .package-card-header {
@@ -35,6 +38,7 @@
   font-size: 15px;
   margin-bottom: 10px;
   line-height: 1.4;
+  flex: 1;
 }
 
 .package-card-meta {
@@ -56,6 +60,7 @@
 
 .package-card-date {
   color: var(--color-text-tertiary);
+  flex-basis: 100%;
 }
 
 .package-card-keywords {

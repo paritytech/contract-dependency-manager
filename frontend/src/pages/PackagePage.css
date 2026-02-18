@@ -264,6 +264,31 @@
   color: var(--color-text-secondary);
 }
 
+.sidebar-value.address-value {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 20px;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 4px 6px;
+  margin: -4px -6px;
+}
+
+.sidebar-value.address-value:hover {
+  background: var(--color-surface-secondary);
+}
+
+.address-copy-icon {
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+.sidebar-value.address-value:hover .address-copy-icon {
+  color: var(--color-text-secondary);
+}
+
 .sidebar-value.large {
   font-size: 1.5rem;
   font-weight: 700;

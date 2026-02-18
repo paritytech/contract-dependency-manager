@@ -182,6 +182,7 @@ export default function PackagePage() {
   const name = params['*'];
   const [activeTab, setActiveTab] = useState<TabName>('readme');
   const [copied, setCopied] = useState(false);
+  const [addrCopied, setAddrCopied] = useState(false);
 
   const { network, connecting, error: networkError } = useNetwork();
   const { packages, loading, error: registryError } = useRegistry();
@@ -222,8 +223,12 @@ export default function PackagePage() {
     );
   }
 
+  const namedPresets = ['polkadot', 'paseo', 'preview-net'];
+  const installCmd = namedPresets.includes(network)
+    ? `cdm i -n ${network} ${pkg.name}`
+    : `cdm i ${pkg.name}`;
   const handleCopy = () => {
-    navigator.clipboard.writeText(`cdm i ${pkg.name}`);
+    navigator.clipboard.writeText(installCmd);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -249,7 +254,7 @@ export default function PackagePage() {
           </div>
 
           <div className="install-box">
-            <span className="install-command">cdm i {pkg.name}</span>
+            <span className="install-command">{installCmd}</span>
             <button className="install-copy-btn" onClick={handleCopy}>
               {copied ? 'Copied!' : 'Copy'}
             </button>
@@ -361,6 +366,33 @@ export default function PackagePage() {
             <div className="sidebar-section-title">Version</div>
             <div className="sidebar-value">v{pkg.version}</div>
           </div>
+
+          {pkg.address && (
+            <div className="sidebar-section">
+              <div className="sidebar-section-title">Contract Address</div>
+              <div
+                className="sidebar-value address-value"
+                title={pkg.address}
+                onClick={() => {
+                  navigator.clipboard.writeText(pkg.address!);
+                  setAddrCopied(true);
+                  setTimeout(() => setAddrCopied(false), 2000);
+                }}
+              >
+                <span className="address-text">{pkg.address.slice(0, 12)}</span>
+                <svg className="address-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {addrCopied ? (
+                    <polyline points="20 6 9 17 4 12" />
+                  ) : (
+                    <>
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </>
+                  )}
+                </svg>
+              </div>
+            </div>
+          )}
 
           {pkg.lastPublished && (
             <div className="sidebar-section">

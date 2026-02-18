@@ -2,7 +2,7 @@
 import { Command } from "commander";
 import { buildCommand } from "./commands/build.js";
 import { deployCommand } from "./commands/deploy.js";
-import { addCommand } from "./commands/add.js";
+import { installCommand } from "./commands/install.js";
 import { templateCommand } from "./commands/template.js";
 
 const program = new Command();
@@ -14,7 +14,7 @@ program
 
 program.addCommand(buildCommand);
 program.addCommand(deployCommand);
-program.addCommand(addCommand);
+program.addCommand(installCommand);
 program.addCommand(templateCommand);
 
 program.parse();

@@ -9,7 +9,7 @@ export default function Header() {
       <div className="header-inner">
         <Link to="/" className="header-logo">
           <img src={logo} alt="cdm logo" className="header-logo-img" />
-          <span className="header-logo-text">cdm</span>
+          <span className="header-logo-text">Contract Hub</span>
         </Link>
 
         <NetworkConfig />

@@ -45,6 +45,10 @@ export default function HomePage() {
             <div className="stat-value">{totalCount.toLocaleString()}</div>
             <div className="stat-label">Contracts</div>
           </div>
+          <div className="stat-item">
+            <div className="stat-value">0</div>
+            <div className="stat-label">Weekly Calls</div>
+          </div>
         </section>
       </div>
 

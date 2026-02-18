@@ -68,8 +68,8 @@ export function useRegistry() {
         if (!nameResult.success) continue;
         const name = nameResult.value.response;
 
-        // Fetch version count and metadata URI in parallel
-        const [versionResult, metadataResult] = await Promise.all([
+        // Fetch version count, metadata URI, and address in parallel
+        const [versionResult, metadataResult, addressResult] = await Promise.all([
           registry.query("getVersionCount", {
             origin: ORIGIN,
             data: { contract_name: name },
@@ -78,11 +78,18 @@ export function useRegistry() {
             origin: ORIGIN,
             data: { contract_name: name },
           }),
+          registry.query("getAddress", {
+            origin: ORIGIN,
+            data: { contract_name: name },
+          }),
         ]);
 
         const versionCount = versionResult.success ? versionResult.value.response : 0;
         const metadataUri = metadataResult.success
           ? unwrapOption<string>(metadataResult.value.response)
+          : undefined;
+        const address = addressResult.success
+          ? unwrapOption<string>(addressResult.value.response)
           : undefined;
 
         // Fetch description from IPFS if the metadataUri is a CID (not the old bulletin:block:index format)
@@ -132,7 +139,10 @@ export function useRegistry() {
           repository,
           author,
           lastPublished,
+          publishedDate: lastPublished,
+          weeklyCalls: 0,
           abi,
+          address,
         });
       }
 

@@ -8,8 +8,9 @@ import { connectWebSocket } from "../lib/connection.js";
 import { DEFAULT_NODE_URL, ALICE_SS58 } from "../constants.js";
 import { getChainPreset } from "../lib/known_chains.js";
 
-const add = new Command("add")
-    .description("Add a CDM contract library for use with polkadot-api")
+const install = new Command("install")
+    .alias("i")
+    .description("Install a CDM contract library for use with polkadot-api")
     .argument("<library>", 'CDM library name (e.g., "@polkadot/reputation")')
     .option(
         "--registry <address>",
@@ -34,7 +35,7 @@ type AddOptions = {
     root: string;
 };
 
-add.action(async (library: string, opts: AddOptions) => {
+install.action(async (library: string, opts: AddOptions) => {
     // Resolve chain preset
     if (opts.name && opts.name !== "custom") {
         const preset = getChainPreset(opts.name);
@@ -53,7 +54,7 @@ add.action(async (library: string, opts: AddOptions) => {
 
     const rootDir = resolve(opts.root);
 
-    console.log(`=== CDM Add: ${library} ===\n`);
+    console.log(`=== CDM Install: ${library} ===\n`);
     console.log(`Registry: ${registryAddr}`);
     console.log(`Chain: ${opts.url}`);
     console.log(`Root: ${rootDir}\n`);
@@ -83,7 +84,13 @@ add.action(async (library: string, opts: AddOptions) => {
         process.exit(1);
     }
 
-    const metadataCid = result.value.response;
+    const response = result.value.response;
+    // getMetadataUri returns Option<string> = { isSome: bool, value: string }
+    const metadataCid = typeof response === "string"
+        ? response
+        : response?.isSome
+            ? response.value
+            : null;
     if (!metadataCid) {
         console.error(`Contract "${library}" not found in registry`);
         client.destroy();
@@ -110,33 +117,39 @@ add.action(async (library: string, opts: AddOptions) => {
     const metadata = await metadataResponse.json();
     console.log(`  Description: ${metadata.description || "(none)"}`);
 
-    // TODO: Fetch ABI from metadata once we include it
-    // For now, the ABI is not stored in bulletin metadata
-    const abi = metadata;
+    const abi = metadata.abi;
+    if (!abi || !Array.isArray(abi) || abi.length === 0) {
+        console.error(`No ABI found in metadata for "${library}"`);
+        client.destroy();
+        process.exit(1);
+    }
 
-    // Save ABI to .papi/contracts/
-    const safeName = library.replace(/[@/]/g, "_").replace(/^_/, "");
+    // Save ABI and register with papi
+    const safeName = library
+        .replace(/[@/]/g, "_")
+        .replace(/^_/, "")
+        .replace(/-([a-z])/g, (_, c) => c.toUpperCase());
     const contractsDir = resolve(rootDir, ".papi/contracts");
     mkdirSync(contractsDir, { recursive: true });
     const abiPath = resolve(contractsDir, `${safeName}.json`);
     writeFileSync(abiPath, JSON.stringify(abi, null, 2));
     console.log(`  Saved ABI to ${abiPath}`);
 
-    // Regenerate papi descriptors
-    console.log("\nRegenerating papi descriptors...");
+    // Register ABI with papi and generate descriptors
+    console.log("\nRegistering ABI with papi...");
     try {
-        execSync("npx papi generate", { cwd: rootDir, stdio: "inherit" });
+        execSync(`npx papi sol add ${abiPath} ${safeName}`, { cwd: rootDir, stdio: "inherit" });
         console.log("\n=== Done! ===");
         console.log(
             `\nYou can now import and use "${library}" contract types in your TypeScript code.`,
         );
     } catch {
         console.log(
-            "\nABI saved. Run 'npx papi generate' to generate TypeScript types.",
+            "\nABI saved. Run 'npx papi sol add' to register and generate TypeScript types.",
         );
     }
 
     client.destroy();
 });
 
-export const addCommand = add;
+export const installCommand = install;

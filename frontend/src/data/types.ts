@@ -29,4 +29,5 @@ export interface Package {
   dependencies?: Record<string, string>;
   versions?: { version: string; date: string }[];
   abi?: AbiEntry[];
+  address?: string;
 }
