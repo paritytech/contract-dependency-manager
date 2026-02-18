@@ -1,7 +1,10 @@
 [package]
 name = "counter_reader"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+description = "Reads the current count from the shared counter contract via cross-contract CDM reference"
+authors.workspace = true
+homepage.workspace = true
 
 [lib]
 path = "lib.rs"

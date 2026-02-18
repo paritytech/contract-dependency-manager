@@ -1,7 +1,10 @@
 [package]
 name = "counter"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+description = "Shared counter contract that holds on-chain state, exposing increment and read methods via CDM"
+authors.workspace = true
+homepage.workspace = true
 
 [lib]
 path = "lib.rs"

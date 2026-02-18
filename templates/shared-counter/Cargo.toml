@@ -2,6 +2,12 @@
 resolver = "2"
 members = ["contracts/*"]
 
+[workspace.package]
+version = "0.1.0"
+authors = ["CDM Example"]
+homepage = "https://polkadot.com/"
+edition = "2024"
+
 [workspace.dependencies]
 pvm_contract = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "charles/cdm-integration" }
 polkavm-derive = "0.31"
