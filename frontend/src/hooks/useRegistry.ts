@@ -19,14 +19,14 @@ export function useRegistry() {
   const [loading, setLoading] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
-  const loadedCount = useRef(0);
+  const nextIndex = useRef(-1);
 
   // Reset when registry changes
   useEffect(() => {
     setPackages([]);
     setQueryError(null);
     setTotalCount(0);
-    loadedCount.current = 0;
+    nextIndex.current = -1;
   }, [registry]);
 
   const loadBatch = useCallback(async () => {
@@ -55,12 +55,17 @@ export function useRegistry() {
         return;
       }
 
-      const start = loadedCount.current;
-      const end = Math.min(start + PAGE_SIZE, count);
+      // On first load, start from the newest contract
+      if (nextIndex.current === -1) {
+        nextIndex.current = count - 1;
+      }
+
+      const start = nextIndex.current;
+      const end = Math.max(start - PAGE_SIZE, -1);
 
       const newPackages: Package[] = [];
 
-      for (let i = start; i < end; i++) {
+      for (let i = start; i > end; i--) {
         const nameResult = await registry.query("getContractNameAt", {
           origin: ORIGIN,
           data: { index: i },
@@ -146,7 +151,7 @@ export function useRegistry() {
         });
       }
 
-      loadedCount.current = end;
+      nextIndex.current = end;
       setPackages((prev) => [...prev, ...newPackages]);
     } catch (err) {
       setQueryError(err instanceof Error ? err.message : "Failed to load contracts");
@@ -157,12 +162,12 @@ export function useRegistry() {
 
   // Auto-load first batch when registry connects
   useEffect(() => {
-    if (registry && connected && loadedCount.current === 0) {
+    if (registry && connected && nextIndex.current === -1) {
       loadBatch();
     }
   }, [registry, connected, loadBatch]);
 
-  const hasMore = loadedCount.current < totalCount;
+  const hasMore = nextIndex.current >= 0;
 
   // Surface whichever error is relevant: network-level or query-level
   const error = networkError ?? queryError;

@@ -155,6 +155,17 @@
   color: var(--color-text-secondary);
 }
 
+.scroll-sentinel {
+  height: 1px;
+}
+
+.loading-more {
+  text-align: center;
+  padding: 20px;
+  color: var(--color-text-tertiary);
+  font-size: 0.875rem;
+}
+
 @media (max-width: 768px) {
   .hero-tagline {
     font-size: 1.8rem;

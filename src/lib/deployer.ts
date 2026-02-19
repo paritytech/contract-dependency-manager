@@ -2,6 +2,7 @@ import {
     PolkadotClient,
     TypedApi,
     Binary,
+    Enum,
 } from "polkadot-api";
 import { AssetHub, Bulletin, contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
@@ -11,7 +12,7 @@ import { execSync } from "child_process";
 import { CID } from "multiformats/cid";
 import { prepareSigner } from "./signer.js";
 import { detectDeploymentOrder } from "./detection.js";
-import { GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "../constants.js";
+import { ALICE_SS58, GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "../constants.js";
 
 function getRegistryContract(client: PolkadotClient, addr: string) {
     const inkSdk = createInkSdk(client);
@@ -139,19 +140,51 @@ export class ContractDeployer {
 
     /**
      * Deploy a PVM contract and return its address.
+     * Uses a dry-run to estimate gas, then submits with the estimated values.
      */
     async deploy(pvmPath: string): Promise<string> {
         const bytecode = readFileSync(pvmPath);
         const code = Binary.fromBytes(bytecode);
         const data = Binary.fromBytes(new Uint8Array(0));
 
+        // Dry-run to estimate gas requirements
+        const dryRun = await this.api.apis.ReviveApi.instantiate(
+            ALICE_SS58,
+            0n,
+            undefined, // unlimited gas for estimation
+            undefined, // unlimited storage deposit for estimation
+            Enum("Upload", code),
+            data,
+            undefined, // salt
+        );
+
+        if (dryRun.result.success === false) {
+            const stringify = (obj: unknown) =>
+                JSON.stringify(
+                    obj,
+                    (_, v) => (typeof v === "bigint" ? v.toString() : v),
+                    2,
+                );
+            console.error("Dry-run failed:", stringify(dryRun.result));
+            throw new Error("Contract instantiation dry-run failed");
+        }
+
+        // Use weight_required from dry-run with 20% headroom
+        const gasLimit = {
+            ref_time: dryRun.weight_required.ref_time * 120n / 100n,
+            proof_size: dryRun.weight_required.proof_size * 120n / 100n,
+        };
+
+        // Derive storage deposit from dry-run
+        let storageDeposit = STORAGE_DEPOSIT_LIMIT;
+        if (dryRun.storage_deposit.type === "Charge") {
+            storageDeposit = dryRun.storage_deposit.value * 120n / 100n;
+        }
+
         const result = await this.api.tx.Revive.instantiate_with_code({
             value: 0n,
-            weight_limit: {
-                ref_time: GAS_LIMIT.refTime,
-                proof_size: GAS_LIMIT.proofSize,
-            },
-            storage_deposit_limit: STORAGE_DEPOSIT_LIMIT,
+            weight_limit: gasLimit,
+            storage_deposit_limit: storageDeposit,
             code,
             data,
             salt: undefined,

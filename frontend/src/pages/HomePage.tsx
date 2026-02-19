@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Layout from '../components/Layout';
 import PackageCard from '../components/PackageCard';
 import GrainCanvas from '../components/GrainCanvas';
@@ -8,12 +8,36 @@ import './HomePage.css';
 
 export default function HomePage() {
   const { network, connecting, error: networkError } = useNetwork();
-  const { packages, loading, error: registryError, totalCount } = useRegistry();
-  const featured = packages.slice(0, 6);
+  const { packages, loading, error: registryError, totalCount, hasMore, loadMore } = useRegistry();
   const [copied, setCopied] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const installCmd = 'curl -fsSL https://polkadot.com/install-cdm | bash';
   const error = networkError || registryError;
+
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+  const hasMoreRef = useRef(hasMore);
+  hasMoreRef.current = hasMore;
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
+          loadMoreRef.current();
+        }
+      },
+      { threshold: 0 }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(installCmd);
@@ -63,16 +87,20 @@ export default function HomePage() {
           <div className="loading-state">
             <p>Connecting to {network}...</p>
           </div>
-        ) : featured.length === 0 ? (
+        ) : packages.length === 0 ? (
           <div className="loading-state">
             <p>No contracts found.</p>
           </div>
         ) : (
-          <div className="featured-grid">
-            {featured.map((pkg) => (
-              <PackageCard key={pkg.name} pkg={pkg} />
-            ))}
-          </div>
+          <>
+            <div className="featured-grid">
+              {packages.map((pkg) => (
+                <PackageCard key={pkg.name} pkg={pkg} />
+              ))}
+            </div>
+            <div ref={sentinelRef} className="scroll-sentinel" />
+            {loading && <div className="loading-more">Loading more...</div>}
+          </>
         )}
       </section>
     </Layout>
