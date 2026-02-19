@@ -24,6 +24,7 @@ jobs:
 
             - name: Compile binaries
               run: |
+                  make embed-templates
                   bun build --compile --target=bun-linux-x64 src/cli.ts --outfile cdm-linux-x64
                   bun build --compile --target=bun-darwin-x64 src/cli.ts --outfile cdm-darwin-x64
                   bun build --compile --target=bun-darwin-arm64 src/cli.ts --outfile cdm-darwin-arm64
