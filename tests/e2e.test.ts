@@ -5,8 +5,8 @@ import { connectWebSocket } from "../src/lib/connection.js";
 import {
     ContractDeployer,
     pvmContractBuild,
-    deployAllContracts,
 } from "../src/lib/deployer.js";
+import { executePipeline } from "../src/lib/pipeline.js";
 import { detectDeploymentOrder } from "../src/lib/detection.js";
 import { contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
@@ -85,7 +85,8 @@ describe("e2e: bootstrap deploy", () => {
     }, 300_000);
 
     test("deploy and register all shared-counter contracts", async () => {
-        const addresses = await deployAllContracts(deployer, TEMPLATE_DIR);
+        const result = await executePipeline({ rootDir: TEMPLATE_DIR, deployer, skipBuild: true });
+        const addresses = result.addresses;
 
         // Verify addresses returned for all contracts
         const order = detectDeploymentOrder(TEMPLATE_DIR);

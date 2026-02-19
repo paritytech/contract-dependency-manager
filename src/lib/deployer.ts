@@ -110,6 +110,48 @@ export class ContractDeployer {
         return { cid: cid.toString(), blockNumber: result.block.number };
     }
 
+    async publishMetadataBatch(metadataList: Metadata[]): Promise<{ cids: string[]; blockNumber: number }> {
+        if (metadataList.length === 0) return { cids: [], blockNumber: 0 };
+        if (metadataList.length === 1) {
+            const result = await this.publishMetadata(metadataList[0]);
+            return { cids: [result.cid], blockNumber: result.blockNumber };
+        }
+
+        // Build store calls
+        const txs = metadataList.map((metadata) => {
+            metadata.published_at = new Date().toISOString();
+            const data = Binary.fromText(JSON.stringify(metadata));
+            return this.bulletinApi.tx.TransactionStorage.store({ data });
+        });
+
+        // Extract decoded calls (may be Promises)
+        const calls = await Promise.all(
+            txs.map(async (tx) => {
+                const call = tx.decodedCall;
+                return call instanceof Promise ? await call : call;
+            }),
+        );
+
+        const result = await this.bulletinApi.tx.Utility.batch_all({
+            calls,
+        }).signAndSubmit(this.signer);
+
+        const storedEvents = this.bulletinApi.event.TransactionStorage.Stored.filter(result.events);
+        if (storedEvents.length !== metadataList.length) {
+            throw new Error(
+                `Expected ${metadataList.length} Stored events, got ${storedEvents.length}`,
+            );
+        }
+
+        const cids = storedEvents.map((e) => {
+            const cidBytes = e.cid;
+            if (!cidBytes) throw new Error("No CID in Stored event");
+            return CID.decode(cidBytes.asBytes()).toString();
+        });
+
+        return { cids, blockNumber: result.block.number };
+    }
+
     setRegistry(registryAddress: string) {
         this.registry = getRegistryContract(this.client, registryAddress);
     }
@@ -145,6 +187,59 @@ export class ContractDeployer {
             .signAndSubmit(this.signer);
 
         console.log(`  Registered ${cdmPackage} -> ${addr}`);
+    }
+
+    async registerBatch(
+        entries: { cdmPackage: string; contractAddr: string; metadataUri: string }[],
+    ): Promise<void> {
+        if (entries.length === 0) return;
+        if (entries.length === 1) {
+            await this.register(entries[0].cdmPackage, entries[0].contractAddr, entries[0].metadataUri);
+            return;
+        }
+
+        // Build ink contract calls
+        const txs = entries.map((entry) =>
+            this.registry.send("publishLatest", {
+                data: {
+                    contract_name: entry.cdmPackage,
+                    contract_address: entry.contractAddr,
+                    metadata_uri: entry.metadataUri,
+                },
+                gasLimit: {
+                    ref_time: GAS_LIMIT.refTime,
+                    proof_size: GAS_LIMIT.proofSize,
+                },
+                storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
+            }),
+        );
+
+        // Extract decoded calls (ink SDK returns Promise<decodedCall>)
+        const calls = await Promise.all(
+            txs.map(async (tx) => {
+                const call = tx.decodedCall;
+                return call instanceof Promise ? await call : call;
+            }),
+        );
+
+        const result = await this.api.tx.Utility.batch_all({
+            calls,
+        }).signAndSubmit(this.signer);
+
+        const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
+        if (failures.length > 0) {
+            const stringify = (obj: unknown) =>
+                JSON.stringify(
+                    obj,
+                    (_, v) => (typeof v === "bigint" ? v.toString() : v),
+                    2,
+                );
+            throw new Error(`Batch register failed: ${stringify(failures[0])}`);
+        }
+
+        for (const entry of entries) {
+            console.log(`  Registered ${entry.cdmPackage} -> ${entry.contractAddr}`);
+        }
     }
 
     /**
@@ -224,6 +319,112 @@ export class ContractDeployer {
 
         this.lastDeployedAddr = instantiated[0].contract.asHex();
         return this.lastDeployedAddr;
+    }
+
+    /**
+     * Dry-run a contract deploy to estimate gas/storage, returning the
+     * transaction descriptor (unsigned) and the bytecode for later batching.
+     */
+    async dryRunDeploy(pvmPath: string) {
+        const bytecode = readFileSync(pvmPath);
+        const code = Binary.fromBytes(bytecode);
+        const data = Binary.fromBytes(new Uint8Array(0));
+
+        const dryRun = await this.api.apis.ReviveApi.instantiate(
+            ALICE_SS58,
+            0n,
+            undefined,
+            undefined,
+            Enum("Upload", code),
+            data,
+            undefined,
+        );
+
+        if (dryRun.result.success === false) {
+            const stringify = (obj: unknown) =>
+                JSON.stringify(
+                    obj,
+                    (_, v) => (typeof v === "bigint" ? v.toString() : v),
+                    2,
+                );
+            throw new Error(`Dry-run failed: ${stringify(dryRun.result)}`);
+        }
+
+        const gasLimit = {
+            ref_time: dryRun.weight_required.ref_time * 120n / 100n,
+            proof_size: dryRun.weight_required.proof_size * 120n / 100n,
+        };
+
+        let storageDeposit = STORAGE_DEPOSIT_LIMIT;
+        if (dryRun.storage_deposit.type === "Charge") {
+            storageDeposit = dryRun.storage_deposit.value * 120n / 100n;
+        }
+
+        return {
+            tx: this.api.tx.Revive.instantiate_with_code({
+                value: 0n,
+                weight_limit: gasLimit,
+                storage_deposit_limit: storageDeposit,
+                code,
+                data,
+                salt: undefined,
+            }),
+            gasLimit,
+            storageDeposit,
+        };
+    }
+
+    /**
+     * Deploy multiple contracts in a single Utility.batch_all transaction.
+     * Returns addresses in the same order as the input paths.
+     * Falls back to sequential deploys if the batch fails.
+     */
+    async deployBatch(pvmPaths: string[]): Promise<string[]> {
+        if (pvmPaths.length === 0) return [];
+        if (pvmPaths.length === 1) return [await this.deploy(pvmPaths[0])];
+
+        // Dry-run each contract to get gas estimates and build tx descriptors
+        const prepared = await Promise.all(
+            pvmPaths.map((p) => this.dryRunDeploy(p)),
+        );
+
+        // Build batch_all call — decodedCall may be a Promise in polkadot-api
+        const calls = await Promise.all(
+            prepared.map(async (p) => {
+                const call = p.tx.decodedCall;
+                return call instanceof Promise ? await call : call;
+            }),
+        );
+
+        const result = await this.api.tx.Utility.batch_all({
+            calls,
+        }).signAndSubmit(this.signer);
+
+        const failures = this.api.event.System.ExtrinsicFailed.filter(
+            result.events,
+        );
+        if (failures.length > 0) {
+            const stringify = (obj: unknown) =>
+                JSON.stringify(
+                    obj,
+                    (_, v) => (typeof v === "bigint" ? v.toString() : v),
+                    2,
+                );
+            throw new Error(`Batch deploy failed: ${stringify(failures[0])}`);
+        }
+
+        const instantiated = this.api.event.Revive.Instantiated.filter(
+            result.events,
+        );
+        if (instantiated.length !== pvmPaths.length) {
+            throw new Error(
+                `Expected ${pvmPaths.length} Instantiated events, got ${instantiated.length}`,
+            );
+        }
+
+        const addresses = instantiated.map((e) => e.contract.asHex());
+        this.lastDeployedAddr = addresses[addresses.length - 1];
+        return addresses;
     }
 }
 
