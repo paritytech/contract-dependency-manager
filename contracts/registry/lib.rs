@@ -4,7 +4,7 @@
 use alloc::string::String;
 use parity_scale_codec::{Decode, Encode};
 use pvm::storage::Mapping;
-use pvm::{Address, caller};
+use pvm::{caller, Address};
 use pvm_contract as pvm;
 
 pub type Version = u32;

@@ -20,10 +20,10 @@ generate-papi:
 start-network:
 	cd ppn && make start
 
-install:
+install: embed-templates
 	bun build --compile src/cli.ts --outfile ~/.cdm/bin/cdm
 
-dev:
+dev: embed-templates
 	bun run src/cli.ts
 
 frontend:
@@ -32,10 +32,13 @@ frontend:
 build:
 	bun run build
 
-compile:
+embed-templates:
+	bun run scripts/embed-templates.ts
+
+compile: embed-templates
 	bun build --compile src/cli.ts --outfile dist/cdm
 
-compile-all:
+compile-all: embed-templates
 	mkdir -p dist
 	bun build --compile --target=bun-darwin-arm64 src/cli.ts --outfile dist/cdm-darwin-arm64
 	bun build --compile --target=bun-darwin-x64 src/cli.ts --outfile dist/cdm-darwin-x64
