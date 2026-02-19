@@ -32,6 +32,15 @@ export interface DeploymentOrder {
     contracts: ContractInfo[];
 }
 
+export interface DeploymentOrderLayered {
+    /** Layers of crate names - each layer can be processed in parallel */
+    layers: string[][];
+    /** Full contract info indexed by crate name */
+    contractMap: Map<string, ContractInfo>;
+    /** CDM package name indexed by crate name (only contracts with CDM packages) */
+    cdmPackageMap: Map<string, string>;
+}
+
 // --- Cargo metadata types ---
 
 interface CargoMetadata {
@@ -245,6 +254,69 @@ export function toposort(graph: Map<string, string[]>): string[] {
 }
 
 /**
+ * Topological sort (layered) using modified Kahn's algorithm.
+ * Collects ALL zero-in-degree nodes at each iteration as a layer.
+ * Each layer can be processed in parallel.
+ */
+export function toposortLayers(graph: Map<string, string[]>): string[][] {
+    const inDegree = new Map<string, number>();
+    const dependents = new Map<string, string[]>();
+
+    for (const [node, deps] of graph) {
+        if (!inDegree.has(node)) inDegree.set(node, 0);
+        if (!dependents.has(node)) dependents.set(node, []);
+        for (const dep of deps) {
+            if (!inDegree.has(dep)) inDegree.set(dep, 0);
+            if (!dependents.has(dep)) dependents.set(dep, []);
+        }
+    }
+
+    for (const [node, deps] of graph) {
+        inDegree.set(node, deps.length);
+        for (const dep of deps) {
+            dependents.get(dep)!.push(node);
+        }
+    }
+
+    let queue: string[] = [];
+    for (const [node, degree] of inDegree) {
+        if (degree === 0) queue.push(node);
+    }
+
+    const layers: string[][] = [];
+    let processed = 0;
+
+    while (queue.length > 0) {
+        queue.sort();
+        layers.push([...queue]);
+        processed += queue.length;
+
+        const nextQueue: string[] = [];
+        for (const node of queue) {
+            for (const dependent of dependents.get(node) || []) {
+                const newDegree = inDegree.get(dependent)! - 1;
+                inDegree.set(dependent, newDegree);
+                if (newDegree === 0) {
+                    nextQueue.push(dependent);
+                }
+            }
+        }
+        queue = nextQueue;
+    }
+
+    if (processed !== inDegree.size) {
+        const remaining = [...inDegree.entries()]
+            .filter(([_, d]) => d > 0)
+            .map(([n]) => n);
+        throw new Error(
+            `Circular dependency detected involving: ${remaining.join(", ")}`,
+        );
+    }
+
+    return layers;
+}
+
+/**
  * Create a mapping from crate name to CDM package name.
  */
 export function createCrateToPackageMap(
@@ -283,6 +355,28 @@ export function detectDeploymentOrder(rootDir: string): DeploymentOrder {
         cdmPackages: sortedPackages,
         contracts: sortedContracts,
     };
+}
+
+/**
+ * Detect contracts and determine layered deployment order.
+ * Each layer contains contracts that can be deployed in parallel.
+ */
+export function detectDeploymentOrderLayered(rootDir: string): DeploymentOrderLayered {
+    const contracts = detectContracts(rootDir);
+    const graph = buildDependencyGraph(contracts);
+    const layers = toposortLayers(graph);
+
+    const cdmPackageMap = new Map<string, string>();
+    const contractMap = new Map<string, ContractInfo>();
+
+    for (const contract of contracts) {
+        contractMap.set(contract.name, contract);
+        if (contract.cdmPackage) {
+            cdmPackageMap.set(contract.name, contract.cdmPackage);
+        }
+    }
+
+    return { layers, contractMap, cdmPackageMap };
 }
 
 function findReadme(dir: string): string | null {

@@ -37,7 +37,19 @@ ln -sf "$CDM_DIR/bin/$BIN" "$HOME/.local/bin/$BIN"
 
 echo "Installed $BIN ($OS/$ARCH) from $TAG -> $CDM_DIR/bin/$BIN"
 
-# 5) Add to PATH in all available shell profiles
+# 5) Install cargo-pvm-contract from the cdm-integration branch
+if command -v cargo >/dev/null 2>&1; then
+  echo "Installing cargo-pvm-contract..."
+  git clone -b charles/cdm-integration https://github.com/paritytech/cargo-pvm-contract.git /tmp/cargo-pvm-contract \
+    && cargo install --force --locked --path /tmp/cargo-pvm-contract/crates/cargo-pvm-contract \
+    && rm -rf /tmp/cargo-pvm-contract
+  echo "cargo-pvm-contract installed."
+else
+  echo "Warning: cargo not found. Skipping cargo-pvm-contract installation."
+  echo "Install Rust (https://rustup.rs) and re-run this script to install cargo-pvm-contract."
+fi
+
+# 6) Add to PATH in all available shell profiles
 
 append_once() { # append $2 to file $1 if not already present
   local file="$1" line="$2"

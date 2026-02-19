@@ -1,8 +1,6 @@
 import { Command } from "commander";
 import { resolve } from "path";
-import { execSync } from "child_process";
-import { detectDeploymentOrder } from "../lib/detection.js";
-import { pvmContractBuild } from "../lib/deployer.js";
+import { runPipelineWithUI } from "../lib/ui.js";
 
 const build = new Command("build")
     .description(
@@ -25,25 +23,17 @@ build.action(async (opts: BuildOptions) => {
     }
 
     const rootDir = resolve(opts.root);
-
-    console.log("=== CDM Build ===\n");
-    console.log(`Registry: ${registry}`);
+    console.log(`Registry: ${registry ?? "0x0 (default)"}`);
     console.log(`Root: ${rootDir}\n`);
 
-    const order = detectDeploymentOrder(rootDir);
-    const contractsToBuild = opts.contracts ?? order.crateNames;
+    const result = await runPipelineWithUI({
+        rootDir,
+        registryAddr: registry,
+        contractFilter: opts.contracts,
+    });
 
-    console.log(`Building ${contractsToBuild.length} contracts...\n`);
-
-    for (const crateName of contractsToBuild) {
-        console.log(`Building ${crateName}...`);
-        pvmContractBuild(rootDir, crateName, registry);
-    }
-
-    console.log("\n=== Build Complete ===");
-    console.log(`\nBuilt contracts:`);
-    for (const crateName of contractsToBuild) {
-        console.log(`  - ${crateName} -> target/${crateName}.release.polkavm`);
+    if (!result.success) {
+        process.exit(1);
     }
 });
 

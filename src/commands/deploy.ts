@@ -1,17 +1,12 @@
 import { Command } from "commander";
 import { resolve } from "path";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, writeFileSync } from "fs";
 import {
     connectWebSocket,
     connectBulletinWebSocket,
 } from "../lib/connection.js";
-import {
-    ContractDeployer,
-    buildAllContracts,
-    Metadata,
-    AbiEntry,
-} from "../lib/deployer.js";
-import { detectDeploymentOrder, type DeploymentOrder, getGitRemoteUrl, readReadmeContent } from "../lib/detection.js";
+import { ContractDeployer } from "../lib/deployer.js";
+import { runPipelineWithUI } from "../lib/ui.js";
 import { CONTRACTS_REGISTRY_CRATE } from "../constants.js";
 import { getChainPreset } from "../lib/known_chains.js";
 
@@ -105,7 +100,7 @@ deploy.action(async (opts: DeployOptions) => {
 
 /**
  * Build, deploy, and register all CDM contracts against a known registry.
- * Connects to bulletin to publish metadata for each contract.
+ * Uses the pipeline TUI for parallel builds and progress display.
  * Optionally accepts an existing deployer to reuse the connection.
  */
 async function deployWithRegistry(
@@ -114,10 +109,6 @@ async function deployWithRegistry(
     opts: DeployOptions,
     deployer?: ContractDeployer,
 ): Promise<Record<string, string>> {
-    if (!opts.skipBuild) {
-        buildAllContracts(rootDir, registryAddr);
-    }
-
     const d = deployer ?? (await createDeployer(opts));
     d.setRegistry(registryAddr);
 
@@ -131,59 +122,23 @@ async function deployWithRegistry(
         console.log(`Connected to Bulletin: ${bulletinChain.name}\n`);
     }
 
-    // Deploy and register contracts with metadata publishing
-    const order = detectDeploymentOrder(rootDir);
-    const addresses: Record<string, string> = {};
-    console.log(`Deploying ${order.crateNames.length} contracts...`);
-
-    for (let i = 0; i < order.crateNames.length; i++) {
-        const crateName = order.crateNames[i];
-        const cdmPackage = order.cdmPackages[i];
-        const contract = order.contracts[i];
-        const pvmPath = resolve(rootDir, `target/${crateName}.release.polkavm`);
-
-        const addr = await d.deploy(pvmPath);
-        addresses[crateName] = addr;
-        console.log(`  Deployed ${crateName} to: ${addr}`);
-
-        if (cdmPackage) {
-            // Publish metadata to bulletin and register with the CID
-            const readmeContent = readReadmeContent(contract.readmePath);
-            const repository = contract.repository ?? getGitRemoteUrl(rootDir) ?? "";
-
-            const abiPath = resolve(rootDir, `target/${crateName}.release.abi.json`);
-            let abi: AbiEntry[] = [];
-            if (existsSync(abiPath)) {
-                try {
-                    abi = JSON.parse(readFileSync(abiPath, "utf-8"));
-                } catch {
-                    console.warn(`  Warning: Could not parse ABI at ${abiPath}`);
-                }
-            }
-
-            const metadata: Metadata = {
-                publish_block: 0,
-                published_at: "",
-                description: contract.description ?? "",
-                readme: readmeContent,
-                authors: contract.authors,
-                homepage: contract.homepage ?? "",
-                repository,
-                abi,
-            };
-
-            const { cid, blockNumber } = await d.publishMetadata(metadata);
-            console.log(`  Published metadata CID: ${cid} (block #${blockNumber})`);
-            await d.register(cdmPackage, undefined, cid);
-        }
-    }
+    const result = await runPipelineWithUI({
+        rootDir,
+        registryAddr,
+        skipBuild: opts.skipBuild,
+        deployer: d,
+    });
 
     if (!deployer) {
         if (ownsBulletin) d.bulletinClient.destroy();
         d.client.destroy();
     }
 
-    return addresses;
+    if (!result.success) {
+        process.exit(1);
+    }
+
+    return result.addresses;
 }
 
 /**

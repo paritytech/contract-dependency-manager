@@ -8,10 +8,9 @@ import { AssetHub, Bulletin, contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
 import { CID } from "multiformats/cid";
 import { prepareSigner } from "./signer.js";
-import { detectDeploymentOrder } from "./detection.js";
 import { ALICE_SS58, GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "../constants.js";
 
 function getRegistryContract(client: PolkadotClient, addr: string) {
@@ -46,6 +45,16 @@ export interface Metadata {
     repository: string;
     abi: AbiEntry[];
 }
+
+export interface BuildResult {
+    crateName: string;
+    success: boolean;
+    stdout: string;
+    stderr: string;
+    durationMs: number;
+}
+
+export type BuildProgressCallback = (processed: number, total: number, currentCrate: string) => void;
 
 export class ContractDeployer {
     public signer: ReturnType<typeof prepareSigner>;
@@ -238,46 +247,88 @@ export function pvmContractBuild(
 }
 
 /**
- * Build all CDM contracts with the CONTRACTS_REGISTRY_ADDR set.
+ * Build a single contract asynchronously with progress tracking.
  */
-export function buildAllContracts(rootDir: string, registryAddr: string): void {
-    const order = detectDeploymentOrder(rootDir);
-    console.log(
-        `Building ${order.crateNames.length} contracts with CONTRACTS_REGISTRY_ADDR=${registryAddr}...`,
-    );
-
-    for (const crateName of order.crateNames) {
-        console.log(`  Building ${crateName}...`);
-        pvmContractBuild(rootDir, crateName, registryAddr);
-    }
-    console.log("Build complete.\n");
-}
-
-/**
- * Deploy all contracts (excluding registry) and register them.
- * Returns a map of crate name -> deployed address.
- */
-export async function deployAllContracts(
-    deployer: ContractDeployer,
+export async function pvmContractBuildAsync(
     rootDir: string,
-): Promise<Record<string, string>> {
-    const order = detectDeploymentOrder(rootDir);
-    const addresses: Record<string, string> = {};
-    console.log(`Deploying ${order.crateNames.length} contracts...`);
+    crateName: string,
+    registryAddr?: string,
+    onProgress?: BuildProgressCallback,
+): Promise<BuildResult> {
+    const manifestPath = resolve(rootDir, "Cargo.toml");
 
-    for (let i = 0; i < order.crateNames.length; i++) {
-        const crateName = order.crateNames[i];
-        const cdmPackage = order.cdmPackages[i];
-        const pvmPath = resolve(rootDir, `target/${crateName}.release.polkavm`);
-
-        const addr = await deployer.deploy(pvmPath);
-        addresses[crateName] = addr;
-        console.log(`  Deployed ${crateName} to: ${addr}`);
-
-        if (cdmPackage) {
-            await deployer.register(cdmPackage);
+    return new Promise((done) => {
+        const startTime = Date.now();
+        const args = [
+            "pvm-contract", "build",
+            "--manifest-path", manifestPath,
+            "-p", crateName,
+            "--message-format", "json",
+        ];
+        const env: Record<string, string> = {
+            ...(process.env as Record<string, string>),
+        };
+        if (registryAddr) {
+            env.CONTRACTS_REGISTRY_ADDR = registryAddr;
         }
-    }
 
-    return addresses;
+        const child = spawn("cargo", args, {
+            cwd: rootDir,
+            env,
+            stdio: ["pipe", "pipe", "pipe"],
+        });
+
+        let stdout = "";
+        let stderr = "";
+        let artifactsSeen = 0;
+        let total = 0;
+
+        child.stdout.on("data", (data: Buffer) => {
+            const text = data.toString();
+            stdout += text;
+
+            for (const line of text.split("\n")) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                try {
+                    const msg = JSON.parse(trimmed);
+                    if (msg.reason === "build-plan") {
+                        // Emitted by cargo-pvm-contract before build starts
+                        total = msg.total ?? 0;
+                    } else if (msg.reason === "compiler-artifact") {
+                        artifactsSeen++;
+                        const name = msg.target?.name ?? "unknown";
+                        onProgress?.(artifactsSeen, total, name);
+                    }
+                } catch {
+                    // Not JSON, ignore
+                }
+            }
+        });
+
+        child.stderr.on("data", (data: Buffer) => {
+            const text = data.toString();
+            stderr += text;
+        });
+
+        child.on("close", (code) => {
+            done({
+                crateName,
+                success: code === 0,
+                stdout,
+                stderr,
+                durationMs: Date.now() - startTime,
+            });
+        });
+
+        child.on("error", (err) => {
+            done({
+                crateName,
+                success: false,
+                stdout,
+                stderr: stderr + "\n" + err.message,
+                durationMs: Date.now() - startTime,
+            });
+        });
+    });
 }
