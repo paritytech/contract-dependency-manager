@@ -52,7 +52,7 @@ jobs:
   deploy:
     needs: build
     name: Deploy
-    uses: paritytech/dotns-sdk/.github/workflows/deploy.yml@v0.2.0
+    uses: ./.github/workflows/dotns-deploy.yml
     with:
       basename: contracthub
       artifact-name: frontend-build
