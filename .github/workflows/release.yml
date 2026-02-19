@@ -14,61 +14,33 @@ permissions:
     contents: write
 
 jobs:
-    build:
-        strategy:
-            matrix:
-                include:
-                    - target: bun-linux-x64
-                      os: ubuntu-latest
-                      artifact: cdm-linux-x64
-                    # - target: bun-darwin-x64
-                    #   os: macos-latest
-                    #   artifact: cdm-darwin-x64
-                    # - target: bun-darwin-arm64
-                    #   os: macos-latest
-                    #   artifact: cdm-darwin-arm64
-
-        runs-on: ${{ matrix.os }}
-
-        outputs:
-            tag: ${{ steps.tag.outputs.tag }}
+    build-and-release:
+        runs-on: ubuntu-latest
 
         steps:
             - uses: actions/checkout@v4
             - uses: oven-sh/setup-bun@v2
             - run: bun install
-            - name: Compile binary
-              run: bun build --compile --target=${{ matrix.target }} src/cli.ts --outfile ${{ matrix.artifact }}
 
-            - name: Upload artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: ${{ matrix.artifact }}
-                  path: ${{ matrix.artifact }}
+            - name: Compile binaries
+              run: |
+                  bun build --compile --target=bun-linux-x64 src/cli.ts --outfile cdm-linux-x64
+                  bun build --compile --target=bun-darwin-x64 src/cli.ts --outfile cdm-darwin-x64
+                  bun build --compile --target=bun-darwin-arm64 src/cli.ts --outfile cdm-darwin-arm64
+
             - name: Generate release tag
               id: tag
               run: |
                   TAG="v$(date +'%Y%m%d.%H%M%S')"
                   echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-    release:
-        needs: build
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Download all artifacts
-              uses: actions/download-artifact@v4
-              with:
-                  path: artifacts
-
             - name: Create Release
               uses: softprops/action-gh-release@v2
               with:
-                  tag_name: ${{ needs.build.outputs.tag }}
-                  name: Release ${{ needs.build.outputs.tag }}
+                  tag_name: ${{ steps.tag.outputs.tag }}
+                  name: Release ${{ steps.tag.outputs.tag }}
                   files: |
-                      artifacts/cdm-linux-x64/cdm-linux-x64
-                      artifacts/cdm-darwin-x64/cdm-darwin-x64
-                      artifacts/cdm-darwin-arm64/cdm-darwin-arm64
+                      cdm-linux-x64
+                      cdm-darwin-x64
+                      cdm-darwin-arm64
                   generate_release_notes: true
