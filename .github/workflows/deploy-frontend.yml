@@ -57,6 +57,7 @@ jobs:
       basename: contracthub
       artifact-name: frontend-build
       mode: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'production' || 'preview' }}
+      register-base: true
       max-retries: 3
     secrets:
       mnemonic: ${{ secrets.MNEMONIC || 'bottom drive obey lake curtain smoke basket hold race lonely fit walk' }}
