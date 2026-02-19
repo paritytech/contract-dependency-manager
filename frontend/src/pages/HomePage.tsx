@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import Layout from '../components/Layout';
 import PackageCard from '../components/PackageCard';
 import GrainCanvas from '../components/GrainCanvas';
+import { CopyIcon, CheckIcon } from '../components/Icons';
 import { useNetwork } from '../context/NetworkContext';
 import { useRegistry } from '../hooks/useRegistry';
 import './HomePage.css';
@@ -55,10 +56,11 @@ export default function HomePage() {
             <p className="hero-subtitle">The world's largest smart contract library</p>
             <div className="install-widget">
               <span className="install-widget-title">Install cdm v0.0.1</span>
-              <div className="install-line" onClick={handleCopy}>
+              <div className={`install-line${copied ? ' install-line-copied' : ''}`} onClick={handleCopy}>
                 <span className="install-line-prompt">$</span>
                 <span className="install-line-cmd">{installCmd}</span>
-                <span className="install-line-copy">{copied ? 'Copied!' : 'Copy'}</span>
+                {copied ? <CheckIcon className="install-line-icon" /> : <CopyIcon className="install-line-icon" />}
+                <span className={`install-line-tooltip${copied ? ' install-line-tooltip-visible' : ''}`}>Copied!</span>
               </div>
             </div>
           </div>
