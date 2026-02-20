@@ -20,16 +20,18 @@
         "@polkadot-labs/hdkd": "^0.0.26",
         "@polkadot-labs/hdkd-helpers": "^0.0.27",
         "@polkadot/util-crypto": "^14.0.1",
-        "chalk": "^5.6.2",
         "commander": "^12.0.0",
-        "listr2": "^10.1.0",
+        "ink": "^6.8.0",
         "multiformats": "^13.4.2",
         "polkadot-api": "^1.23.3",
+        "react": "^19.2.4",
+        "react-devtools-core": "./stubs/react-devtools-core",
         "smoldot": "^2.0.40"
     },
     "devDependencies": {
         "@polkadot-api/cli": "^0.18.1",
         "@types/bun": "latest",
+        "@types/react": "^19.2.14",
         "typescript": "^5.3.0"
     }
 }

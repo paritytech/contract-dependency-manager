@@ -88,7 +88,6 @@ deploy.action(async (opts: DeployOptions) => {
         process.exit(1);
     }
 
-    console.log("=== CDM Deploy ===\n");
     console.log(`Target: ${opts.assethubUrl}`);
     console.log(`Bulletin: ${opts.bulletinUrl}`);
     console.log(`Registry: ${opts.registryAddress}`);
