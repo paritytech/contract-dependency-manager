@@ -23,14 +23,14 @@ const NETWORK_PRESETS: Record<
 > = {
     "preview-net": {
         assethubUrl: "wss://previewnet.substrate.dev/asset-hub",
-        bulletinUrl: "wss://previewnet.substrate.dev/bulletin",
-        ipfsGatewayUrl: "https://previewnet.substrate.dev/ipfs",
+        bulletinUrl: "wss://bulletin.dotspark.app",
+        ipfsGatewayUrl: "https://ipfs.dotspark.app/ipfs",
         registryAddress: "0x5801b439a678d9d3a68b8019da6a4abfa507de11",
     },
     paseo: {
         assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
-        bulletinUrl: "wss://previewnet.substrate.dev/bulletin",
-        ipfsGatewayUrl: "https://previewnet.substrate.dev/ipfs",
+        bulletinUrl: "wss://bulletin.dotspark.app",
+        ipfsGatewayUrl: "https://ipfs.dotspark.app/ipfs",
         registryAddress: "0x21fa63bfac2a77b1a6de8bd9a0c2c172a48bb5e3",
     },
     polkadot: {
