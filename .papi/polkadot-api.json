@@ -8,14 +8,20 @@
       "genesis": "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
       "codeHash": "0x763725f38b64ed84ae844dfc5d468258d35ef2f090dde5485d5b1afcfc9bf568"
     },
-    "bulletin": {
-      "metadata": ".papi/metadata/bulletin.scale"
-    },
     "individuality": {
       "metadata": ".papi/metadata/individuality.scale"
     },
     "assetHub": {
-      "metadata": ".papi/metadata/assetHub.scale"
+      "wsUrl": "wss://previewnet.substrate.dev/asset-hub",
+      "metadata": ".papi/metadata/assetHub.scale",
+      "genesis": "0xa77d4408fe2febf5d403329ab76169c6ebb39b537dd815aafd33a5687412d409",
+      "codeHash": "0x522a2b46e08090b1d32cda20d9d4cd0b30129101f6732001ef3f6697ad2a41cb"
+    },
+    "bulletin": {
+      "wsUrl": "wss://previewnet.substrate.dev/bulletin",
+      "metadata": ".papi/metadata/bulletin.scale",
+      "genesis": "0x5a26fe1a13a254c1ed7600d191b71176f768cc23e9dc0f9a34720cec37d1b1c9",
+      "codeHash": "0x4b5246c6f067da11aa539393453b01f26daf7499856317aea480d83e9af0f70c"
     }
   },
   "sol": {

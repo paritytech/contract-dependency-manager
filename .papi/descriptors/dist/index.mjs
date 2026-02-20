@@ -18,8 +18,8 @@ var toBinary = (base64) => {
 };
 
 // .papi/descriptors/src/relay.ts
-var descriptorValues = import("./descriptors-VJ6FSEGK.mjs").then((module) => module["Relay"]);
-var metadataTypes = import("./metadataTypes-7CICVKCQ.mjs").then(
+var descriptorValues = import("./descriptors-SFUV6UN2.mjs").then((module) => module["Relay"]);
+var metadataTypes = import("./metadataTypes-JY4XRAYQ.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
 var asset = {};
@@ -31,47 +31,47 @@ var genesis = "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c
 var _allDescriptors = { descriptors: descriptorValues, metadataTypes, asset, extensions, getMetadata, genesis };
 var relay_default = _allDescriptors;
 
-// .papi/descriptors/src/bulletin.ts
-var descriptorValues2 = import("./descriptors-VJ6FSEGK.mjs").then((module) => module["Bulletin"]);
-var metadataTypes2 = import("./metadataTypes-7CICVKCQ.mjs").then(
+// .papi/descriptors/src/individuality.ts
+var descriptorValues2 = import("./descriptors-SFUV6UN2.mjs").then((module) => module["Individuality"]);
+var metadataTypes2 = import("./metadataTypes-JY4XRAYQ.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
 var asset2 = {};
 var extensions2 = {};
-var getMetadata2 = () => import("./bulletin_metadata-RDJOSJFX.mjs").then(
+var getMetadata2 = () => import("./individuality_metadata-YNNF5ORF.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
 var genesis2 = void 0;
 var _allDescriptors2 = { descriptors: descriptorValues2, metadataTypes: metadataTypes2, asset: asset2, extensions: extensions2, getMetadata: getMetadata2, genesis: genesis2 };
-var bulletin_default = _allDescriptors2;
+var individuality_default = _allDescriptors2;
 
-// .papi/descriptors/src/individuality.ts
-var descriptorValues3 = import("./descriptors-VJ6FSEGK.mjs").then((module) => module["Individuality"]);
-var metadataTypes3 = import("./metadataTypes-7CICVKCQ.mjs").then(
+// .papi/descriptors/src/assetHub.ts
+var descriptorValues3 = import("./descriptors-SFUV6UN2.mjs").then((module) => module["AssetHub"]);
+var metadataTypes3 = import("./metadataTypes-JY4XRAYQ.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
 var asset3 = {};
 var extensions3 = {};
-var getMetadata3 = () => import("./individuality_metadata-YNNF5ORF.mjs").then(
+var getMetadata3 = () => import("./assetHub_metadata-HP7CVUOW.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
-var genesis3 = void 0;
+var genesis3 = "0xa77d4408fe2febf5d403329ab76169c6ebb39b537dd815aafd33a5687412d409";
 var _allDescriptors3 = { descriptors: descriptorValues3, metadataTypes: metadataTypes3, asset: asset3, extensions: extensions3, getMetadata: getMetadata3, genesis: genesis3 };
-var individuality_default = _allDescriptors3;
+var assetHub_default = _allDescriptors3;
 
-// .papi/descriptors/src/assetHub.ts
-var descriptorValues4 = import("./descriptors-VJ6FSEGK.mjs").then((module) => module["AssetHub"]);
-var metadataTypes4 = import("./metadataTypes-7CICVKCQ.mjs").then(
+// .papi/descriptors/src/bulletin.ts
+var descriptorValues4 = import("./descriptors-SFUV6UN2.mjs").then((module) => module["Bulletin"]);
+var metadataTypes4 = import("./metadataTypes-JY4XRAYQ.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
 var asset4 = {};
 var extensions4 = {};
-var getMetadata4 = () => import("./assetHub_metadata-G36GATZJ.mjs").then(
+var getMetadata4 = () => import("./bulletin_metadata-7REQP7XP.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
-var genesis4 = void 0;
+var genesis4 = "0x5a26fe1a13a254c1ed7600d191b71176f768cc23e9dc0f9a34720cec37d1b1c9";
 var _allDescriptors4 = { descriptors: descriptorValues4, metadataTypes: metadataTypes4, asset: asset4, extensions: extensions4, getMetadata: getMetadata4, genesis: genesis4 };
-var assetHub_default = _allDescriptors4;
+var bulletin_default = _allDescriptors4;
 
 // .papi/descriptors/src/common-types.ts
 import { _Enum } from "polkadot-api";
@@ -189,8 +189,8 @@ var TransactionValidityTransactionSource = _Enum;
 var OccupiedCoreAssumption = _Enum;
 var SlashingOffenceKind = _Enum;
 var MmrPrimitivesError = _Enum;
-var XcmVersionedAsset = _Enum;
 var IdentityData = _Enum;
+var XcmVersionedAsset = _Enum;
 
 // .papi/descriptors/src/contracts/index.ts
 var contracts_exports = {};
@@ -214,7 +214,11 @@ var descriptor3 = { abi: [{ "type": "constructor", "inputs": [], "stateMutabilit
 var descriptor4 = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "writeIncrement", "inputs": [], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "writeIncrementN", "inputs": [{ "name": "n", "type": "uint32" }], "outputs": [], "stateMutability": "nonpayable" }] };
 
 // .papi/descriptors/src/index.ts
-var metadatas = { ["0x763725f38b64ed84ae844dfc5d468258d35ef2f090dde5485d5b1afcfc9bf568"]: relay_default };
+var metadatas = {
+  ["0x763725f38b64ed84ae844dfc5d468258d35ef2f090dde5485d5b1afcfc9bf568"]: relay_default,
+  ["0x522a2b46e08090b1d32cda20d9d4cd0b30129101f6732001ef3f6697ad2a41cb"]: assetHub_default,
+  ["0x4b5246c6f067da11aa539393453b01f26daf7499856317aea480d83e9af0f70c"]: bulletin_default
+};
 var getMetadata5 = async (codeHash) => {
   try {
     return await metadatas[codeHash].getMetadata();

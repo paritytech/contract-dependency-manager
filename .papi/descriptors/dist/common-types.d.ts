@@ -12389,1564 +12389,6 @@ export type Ieh6nis3hdbtgi = ResultPayload<SS58String, Enum<{
 export type Ie9sr1iqcg3cgm = ResultPayload<undefined, string>;
 export type I1mqgk2tmnn9i2 = (string) | undefined;
 export type I6lr8sctk0bi4e = Array<string>;
-export type Ic1qn45u9b9hhu = Array<{
-    "phase": Phase;
-    "event": Anonymize<I1rke1a43hqelf>;
-    "topics": Anonymize<Ic5m5lp1oioo8r>;
-}>;
-export type I1rke1a43hqelf = AnonymousEnum<{
-    "System": Anonymize<It0dac3277no5>;
-    "ParachainSystem": Anonymize<Icbsekf57miplo>;
-    "Utility": Anonymize<Iaouq041baf2nh>;
-    "Balances": Anonymize<Ifhlvt8s3bh824>;
-    "TransactionPayment": TransactionPaymentEvent;
-    "SkipFeelessPayment": Anonymize<Idkntqrg9tr7h7>;
-    "TransactionStorage": Anonymize<I6a9k53vnitigf>;
-    "CollatorSelection": Anonymize<I4srakrmf0fspo>;
-    "Session": Anonymize<I6ue0ck5fc3u44>;
-    "XcmpQueue": Anonymize<Idsqc7mhp6nnle>;
-    "PolkadotXcm": Anonymize<If95hivmqmkiku>;
-    "CumulusXcm": Anonymize<I5uv57c3fffoi9>;
-    "MessageQueue": Anonymize<I2kosejppk3jon>;
-    "Sudo": Anonymize<I4mr5fuq4vs8tb>;
-}>;
-export type It0dac3277no5 = AnonymousEnum<{
-    /**
-     * An extrinsic completed successfully.
-     */
-    "ExtrinsicSuccess": Anonymize<Ia82mnkmeo2rhc>;
-    /**
-     * An extrinsic failed.
-     */
-    "ExtrinsicFailed": Anonymize<Icsa46bnbuohqc>;
-    /**
-     * `:code` was updated.
-     */
-    "CodeUpdated": undefined;
-    /**
-     * A new account was created.
-     */
-    "NewAccount": Anonymize<Icbccs0ug47ilf>;
-    /**
-     * An account was reaped.
-     */
-    "KilledAccount": Anonymize<Icbccs0ug47ilf>;
-    /**
-     * On on-chain remark happened.
-     */
-    "Remarked": Anonymize<I855j4i3kr8ko1>;
-    /**
-     * An upgrade was authorized.
-     */
-    "UpgradeAuthorized": Anonymize<Ibgl04rn6nbfm6>;
-    /**
-     * An invalid authorized upgrade was rejected while trying to apply it.
-     */
-    "RejectedInvalidAuthorizedUpgrade": Anonymize<I67n6mbhp91nlg>;
-}>;
-export type Icsa46bnbuohqc = {
-    "dispatch_error": Anonymize<Id3cclc8rha27v>;
-    "dispatch_info": Anonymize<Ic9s8f85vjtncc>;
-};
-export type Id3cclc8rha27v = AnonymousEnum<{
-    "Other": undefined;
-    "CannotLookup": undefined;
-    "BadOrigin": undefined;
-    "Module": Enum<{
-        "System": Anonymize<I5o0s7c8q1cc9b>;
-        "ParachainSystem": Anonymize<Icjkr35j4tmg7k>;
-        "Timestamp": undefined;
-        "ParachainInfo": undefined;
-        "WeightReclaim": undefined;
-        "Utility": Anonymize<I8dt2g2hcrgh36>;
-        "Balances": Anonymize<Idj13i7adlomht>;
-        "TransactionPayment": undefined;
-        "SkipFeelessPayment": undefined;
-        "TransactionStorage": Anonymize<I3t32lkif2hg4k>;
-        "Authorship": undefined;
-        "CollatorSelection": Anonymize<I36bcffk2387dv>;
-        "Session": Anonymize<I1e07dgbaqd1sq>;
-        "Aura": undefined;
-        "AuraExt": undefined;
-        "XcmpQueue": Anonymize<Idnnbndsjjeqqs>;
-        "PolkadotXcm": Anonymize<I4vcvo9od6afmt>;
-        "CumulusXcm": undefined;
-        "MessageQueue": Anonymize<I5iupade5ag2dp>;
-        "Sudo": Anonymize<Iaug04qjhbli00>;
-    }>;
-    "ConsumerRemaining": undefined;
-    "NoProviders": undefined;
-    "TooManyConsumers": undefined;
-    "Token": TokenError;
-    "Arithmetic": ArithmeticError;
-    "Transactional": TransactionalError;
-    "Exhausted": undefined;
-    "Corruption": undefined;
-    "Unavailable": undefined;
-    "RootNotAllowed": undefined;
-    "Trie": Anonymize<Idh4cj79bvroj8>;
-}>;
-export type Icjkr35j4tmg7k = AnonymousEnum<{
-    /**
-     * Attempt to upgrade validation function while existing upgrade pending.
-     */
-    "OverlappingUpgrades": undefined;
-    /**
-     * Polkadot currently prohibits this parachain from upgrading its validation function.
-     */
-    "ProhibitedByPolkadot": undefined;
-    /**
-     * The supplied validation function has compiled into a blob larger than Polkadot is
-     * willing to run.
-     */
-    "TooBig": undefined;
-    /**
-     * The inherent which supplies the validation data did not run this block.
-     */
-    "ValidationDataNotAvailable": undefined;
-    /**
-     * The inherent which supplies the host configuration did not run this block.
-     */
-    "HostConfigurationNotAvailable": undefined;
-    /**
-     * No validation function upgrade is currently scheduled.
-     */
-    "NotScheduled": undefined;
-}>;
-export type I3t32lkif2hg4k = AnonymousEnum<{
-    /**
-     * Attempted to call `store`/`renew` outside of block execution.
-     */
-    "BadContext": undefined;
-    /**
-     * Data size is not in the allowed range.
-     */
-    "BadDataSize": undefined;
-    /**
-     * Too many transactions in the block.
-     */
-    "TooManyTransactions": undefined;
-    /**
-     * Invalid configuration.
-     */
-    "NotConfigured": undefined;
-    /**
-     * Renewed extrinsic is not found.
-     */
-    "RenewedNotFound": undefined;
-    /**
-     * Proof was not expected in this block.
-     */
-    "UnexpectedProof": undefined;
-    /**
-     * Proof failed verification.
-     */
-    "InvalidProof": undefined;
-    /**
-     * Missing storage proof.
-     */
-    "MissingProof": undefined;
-    /**
-     * Unable to verify proof because state data is missing.
-     */
-    "MissingStateData": undefined;
-    /**
-     * Double proof check in the block.
-     */
-    "DoubleCheck": undefined;
-    /**
-     * Storage proof was not checked in the block.
-     */
-    "ProofNotChecked": undefined;
-    /**
-     * Authorization was not found.
-     */
-    "AuthorizationNotFound": undefined;
-    /**
-     * Authorization has not expired.
-     */
-    "AuthorizationNotExpired": undefined;
-    /**
-     * Content hash was not calculated.
-     */
-    "InvalidContentHash": undefined;
-}>;
-export type I36bcffk2387dv = AnonymousEnum<{
-    /**
-     * The pallet has too many candidates.
-     */
-    "TooManyCandidates": undefined;
-    /**
-     * Leaving would result in too few candidates.
-     */
-    "TooFewEligibleCollators": undefined;
-    /**
-     * Account is already a candidate.
-     */
-    "AlreadyCandidate": undefined;
-    /**
-     * Account is not a candidate.
-     */
-    "NotCandidate": undefined;
-    /**
-     * There are too many Invulnerables.
-     */
-    "TooManyInvulnerables": undefined;
-    /**
-     * Account is already an Invulnerable.
-     */
-    "AlreadyInvulnerable": undefined;
-    /**
-     * Account is not an Invulnerable.
-     */
-    "NotInvulnerable": undefined;
-    /**
-     * Account has no associated validator ID.
-     */
-    "NoAssociatedValidatorId": undefined;
-    /**
-     * Validator ID is not yet registered.
-     */
-    "ValidatorNotRegistered": undefined;
-    /**
-     * Could not insert in the candidate list.
-     */
-    "InsertToCandidateListFailed": undefined;
-    /**
-     * Could not remove from the candidate list.
-     */
-    "RemoveFromCandidateListFailed": undefined;
-    /**
-     * New deposit amount would be below the minimum candidacy bond.
-     */
-    "DepositTooLow": undefined;
-    /**
-     * Could not update the candidate list.
-     */
-    "UpdateCandidateListFailed": undefined;
-    /**
-     * Deposit amount is too low to take the target's slot in the candidate list.
-     */
-    "InsufficientBond": undefined;
-    /**
-     * The target account to be replaced in the candidate list is not a candidate.
-     */
-    "TargetIsNotCandidate": undefined;
-    /**
-     * The updated deposit amount is equal to the amount already reserved.
-     */
-    "IdenticalDeposit": undefined;
-    /**
-     * Cannot lower candidacy bond while occupying a future collator slot in the list.
-     */
-    "InvalidUnreserve": undefined;
-}>;
-export type Idnnbndsjjeqqs = AnonymousEnum<{
-    /**
-     * Setting the queue config failed since one of its values was invalid.
-     */
-    "BadQueueConfig": undefined;
-    /**
-     * The execution is already suspended.
-     */
-    "AlreadySuspended": undefined;
-    /**
-     * The execution is already resumed.
-     */
-    "AlreadyResumed": undefined;
-    /**
-     * There are too many active outbound channels.
-     */
-    "TooManyActiveOutboundChannels": undefined;
-    /**
-     * The message is too big.
-     */
-    "TooBig": undefined;
-}>;
-export type Iaug04qjhbli00 = AnonymousEnum<{
-    /**
-     * Sender must be the Sudo account.
-     */
-    "RequireSudo": undefined;
-}>;
-export type I67n6mbhp91nlg = {
-    "code_hash": FixedSizeBinary<32>;
-    "error": Anonymize<Id3cclc8rha27v>;
-};
-export type Icbsekf57miplo = AnonymousEnum<{
-    /**
-     * The validation function has been scheduled to apply.
-     */
-    "ValidationFunctionStored": undefined;
-    /**
-     * The validation function was applied as of the contained relay chain block number.
-     */
-    "ValidationFunctionApplied": Anonymize<Idd7hd99u0ho0n>;
-    /**
-     * The relay-chain aborted the upgrade process.
-     */
-    "ValidationFunctionDiscarded": undefined;
-    /**
-     * Some downward messages have been received and will be processed.
-     */
-    "DownwardMessagesReceived": Anonymize<Iafscmv8tjf0ou>;
-    /**
-     * Downward messages were processed using the given weight.
-     */
-    "DownwardMessagesProcessed": Anonymize<I100l07kaehdlp>;
-    /**
-     * An upward message was sent to the relay chain.
-     */
-    "UpwardMessageSent": Anonymize<I6gnbnvip5vvdi>;
-}>;
-export type Idd7hd99u0ho0n = {
-    "relay_chain_block_num": number;
-};
-export type I100l07kaehdlp = {
-    "weight_used": Anonymize<I4q39t5hn830vp>;
-    "dmq_head": FixedSizeBinary<32>;
-};
-export type I6gnbnvip5vvdi = {
-    "message_hash"?: Anonymize<I4s6vifaf8k998>;
-};
-export type Iaouq041baf2nh = AnonymousEnum<{
-    /**
-     * Batch of dispatches did not complete fully. Index of first failing dispatch given, as
-     * well as the error.
-     */
-    "BatchInterrupted": Anonymize<I368e0tjmrcvlt>;
-    /**
-     * Batch of dispatches completed fully with no error.
-     */
-    "BatchCompleted": undefined;
-    /**
-     * Batch of dispatches completed but has errors.
-     */
-    "BatchCompletedWithErrors": undefined;
-    /**
-     * A single item within a Batch of dispatches has completed with no error.
-     */
-    "ItemCompleted": undefined;
-    /**
-     * A single item within a Batch of dispatches has completed with error.
-     */
-    "ItemFailed": Anonymize<I6akqkga7li13u>;
-    /**
-     * A call was dispatched.
-     */
-    "DispatchedAs": Anonymize<I133qpg6ru2jqi>;
-    /**
-     * Main call was dispatched.
-     */
-    "IfElseMainSuccess": undefined;
-    /**
-     * The fallback call was dispatched.
-     */
-    "IfElseFallbackCalled": Anonymize<I3bp93psani87u>;
-}>;
-export type I368e0tjmrcvlt = {
-    "index": number;
-    "error": Anonymize<Id3cclc8rha27v>;
-};
-export type I6akqkga7li13u = {
-    "error": Anonymize<Id3cclc8rha27v>;
-};
-export type I133qpg6ru2jqi = {
-    "result": Anonymize<I46bjfmr3l2gfb>;
-};
-export type I46bjfmr3l2gfb = ResultPayload<undefined, Anonymize<Id3cclc8rha27v>>;
-export type I3bp93psani87u = {
-    "main_error": Anonymize<Id3cclc8rha27v>;
-};
-export type Ifhlvt8s3bh824 = AnonymousEnum<{
-    /**
-     * An account was created with some free balance.
-     */
-    "Endowed": Anonymize<Icv68aq8841478>;
-    /**
-     * An account was removed whose balance was non-zero but below ExistentialDeposit,
-     * resulting in an outright loss.
-     */
-    "DustLost": Anonymize<Ic262ibdoec56a>;
-    /**
-     * Transfer succeeded.
-     */
-    "Transfer": Anonymize<Iflcfm9b6nlmdd>;
-    /**
-     * A balance was set by root.
-     */
-    "BalanceSet": Anonymize<Ijrsf4mnp3eka>;
-    /**
-     * Some balance was reserved (moved from free to reserved).
-     */
-    "Reserved": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * Some balance was unreserved (moved from reserved to free).
-     */
-    "Unreserved": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * Some balance was moved from the reserve of the first account to the second account.
-     * Final argument indicates the destination balance type.
-     */
-    "ReserveRepatriated": Anonymize<I8tjvj9uq4b7hi>;
-    /**
-     * Some amount was deposited (e.g. for transaction fees).
-     */
-    "Deposit": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * Some amount was withdrawn from the account (e.g. for transaction fees).
-     */
-    "Withdraw": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * Some amount was removed from the account (e.g. for misbehavior).
-     */
-    "Slashed": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * Some amount was minted into an account.
-     */
-    "Minted": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * Some credit was balanced and added to the TotalIssuance.
-     */
-    "MintedCredit": Anonymize<I3qt1hgg4djhgb>;
-    /**
-     * Some amount was burned from an account.
-     */
-    "Burned": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * Some debt has been dropped from the Total Issuance.
-     */
-    "BurnedDebt": Anonymize<I3qt1hgg4djhgb>;
-    /**
-     * Some amount was suspended from an account (it can be restored later).
-     */
-    "Suspended": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * Some amount was restored into an account.
-     */
-    "Restored": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * An account was upgraded.
-     */
-    "Upgraded": Anonymize<I4cbvqmqadhrea>;
-    /**
-     * Total issuance was increased by `amount`, creating a credit to be balanced.
-     */
-    "Issued": Anonymize<I3qt1hgg4djhgb>;
-    /**
-     * Total issuance was decreased by `amount`, creating a debt to be balanced.
-     */
-    "Rescinded": Anonymize<I3qt1hgg4djhgb>;
-    /**
-     * Some balance was locked.
-     */
-    "Locked": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * Some balance was unlocked.
-     */
-    "Unlocked": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * Some balance was frozen.
-     */
-    "Frozen": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * Some balance was thawed.
-     */
-    "Thawed": Anonymize<Id5fm4p8lj5qgi>;
-    /**
-     * The `TotalIssuance` was forcefully changed.
-     */
-    "TotalIssuanceForced": Anonymize<I4fooe9dun9o0t>;
-    /**
-     * Some balance was placed on hold.
-     */
-    "Held": Anonymize<I8mvf14goplnni>;
-    /**
-     * Held balance was burned from an account.
-     */
-    "BurnedHeld": Anonymize<I8mvf14goplnni>;
-    /**
-     * A transfer of `amount` on hold from `source` to `dest` was initiated.
-     */
-    "TransferOnHold": Anonymize<Ie09mpthond7d6>;
-    /**
-     * The `transferred` balance is placed on hold at the `dest` account.
-     */
-    "TransferAndHold": Anonymize<I1ispultrc7caq>;
-    /**
-     * Some balance was released from hold.
-     */
-    "Released": Anonymize<I8mvf14goplnni>;
-    /**
-     * An unexpected/defensive event was triggered.
-     */
-    "Unexpected": Anonymize<Iph9c4rn81ub2>;
-}>;
-export type I8mvf14goplnni = {
-    "reason": Anonymize<Ia44l7h6l7vcfa>;
-    "who": SS58String;
-    "amount": bigint;
-};
-export type Ia44l7h6l7vcfa = AnonymousEnum<{
-    "TransactionStorage": Enum<{
-        "StorageFeeHold": undefined;
-    }>;
-    "Session": Anonymize<I6bkr3dqv753nc>;
-    "PolkadotXcm": Anonymize<Ideiof6273rsoe>;
-}>;
-export type Ie09mpthond7d6 = {
-    "reason": Anonymize<Ia44l7h6l7vcfa>;
-    "source": SS58String;
-    "dest": SS58String;
-    "amount": bigint;
-};
-export type I1ispultrc7caq = {
-    "reason": Anonymize<Ia44l7h6l7vcfa>;
-    "source": SS58String;
-    "dest": SS58String;
-    "transferred": bigint;
-};
-export type Idkntqrg9tr7h7 = AnonymousEnum<{
-    /**
-     * A transaction fee was skipped.
-     */
-    "FeeSkipped": Anonymize<I351cnlhk17436>;
-}>;
-export type I351cnlhk17436 = {
-    "origin": Anonymize<I9g869l9vmunib>;
-};
-export type I9g869l9vmunib = AnonymousEnum<{
-    "system": Anonymize<I9gqitj4t615g3>;
-    "PolkadotXcm": Anonymize<Icvilmd7qu30i4>;
-    "CumulusXcm": Anonymize<I3in0d0lb61qi8>;
-}>;
-export type I3in0d0lb61qi8 = AnonymousEnum<{
-    "Relay": undefined;
-    "SiblingParachain": number;
-}>;
-export type I6a9k53vnitigf = AnonymousEnum<{
-    /**
-     * Stored data under specified index.
-     */
-    "Stored": Anonymize<I395h9meqpi2hf>;
-    /**
-     * Renewed data under specified index.
-     */
-    "Renewed": Anonymize<I66jdpl6lile9j>;
-    /**
-     * Storage proof was successfully checked.
-     */
-    "ProofChecked": undefined;
-    /**
-     * An account `who` was authorized to store `bytes` bytes in `transactions` transactions.
-     */
-    "AccountAuthorized": Anonymize<I2i8iea6e4ne1j>;
-    /**
-     * An authorization for account `who` was refreshed.
-     */
-    "AccountAuthorizationRefreshed": Anonymize<I4cbvqmqadhrea>;
-    /**
-     * Authorization was given for a preimage of `content_hash` (not exceeding `max_size`) to
-     * be stored by anyone.
-     */
-    "PreimageAuthorized": Anonymize<I4jotama61aldv>;
-    /**
-     * An authorization for a preimage of `content_hash` was refreshed.
-     */
-    "PreimageAuthorizationRefreshed": Anonymize<I3rfugj0vt1ug5>;
-    /**
-     * An expired account authorization was removed.
-     */
-    "ExpiredAccountAuthorizationRemoved": Anonymize<I4cbvqmqadhrea>;
-    /**
-     * An expired preimage authorization was removed.
-     */
-    "ExpiredPreimageAuthorizationRemoved": Anonymize<I3rfugj0vt1ug5>;
-}>;
-export type I395h9meqpi2hf = {
-    "index": number;
-    "content_hash": FixedSizeBinary<32>;
-    "cid"?: Anonymize<Iabpgqcjikia83>;
-};
-export type I66jdpl6lile9j = {
-    "index": number;
-    "content_hash": FixedSizeBinary<32>;
-};
-export type I2i8iea6e4ne1j = {
-    "who": SS58String;
-    "transactions": number;
-    "bytes": bigint;
-};
-export type I4jotama61aldv = {
-    "content_hash": FixedSizeBinary<32>;
-    "max_size": bigint;
-};
-export type I3rfugj0vt1ug5 = {
-    "content_hash": FixedSizeBinary<32>;
-};
-export type I4srakrmf0fspo = AnonymousEnum<{
-    /**
-     * New Invulnerables were set.
-     */
-    "NewInvulnerables": Anonymize<I39t01nnod9109>;
-    /**
-     * A new Invulnerable was added.
-     */
-    "InvulnerableAdded": Anonymize<I6v8sm60vvkmk7>;
-    /**
-     * An Invulnerable was removed.
-     */
-    "InvulnerableRemoved": Anonymize<I6v8sm60vvkmk7>;
-    /**
-     * The number of desired candidates was set.
-     */
-    "NewDesiredCandidates": Anonymize<I1qmtmbe5so8r3>;
-    /**
-     * The candidacy bond was set.
-     */
-    "NewCandidacyBond": Anonymize<Ih99m6ehpcar7>;
-    /**
-     * A new candidate joined.
-     */
-    "CandidateAdded": Anonymize<Idgorhsbgdq2ap>;
-    /**
-     * Bond of a candidate updated.
-     */
-    "CandidateBondUpdated": Anonymize<Idgorhsbgdq2ap>;
-    /**
-     * A candidate was removed.
-     */
-    "CandidateRemoved": Anonymize<I6v8sm60vvkmk7>;
-    /**
-     * An account was replaced in the candidate list by another one.
-     */
-    "CandidateReplaced": Anonymize<I9ubb2kqevnu6t>;
-    /**
-     * An account was unable to be added to the Invulnerables because they did not have keys
-     * registered. Other Invulnerables may have been set.
-     */
-    "InvalidInvulnerableSkipped": Anonymize<I6v8sm60vvkmk7>;
-}>;
-export type I6v8sm60vvkmk7 = {
-    "account_id": SS58String;
-};
-export type I1qmtmbe5so8r3 = {
-    "desired_candidates": number;
-};
-export type Ih99m6ehpcar7 = {
-    "bond_amount": bigint;
-};
-export type Idgorhsbgdq2ap = {
-    "account_id": SS58String;
-    "deposit": bigint;
-};
-export type I9ubb2kqevnu6t = {
-    "old": SS58String;
-    "new": SS58String;
-    "deposit": bigint;
-};
-export type Idsqc7mhp6nnle = AnonymousEnum<{
-    /**
-     * An HRMP message was sent to a sibling parachain.
-     */
-    "XcmpMessageSent": Anonymize<I137t1cld92pod>;
-}>;
-export type I137t1cld92pod = {
-    "message_hash": FixedSizeBinary<32>;
-};
-export type I5uv57c3fffoi9 = AnonymousEnum<{
-    /**
-     * Downward message is invalid XCM.
-     * \[ id \]
-     */
-    "InvalidFormat": FixedSizeBinary<32>;
-    /**
-     * Downward message is unsupported version of XCM.
-     * \[ id \]
-     */
-    "UnsupportedVersion": FixedSizeBinary<32>;
-    /**
-     * Downward message executed with the given outcome.
-     * \[ id, outcome \]
-     */
-    "ExecutedDownward": Anonymize<Ibslgga81p36aa>;
-}>;
-export type Ibslgga81p36aa = [FixedSizeBinary<32>, Anonymize<Ieqhmksji3pmv5>];
-export type I2kosejppk3jon = AnonymousEnum<{
-    /**
-     * Message discarded due to an error in the `MessageProcessor` (usually a format error).
-     */
-    "ProcessingFailed": Anonymize<I1rvj4ubaplho0>;
-    /**
-     * Message is processed.
-     */
-    "Processed": Anonymize<Ia3uu7lqcc1q1i>;
-    /**
-     * Message placed in overweight queue.
-     */
-    "OverweightEnqueued": Anonymize<I7crucfnonitkn>;
-    /**
-     * This page was reaped.
-     */
-    "PageReaped": Anonymize<I7tmrp94r9sq4n>;
-}>;
-export type I1rvj4ubaplho0 = {
-    /**
-     * The `blake2_256` hash of the message.
-     */
-    "id": FixedSizeBinary<32>;
-    /**
-     * The queue of the message.
-     */
-    "origin": Anonymize<Iejeo53sea6n4q>;
-    /**
-     * The error that occurred.
-     *
-     * This error is pretty opaque. More fine-grained errors need to be emitted as events
-     * by the `MessageProcessor`.
-     */
-    "error": Anonymize<I5hhsj7l9obr84>;
-};
-export type Iejeo53sea6n4q = AnonymousEnum<{
-    "Here": undefined;
-    "Parent": undefined;
-    "Sibling": number;
-}>;
-export type Ia3uu7lqcc1q1i = {
-    /**
-     * The `blake2_256` hash of the message.
-     */
-    "id": FixedSizeBinary<32>;
-    /**
-     * The queue of the message.
-     */
-    "origin": Anonymize<Iejeo53sea6n4q>;
-    /**
-     * How much weight was used to process the message.
-     */
-    "weight_used": Anonymize<I4q39t5hn830vp>;
-    /**
-     * Whether the message was processed.
-     *
-     * Note that this does not mean that the underlying `MessageProcessor` was internally
-     * successful. It *solely* means that the MQ pallet will treat this as a success
-     * condition and discard the message. Any internal error needs to be emitted as events
-     * by the `MessageProcessor`.
-     */
-    "success": boolean;
-};
-export type I7crucfnonitkn = {
-    /**
-     * The `blake2_256` hash of the message.
-     */
-    "id": FixedSizeBinary<32>;
-    /**
-     * The queue of the message.
-     */
-    "origin": Anonymize<Iejeo53sea6n4q>;
-    /**
-     * The page of the message.
-     */
-    "page_index": number;
-    /**
-     * The index of the message within the page.
-     */
-    "message_index": number;
-};
-export type I7tmrp94r9sq4n = {
-    /**
-     * The queue of the page.
-     */
-    "origin": Anonymize<Iejeo53sea6n4q>;
-    /**
-     * The index of the page.
-     */
-    "index": number;
-};
-export type I4mr5fuq4vs8tb = AnonymousEnum<{
-    /**
-     * A sudo call just took place.
-     */
-    "Sudid": Anonymize<I4kigljjkan2n6>;
-    /**
-     * The sudo key has been updated.
-     */
-    "KeyChanged": Anonymize<I5rtkmhm2dng4u>;
-    /**
-     * The key was permanently removed.
-     */
-    "KeyRemoved": undefined;
-    /**
-     * A [sudo_as](Pallet::sudo_as) call just took place.
-     */
-    "SudoAsDone": Anonymize<I4kigljjkan2n6>;
-}>;
-export type I4kigljjkan2n6 = {
-    /**
-     * The result of the call made by the sudo user.
-     */
-    "sudo_result": Anonymize<I46bjfmr3l2gfb>;
-};
-export type I5rtkmhm2dng4u = {
-    /**
-     * The old sudo key (if one was previously set).
-     */
-    "old"?: Anonymize<Ihfphjolmsqq1>;
-    /**
-     * The new sudo key (if one was set).
-     */
-    "new": SS58String;
-};
-export type I1v7jbnil3tjns = Array<{
-    "used_bandwidth": Anonymize<Ieafp1gui1o4cl>;
-    "para_head_hash"?: Anonymize<I4s6vifaf8k998>;
-    "consumed_go_ahead_signal"?: Anonymize<Iav8k1edbj86k7>;
-}>;
-export type Ieafp1gui1o4cl = {
-    "ump_msg_count": number;
-    "ump_total_bytes": number;
-    "hrmp_outgoing": Array<[number, {
-        "msg_count": number;
-        "total_bytes": number;
-    }]>;
-};
-export type Iav8k1edbj86k7 = (UpgradeGoAhead) | undefined;
-export type I8jgj1nhcr2dg8 = {
-    "used_bandwidth": Anonymize<Ieafp1gui1o4cl>;
-    "hrmp_watermark"?: Anonymize<I4arjljr6dpflb>;
-    "consumed_go_ahead_signal"?: Anonymize<Iav8k1edbj86k7>;
-};
-export type I4i91h98n3cv1b = {
-    "dmq_mqc_head": FixedSizeBinary<32>;
-    "relay_dispatch_queue_remaining_capacity": {
-        "remaining_count": number;
-        "remaining_size": number;
-    };
-    "ingress_channels": Array<[number, {
-        "max_capacity": number;
-        "max_total_size": number;
-        "max_message_size": number;
-        "msg_count": number;
-        "total_size": number;
-        "mqc_head"?: Anonymize<I4s6vifaf8k998>;
-    }]>;
-    "egress_channels": Array<[number, {
-        "max_capacity": number;
-        "max_total_size": number;
-        "max_message_size": number;
-        "msg_count": number;
-        "total_size": number;
-        "mqc_head"?: Anonymize<I4s6vifaf8k998>;
-    }]>;
-};
-export type I4iumukclgj8ej = {
-    "max_code_size": number;
-    "max_head_data_size": number;
-    "max_upward_queue_count": number;
-    "max_upward_queue_size": number;
-    "max_upward_message_size": number;
-    "max_upward_message_num_per_candidate": number;
-    "hrmp_max_message_num_per_candidate": number;
-    "validation_upgrade_cooldown": number;
-    "validation_upgrade_delay": number;
-    "async_backing_params": Anonymize<Iavuvfkop6318c>;
-};
-export type I48i407regf59r = {
-    "sent_at": number;
-    "reverse_idx": number;
-};
-export type Iafsev9pf8ur2h = Array<{
-    "id": Anonymize<Ia44l7h6l7vcfa>;
-    "amount": bigint;
-}>;
-export type I9bin2jc70qt6q = Array<Anonymize<I3qt1hgg4djhgb>>;
-export type I52552vmt51a1m = {
-    "extent": {
-        "transactions": number;
-        "bytes": bigint;
-    };
-    "expiration": number;
-};
-export type Icd998p53cb80u = AnonymousEnum<{
-    "Account": SS58String;
-    "Preimage": FixedSizeBinary<32>;
-}>;
-export type Ianratlvp36bb8 = Array<{
-    "chunk_root": FixedSizeBinary<32>;
-    "content_hash": FixedSizeBinary<32>;
-    "hashing": Anonymize<Ifmrgam3blcf8>;
-    "cid_codec": bigint;
-    "size": number;
-    "block_chunks": number;
-}>;
-export type Ifmrgam3blcf8 = AnonymousEnum<{
-    "Blake2b256": undefined;
-    "Sha2_256": undefined;
-    "Keccak256": undefined;
-}>;
-export type Idftgde1j2kabb = {
-    "codec": bigint;
-    "hashing": Anonymize<Ifmrgam3blcf8>;
-};
-export type Ifi4da1gej1fri = Array<Anonymize<Iep1lmt6q3s6r3>>;
-export type Iep1lmt6q3s6r3 = {
-    "who": SS58String;
-    "deposit": bigint;
-};
-export type Ifvgo9568rpmqc = Array<Anonymize<I8uo3fpd3bcc6f>>;
-export type Ib77b0fp1a6mjr = Array<{
-    "recipient": number;
-    "state": Enum<{
-        "Ok": undefined;
-        "Suspended": undefined;
-    }>;
-    "signals_exist": boolean;
-    "first_index": number;
-    "last_index": number;
-}>;
-export type Ifup3lg9ro8a0f = {
-    "suspend_threshold": number;
-    "drop_threshold": number;
-    "resume_threshold": number;
-};
-export type Ibkm2gcn4pji30 = {
-    "aliasers": Anonymize<I41j3fc5ema929>;
-    "ticket": bigint;
-};
-export type Idh2ug6ou4a8og = {
-    "begin": number;
-    "end": number;
-    "count": number;
-    "ready_neighbours"?: ({
-        "prev": Anonymize<Iejeo53sea6n4q>;
-        "next": Anonymize<Iejeo53sea6n4q>;
-    }) | undefined;
-    "message_count": bigint;
-    "size": bigint;
-};
-export type Ib4jhb8tt3uung = [Anonymize<Iejeo53sea6n4q>, number];
-export type I3u72uvpuo4qrt = AnonymousEnum<{
-    /**
-     * Set the current validation data.
-     *
-     * This should be invoked exactly once per block. It will panic at the finalization
-     * phase if the call was not invoked.
-     *
-     * The dispatch origin for this call must be `Inherent`
-     *
-     * As a side effect, this function upgrades the current validation function
-     * if the appropriate time has come.
-     */
-    "set_validation_data": Anonymize<Ial23jn8hp0aen>;
-    "sudo_send_upward_message": Anonymize<Ifpj261e8s63m3>;
-}>;
-export type Ial23jn8hp0aen = {
-    "data": {
-        "validation_data": Anonymize<Ifn6q3equiq9qi>;
-        "relay_chain_state": Anonymize<Itom7fk49o0c9>;
-        "relay_parent_descendants": Array<Anonymize<Ic952bubvq4k7d>>;
-        "collator_peer_id"?: Anonymize<Iabpgqcjikia83>;
-    };
-    "inbound_messages_data": {
-        "downward_messages": {
-            "full_messages": Anonymize<I6ljjd4b5fa4ov>;
-            "hashed_messages": Array<Anonymize<Icqnh9ino03itn>>;
-        };
-        "horizontal_messages": {
-            "full_messages": Array<[number, Anonymize<I409qo0sfkbh16>]>;
-            "hashed_messages": Array<[number, Anonymize<Icqnh9ino03itn>]>;
-        };
-    };
-};
-export type Icqnh9ino03itn = {
-    "sent_at": number;
-    "msg_hash": FixedSizeBinary<32>;
-};
-export type Ifpj261e8s63m3 = {
-    "message": Binary;
-};
-export type I145nkn1ppo2ur = AnonymousEnum<{
-    /**
-     * Send a batch of dispatch calls.
-     *
-     * May be called from any origin except `None`.
-     *
-     * - `calls`: The calls to be dispatched from the same origin. The number of call must not
-     * exceed the constant: `batched_calls_limit` (available in constant metadata).
-     *
-     * If origin is root then the calls are dispatched without checking origin filter. (This
-     * includes bypassing `frame_system::Config::BaseCallFilter`).
-     *
-     * ## Complexity
-     * - O(C) where C is the number of calls to be batched.
-     *
-     * This will return `Ok` in all circumstances. To determine the success of the batch, an
-     * event is deposited. If a call failed and the batch was interrupted, then the
-     * `BatchInterrupted` event is deposited, along with the number of successful calls made
-     * and the error of the failed call. If all were successful, then the `BatchCompleted`
-     * event is deposited.
-     */
-    "batch": Anonymize<I9h5d8o0h4us2s>;
-    /**
-     * Send a call through an indexed pseudonym of the sender.
-     *
-     * Filter from origin are passed along. The call will be dispatched with an origin which
-     * use the same filter as the origin of this call.
-     *
-     * NOTE: If you need to ensure that any account-based filtering is not honored (i.e.
-     * because you expect `proxy` to have been used prior in the call stack and you do not want
-     * the call restrictions to apply to any sub-accounts), then use `as_multi_threshold_1`
-     * in the Multisig pallet instead.
-     *
-     * NOTE: Prior to version *12, this was called `as_limited_sub`.
-     *
-     * The dispatch origin for this call must be _Signed_.
-     */
-    "as_derivative": Anonymize<Idpvojgpgnt7ds>;
-    /**
-     * Send a batch of dispatch calls and atomically execute them.
-     * The whole transaction will rollback and fail if any of the calls failed.
-     *
-     * May be called from any origin except `None`.
-     *
-     * - `calls`: The calls to be dispatched from the same origin. The number of call must not
-     * exceed the constant: `batched_calls_limit` (available in constant metadata).
-     *
-     * If origin is root then the calls are dispatched without checking origin filter. (This
-     * includes bypassing `frame_system::Config::BaseCallFilter`).
-     *
-     * ## Complexity
-     * - O(C) where C is the number of calls to be batched.
-     */
-    "batch_all": Anonymize<I9h5d8o0h4us2s>;
-    /**
-     * Dispatches a function call with a provided origin.
-     *
-     * The dispatch origin for this call must be _Root_.
-     *
-     * ## Complexity
-     * - O(1).
-     */
-    "dispatch_as": Anonymize<I84vt11fffi5pu>;
-    /**
-     * Send a batch of dispatch calls.
-     * Unlike `batch`, it allows errors and won't interrupt.
-     *
-     * May be called from any origin except `None`.
-     *
-     * - `calls`: The calls to be dispatched from the same origin. The number of call must not
-     * exceed the constant: `batched_calls_limit` (available in constant metadata).
-     *
-     * If origin is root then the calls are dispatch without checking origin filter. (This
-     * includes bypassing `frame_system::Config::BaseCallFilter`).
-     *
-     * ## Complexity
-     * - O(C) where C is the number of calls to be batched.
-     */
-    "force_batch": Anonymize<I9h5d8o0h4us2s>;
-    /**
-     * Dispatch a function call with a specified weight.
-     *
-     * This function does not check the weight of the call, and instead allows the
-     * Root origin to specify the weight of the call.
-     *
-     * The dispatch origin for this call must be _Root_.
-     */
-    "with_weight": Anonymize<Ifk4i407a994t0>;
-    /**
-     * Dispatch a fallback call in the event the main call fails to execute.
-     * May be called from any origin except `None`.
-     *
-     * This function first attempts to dispatch the `main` call.
-     * If the `main` call fails, the `fallback` is attemted.
-     * if the fallback is successfully dispatched, the weights of both calls
-     * are accumulated and an event containing the main call error is deposited.
-     *
-     * In the event of a fallback failure the whole call fails
-     * with the weights returned.
-     *
-     * - `main`: The main call to be dispatched. This is the primary action to execute.
-     * - `fallback`: The fallback call to be dispatched in case the `main` call fails.
-     *
-     * ## Dispatch Logic
-     * - If the origin is `root`, both the main and fallback calls are executed without
-     * applying any origin filters.
-     * - If the origin is not `root`, the origin filter is applied to both the `main` and
-     * `fallback` calls.
-     *
-     * ## Use Case
-     * - Some use cases might involve submitting a `batch` type call in either main, fallback
-     * or both.
-     */
-    "if_else": Anonymize<I72adfp735qakq>;
-    /**
-     * Dispatches a function call with a provided origin.
-     *
-     * Almost the same as [`Pallet::dispatch_as`] but forwards any error of the inner call.
-     *
-     * The dispatch origin for this call must be _Root_.
-     */
-    "dispatch_as_fallible": Anonymize<I84vt11fffi5pu>;
-}>;
-export type I9h5d8o0h4us2s = {
-    "calls": Array<TxCallData>;
-};
-export type Idpvojgpgnt7ds = {
-    "index": number;
-    "call": TxCallData;
-};
-export type I84vt11fffi5pu = {
-    "as_origin": Anonymize<I9g869l9vmunib>;
-    "call": TxCallData;
-};
-export type Ifk4i407a994t0 = {
-    "call": TxCallData;
-    "weight": Anonymize<I4q39t5hn830vp>;
-};
-export type I72adfp735qakq = {
-    "main": TxCallData;
-    "fallback": TxCallData;
-};
-export type Ibg9o3o0le7ood = AnonymousEnum<{
-    /**
-     * Index and store data off chain. Minimum data size is 1 byte, maximum is
-     * `MaxTransactionSize`. Data will be removed after `RetentionPeriod` blocks, unless
-     * `renew` is called.
-     *
-     * Authorization is required to store data using regular signed/unsigned transactions.
-     * Regular signed transactions require account authorization (see
-     * [`authorize_account`](Self::authorize_account)), regular unsigned transactions require
-     * preimage authorization (see [`authorize_preimage`](Self::authorize_preimage)).
-     *
-     * Emits [`Stored`](Event::Stored) when successful.
-     *
-     * ## Complexity
-     *
-     * O(n*log(n)) of data size, as all data is pushed to an in-memory trie.
-     */
-    "store": Anonymize<Itrlf5b2o2l8q>;
-    /**
-     * Renew previously stored data. Parameters are the block number that contains previous
-     * `store` or `renew` call and transaction index within that block. Transaction index is
-     * emitted in the `Stored` or `Renewed` event.
-     *
-     * As with [`store`](Self::store), authorization is required to renew data using regular
-     * signed/unsigned transactions.
-     *
-     * Emits [`Renewed`](Event::Renewed) when successful.
-     *
-     * ## Complexity
-     *
-     * O(1).
-     */
-    "renew": Anonymize<I4vj3ndsquheo1>;
-    /**
-     * Check storage proof for block number `block_number() - RetentionPeriod`. If such a block
-     * does not exist, the proof is expected to be `None`.
-     *
-     * ## Complexity
-     *
-     * Linear w.r.t the number of indexed transactions in the proved block for random probing.
-     * There's a DB read for each transaction.
-     */
-    "check_proof": Anonymize<I7h5kud22qmfsg>;
-    /**
-     * Authorize an account to store up to a given amount of arbitrary data. The authorization
-     * will expire after a configured number of blocks.
-     *
-     * If the account is already authorized to store data, this will increase the amount of
-     * data the account is authorized to store (and the number of transactions the account may
-     * submit to supply the data), and push back the expiration block.
-     *
-     * Parameters:
-     *
-     * - `who`: The account to be credited with an authorization to store data.
-     * - `transactions`: The number of transactions that `who` may submit to supply that data.
-     * - `bytes`: The number of bytes that `who` may submit.
-     *
-     * The origin for this call must be the pallet's `Authorizer`. Emits
-     * [`AccountAuthorized`](Event::AccountAuthorized) when successful.
-     */
-    "authorize_account": Anonymize<I2i8iea6e4ne1j>;
-    /**
-     * Authorize anyone to store a preimage of the given BLAKE2b hash. The authorization will
-     * expire after a configured number of blocks.
-     *
-     * If authorization already exists for a preimage of the given hash to be stored, the
-     * maximum size of the preimage will be increased to `max_size`, and the expiration block
-     * will be pushed back.
-     *
-     * Parameters:
-     *
-     * - `content_hash`: The BLAKE2b hash of the data to be submitted.
-     * - `max_size`: The maximum size, in bytes, of the preimage.
-     *
-     * The origin for this call must be the pallet's `Authorizer`. Emits
-     * [`PreimageAuthorized`](Event::PreimageAuthorized) when successful.
-     */
-    "authorize_preimage": Anonymize<I4jotama61aldv>;
-    /**
-     * Remove an expired account authorization from storage. Anyone can call this.
-     *
-     * Parameters:
-     *
-     * - `who`: The account with an expired authorization to remove.
-     *
-     * Emits [`ExpiredAccountAuthorizationRemoved`](Event::ExpiredAccountAuthorizationRemoved)
-     * when successful.
-     */
-    "remove_expired_account_authorization": Anonymize<I4cbvqmqadhrea>;
-    /**
-     * Remove an expired preimage authorization from storage. Anyone can call this.
-     *
-     * Parameters:
-     *
-     * - `content_hash`: The BLAKE2b hash that was authorized.
-     *
-     * Emits
-     * [`ExpiredPreimageAuthorizationRemoved`](Event::ExpiredPreimageAuthorizationRemoved)
-     * when successful.
-     */
-    "remove_expired_preimage_authorization": Anonymize<I3rfugj0vt1ug5>;
-    /**
-     * Refresh the expiration of an existing authorization for an account.
-     *
-     * If the account does not have an authorization, the call will fail.
-     *
-     * Parameters:
-     *
-     * - `who`: The account to be credited with an authorization to store data.
-     *
-     * The origin for this call must be the pallet's `Authorizer`. Emits
-     * [`AccountAuthorizationRefreshed`](Event::AccountAuthorizationRefreshed) when successful.
-     */
-    "refresh_account_authorization": Anonymize<I4cbvqmqadhrea>;
-    /**
-     * Refresh the expiration of an existing authorization for a preimage of a BLAKE2b hash.
-     *
-     * If the preimage does not have an authorization, the call will fail.
-     *
-     * Parameters:
-     *
-     * - `content_hash`: The BLAKE2b hash of the data to be submitted.
-     *
-     * The origin for this call must be the pallet's `Authorizer`. Emits
-     * [`PreimageAuthorizationRefreshed`](Event::PreimageAuthorizationRefreshed) when
-     * successful.
-     */
-    "refresh_preimage_authorization": Anonymize<I3rfugj0vt1ug5>;
-}>;
-export type Itrlf5b2o2l8q = {
-    "data": Binary;
-};
-export type I4vj3ndsquheo1 = {
-    "block": number;
-    "index": number;
-};
-export type I7h5kud22qmfsg = {
-    "proof": {
-        "chunk": Binary;
-        "proof": Anonymize<Itom7fk49o0c9>;
-    };
-};
-export type I9dpq5287dur8b = AnonymousEnum<{
-    /**
-     * Set the list of invulnerable (fixed) collators. These collators must do some
-     * preparation, namely to have registered session keys.
-     *
-     * The call will remove any accounts that have not registered keys from the set. That is,
-     * it is non-atomic; the caller accepts all `AccountId`s passed in `new` _individually_ as
-     * acceptable Invulnerables, and is not proposing a _set_ of new Invulnerables.
-     *
-     * This call does not maintain mutual exclusivity of `Invulnerables` and `Candidates`. It
-     * is recommended to use a batch of `add_invulnerable` and `remove_invulnerable` instead. A
-     * `batch_all` can also be used to enforce atomicity. If any candidates are included in
-     * `new`, they should be removed with `remove_invulnerable_candidate` after execution.
-     *
-     * Must be called by the `UpdateOrigin`.
-     */
-    "set_invulnerables": Anonymize<Ifccifqltb5obi>;
-    /**
-     * Set the ideal number of non-invulnerable collators. If lowering this number, then the
-     * number of running collators could be higher than this figure. Aside from that edge case,
-     * there should be no other way to have more candidates than the desired number.
-     *
-     * The origin for this call must be the `UpdateOrigin`.
-     */
-    "set_desired_candidates": Anonymize<Iadtsfv699cq8b>;
-    /**
-     * Set the candidacy bond amount.
-     *
-     * If the candidacy bond is increased by this call, all current candidates which have a
-     * deposit lower than the new bond will be kicked from the list and get their deposits
-     * back.
-     *
-     * The origin for this call must be the `UpdateOrigin`.
-     */
-    "set_candidacy_bond": Anonymize<Ialpmgmhr3gk5r>;
-    /**
-     * Register this account as a collator candidate. The account must (a) already have
-     * registered session keys and (b) be able to reserve the `CandidacyBond`.
-     *
-     * This call is not available to `Invulnerable` collators.
-     */
-    "register_as_candidate": undefined;
-    /**
-     * Deregister `origin` as a collator candidate. Note that the collator can only leave on
-     * session change. The `CandidacyBond` will be unreserved immediately.
-     *
-     * This call will fail if the total number of candidates would drop below
-     * `MinEligibleCollators`.
-     */
-    "leave_intent": undefined;
-    /**
-     * Add a new account `who` to the list of `Invulnerables` collators. `who` must have
-     * registered session keys. If `who` is a candidate, they will be removed.
-     *
-     * The origin for this call must be the `UpdateOrigin`.
-     */
-    "add_invulnerable": Anonymize<I4cbvqmqadhrea>;
-    /**
-     * Remove an account `who` from the list of `Invulnerables` collators. `Invulnerables` must
-     * be sorted.
-     *
-     * The origin for this call must be the `UpdateOrigin`.
-     */
-    "remove_invulnerable": Anonymize<I4cbvqmqadhrea>;
-    /**
-     * Update the candidacy bond of collator candidate `origin` to a new amount `new_deposit`.
-     *
-     * Setting a `new_deposit` that is lower than the current deposit while `origin` is
-     * occupying a top-`DesiredCandidates` slot is not allowed.
-     *
-     * This call will fail if `origin` is not a collator candidate, the updated bond is lower
-     * than the minimum candidacy bond, and/or the amount cannot be reserved.
-     */
-    "update_bond": Anonymize<I3sdol54kg5jaq>;
-    /**
-     * The caller `origin` replaces a candidate `target` in the collator candidate list by
-     * reserving `deposit`. The amount `deposit` reserved by the caller must be greater than
-     * the existing bond of the target it is trying to replace.
-     *
-     * This call will fail if the caller is already a collator candidate or invulnerable, the
-     * caller does not have registered session keys, the target is not a collator candidate,
-     * and/or the `deposit` amount cannot be reserved.
-     */
-    "take_candidate_slot": Anonymize<I8fougodaj6di6>;
-}>;
-export type Ifccifqltb5obi = {
-    "new": Anonymize<Ia2lhg7l2hilo3>;
-};
-export type Iadtsfv699cq8b = {
-    "max": number;
-};
-export type Ialpmgmhr3gk5r = {
-    "bond": bigint;
-};
-export type I3sdol54kg5jaq = {
-    "new_deposit": bigint;
-};
-export type I8fougodaj6di6 = {
-    "deposit": bigint;
-    "target": SS58String;
-};
-export type I77dda7hps0u37 = AnonymousEnum<{
-    /**
-     * Sets the session key(s) of the function caller to `keys`.
-     *
-     * Allows an account to set its session key prior to becoming a validator.
-     * This doesn't take effect until the next session.
-     *
-     * - `origin`: The dispatch origin of this function must be signed.
-     * - `keys`: The new session keys to set. These are the public keys of all sessions keys
-     * setup in the runtime.
-     * - `proof`: The proof that `origin` has access to the private keys of `keys`. See
-     * [`impl_opaque_keys`](sp_runtime::impl_opaque_keys) for more information about the
-     * proof format.
-     */
-    "set_keys": Anonymize<I81vt5eq60l4b6>;
-    /**
-     * Removes any session key(s) of the function caller.
-     *
-     * This doesn't take effect until the next session.
-     *
-     * The dispatch origin of this function must be Signed and the account must be either be
-     * convertible to a validator ID using the chain's typical addressing system (this usually
-     * means being a controller account) or directly convertible into a validator ID (which
-     * usually means being a stash account).
-     */
-    "purge_keys": undefined;
-}>;
-export type I81vt5eq60l4b6 = {
-    "keys": FixedSizeBinary<32>;
-    "proof": Binary;
-};
-export type Ib7tahn20bvsep = AnonymousEnum<{
-    /**
-     * Suspends all XCM executions for the XCMP queue, regardless of the sender's origin.
-     *
-     * - `origin`: Must pass `ControllerOrigin`.
-     */
-    "suspend_xcm_execution": undefined;
-    /**
-     * Resumes all XCM executions for the XCMP queue.
-     *
-     * Note that this function doesn't change the status of the in/out bound channels.
-     *
-     * - `origin`: Must pass `ControllerOrigin`.
-     */
-    "resume_xcm_execution": undefined;
-    /**
-     * Overwrites the number of pages which must be in the queue for the other side to be
-     * told to suspend their sending.
-     *
-     * - `origin`: Must pass `Root`.
-     * - `new`: Desired value for `QueueConfigData.suspend_value`
-     */
-    "update_suspend_threshold": Anonymize<I3vh014cqgmrfd>;
-    /**
-     * Overwrites the number of pages which must be in the queue after which we drop any
-     * further messages from the channel.
-     *
-     * - `origin`: Must pass `Root`.
-     * - `new`: Desired value for `QueueConfigData.drop_threshold`
-     */
-    "update_drop_threshold": Anonymize<I3vh014cqgmrfd>;
-    /**
-     * Overwrites the number of pages which the queue must be reduced to before it signals
-     * that message sending may recommence after it has been suspended.
-     *
-     * - `origin`: Must pass `Root`.
-     * - `new`: Desired value for `QueueConfigData.resume_threshold`
-     */
-    "update_resume_threshold": Anonymize<I3vh014cqgmrfd>;
-}>;
-export type Ic2uoe7jdksosp = AnonymousEnum<{
-    /**
-     * Remove a page which has no more messages remaining to be processed or is stale.
-     */
-    "reap_page": Anonymize<I40pqum1mu8qg3>;
-    /**
-     * Execute an overweight message.
-     *
-     * Temporary processing errors will be propagated whereas permanent errors are treated
-     * as success condition.
-     *
-     * - `origin`: Must be `Signed`.
-     * - `message_origin`: The origin from which the message to be executed arrived.
-     * - `page`: The page in the queue in which the message to be executed is sitting.
-     * - `index`: The index into the queue of the message to be executed.
-     * - `weight_limit`: The maximum amount of weight allowed to be consumed in the execution
-     * of the message.
-     *
-     * Benchmark complexity considerations: O(index + weight_limit).
-     */
-    "execute_overweight": Anonymize<I1r4c2ghbtvjuc>;
-}>;
-export type I40pqum1mu8qg3 = {
-    "message_origin": Anonymize<Iejeo53sea6n4q>;
-    "page_index": number;
-};
-export type I1r4c2ghbtvjuc = {
-    "message_origin": Anonymize<Iejeo53sea6n4q>;
-    "page": number;
-    "index": number;
-    "weight_limit": Anonymize<I4q39t5hn830vp>;
-};
-export type I5g83tunafdss0 = AnonymousEnum<{
-    /**
-     * Authenticates the sudo key and dispatches a function call with `Root` origin.
-     */
-    "sudo": Anonymize<Iaf4fc4gf84bv5>;
-    /**
-     * Authenticates the sudo key and dispatches a function call with `Root` origin.
-     * This function does not check the weight of the call, and instead allows the
-     * Sudo user to specify the weight of the call.
-     *
-     * The dispatch origin for this call must be _Signed_.
-     */
-    "sudo_unchecked_weight": Anonymize<Ifk4i407a994t0>;
-    /**
-     * Authenticates the current sudo key and sets the given AccountId (`new`) as the new sudo
-     * key.
-     */
-    "set_key": Anonymize<I8k3rnvpeeh4hv>;
-    /**
-     * Authenticates the sudo key and dispatches a function call with `Signed` origin from
-     * a given account.
-     *
-     * The dispatch origin for this call must be _Signed_.
-     */
-    "sudo_as": Anonymize<I4dcn5cv3m3r34>;
-    /**
-     * Permanently removes the sudo key.
-     *
-     * **This cannot be un-done.**
-     */
-    "remove_key": undefined;
-}>;
-export type Iaf4fc4gf84bv5 = {
-    "call": TxCallData;
-};
-export type I8k3rnvpeeh4hv = {
-    "new": MultiAddress;
-};
-export type I4dcn5cv3m3r34 = {
-    "who": MultiAddress;
-    "call": TxCallData;
-};
-export type Ieeb2u9t56qdcr = ResultPayload<Anonymize<I46bjfmr3l2gfb>, Anonymize<I5nrjkj9qumobs>>;
-export type I4ph3d1eepnmr1 = {
-    "keys": Binary;
-    "proof": Binary;
-};
-export type Ifi3i9borjqiav = AnonymousEnum<{
-    "System": Anonymize<Iekve0i6djpd9f>;
-    "ParachainSystem": Anonymize<I3u72uvpuo4qrt>;
-    "Timestamp": Anonymize<I7d75gqfg6jh9c>;
-    "ParachainInfo": undefined;
-    "Utility": Anonymize<I145nkn1ppo2ur>;
-    "Balances": Anonymize<I9svldsp29mh87>;
-    "TransactionStorage": Anonymize<Ibg9o3o0le7ood>;
-    "CollatorSelection": Anonymize<I9dpq5287dur8b>;
-    "Session": Anonymize<I77dda7hps0u37>;
-    "XcmpQueue": Anonymize<Ib7tahn20bvsep>;
-    "PolkadotXcm": Anonymize<I6k1inef986368>;
-    "CumulusXcm": undefined;
-    "MessageQueue": Anonymize<Ic2uoe7jdksosp>;
-    "Sudo": Anonymize<I5g83tunafdss0>;
-}>;
-export type I2srrkue8s0910 = ResultPayload<{
-    "execution_result": ResultPayload<Anonymize<Ia1u1r3n74r13c>, {
-        "post_info": Anonymize<Ia1u1r3n74r13c>;
-        "error": Anonymize<Id3cclc8rha27v>;
-    }>;
-    "emitted_events": Anonymize<I1r99afgt1kopa>;
-    "local_xcm"?: Anonymize<Ieqgqma27vbupd>;
-    "forwarded_xcms": Anonymize<Ialhmrpub9sefe>;
-}, Anonymize<I55ku9c5gk50hb>>;
-export type I1r99afgt1kopa = Array<Anonymize<I1rke1a43hqelf>>;
-export type I1abqdpbsc75ie = ResultPayload<{
-    "execution_result": Anonymize<Ieqhmksji3pmv5>;
-    "emitted_events": Anonymize<I1r99afgt1kopa>;
-    "forwarded_xcms": Anonymize<Ialhmrpub9sefe>;
-}, Anonymize<I55ku9c5gk50hb>>;
-export type XcmVersionedAsset = Enum<{
-    "V3": Anonymize<Idcm24504c8bkk>;
-    "V4": Anonymize<Ia5l7mu5a6v49o>;
-    "V5": Anonymize<Iffh1nc5e1mod6>;
-}>;
-export declare const XcmVersionedAsset: GetEnum<XcmVersionedAsset>;
-export type Icujp6hmv35vbn = ResultPayload<boolean, Enum<{
-    "VersionedAssetConversionFailed": undefined;
-    "VersionedLocationConversionFailed": undefined;
-}>>;
-export type I4tjame31218k9 = ResultPayload<Anonymize<I41j3fc5ema929>, Anonymize<Iecgqth5sdfqqi>>;
-export type Iecgqth5sdfqqi = AnonymousEnum<{
-    "LocationVersionConversionFailed": undefined;
-}>;
-export type I5gif8vomct5i8 = ResultPayload<boolean, Anonymize<Iecgqth5sdfqqi>>;
-export type Ideol201iiphm6 = (Anonymize<Idftgde1j2kabb>) | undefined;
 export type If9lvpkvrdd4de = Array<{
     "phase": Phase;
     "event": Enum<{
@@ -14085,6 +12527,33 @@ export type I8sjiu98a296ci = AnonymousEnum<{
     "RootNotAllowed": undefined;
     "Trie": Anonymize<Idh4cj79bvroj8>;
 }>;
+export type Icjkr35j4tmg7k = AnonymousEnum<{
+    /**
+     * Attempt to upgrade validation function while existing upgrade pending.
+     */
+    "OverlappingUpgrades": undefined;
+    /**
+     * Polkadot currently prohibits this parachain from upgrading its validation function.
+     */
+    "ProhibitedByPolkadot": undefined;
+    /**
+     * The supplied validation function has compiled into a blob larger than Polkadot is
+     * willing to run.
+     */
+    "TooBig": undefined;
+    /**
+     * The inherent which supplies the validation data did not run this block.
+     */
+    "ValidationDataNotAvailable": undefined;
+    /**
+     * The inherent which supplies the host configuration did not run this block.
+     */
+    "HostConfigurationNotAvailable": undefined;
+    /**
+     * No validation function upgrade is currently scheduled.
+     */
+    "NotScheduled": undefined;
+}>;
 export type I8pd5n1lppndg2 = AnonymousEnum<{
     /**
      * The origin has no usage tracked.
@@ -14197,6 +12666,104 @@ export type I3rc9953c1unod = AnonymousEnum<{
      * Number of holds on an account would exceed the count of `RuntimeHoldReason`.
      */
     "TooManyHolds": undefined;
+}>;
+export type I36bcffk2387dv = AnonymousEnum<{
+    /**
+     * The pallet has too many candidates.
+     */
+    "TooManyCandidates": undefined;
+    /**
+     * Leaving would result in too few candidates.
+     */
+    "TooFewEligibleCollators": undefined;
+    /**
+     * Account is already a candidate.
+     */
+    "AlreadyCandidate": undefined;
+    /**
+     * Account is not a candidate.
+     */
+    "NotCandidate": undefined;
+    /**
+     * There are too many Invulnerables.
+     */
+    "TooManyInvulnerables": undefined;
+    /**
+     * Account is already an Invulnerable.
+     */
+    "AlreadyInvulnerable": undefined;
+    /**
+     * Account is not an Invulnerable.
+     */
+    "NotInvulnerable": undefined;
+    /**
+     * Account has no associated validator ID.
+     */
+    "NoAssociatedValidatorId": undefined;
+    /**
+     * Validator ID is not yet registered.
+     */
+    "ValidatorNotRegistered": undefined;
+    /**
+     * Could not insert in the candidate list.
+     */
+    "InsertToCandidateListFailed": undefined;
+    /**
+     * Could not remove from the candidate list.
+     */
+    "RemoveFromCandidateListFailed": undefined;
+    /**
+     * New deposit amount would be below the minimum candidacy bond.
+     */
+    "DepositTooLow": undefined;
+    /**
+     * Could not update the candidate list.
+     */
+    "UpdateCandidateListFailed": undefined;
+    /**
+     * Deposit amount is too low to take the target's slot in the candidate list.
+     */
+    "InsufficientBond": undefined;
+    /**
+     * The target account to be replaced in the candidate list is not a candidate.
+     */
+    "TargetIsNotCandidate": undefined;
+    /**
+     * The updated deposit amount is equal to the amount already reserved.
+     */
+    "IdenticalDeposit": undefined;
+    /**
+     * Cannot lower candidacy bond while occupying a future collator slot in the list.
+     */
+    "InvalidUnreserve": undefined;
+}>;
+export type Idnnbndsjjeqqs = AnonymousEnum<{
+    /**
+     * Setting the queue config failed since one of its values was invalid.
+     */
+    "BadQueueConfig": undefined;
+    /**
+     * The execution is already suspended.
+     */
+    "AlreadySuspended": undefined;
+    /**
+     * The execution is already resumed.
+     */
+    "AlreadyResumed": undefined;
+    /**
+     * There are too many active outbound channels.
+     */
+    "TooManyActiveOutboundChannels": undefined;
+    /**
+     * The message is too big.
+     */
+    "TooBig": undefined;
+}>;
+export type Iaug04qjhbli00 = AnonymousEnum<{
+    /**
+     * Sender must be the Sudo account.
+     */
+    "RequireSudo": undefined;
 }>;
 export type I6ngmnhrhffg3o = AnonymousEnum<{
     /**
@@ -15203,6 +13770,42 @@ export type I41q2f7q30vie1 = {
     "code_hash": FixedSizeBinary<32>;
     "error": Anonymize<I8sjiu98a296ci>;
 };
+export type Icbsekf57miplo = AnonymousEnum<{
+    /**
+     * The validation function has been scheduled to apply.
+     */
+    "ValidationFunctionStored": undefined;
+    /**
+     * The validation function was applied as of the contained relay chain block number.
+     */
+    "ValidationFunctionApplied": Anonymize<Idd7hd99u0ho0n>;
+    /**
+     * The relay-chain aborted the upgrade process.
+     */
+    "ValidationFunctionDiscarded": undefined;
+    /**
+     * Some downward messages have been received and will be processed.
+     */
+    "DownwardMessagesReceived": Anonymize<Iafscmv8tjf0ou>;
+    /**
+     * Downward messages were processed using the given weight.
+     */
+    "DownwardMessagesProcessed": Anonymize<I100l07kaehdlp>;
+    /**
+     * An upward message was sent to the relay chain.
+     */
+    "UpwardMessageSent": Anonymize<I6gnbnvip5vvdi>;
+}>;
+export type Idd7hd99u0ho0n = {
+    "relay_chain_block_num": number;
+};
+export type I100l07kaehdlp = {
+    "weight_used": Anonymize<I4q39t5hn830vp>;
+    "dmq_head": FixedSizeBinary<32>;
+};
+export type I6gnbnvip5vvdi = {
+    "message_hash"?: Anonymize<I4s6vifaf8k998>;
+};
 export type I75i2hrnh6msvo = AnonymousEnum<{
     /**
      * An account was created with some free balance.
@@ -15419,6 +14022,10 @@ export type Iae383ou9vruru = AnonymousEnum<{
             }>;
         };
     }>;
+}>;
+export type I3in0d0lb61qi8 = AnonymousEnum<{
+    "Relay": undefined;
+    "SiblingParachain": number;
 }>;
 export type I6vki5ip88t309 = {
     "revision": number;
@@ -15696,6 +14303,185 @@ export type Iaeqj2ebnvkjqe = {
     "tip": bigint;
     "asset_id"?: Anonymize<I4pai6qnfk426l>;
 };
+export type I4srakrmf0fspo = AnonymousEnum<{
+    /**
+     * New Invulnerables were set.
+     */
+    "NewInvulnerables": Anonymize<I39t01nnod9109>;
+    /**
+     * A new Invulnerable was added.
+     */
+    "InvulnerableAdded": Anonymize<I6v8sm60vvkmk7>;
+    /**
+     * An Invulnerable was removed.
+     */
+    "InvulnerableRemoved": Anonymize<I6v8sm60vvkmk7>;
+    /**
+     * The number of desired candidates was set.
+     */
+    "NewDesiredCandidates": Anonymize<I1qmtmbe5so8r3>;
+    /**
+     * The candidacy bond was set.
+     */
+    "NewCandidacyBond": Anonymize<Ih99m6ehpcar7>;
+    /**
+     * A new candidate joined.
+     */
+    "CandidateAdded": Anonymize<Idgorhsbgdq2ap>;
+    /**
+     * Bond of a candidate updated.
+     */
+    "CandidateBondUpdated": Anonymize<Idgorhsbgdq2ap>;
+    /**
+     * A candidate was removed.
+     */
+    "CandidateRemoved": Anonymize<I6v8sm60vvkmk7>;
+    /**
+     * An account was replaced in the candidate list by another one.
+     */
+    "CandidateReplaced": Anonymize<I9ubb2kqevnu6t>;
+    /**
+     * An account was unable to be added to the Invulnerables because they did not have keys
+     * registered. Other Invulnerables may have been set.
+     */
+    "InvalidInvulnerableSkipped": Anonymize<I6v8sm60vvkmk7>;
+}>;
+export type I6v8sm60vvkmk7 = {
+    "account_id": SS58String;
+};
+export type I1qmtmbe5so8r3 = {
+    "desired_candidates": number;
+};
+export type Ih99m6ehpcar7 = {
+    "bond_amount": bigint;
+};
+export type Idgorhsbgdq2ap = {
+    "account_id": SS58String;
+    "deposit": bigint;
+};
+export type I9ubb2kqevnu6t = {
+    "old": SS58String;
+    "new": SS58String;
+    "deposit": bigint;
+};
+export type Idsqc7mhp6nnle = AnonymousEnum<{
+    /**
+     * An HRMP message was sent to a sibling parachain.
+     */
+    "XcmpMessageSent": Anonymize<I137t1cld92pod>;
+}>;
+export type I137t1cld92pod = {
+    "message_hash": FixedSizeBinary<32>;
+};
+export type I5uv57c3fffoi9 = AnonymousEnum<{
+    /**
+     * Downward message is invalid XCM.
+     * \[ id \]
+     */
+    "InvalidFormat": FixedSizeBinary<32>;
+    /**
+     * Downward message is unsupported version of XCM.
+     * \[ id \]
+     */
+    "UnsupportedVersion": FixedSizeBinary<32>;
+    /**
+     * Downward message executed with the given outcome.
+     * \[ id, outcome \]
+     */
+    "ExecutedDownward": Anonymize<Ibslgga81p36aa>;
+}>;
+export type Ibslgga81p36aa = [FixedSizeBinary<32>, Anonymize<Ieqhmksji3pmv5>];
+export type I2kosejppk3jon = AnonymousEnum<{
+    /**
+     * Message discarded due to an error in the `MessageProcessor` (usually a format error).
+     */
+    "ProcessingFailed": Anonymize<I1rvj4ubaplho0>;
+    /**
+     * Message is processed.
+     */
+    "Processed": Anonymize<Ia3uu7lqcc1q1i>;
+    /**
+     * Message placed in overweight queue.
+     */
+    "OverweightEnqueued": Anonymize<I7crucfnonitkn>;
+    /**
+     * This page was reaped.
+     */
+    "PageReaped": Anonymize<I7tmrp94r9sq4n>;
+}>;
+export type I1rvj4ubaplho0 = {
+    /**
+     * The `blake2_256` hash of the message.
+     */
+    "id": FixedSizeBinary<32>;
+    /**
+     * The queue of the message.
+     */
+    "origin": Anonymize<Iejeo53sea6n4q>;
+    /**
+     * The error that occurred.
+     *
+     * This error is pretty opaque. More fine-grained errors need to be emitted as events
+     * by the `MessageProcessor`.
+     */
+    "error": Anonymize<I5hhsj7l9obr84>;
+};
+export type Iejeo53sea6n4q = AnonymousEnum<{
+    "Here": undefined;
+    "Parent": undefined;
+    "Sibling": number;
+}>;
+export type Ia3uu7lqcc1q1i = {
+    /**
+     * The `blake2_256` hash of the message.
+     */
+    "id": FixedSizeBinary<32>;
+    /**
+     * The queue of the message.
+     */
+    "origin": Anonymize<Iejeo53sea6n4q>;
+    /**
+     * How much weight was used to process the message.
+     */
+    "weight_used": Anonymize<I4q39t5hn830vp>;
+    /**
+     * Whether the message was processed.
+     *
+     * Note that this does not mean that the underlying `MessageProcessor` was internally
+     * successful. It *solely* means that the MQ pallet will treat this as a success
+     * condition and discard the message. Any internal error needs to be emitted as events
+     * by the `MessageProcessor`.
+     */
+    "success": boolean;
+};
+export type I7crucfnonitkn = {
+    /**
+     * The `blake2_256` hash of the message.
+     */
+    "id": FixedSizeBinary<32>;
+    /**
+     * The queue of the message.
+     */
+    "origin": Anonymize<Iejeo53sea6n4q>;
+    /**
+     * The page of the message.
+     */
+    "page_index": number;
+    /**
+     * The index of the message within the page.
+     */
+    "message_index": number;
+};
+export type I7tmrp94r9sq4n = {
+    /**
+     * The queue of the page.
+     */
+    "origin": Anonymize<Iejeo53sea6n4q>;
+    /**
+     * The index of the page.
+     */
+    "index": number;
+};
 export type Idpgpfr4codfae = AnonymousEnum<{
     /**
      * Batch of dispatches did not complete fully. Index of first failing dispatch given, as
@@ -15797,6 +14583,16 @@ export type Ia60ej7aim0fgn = {
      * The result of the call made by the sudo user.
      */
     "sudo_result": Anonymize<Isinel920ihda>;
+};
+export type I5rtkmhm2dng4u = {
+    /**
+     * The old sudo key (if one was previously set).
+     */
+    "old"?: Anonymize<Ihfphjolmsqq1>;
+    /**
+     * The new sudo key (if one was set).
+     */
+    "new": SS58String;
 };
 export type Iettg91bk6f1fk = AnonymousEnum<{
     /**
@@ -15989,6 +14785,10 @@ export type Idkb7nir4hamvl = AnonymousEnum<{
      */
     "ReportedUsernameWeakOrUnclearJudgement": Anonymize<I7luomlm0cts8l>;
 }>;
+export type Iep1lmt6q3s6r3 = {
+    "who": SS58String;
+    "deposit": bigint;
+};
 export type I1fac16213rie2 = {
     "who": SS58String;
     "registrar_index": number;
@@ -16581,10 +15381,69 @@ export type I3escdojpj0551 = {
      */
     "next_cursor"?: Anonymize<Iabpgqcjikia83>;
 };
+export type I1v7jbnil3tjns = Array<{
+    "used_bandwidth": Anonymize<Ieafp1gui1o4cl>;
+    "para_head_hash"?: Anonymize<I4s6vifaf8k998>;
+    "consumed_go_ahead_signal"?: Anonymize<Iav8k1edbj86k7>;
+}>;
+export type Ieafp1gui1o4cl = {
+    "ump_msg_count": number;
+    "ump_total_bytes": number;
+    "hrmp_outgoing": Array<[number, {
+        "msg_count": number;
+        "total_bytes": number;
+    }]>;
+};
+export type Iav8k1edbj86k7 = (UpgradeGoAhead) | undefined;
+export type I8jgj1nhcr2dg8 = {
+    "used_bandwidth": Anonymize<Ieafp1gui1o4cl>;
+    "hrmp_watermark"?: Anonymize<I4arjljr6dpflb>;
+    "consumed_go_ahead_signal"?: Anonymize<Iav8k1edbj86k7>;
+};
+export type I4i91h98n3cv1b = {
+    "dmq_mqc_head": FixedSizeBinary<32>;
+    "relay_dispatch_queue_remaining_capacity": {
+        "remaining_count": number;
+        "remaining_size": number;
+    };
+    "ingress_channels": Array<[number, {
+        "max_capacity": number;
+        "max_total_size": number;
+        "max_message_size": number;
+        "msg_count": number;
+        "total_size": number;
+        "mqc_head"?: Anonymize<I4s6vifaf8k998>;
+    }]>;
+    "egress_channels": Array<[number, {
+        "max_capacity": number;
+        "max_total_size": number;
+        "max_message_size": number;
+        "msg_count": number;
+        "total_size": number;
+        "mqc_head"?: Anonymize<I4s6vifaf8k998>;
+    }]>;
+};
+export type I4iumukclgj8ej = {
+    "max_code_size": number;
+    "max_head_data_size": number;
+    "max_upward_queue_count": number;
+    "max_upward_queue_size": number;
+    "max_upward_message_size": number;
+    "max_upward_message_num_per_candidate": number;
+    "hrmp_max_message_num_per_candidate": number;
+    "validation_upgrade_cooldown": number;
+    "validation_upgrade_delay": number;
+    "async_backing_params": Anonymize<Iavuvfkop6318c>;
+};
+export type I48i407regf59r = {
+    "sent_at": number;
+    "reverse_idx": number;
+};
 export type Ie0f00jpmaqo85 = Array<{
     "id": Anonymize<I7opbihljiqnlr>;
     "amount": bigint;
 }>;
+export type I9bin2jc70qt6q = Array<Anonymize<I3qt1hgg4djhgb>>;
 export type Icj0tssrh6ika3 = {
     "used": bigint;
     "at_block": number;
@@ -16635,6 +15494,35 @@ export type I78s05f59eoi8b = {
     "decimals": number;
     "is_frozen": boolean;
 };
+export type Ifi4da1gej1fri = Array<Anonymize<Iep1lmt6q3s6r3>>;
+export type Ifvgo9568rpmqc = Array<Anonymize<I8uo3fpd3bcc6f>>;
+export type Ib77b0fp1a6mjr = Array<{
+    "recipient": number;
+    "state": Enum<{
+        "Ok": undefined;
+        "Suspended": undefined;
+    }>;
+    "signals_exist": boolean;
+    "first_index": number;
+    "last_index": number;
+}>;
+export type Ifup3lg9ro8a0f = {
+    "suspend_threshold": number;
+    "drop_threshold": number;
+    "resume_threshold": number;
+};
+export type Idh2ug6ou4a8og = {
+    "begin": number;
+    "end": number;
+    "count": number;
+    "ready_neighbours"?: ({
+        "prev": Anonymize<Iejeo53sea6n4q>;
+        "next": Anonymize<Iejeo53sea6n4q>;
+    }) | undefined;
+    "message_count": bigint;
+    "size": bigint;
+};
+export type Ib4jhb8tt3uung = [Anonymize<Iejeo53sea6n4q>, number];
 export type I48e2fe747rjco = [Array<{
     "delegate": SS58String;
     "proxy_type": Anonymize<Ieuemnllefri8h>;
@@ -17136,6 +16024,46 @@ export type Ifqs0lgciqgmci = AnonymousEnum<{
     "Fixed": bigint;
     "Variable": FixedSizeBinary<8>;
 }>;
+export type I3u72uvpuo4qrt = AnonymousEnum<{
+    /**
+     * Set the current validation data.
+     *
+     * This should be invoked exactly once per block. It will panic at the finalization
+     * phase if the call was not invoked.
+     *
+     * The dispatch origin for this call must be `Inherent`
+     *
+     * As a side effect, this function upgrades the current validation function
+     * if the appropriate time has come.
+     */
+    "set_validation_data": Anonymize<Ial23jn8hp0aen>;
+    "sudo_send_upward_message": Anonymize<Ifpj261e8s63m3>;
+}>;
+export type Ial23jn8hp0aen = {
+    "data": {
+        "validation_data": Anonymize<Ifn6q3equiq9qi>;
+        "relay_chain_state": Anonymize<Itom7fk49o0c9>;
+        "relay_parent_descendants": Array<Anonymize<Ic952bubvq4k7d>>;
+        "collator_peer_id"?: Anonymize<Iabpgqcjikia83>;
+    };
+    "inbound_messages_data": {
+        "downward_messages": {
+            "full_messages": Anonymize<I6ljjd4b5fa4ov>;
+            "hashed_messages": Array<Anonymize<Icqnh9ino03itn>>;
+        };
+        "horizontal_messages": {
+            "full_messages": Array<[number, Anonymize<I409qo0sfkbh16>]>;
+            "hashed_messages": Array<[number, Anonymize<Icqnh9ino03itn>]>;
+        };
+    };
+};
+export type Icqnh9ino03itn = {
+    "sent_at": number;
+    "msg_hash": FixedSizeBinary<32>;
+};
+export type Ifpj261e8s63m3 = {
+    "message": Binary;
+};
 export type I46ohf9ad4t2nj = AnonymousEnum<{
     /**
      * Allow to clean usage associated with an entity when it is zero or when there is no
@@ -17822,6 +16750,212 @@ export type I5lh6k2tq92l6m = AnonymousEnum<{
      */
     "remove": Anonymize<I90c919drss29e>;
 }>;
+export type I9dpq5287dur8b = AnonymousEnum<{
+    /**
+     * Set the list of invulnerable (fixed) collators. These collators must do some
+     * preparation, namely to have registered session keys.
+     *
+     * The call will remove any accounts that have not registered keys from the set. That is,
+     * it is non-atomic; the caller accepts all `AccountId`s passed in `new` _individually_ as
+     * acceptable Invulnerables, and is not proposing a _set_ of new Invulnerables.
+     *
+     * This call does not maintain mutual exclusivity of `Invulnerables` and `Candidates`. It
+     * is recommended to use a batch of `add_invulnerable` and `remove_invulnerable` instead. A
+     * `batch_all` can also be used to enforce atomicity. If any candidates are included in
+     * `new`, they should be removed with `remove_invulnerable_candidate` after execution.
+     *
+     * Must be called by the `UpdateOrigin`.
+     */
+    "set_invulnerables": Anonymize<Ifccifqltb5obi>;
+    /**
+     * Set the ideal number of non-invulnerable collators. If lowering this number, then the
+     * number of running collators could be higher than this figure. Aside from that edge case,
+     * there should be no other way to have more candidates than the desired number.
+     *
+     * The origin for this call must be the `UpdateOrigin`.
+     */
+    "set_desired_candidates": Anonymize<Iadtsfv699cq8b>;
+    /**
+     * Set the candidacy bond amount.
+     *
+     * If the candidacy bond is increased by this call, all current candidates which have a
+     * deposit lower than the new bond will be kicked from the list and get their deposits
+     * back.
+     *
+     * The origin for this call must be the `UpdateOrigin`.
+     */
+    "set_candidacy_bond": Anonymize<Ialpmgmhr3gk5r>;
+    /**
+     * Register this account as a collator candidate. The account must (a) already have
+     * registered session keys and (b) be able to reserve the `CandidacyBond`.
+     *
+     * This call is not available to `Invulnerable` collators.
+     */
+    "register_as_candidate": undefined;
+    /**
+     * Deregister `origin` as a collator candidate. Note that the collator can only leave on
+     * session change. The `CandidacyBond` will be unreserved immediately.
+     *
+     * This call will fail if the total number of candidates would drop below
+     * `MinEligibleCollators`.
+     */
+    "leave_intent": undefined;
+    /**
+     * Add a new account `who` to the list of `Invulnerables` collators. `who` must have
+     * registered session keys. If `who` is a candidate, they will be removed.
+     *
+     * The origin for this call must be the `UpdateOrigin`.
+     */
+    "add_invulnerable": Anonymize<I4cbvqmqadhrea>;
+    /**
+     * Remove an account `who` from the list of `Invulnerables` collators. `Invulnerables` must
+     * be sorted.
+     *
+     * The origin for this call must be the `UpdateOrigin`.
+     */
+    "remove_invulnerable": Anonymize<I4cbvqmqadhrea>;
+    /**
+     * Update the candidacy bond of collator candidate `origin` to a new amount `new_deposit`.
+     *
+     * Setting a `new_deposit` that is lower than the current deposit while `origin` is
+     * occupying a top-`DesiredCandidates` slot is not allowed.
+     *
+     * This call will fail if `origin` is not a collator candidate, the updated bond is lower
+     * than the minimum candidacy bond, and/or the amount cannot be reserved.
+     */
+    "update_bond": Anonymize<I3sdol54kg5jaq>;
+    /**
+     * The caller `origin` replaces a candidate `target` in the collator candidate list by
+     * reserving `deposit`. The amount `deposit` reserved by the caller must be greater than
+     * the existing bond of the target it is trying to replace.
+     *
+     * This call will fail if the caller is already a collator candidate or invulnerable, the
+     * caller does not have registered session keys, the target is not a collator candidate,
+     * and/or the `deposit` amount cannot be reserved.
+     */
+    "take_candidate_slot": Anonymize<I8fougodaj6di6>;
+}>;
+export type Ifccifqltb5obi = {
+    "new": Anonymize<Ia2lhg7l2hilo3>;
+};
+export type Iadtsfv699cq8b = {
+    "max": number;
+};
+export type Ialpmgmhr3gk5r = {
+    "bond": bigint;
+};
+export type I3sdol54kg5jaq = {
+    "new_deposit": bigint;
+};
+export type I8fougodaj6di6 = {
+    "deposit": bigint;
+    "target": SS58String;
+};
+export type I77dda7hps0u37 = AnonymousEnum<{
+    /**
+     * Sets the session key(s) of the function caller to `keys`.
+     * Allows an account to set its session key prior to becoming a validator.
+     * This doesn't take effect until the next session.
+     *
+     * The dispatch origin of this function must be signed.
+     *
+     * ## Complexity
+     * - `O(1)`. Actual cost depends on the number of length of `T::Keys::key_ids()` which is
+     * fixed.
+     */
+    "set_keys": Anonymize<I81vt5eq60l4b6>;
+    /**
+     * Removes any session key(s) of the function caller.
+     *
+     * This doesn't take effect until the next session.
+     *
+     * The dispatch origin of this function must be Signed and the account must be either be
+     * convertible to a validator ID using the chain's typical addressing system (this usually
+     * means being a controller account) or directly convertible into a validator ID (which
+     * usually means being a stash account).
+     *
+     * ## Complexity
+     * - `O(1)` in number of key types. Actual cost depends on the number of length of
+     * `T::Keys::key_ids()` which is fixed.
+     */
+    "purge_keys": undefined;
+}>;
+export type I81vt5eq60l4b6 = {
+    "keys": FixedSizeBinary<32>;
+    "proof": Binary;
+};
+export type Ib7tahn20bvsep = AnonymousEnum<{
+    /**
+     * Suspends all XCM executions for the XCMP queue, regardless of the sender's origin.
+     *
+     * - `origin`: Must pass `ControllerOrigin`.
+     */
+    "suspend_xcm_execution": undefined;
+    /**
+     * Resumes all XCM executions for the XCMP queue.
+     *
+     * Note that this function doesn't change the status of the in/out bound channels.
+     *
+     * - `origin`: Must pass `ControllerOrigin`.
+     */
+    "resume_xcm_execution": undefined;
+    /**
+     * Overwrites the number of pages which must be in the queue for the other side to be
+     * told to suspend their sending.
+     *
+     * - `origin`: Must pass `Root`.
+     * - `new`: Desired value for `QueueConfigData.suspend_value`
+     */
+    "update_suspend_threshold": Anonymize<I3vh014cqgmrfd>;
+    /**
+     * Overwrites the number of pages which must be in the queue after which we drop any
+     * further messages from the channel.
+     *
+     * - `origin`: Must pass `Root`.
+     * - `new`: Desired value for `QueueConfigData.drop_threshold`
+     */
+    "update_drop_threshold": Anonymize<I3vh014cqgmrfd>;
+    /**
+     * Overwrites the number of pages which the queue must be reduced to before it signals
+     * that message sending may recommence after it has been suspended.
+     *
+     * - `origin`: Must pass `Root`.
+     * - `new`: Desired value for `QueueConfigData.resume_threshold`
+     */
+    "update_resume_threshold": Anonymize<I3vh014cqgmrfd>;
+}>;
+export type Ic2uoe7jdksosp = AnonymousEnum<{
+    /**
+     * Remove a page which has no more messages remaining to be processed or is stale.
+     */
+    "reap_page": Anonymize<I40pqum1mu8qg3>;
+    /**
+     * Execute an overweight message.
+     *
+     * Temporary processing errors will be propagated whereas permanent errors are treated
+     * as success condition.
+     *
+     * - `origin`: Must be `Signed`.
+     * - `message_origin`: The origin from which the message to be executed arrived.
+     * - `page`: The page in the queue in which the message to be executed is sitting.
+     * - `index`: The index into the queue of the message to be executed.
+     * - `weight_limit`: The maximum amount of weight allowed to be consumed in the execution
+     * of the message.
+     *
+     * Benchmark complexity considerations: O(index + weight_limit).
+     */
+    "execute_overweight": Anonymize<I1r4c2ghbtvjuc>;
+}>;
+export type I40pqum1mu8qg3 = {
+    "message_origin": Anonymize<Iejeo53sea6n4q>;
+    "page_index": number;
+};
+export type I1r4c2ghbtvjuc = {
+    "message_origin": Anonymize<Iejeo53sea6n4q>;
+    "page": number;
+    "index": number;
+    "weight_limit": Anonymize<I4q39t5hn830vp>;
+};
 export type I1a1kgk9kv5i5r = AnonymousEnum<{
     /**
      * Send a batch of dispatch calls.
@@ -18141,6 +17275,9 @@ export type I7svtrqhu3p484 = AnonymousEnum<{
 }>;
 export type I268pu64p3f4k5 = {
     "call": TxCallData;
+};
+export type I8k3rnvpeeh4hv = {
+    "new": MultiAddress;
 };
 export type I7r69pp73si76m = {
     "who": MultiAddress;
@@ -23929,6 +23066,10 @@ export type I11otairup02lc = Array<{
     }>;
     "amount": bigint;
 }>;
+export type Ibkm2gcn4pji30 = {
+    "aliasers": Anonymize<I41j3fc5ema929>;
+    "ticket": bigint;
+};
 export type I7f4alf2hnuu8s = {
     "delivery_fee_factor": bigint;
     "is_congested": boolean;
@@ -29362,6 +28503,10 @@ export type I6052turo9tavh = (Anonymize<I3qklfjubrljqh>) | undefined;
 export type Iemk0s5gdc9ruv = (Anonymize<I78s05f59eoi8b>) | undefined;
 export type Ia596n3f2p58pa = ResultPayload<Anonymize<I200n1ov5tbcvr>, Anonymize<I4u78hb23uhvi2>>;
 export type Ifsen6ffhhcpjh = ResultPayload<Anonymize<I7s7uucopkaqke>, Anonymize<I5nrjkj9qumobs>>;
+export type I4ph3d1eepnmr1 = {
+    "keys": Binary;
+    "proof": Binary;
+};
 export type I5vv5n03oo8gas = (Anonymize<I200n1ov5tbcvr>) | undefined;
 export type Id35710d8r2eut = ResultPayload<{
     "execution_result": Anonymize<I5ln3e1fgphl08>;
@@ -29375,6 +28520,21 @@ export type I6k9rc4pou4mrl = ResultPayload<{
     "emitted_events": Anonymize<I9079lnhrbsqm6>;
     "forwarded_xcms": Anonymize<Ialhmrpub9sefe>;
 }, Anonymize<I55ku9c5gk50hb>>;
+export type XcmVersionedAsset = Enum<{
+    "V3": Anonymize<Idcm24504c8bkk>;
+    "V4": Anonymize<Ia5l7mu5a6v49o>;
+    "V5": Anonymize<Iffh1nc5e1mod6>;
+}>;
+export declare const XcmVersionedAsset: GetEnum<XcmVersionedAsset>;
+export type Icujp6hmv35vbn = ResultPayload<boolean, Enum<{
+    "VersionedAssetConversionFailed": undefined;
+    "VersionedLocationConversionFailed": undefined;
+}>>;
+export type I4tjame31218k9 = ResultPayload<Anonymize<I41j3fc5ema929>, Anonymize<Iecgqth5sdfqqi>>;
+export type Iecgqth5sdfqqi = AnonymousEnum<{
+    "LocationVersionConversionFailed": undefined;
+}>;
+export type I5gif8vomct5i8 = ResultPayload<boolean, Anonymize<Iecgqth5sdfqqi>>;
 export type I8fk5filgollou = ResultPayload<XcmVersionedAssets, Enum<{
     "AssetIdConversionFailed": undefined;
     "AmountToBalanceConversionFailed": undefined;
@@ -29554,4 +28714,846 @@ export type I512dtcl0pn07c = ResultPayload<Anonymize<I6cs1itejju2vv>, Enum<{
     "Value": undefined;
     "Dust": undefined;
 }>>;
+export type Ic1qn45u9b9hhu = Array<{
+    "phase": Phase;
+    "event": Anonymize<I1rke1a43hqelf>;
+    "topics": Anonymize<Ic5m5lp1oioo8r>;
+}>;
+export type I1rke1a43hqelf = AnonymousEnum<{
+    "System": Anonymize<It0dac3277no5>;
+    "ParachainSystem": Anonymize<Icbsekf57miplo>;
+    "Utility": Anonymize<Iaouq041baf2nh>;
+    "Balances": Anonymize<Ifhlvt8s3bh824>;
+    "TransactionPayment": TransactionPaymentEvent;
+    "SkipFeelessPayment": Anonymize<Idkntqrg9tr7h7>;
+    "TransactionStorage": Anonymize<I6a9k53vnitigf>;
+    "CollatorSelection": Anonymize<I4srakrmf0fspo>;
+    "Session": Anonymize<I6ue0ck5fc3u44>;
+    "XcmpQueue": Anonymize<Idsqc7mhp6nnle>;
+    "PolkadotXcm": Anonymize<If95hivmqmkiku>;
+    "CumulusXcm": Anonymize<I5uv57c3fffoi9>;
+    "MessageQueue": Anonymize<I2kosejppk3jon>;
+    "Sudo": Anonymize<I4mr5fuq4vs8tb>;
+}>;
+export type It0dac3277no5 = AnonymousEnum<{
+    /**
+     * An extrinsic completed successfully.
+     */
+    "ExtrinsicSuccess": Anonymize<Ia82mnkmeo2rhc>;
+    /**
+     * An extrinsic failed.
+     */
+    "ExtrinsicFailed": Anonymize<Icsa46bnbuohqc>;
+    /**
+     * `:code` was updated.
+     */
+    "CodeUpdated": undefined;
+    /**
+     * A new account was created.
+     */
+    "NewAccount": Anonymize<Icbccs0ug47ilf>;
+    /**
+     * An account was reaped.
+     */
+    "KilledAccount": Anonymize<Icbccs0ug47ilf>;
+    /**
+     * On on-chain remark happened.
+     */
+    "Remarked": Anonymize<I855j4i3kr8ko1>;
+    /**
+     * An upgrade was authorized.
+     */
+    "UpgradeAuthorized": Anonymize<Ibgl04rn6nbfm6>;
+    /**
+     * An invalid authorized upgrade was rejected while trying to apply it.
+     */
+    "RejectedInvalidAuthorizedUpgrade": Anonymize<I67n6mbhp91nlg>;
+}>;
+export type Icsa46bnbuohqc = {
+    "dispatch_error": Anonymize<Id3cclc8rha27v>;
+    "dispatch_info": Anonymize<Ic9s8f85vjtncc>;
+};
+export type Id3cclc8rha27v = AnonymousEnum<{
+    "Other": undefined;
+    "CannotLookup": undefined;
+    "BadOrigin": undefined;
+    "Module": Enum<{
+        "System": Anonymize<I5o0s7c8q1cc9b>;
+        "ParachainSystem": Anonymize<Icjkr35j4tmg7k>;
+        "Timestamp": undefined;
+        "ParachainInfo": undefined;
+        "WeightReclaim": undefined;
+        "Utility": Anonymize<I8dt2g2hcrgh36>;
+        "Balances": Anonymize<Idj13i7adlomht>;
+        "TransactionPayment": undefined;
+        "SkipFeelessPayment": undefined;
+        "TransactionStorage": Anonymize<I3t32lkif2hg4k>;
+        "Authorship": undefined;
+        "CollatorSelection": Anonymize<I36bcffk2387dv>;
+        "Session": Anonymize<I1e07dgbaqd1sq>;
+        "Aura": undefined;
+        "AuraExt": undefined;
+        "XcmpQueue": Anonymize<Idnnbndsjjeqqs>;
+        "PolkadotXcm": Anonymize<I4vcvo9od6afmt>;
+        "CumulusXcm": undefined;
+        "MessageQueue": Anonymize<I5iupade5ag2dp>;
+        "Sudo": Anonymize<Iaug04qjhbli00>;
+    }>;
+    "ConsumerRemaining": undefined;
+    "NoProviders": undefined;
+    "TooManyConsumers": undefined;
+    "Token": TokenError;
+    "Arithmetic": ArithmeticError;
+    "Transactional": TransactionalError;
+    "Exhausted": undefined;
+    "Corruption": undefined;
+    "Unavailable": undefined;
+    "RootNotAllowed": undefined;
+    "Trie": Anonymize<Idh4cj79bvroj8>;
+}>;
+export type I3t32lkif2hg4k = AnonymousEnum<{
+    /**
+     * Attempted to call `store`/`renew` outside of block execution.
+     */
+    "BadContext": undefined;
+    /**
+     * Data size is not in the allowed range.
+     */
+    "BadDataSize": undefined;
+    /**
+     * Too many transactions in the block.
+     */
+    "TooManyTransactions": undefined;
+    /**
+     * Invalid configuration.
+     */
+    "NotConfigured": undefined;
+    /**
+     * Renewed extrinsic is not found.
+     */
+    "RenewedNotFound": undefined;
+    /**
+     * Proof was not expected in this block.
+     */
+    "UnexpectedProof": undefined;
+    /**
+     * Proof failed verification.
+     */
+    "InvalidProof": undefined;
+    /**
+     * Missing storage proof.
+     */
+    "MissingProof": undefined;
+    /**
+     * Unable to verify proof because state data is missing.
+     */
+    "MissingStateData": undefined;
+    /**
+     * Double proof check in the block.
+     */
+    "DoubleCheck": undefined;
+    /**
+     * Storage proof was not checked in the block.
+     */
+    "ProofNotChecked": undefined;
+    /**
+     * Authorization was not found.
+     */
+    "AuthorizationNotFound": undefined;
+    /**
+     * Authorization has not expired.
+     */
+    "AuthorizationNotExpired": undefined;
+    /**
+     * Content hash was not calculated.
+     */
+    "InvalidContentHash": undefined;
+}>;
+export type I67n6mbhp91nlg = {
+    "code_hash": FixedSizeBinary<32>;
+    "error": Anonymize<Id3cclc8rha27v>;
+};
+export type Iaouq041baf2nh = AnonymousEnum<{
+    /**
+     * Batch of dispatches did not complete fully. Index of first failing dispatch given, as
+     * well as the error.
+     */
+    "BatchInterrupted": Anonymize<I368e0tjmrcvlt>;
+    /**
+     * Batch of dispatches completed fully with no error.
+     */
+    "BatchCompleted": undefined;
+    /**
+     * Batch of dispatches completed but has errors.
+     */
+    "BatchCompletedWithErrors": undefined;
+    /**
+     * A single item within a Batch of dispatches has completed with no error.
+     */
+    "ItemCompleted": undefined;
+    /**
+     * A single item within a Batch of dispatches has completed with error.
+     */
+    "ItemFailed": Anonymize<I6akqkga7li13u>;
+    /**
+     * A call was dispatched.
+     */
+    "DispatchedAs": Anonymize<I133qpg6ru2jqi>;
+    /**
+     * Main call was dispatched.
+     */
+    "IfElseMainSuccess": undefined;
+    /**
+     * The fallback call was dispatched.
+     */
+    "IfElseFallbackCalled": Anonymize<I3bp93psani87u>;
+}>;
+export type I368e0tjmrcvlt = {
+    "index": number;
+    "error": Anonymize<Id3cclc8rha27v>;
+};
+export type I6akqkga7li13u = {
+    "error": Anonymize<Id3cclc8rha27v>;
+};
+export type I133qpg6ru2jqi = {
+    "result": Anonymize<I46bjfmr3l2gfb>;
+};
+export type I46bjfmr3l2gfb = ResultPayload<undefined, Anonymize<Id3cclc8rha27v>>;
+export type I3bp93psani87u = {
+    "main_error": Anonymize<Id3cclc8rha27v>;
+};
+export type Ifhlvt8s3bh824 = AnonymousEnum<{
+    /**
+     * An account was created with some free balance.
+     */
+    "Endowed": Anonymize<Icv68aq8841478>;
+    /**
+     * An account was removed whose balance was non-zero but below ExistentialDeposit,
+     * resulting in an outright loss.
+     */
+    "DustLost": Anonymize<Ic262ibdoec56a>;
+    /**
+     * Transfer succeeded.
+     */
+    "Transfer": Anonymize<Iflcfm9b6nlmdd>;
+    /**
+     * A balance was set by root.
+     */
+    "BalanceSet": Anonymize<Ijrsf4mnp3eka>;
+    /**
+     * Some balance was reserved (moved from free to reserved).
+     */
+    "Reserved": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * Some balance was unreserved (moved from reserved to free).
+     */
+    "Unreserved": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * Some balance was moved from the reserve of the first account to the second account.
+     * Final argument indicates the destination balance type.
+     */
+    "ReserveRepatriated": Anonymize<I8tjvj9uq4b7hi>;
+    /**
+     * Some amount was deposited (e.g. for transaction fees).
+     */
+    "Deposit": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * Some amount was withdrawn from the account (e.g. for transaction fees).
+     */
+    "Withdraw": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * Some amount was removed from the account (e.g. for misbehavior).
+     */
+    "Slashed": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * Some amount was minted into an account.
+     */
+    "Minted": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * Some credit was balanced and added to the TotalIssuance.
+     */
+    "MintedCredit": Anonymize<I3qt1hgg4djhgb>;
+    /**
+     * Some amount was burned from an account.
+     */
+    "Burned": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * Some debt has been dropped from the Total Issuance.
+     */
+    "BurnedDebt": Anonymize<I3qt1hgg4djhgb>;
+    /**
+     * Some amount was suspended from an account (it can be restored later).
+     */
+    "Suspended": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * Some amount was restored into an account.
+     */
+    "Restored": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * An account was upgraded.
+     */
+    "Upgraded": Anonymize<I4cbvqmqadhrea>;
+    /**
+     * Total issuance was increased by `amount`, creating a credit to be balanced.
+     */
+    "Issued": Anonymize<I3qt1hgg4djhgb>;
+    /**
+     * Total issuance was decreased by `amount`, creating a debt to be balanced.
+     */
+    "Rescinded": Anonymize<I3qt1hgg4djhgb>;
+    /**
+     * Some balance was locked.
+     */
+    "Locked": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * Some balance was unlocked.
+     */
+    "Unlocked": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * Some balance was frozen.
+     */
+    "Frozen": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * Some balance was thawed.
+     */
+    "Thawed": Anonymize<Id5fm4p8lj5qgi>;
+    /**
+     * The `TotalIssuance` was forcefully changed.
+     */
+    "TotalIssuanceForced": Anonymize<I4fooe9dun9o0t>;
+    /**
+     * Some balance was placed on hold.
+     */
+    "Held": Anonymize<I8mvf14goplnni>;
+    /**
+     * Held balance was burned from an account.
+     */
+    "BurnedHeld": Anonymize<I8mvf14goplnni>;
+    /**
+     * A transfer of `amount` on hold from `source` to `dest` was initiated.
+     */
+    "TransferOnHold": Anonymize<Ie09mpthond7d6>;
+    /**
+     * The `transferred` balance is placed on hold at the `dest` account.
+     */
+    "TransferAndHold": Anonymize<I1ispultrc7caq>;
+    /**
+     * Some balance was released from hold.
+     */
+    "Released": Anonymize<I8mvf14goplnni>;
+    /**
+     * An unexpected/defensive event was triggered.
+     */
+    "Unexpected": Anonymize<Iph9c4rn81ub2>;
+}>;
+export type I8mvf14goplnni = {
+    "reason": Anonymize<Ia44l7h6l7vcfa>;
+    "who": SS58String;
+    "amount": bigint;
+};
+export type Ia44l7h6l7vcfa = AnonymousEnum<{
+    "TransactionStorage": Enum<{
+        "StorageFeeHold": undefined;
+    }>;
+    "Session": Anonymize<I6bkr3dqv753nc>;
+    "PolkadotXcm": Anonymize<Ideiof6273rsoe>;
+}>;
+export type Ie09mpthond7d6 = {
+    "reason": Anonymize<Ia44l7h6l7vcfa>;
+    "source": SS58String;
+    "dest": SS58String;
+    "amount": bigint;
+};
+export type I1ispultrc7caq = {
+    "reason": Anonymize<Ia44l7h6l7vcfa>;
+    "source": SS58String;
+    "dest": SS58String;
+    "transferred": bigint;
+};
+export type Idkntqrg9tr7h7 = AnonymousEnum<{
+    /**
+     * A transaction fee was skipped.
+     */
+    "FeeSkipped": Anonymize<I351cnlhk17436>;
+}>;
+export type I351cnlhk17436 = {
+    "origin": Anonymize<I9g869l9vmunib>;
+};
+export type I9g869l9vmunib = AnonymousEnum<{
+    "system": Anonymize<I9gqitj4t615g3>;
+    "PolkadotXcm": Anonymize<Icvilmd7qu30i4>;
+    "CumulusXcm": Anonymize<I3in0d0lb61qi8>;
+}>;
+export type I6a9k53vnitigf = AnonymousEnum<{
+    /**
+     * Stored data under specified index.
+     */
+    "Stored": Anonymize<I395h9meqpi2hf>;
+    /**
+     * Renewed data under specified index.
+     */
+    "Renewed": Anonymize<I66jdpl6lile9j>;
+    /**
+     * Storage proof was successfully checked.
+     */
+    "ProofChecked": undefined;
+    /**
+     * An account `who` was authorized to store `bytes` bytes in `transactions` transactions.
+     */
+    "AccountAuthorized": Anonymize<I2i8iea6e4ne1j>;
+    /**
+     * An authorization for account `who` was refreshed.
+     */
+    "AccountAuthorizationRefreshed": Anonymize<I4cbvqmqadhrea>;
+    /**
+     * Authorization was given for a preimage of `content_hash` (not exceeding `max_size`) to
+     * be stored by anyone.
+     */
+    "PreimageAuthorized": Anonymize<I4jotama61aldv>;
+    /**
+     * An authorization for a preimage of `content_hash` was refreshed.
+     */
+    "PreimageAuthorizationRefreshed": Anonymize<I3rfugj0vt1ug5>;
+    /**
+     * An expired account authorization was removed.
+     */
+    "ExpiredAccountAuthorizationRemoved": Anonymize<I4cbvqmqadhrea>;
+    /**
+     * An expired preimage authorization was removed.
+     */
+    "ExpiredPreimageAuthorizationRemoved": Anonymize<I3rfugj0vt1ug5>;
+}>;
+export type I395h9meqpi2hf = {
+    "index": number;
+    "content_hash": FixedSizeBinary<32>;
+    "cid"?: Anonymize<Iabpgqcjikia83>;
+};
+export type I66jdpl6lile9j = {
+    "index": number;
+    "content_hash": FixedSizeBinary<32>;
+};
+export type I2i8iea6e4ne1j = {
+    "who": SS58String;
+    "transactions": number;
+    "bytes": bigint;
+};
+export type I4jotama61aldv = {
+    "content_hash": FixedSizeBinary<32>;
+    "max_size": bigint;
+};
+export type I3rfugj0vt1ug5 = {
+    "content_hash": FixedSizeBinary<32>;
+};
+export type I4mr5fuq4vs8tb = AnonymousEnum<{
+    /**
+     * A sudo call just took place.
+     */
+    "Sudid": Anonymize<I4kigljjkan2n6>;
+    /**
+     * The sudo key has been updated.
+     */
+    "KeyChanged": Anonymize<I5rtkmhm2dng4u>;
+    /**
+     * The key was permanently removed.
+     */
+    "KeyRemoved": undefined;
+    /**
+     * A [sudo_as](Pallet::sudo_as) call just took place.
+     */
+    "SudoAsDone": Anonymize<I4kigljjkan2n6>;
+}>;
+export type I4kigljjkan2n6 = {
+    /**
+     * The result of the call made by the sudo user.
+     */
+    "sudo_result": Anonymize<I46bjfmr3l2gfb>;
+};
+export type Iafsev9pf8ur2h = Array<{
+    "id": Anonymize<Ia44l7h6l7vcfa>;
+    "amount": bigint;
+}>;
+export type I52552vmt51a1m = {
+    "extent": {
+        "transactions": number;
+        "bytes": bigint;
+    };
+    "expiration": number;
+};
+export type Icd998p53cb80u = AnonymousEnum<{
+    "Account": SS58String;
+    "Preimage": FixedSizeBinary<32>;
+}>;
+export type Ianratlvp36bb8 = Array<{
+    "chunk_root": FixedSizeBinary<32>;
+    "content_hash": FixedSizeBinary<32>;
+    "hashing": Anonymize<Ifmrgam3blcf8>;
+    "cid_codec": bigint;
+    "size": number;
+    "block_chunks": number;
+}>;
+export type Ifmrgam3blcf8 = AnonymousEnum<{
+    "Blake2b256": undefined;
+    "Sha2_256": undefined;
+    "Keccak256": undefined;
+}>;
+export type Idftgde1j2kabb = {
+    "codec": bigint;
+    "hashing": Anonymize<Ifmrgam3blcf8>;
+};
+export type I145nkn1ppo2ur = AnonymousEnum<{
+    /**
+     * Send a batch of dispatch calls.
+     *
+     * May be called from any origin except `None`.
+     *
+     * - `calls`: The calls to be dispatched from the same origin. The number of call must not
+     * exceed the constant: `batched_calls_limit` (available in constant metadata).
+     *
+     * If origin is root then the calls are dispatched without checking origin filter. (This
+     * includes bypassing `frame_system::Config::BaseCallFilter`).
+     *
+     * ## Complexity
+     * - O(C) where C is the number of calls to be batched.
+     *
+     * This will return `Ok` in all circumstances. To determine the success of the batch, an
+     * event is deposited. If a call failed and the batch was interrupted, then the
+     * `BatchInterrupted` event is deposited, along with the number of successful calls made
+     * and the error of the failed call. If all were successful, then the `BatchCompleted`
+     * event is deposited.
+     */
+    "batch": Anonymize<I9h5d8o0h4us2s>;
+    /**
+     * Send a call through an indexed pseudonym of the sender.
+     *
+     * Filter from origin are passed along. The call will be dispatched with an origin which
+     * use the same filter as the origin of this call.
+     *
+     * NOTE: If you need to ensure that any account-based filtering is not honored (i.e.
+     * because you expect `proxy` to have been used prior in the call stack and you do not want
+     * the call restrictions to apply to any sub-accounts), then use `as_multi_threshold_1`
+     * in the Multisig pallet instead.
+     *
+     * NOTE: Prior to version *12, this was called `as_limited_sub`.
+     *
+     * The dispatch origin for this call must be _Signed_.
+     */
+    "as_derivative": Anonymize<Idpvojgpgnt7ds>;
+    /**
+     * Send a batch of dispatch calls and atomically execute them.
+     * The whole transaction will rollback and fail if any of the calls failed.
+     *
+     * May be called from any origin except `None`.
+     *
+     * - `calls`: The calls to be dispatched from the same origin. The number of call must not
+     * exceed the constant: `batched_calls_limit` (available in constant metadata).
+     *
+     * If origin is root then the calls are dispatched without checking origin filter. (This
+     * includes bypassing `frame_system::Config::BaseCallFilter`).
+     *
+     * ## Complexity
+     * - O(C) where C is the number of calls to be batched.
+     */
+    "batch_all": Anonymize<I9h5d8o0h4us2s>;
+    /**
+     * Dispatches a function call with a provided origin.
+     *
+     * The dispatch origin for this call must be _Root_.
+     *
+     * ## Complexity
+     * - O(1).
+     */
+    "dispatch_as": Anonymize<I84vt11fffi5pu>;
+    /**
+     * Send a batch of dispatch calls.
+     * Unlike `batch`, it allows errors and won't interrupt.
+     *
+     * May be called from any origin except `None`.
+     *
+     * - `calls`: The calls to be dispatched from the same origin. The number of call must not
+     * exceed the constant: `batched_calls_limit` (available in constant metadata).
+     *
+     * If origin is root then the calls are dispatch without checking origin filter. (This
+     * includes bypassing `frame_system::Config::BaseCallFilter`).
+     *
+     * ## Complexity
+     * - O(C) where C is the number of calls to be batched.
+     */
+    "force_batch": Anonymize<I9h5d8o0h4us2s>;
+    /**
+     * Dispatch a function call with a specified weight.
+     *
+     * This function does not check the weight of the call, and instead allows the
+     * Root origin to specify the weight of the call.
+     *
+     * The dispatch origin for this call must be _Root_.
+     */
+    "with_weight": Anonymize<Ifk4i407a994t0>;
+    /**
+     * Dispatch a fallback call in the event the main call fails to execute.
+     * May be called from any origin except `None`.
+     *
+     * This function first attempts to dispatch the `main` call.
+     * If the `main` call fails, the `fallback` is attemted.
+     * if the fallback is successfully dispatched, the weights of both calls
+     * are accumulated and an event containing the main call error is deposited.
+     *
+     * In the event of a fallback failure the whole call fails
+     * with the weights returned.
+     *
+     * - `main`: The main call to be dispatched. This is the primary action to execute.
+     * - `fallback`: The fallback call to be dispatched in case the `main` call fails.
+     *
+     * ## Dispatch Logic
+     * - If the origin is `root`, both the main and fallback calls are executed without
+     * applying any origin filters.
+     * - If the origin is not `root`, the origin filter is applied to both the `main` and
+     * `fallback` calls.
+     *
+     * ## Use Case
+     * - Some use cases might involve submitting a `batch` type call in either main, fallback
+     * or both.
+     */
+    "if_else": Anonymize<I72adfp735qakq>;
+    /**
+     * Dispatches a function call with a provided origin.
+     *
+     * Almost the same as [`Pallet::dispatch_as`] but forwards any error of the inner call.
+     *
+     * The dispatch origin for this call must be _Root_.
+     */
+    "dispatch_as_fallible": Anonymize<I84vt11fffi5pu>;
+}>;
+export type I9h5d8o0h4us2s = {
+    "calls": Array<TxCallData>;
+};
+export type Idpvojgpgnt7ds = {
+    "index": number;
+    "call": TxCallData;
+};
+export type I84vt11fffi5pu = {
+    "as_origin": Anonymize<I9g869l9vmunib>;
+    "call": TxCallData;
+};
+export type Ifk4i407a994t0 = {
+    "call": TxCallData;
+    "weight": Anonymize<I4q39t5hn830vp>;
+};
+export type I72adfp735qakq = {
+    "main": TxCallData;
+    "fallback": TxCallData;
+};
+export type Ibg9o3o0le7ood = AnonymousEnum<{
+    /**
+     * Index and store data off chain. Minimum data size is 1 byte, maximum is
+     * `MaxTransactionSize`. Data will be removed after `RetentionPeriod` blocks, unless
+     * `renew` is called.
+     *
+     * Authorization is required to store data using regular signed/unsigned transactions.
+     * Regular signed transactions require account authorization (see
+     * [`authorize_account`](Self::authorize_account)), regular unsigned transactions require
+     * preimage authorization (see [`authorize_preimage`](Self::authorize_preimage)).
+     *
+     * Emits [`Stored`](Event::Stored) when successful.
+     *
+     * ## Complexity
+     *
+     * O(n*log(n)) of data size, as all data is pushed to an in-memory trie.
+     */
+    "store": Anonymize<Itrlf5b2o2l8q>;
+    /**
+     * Renew previously stored data. Parameters are the block number that contains previous
+     * `store` or `renew` call and transaction index within that block. Transaction index is
+     * emitted in the `Stored` or `Renewed` event.
+     *
+     * As with [`store`](Self::store), authorization is required to renew data using regular
+     * signed/unsigned transactions.
+     *
+     * Emits [`Renewed`](Event::Renewed) when successful.
+     *
+     * ## Complexity
+     *
+     * O(1).
+     */
+    "renew": Anonymize<I4vj3ndsquheo1>;
+    /**
+     * Check storage proof for block number `block_number() - RetentionPeriod`. If such a block
+     * does not exist, the proof is expected to be `None`.
+     *
+     * ## Complexity
+     *
+     * Linear w.r.t the number of indexed transactions in the proved block for random probing.
+     * There's a DB read for each transaction.
+     */
+    "check_proof": Anonymize<I7h5kud22qmfsg>;
+    /**
+     * Authorize an account to store up to a given amount of arbitrary data. The authorization
+     * will expire after a configured number of blocks.
+     *
+     * If the account is already authorized to store data, this will increase the amount of
+     * data the account is authorized to store (and the number of transactions the account may
+     * submit to supply the data), and push back the expiration block.
+     *
+     * Parameters:
+     *
+     * - `who`: The account to be credited with an authorization to store data.
+     * - `transactions`: The number of transactions that `who` may submit to supply that data.
+     * - `bytes`: The number of bytes that `who` may submit.
+     *
+     * The origin for this call must be the pallet's `Authorizer`. Emits
+     * [`AccountAuthorized`](Event::AccountAuthorized) when successful.
+     */
+    "authorize_account": Anonymize<I2i8iea6e4ne1j>;
+    /**
+     * Authorize anyone to store a preimage of the given BLAKE2b hash. The authorization will
+     * expire after a configured number of blocks.
+     *
+     * If authorization already exists for a preimage of the given hash to be stored, the
+     * maximum size of the preimage will be increased to `max_size`, and the expiration block
+     * will be pushed back.
+     *
+     * Parameters:
+     *
+     * - `content_hash`: The BLAKE2b hash of the data to be submitted.
+     * - `max_size`: The maximum size, in bytes, of the preimage.
+     *
+     * The origin for this call must be the pallet's `Authorizer`. Emits
+     * [`PreimageAuthorized`](Event::PreimageAuthorized) when successful.
+     */
+    "authorize_preimage": Anonymize<I4jotama61aldv>;
+    /**
+     * Remove an expired account authorization from storage. Anyone can call this.
+     *
+     * Parameters:
+     *
+     * - `who`: The account with an expired authorization to remove.
+     *
+     * Emits [`ExpiredAccountAuthorizationRemoved`](Event::ExpiredAccountAuthorizationRemoved)
+     * when successful.
+     */
+    "remove_expired_account_authorization": Anonymize<I4cbvqmqadhrea>;
+    /**
+     * Remove an expired preimage authorization from storage. Anyone can call this.
+     *
+     * Parameters:
+     *
+     * - `content_hash`: The BLAKE2b hash that was authorized.
+     *
+     * Emits
+     * [`ExpiredPreimageAuthorizationRemoved`](Event::ExpiredPreimageAuthorizationRemoved)
+     * when successful.
+     */
+    "remove_expired_preimage_authorization": Anonymize<I3rfugj0vt1ug5>;
+    /**
+     * Refresh the expiration of an existing authorization for an account.
+     *
+     * If the account does not have an authorization, the call will fail.
+     *
+     * Parameters:
+     *
+     * - `who`: The account to be credited with an authorization to store data.
+     *
+     * The origin for this call must be the pallet's `Authorizer`. Emits
+     * [`AccountAuthorizationRefreshed`](Event::AccountAuthorizationRefreshed) when successful.
+     */
+    "refresh_account_authorization": Anonymize<I4cbvqmqadhrea>;
+    /**
+     * Refresh the expiration of an existing authorization for a preimage of a BLAKE2b hash.
+     *
+     * If the preimage does not have an authorization, the call will fail.
+     *
+     * Parameters:
+     *
+     * - `content_hash`: The BLAKE2b hash of the data to be submitted.
+     *
+     * The origin for this call must be the pallet's `Authorizer`. Emits
+     * [`PreimageAuthorizationRefreshed`](Event::PreimageAuthorizationRefreshed) when
+     * successful.
+     */
+    "refresh_preimage_authorization": Anonymize<I3rfugj0vt1ug5>;
+}>;
+export type Itrlf5b2o2l8q = {
+    "data": Binary;
+};
+export type I4vj3ndsquheo1 = {
+    "block": number;
+    "index": number;
+};
+export type I7h5kud22qmfsg = {
+    "proof": {
+        "chunk": Binary;
+        "proof": Anonymize<Itom7fk49o0c9>;
+    };
+};
+export type I5g83tunafdss0 = AnonymousEnum<{
+    /**
+     * Authenticates the sudo key and dispatches a function call with `Root` origin.
+     */
+    "sudo": Anonymize<Iaf4fc4gf84bv5>;
+    /**
+     * Authenticates the sudo key and dispatches a function call with `Root` origin.
+     * This function does not check the weight of the call, and instead allows the
+     * Sudo user to specify the weight of the call.
+     *
+     * The dispatch origin for this call must be _Signed_.
+     */
+    "sudo_unchecked_weight": Anonymize<Ifk4i407a994t0>;
+    /**
+     * Authenticates the current sudo key and sets the given AccountId (`new`) as the new sudo
+     * key.
+     */
+    "set_key": Anonymize<I8k3rnvpeeh4hv>;
+    /**
+     * Authenticates the sudo key and dispatches a function call with `Signed` origin from
+     * a given account.
+     *
+     * The dispatch origin for this call must be _Signed_.
+     */
+    "sudo_as": Anonymize<I4dcn5cv3m3r34>;
+    /**
+     * Permanently removes the sudo key.
+     *
+     * **This cannot be un-done.**
+     */
+    "remove_key": undefined;
+}>;
+export type Iaf4fc4gf84bv5 = {
+    "call": TxCallData;
+};
+export type I4dcn5cv3m3r34 = {
+    "who": MultiAddress;
+    "call": TxCallData;
+};
+export type Ieeb2u9t56qdcr = ResultPayload<Anonymize<I46bjfmr3l2gfb>, Anonymize<I5nrjkj9qumobs>>;
+export type Ifi3i9borjqiav = AnonymousEnum<{
+    "System": Anonymize<Iekve0i6djpd9f>;
+    "ParachainSystem": Anonymize<I3u72uvpuo4qrt>;
+    "Timestamp": Anonymize<I7d75gqfg6jh9c>;
+    "ParachainInfo": undefined;
+    "Utility": Anonymize<I145nkn1ppo2ur>;
+    "Balances": Anonymize<I9svldsp29mh87>;
+    "TransactionStorage": Anonymize<Ibg9o3o0le7ood>;
+    "CollatorSelection": Anonymize<I9dpq5287dur8b>;
+    "Session": Anonymize<I77dda7hps0u37>;
+    "XcmpQueue": Anonymize<Ib7tahn20bvsep>;
+    "PolkadotXcm": Anonymize<I6k1inef986368>;
+    "CumulusXcm": undefined;
+    "MessageQueue": Anonymize<Ic2uoe7jdksosp>;
+    "Sudo": Anonymize<I5g83tunafdss0>;
+}>;
+export type I2srrkue8s0910 = ResultPayload<{
+    "execution_result": ResultPayload<Anonymize<Ia1u1r3n74r13c>, {
+        "post_info": Anonymize<Ia1u1r3n74r13c>;
+        "error": Anonymize<Id3cclc8rha27v>;
+    }>;
+    "emitted_events": Anonymize<I1r99afgt1kopa>;
+    "local_xcm"?: Anonymize<Ieqgqma27vbupd>;
+    "forwarded_xcms": Anonymize<Ialhmrpub9sefe>;
+}, Anonymize<I55ku9c5gk50hb>>;
+export type I1r99afgt1kopa = Array<Anonymize<I1rke1a43hqelf>>;
+export type I1abqdpbsc75ie = ResultPayload<{
+    "execution_result": Anonymize<Ieqhmksji3pmv5>;
+    "emitted_events": Anonymize<I1r99afgt1kopa>;
+    "forwarded_xcms": Anonymize<Ialhmrpub9sefe>;
+}, Anonymize<I55ku9c5gk50hb>>;
+export type Ideol201iiphm6 = (Anonymize<Idftgde1j2kabb>) | undefined;
 export {};
