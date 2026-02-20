@@ -57,6 +57,7 @@ echo "Installed $BIN ($OS/$ARCH) from $TAG -> $CDM_DIR/bin/$BIN"
 #    explicitly pass --target for the host platform to build the CLI tool for the host.
 HOST_TARGET=$(rustc -vV | grep '^host:' | cut -d' ' -f2)
 echo "Installing cargo-pvm-contract..."
+rm -rf /tmp/cargo-pvm-contract
 if git clone -b charles/cdm-integration https://github.com/paritytech/cargo-pvm-contract.git /tmp/cargo-pvm-contract 2>&1; then
   if cargo install --force --locked --target "$HOST_TARGET" --path /tmp/cargo-pvm-contract/crates/cargo-pvm-contract; then
     echo "cargo-pvm-contract installed."
@@ -96,3 +97,6 @@ if command -v fish >/dev/null 2>&1; then
 fi
 
 echo "Restart your shell or open a new terminal to use cdm."
+echo ""
+echo -e "\033[1mcdm template shared-counter\033[0m"
+echo -e "\033[1mcdm deploy -n preview-net\033[0m"
