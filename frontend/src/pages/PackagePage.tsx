@@ -281,6 +281,8 @@ export default function PackagePage() {
                 className="package-readme"
                 dangerouslySetInnerHTML={{ __html: marked.parse(pkg.readme) as string }}
               />
+            ) : !pkg.metadataLoaded && pkg.metadataUri ? (
+              <p className="deps-empty">Loading readme...</p>
             ) : (
               <p className="deps-empty">No readme published yet.</p>
             )
@@ -289,6 +291,8 @@ export default function PackagePage() {
           {activeTab === 'abi' && (
             pkg.abi && pkg.abi.length > 0 ? (
               <AbiTab abi={pkg.abi} />
+            ) : !pkg.metadataLoaded && pkg.metadataUri ? (
+              <p className="deps-empty">Loading ABI...</p>
             ) : (
               <p className="deps-empty">No ABI published yet.</p>
             )

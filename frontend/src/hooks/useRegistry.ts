@@ -4,6 +4,7 @@ import type { Package, AbiEntry } from "../data/types";
 
 const ORIGIN = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
 const PAGE_SIZE = 10;
+const IPFS_TIMEOUT_MS = 8000;
 
 function unwrapOption<T>(val: unknown): T | undefined {
   if (val && typeof val === "object" && "isSome" in val) {
@@ -20,6 +21,7 @@ export function useRegistry() {
   const [queryError, setQueryError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const nextIndex = useRef(-1);
+  const metadataAttempted = useRef<Set<string>>(new Set());
 
   // Reset when registry changes
   useEffect(() => {
@@ -27,8 +29,10 @@ export function useRegistry() {
     setQueryError(null);
     setTotalCount(0);
     nextIndex.current = -1;
+    metadataAttempted.current = new Set();
   }, [registry]);
 
+  // Phase 1: Load on-chain data only (fast)
   const loadBatch = useCallback(async () => {
     if (!registry || !connected) return;
 
@@ -97,57 +101,13 @@ export function useRegistry() {
           ? unwrapOption<string>(addressResult.value.response)
           : undefined;
 
-        // Fetch description from IPFS if the metadataUri is a CID (not the old bulletin:block:index format)
-        let description: string | undefined;
-        let readme: string | undefined;
-        let homepage: string | undefined;
-        let repository: string | undefined;
-        let author: string | undefined;
-        let lastPublished: string | undefined;
-        let abi: AbiEntry[] | undefined;
-
-        if (metadataUri && ipfsGatewayUrl && !metadataUri.includes(":")) {
-          try {
-            const response = await fetch(`${ipfsGatewayUrl}/${metadataUri}`);
-            const metadata = await response.json();
-            description = metadata.description || undefined;
-            readme = metadata.readme || undefined;
-            homepage = metadata.homepage || undefined;
-            repository = metadata.repository || undefined;
-
-            if (Array.isArray(metadata.authors) && metadata.authors.length > 0) {
-              author = metadata.authors.join(", ");
-            }
-
-            if (metadata.published_at) {
-              lastPublished = new Date(metadata.published_at).toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "short",
-                day: "numeric",
-              });
-            }
-
-            if (Array.isArray(metadata.abi)) {
-              abi = metadata.abi;
-            }
-          } catch {
-            // Metadata fetch failed - leave fields undefined
-          }
-        }
-
         newPackages.push({
           name,
           version: String(versionCount),
-          description,
-          readme,
-          homepage,
-          repository,
-          author,
-          lastPublished,
-          publishedDate: lastPublished,
           weeklyCalls: 0,
-          abi,
           address,
+          metadataUri,
+          metadataLoaded: false,
         });
       }
 
@@ -158,7 +118,85 @@ export function useRegistry() {
     } finally {
       setLoading(false);
     }
-  }, [registry, connected, totalCount, ipfsGatewayUrl]);
+  }, [registry, connected, totalCount]);
+
+  // Phase 2: Fetch IPFS metadata independently per-package
+  useEffect(() => {
+    if (!ipfsGatewayUrl) return;
+
+    const packagesToFetch = packages.filter(
+      (p) =>
+        !p.metadataLoaded &&
+        p.metadataUri &&
+        !p.metadataUri.includes(":") &&
+        !metadataAttempted.current.has(p.name)
+    );
+
+    if (packagesToFetch.length === 0) return;
+
+    // Mark all as attempted immediately to prevent re-fetching
+    for (const p of packagesToFetch) {
+      metadataAttempted.current.add(p.name);
+    }
+
+    for (const pkg of packagesToFetch) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), IPFS_TIMEOUT_MS);
+
+      fetch(`${ipfsGatewayUrl}/${pkg.metadataUri}`, { signal: controller.signal })
+        .then((res) => res.json())
+        .then((metadata) => {
+          clearTimeout(timeout);
+
+          let author: string | undefined;
+          if (Array.isArray(metadata.authors) && metadata.authors.length > 0) {
+            author = metadata.authors.join(", ");
+          }
+
+          let lastPublished: string | undefined;
+          if (metadata.published_at) {
+            lastPublished = new Date(metadata.published_at).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            });
+          }
+
+          let abi: AbiEntry[] | undefined;
+          if (Array.isArray(metadata.abi)) {
+            abi = metadata.abi;
+          }
+
+          setPackages((prev) =>
+            prev.map((p) =>
+              p.name === pkg.name
+                ? {
+                    ...p,
+                    description: metadata.description || undefined,
+                    readme: metadata.readme || undefined,
+                    homepage: metadata.homepage || undefined,
+                    repository: metadata.repository || undefined,
+                    author,
+                    lastPublished,
+                    publishedDate: lastPublished,
+                    abi,
+                    metadataLoaded: true,
+                  }
+                : p
+            )
+          );
+        })
+        .catch(() => {
+          clearTimeout(timeout);
+          // Mark as loaded even on failure so the card stops showing shimmer
+          setPackages((prev) =>
+            prev.map((p) =>
+              p.name === pkg.name ? { ...p, metadataLoaded: true } : p
+            )
+          );
+        });
+    }
+  }, [packages, ipfsGatewayUrl]);
 
   // Auto-load first batch when registry connects
   useEffect(() => {

@@ -30,4 +30,6 @@ export interface Package {
   versions?: { version: string; date: string }[];
   abi?: AbiEntry[];
   address?: string;
+  metadataUri?: string;
+  metadataLoaded?: boolean;
 }
