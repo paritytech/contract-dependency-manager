@@ -80,8 +80,7 @@ export class ContractDeployer {
 
     async publishMetadata(
         metadata: Metadata,
-    ): Promise<{ cid: string; blockNumber: number }> {
-        metadata.published_at = new Date().toISOString();
+    ): Promise<{ cid: string; blockNumber: number; txHash: string; blockHash: string }> {
         const jsonString = JSON.stringify(metadata);
         const data = Binary.fromText(jsonString);
 
@@ -108,7 +107,7 @@ export class ContractDeployer {
 
         // cidBytes is a Binary (Vec<u8> from the chain) containing serialized CIDv1
         const cid = CID.decode(cidBytes.asBytes());
-        return { cid: cid.toString(), blockNumber: result.block.number };
+        return { cid: cid.toString(), blockNumber: result.block.number, txHash: result.txHash, blockHash: result.block.hash };
     }
 
     /**
@@ -116,15 +115,14 @@ export class ContractDeployer {
      */
     async publishMetadataBatch(
         metadataList: Metadata[],
-    ): Promise<{ cids: string[]; blockNumber: number }> {
-        if (metadataList.length === 0) return { cids: [], blockNumber: 0 };
+    ): Promise<{ cids: string[]; blockNumber: number; txHash: string; blockHash: string }> {
+        if (metadataList.length === 0) return { cids: [], blockNumber: 0, txHash: "", blockHash: "" };
         if (metadataList.length === 1) {
             const result = await this.publishMetadata(metadataList[0]);
-            return { cids: [result.cid], blockNumber: result.blockNumber };
+            return { cids: [result.cid], blockNumber: result.blockNumber, txHash: result.txHash, blockHash: result.blockHash };
         }
 
         const txs = metadataList.map((metadata) => {
-            metadata.published_at = new Date().toISOString();
             const jsonString = JSON.stringify(metadata);
             const data = Binary.fromText(jsonString);
             return this.bulletinApi.tx.TransactionStorage.store({ data });
@@ -176,7 +174,7 @@ export class ContractDeployer {
             return CID.decode(cidBytes.asBytes()).toString();
         });
 
-        return { cids, blockNumber: result.block.number };
+        return { cids, blockNumber: result.block.number, txHash: result.txHash, blockHash: result.block.hash };
     }
 
     setRegistry(registryAddress: string) {
@@ -190,7 +188,7 @@ export class ContractDeployer {
         cdmPackage: string,
         contractAddr?: string,
         metadataUri: string = "",
-    ): Promise<void> {
+    ): Promise<{ txHash: string; blockHash: string }> {
         const addr = contractAddr ?? this.lastDeployedAddr;
         if (!addr) {
             throw new Error(
@@ -198,7 +196,7 @@ export class ContractDeployer {
             );
         }
 
-        await this.registry
+        const result = await this.registry
             .send("publishLatest", {
                 data: {
                     contract_name: cdmPackage,
@@ -213,6 +211,7 @@ export class ContractDeployer {
             })
             .signAndSubmit(this.signer);
 
+        return { txHash: result.txHash, blockHash: result.block.hash };
     }
 
     /**
@@ -224,15 +223,14 @@ export class ContractDeployer {
             contractAddr: string;
             metadataUri: string;
         }[],
-    ): Promise<void> {
-        if (entries.length === 0) return;
+    ): Promise<{ txHash: string; blockHash: string }> {
+        if (entries.length === 0) return { txHash: "", blockHash: "" };
         if (entries.length === 1) {
-            await this.register(
+            return this.register(
                 entries[0].cdmPackage,
                 entries[0].contractAddr,
                 entries[0].metadataUri,
             );
-            return;
         }
 
         const txs = entries.map((entry) =>
@@ -274,13 +272,14 @@ export class ContractDeployer {
             throw new Error(`Batch register failed: ${stringify(failures[0])}`);
         }
 
+        return { txHash: result.txHash, blockHash: result.block.hash };
     }
 
     /**
      * Deploy a PVM contract and return its address.
      * Uses a dry-run to estimate gas, then submits with the estimated values.
      */
-    async deploy(pvmPath: string): Promise<string> {
+    async deploy(pvmPath: string): Promise<{ address: string; txHash: string; blockHash: string }> {
         const bytecode = readFileSync(pvmPath);
         const code = Binary.fromBytes(bytecode);
         const data = Binary.fromBytes(new Uint8Array(0));
@@ -350,7 +349,7 @@ export class ContractDeployer {
         }
 
         this.lastDeployedAddr = instantiated[0].contract.asHex();
-        return this.lastDeployedAddr;
+        return { address: this.lastDeployedAddr, txHash: result.txHash, blockHash: result.block.hash };
     }
 
     /**
@@ -415,9 +414,12 @@ export class ContractDeployer {
      * Deploy multiple contracts in a single Utility.batch_all transaction.
      * Returns addresses in the same order as the input paths.
      */
-    async deployBatch(pvmPaths: string[]): Promise<string[]> {
-        if (pvmPaths.length === 0) return [];
-        if (pvmPaths.length === 1) return [await this.deploy(pvmPaths[0])];
+    async deployBatch(pvmPaths: string[]): Promise<{ addresses: string[]; txHash: string; blockHash: string }> {
+        if (pvmPaths.length === 0) return { addresses: [], txHash: "", blockHash: "" };
+        if (pvmPaths.length === 1) {
+            const result = await this.deploy(pvmPaths[0]);
+            return { addresses: [result.address], txHash: result.txHash, blockHash: result.blockHash };
+        }
 
         const prepared = await Promise.all(
             pvmPaths.map((p) => this.dryRunDeploy(p)),
@@ -458,7 +460,7 @@ export class ContractDeployer {
 
         const addresses = instantiated.map((e) => e.contract.asHex());
         this.lastDeployedAddr = addresses[addresses.length - 1];
-        return addresses;
+        return { addresses, txHash: result.txHash, blockHash: result.block.hash };
     }
 }
 

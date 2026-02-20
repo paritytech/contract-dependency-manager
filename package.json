@@ -14,6 +14,7 @@
         "papi": "papi"
     },
     "dependencies": {
+        "@noble/hashes": "^2.0.1",
         "@polkadot-api/descriptors": "file:.papi/descriptors",
         "@polkadot-api/sdk-ink": "^0.6.2",
         "@polkadot-api/smoldot": "^0.3.15",

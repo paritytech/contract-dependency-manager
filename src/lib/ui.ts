@@ -15,7 +15,13 @@ export function formatDuration(ms: number): string {
     return `${(ms / 1000).toFixed(1)}s`;
 }
 
-export async function runPipelineWithUI(opts: PipelineOptions): Promise<PipelineResult> {
+export interface UIOptions extends PipelineOptions {
+    assethubUrl?: string;
+    bulletinUrl?: string;
+    ipfsGatewayUrl?: string;
+}
+
+export async function runPipelineWithUI(opts: UIOptions): Promise<PipelineResult> {
     const order = detectDeploymentOrderLayered(opts.rootDir);
 
     // Apply same filter as pipeline does
@@ -54,6 +60,9 @@ export async function runPipelineWithUI(opts: PipelineOptions): Promise<Pipeline
             displayNames,
             crates,
             buildOnly,
+            assethubUrl: opts.assethubUrl,
+            bulletinUrl: opts.bulletinUrl,
+            ipfsGatewayUrl: opts.ipfsGatewayUrl,
         })
     );
 

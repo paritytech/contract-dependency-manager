@@ -2,6 +2,11 @@ import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import type { ContractStatus } from "../pipeline.js";
 
+/** Terminal hyperlink using OSC 8 escape sequence */
+function Link({ url, children }: { url: string; children: React.ReactNode }) {
+    return <Text>{`\x1b]8;;${url}\x07`}{children}{`\x1b]8;;\x07`}</Text>;
+}
+
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 function Spinner({ tick }: { tick: number }) {
@@ -32,8 +37,22 @@ function truncateAddress(addr: string): string {
 
 const COL_CONTRACT = 24;
 const COL_BUILD = 20;
-const COL_PHASE = 3;
+const COL_PHASE = 5;
 const COL_ADDR = 14;
+
+function pjsExplorerUrl(rpcUrl: string, blockHash: string): string {
+    return `https://polkadot.js.org/apps/?rpc=${encodeURIComponent(rpcUrl)}#/explorer/query/${blockHash}`;
+}
+
+function ipfsUrl(gatewayUrl: string, cid: string): string {
+    return `${gatewayUrl}/${cid}`;
+}
+
+function shortHash(hash: string): string {
+    if (hash.startsWith("0x")) return hash.slice(2, 6);
+    // CIDs share a common prefix (e.g. "bafk"), so use last 4 chars
+    return hash.slice(-4);
+}
 
 function Cell({ children, width }: { children: React.ReactNode; width: number }) {
     return (
@@ -57,10 +76,11 @@ function Failed() {
 
 /** Infer which phase failed based on what fields exist on the status */
 function errorPhase(s: ContractStatus): "build" | "deploy" | "metadata" | "register" {
-    if (s.cid) return "register";
-    if (s.address) {
-        return "metadata";
-    }
+    // Register failed: both deploy and publish completed, error during register
+    if (s.address && s.publishTxHash) return "register";
+    // Deploy completed but publish didn't: metadata/publish failure
+    if (s.address && !s.publishTxHash && s.cid) return "metadata";
+    // Build completed: deploy phase (or parallel deploy+publish) failed
     if (s.buildProgress && s.buildProgress.compiled === s.buildProgress.total && s.buildProgress.total > 0) {
         return "deploy";
     }
@@ -72,11 +92,15 @@ function ContractRow({
     status,
     tick,
     buildOnly,
+    assethubUrl,
+    ipfsGatewayUrl,
 }: {
     name: string;
     status: ContractStatus | undefined;
     tick: number;
     buildOnly: boolean;
+    assethubUrl?: string;
+    ipfsGatewayUrl?: string;
 }) {
     const s = status;
     const state = s?.state ?? "waiting";
@@ -110,36 +134,42 @@ function ContractRow({
         );
     }
 
-    // Deploy column
+    // Deploy column — use deployInProgress flag for spinner
     let deployCell: React.ReactNode;
-    if (state === "deploying") {
+    if (s?.deployInProgress) {
         deployCell = <Spinner tick={tick} />;
     } else if (state === "error" && errorPhase(s!) === "deploy") {
         deployCell = <Failed />;
-    } else if (["deployed", "publishing", "registering", "done"].includes(state)) {
+    } else if (["registering", "done"].includes(state) && s?.deployTxHash && s?.deployBlockHash && assethubUrl) {
+        deployCell = <Link url={pjsExplorerUrl(assethubUrl, s.deployBlockHash)}><Text color="green">{shortHash(s.deployTxHash)}</Text></Link>;
+    } else if (["registering", "done"].includes(state)) {
         deployCell = <Done />;
     } else {
         deployCell = <Idle />;
     }
 
-    // Metadata column
+    // Metadata column — use publishInProgress flag for spinner
     let metaCell: React.ReactNode;
-    if (state === "publishing") {
+    if (s?.publishInProgress) {
         metaCell = <Spinner tick={tick} />;
     } else if (state === "error" && errorPhase(s!) === "metadata") {
         metaCell = <Failed />;
-    } else if (["registering", "done"].includes(state)) {
+    } else if (["registering", "done"].includes(state) && s?.cid && ipfsGatewayUrl) {
+        metaCell = <Link url={ipfsUrl(ipfsGatewayUrl, s.cid)}><Text color="green">{shortHash(s.cid)}</Text></Link>;
+    } else if (["registering", "done"].includes(state) && s?.publishTxHash) {
         metaCell = <Done />;
     } else {
         metaCell = <Idle />;
     }
 
-    // Register column
+    // Register column — use registerInProgress flag for spinner
     let registerCell: React.ReactNode;
-    if (state === "registering") {
+    if (s?.registerInProgress) {
         registerCell = <Spinner tick={tick} />;
     } else if (state === "error" && errorPhase(s!) === "register") {
         registerCell = <Failed />;
+    } else if (state === "done" && s?.registerTxHash && s?.registerBlockHash && assethubUrl) {
+        registerCell = <Link url={pjsExplorerUrl(assethubUrl, s.registerBlockHash)}><Text color="green">{shortHash(s.registerTxHash)}</Text></Link>;
     } else if (state === "done") {
         registerCell = <Done />;
     } else {
@@ -172,9 +202,12 @@ export interface DeployTableProps {
     displayNames: Map<string, string>;
     crates: string[];
     buildOnly: boolean;
+    assethubUrl?: string;
+    bulletinUrl?: string;
+    ipfsGatewayUrl?: string;
 }
 
-export function DeployTable({ statuses, displayNames, crates, buildOnly }: DeployTableProps) {
+export function DeployTable({ statuses, displayNames, crates, buildOnly, assethubUrl, ipfsGatewayUrl }: DeployTableProps) {
     const [tick, setTick] = useState(0);
 
     useEffect(() => {
@@ -200,6 +233,8 @@ export function DeployTable({ statuses, displayNames, crates, buildOnly }: Deplo
                     status={statuses.get(crate)}
                     tick={tick}
                     buildOnly={buildOnly}
+                    assethubUrl={assethubUrl}
+                    ipfsGatewayUrl={ipfsGatewayUrl}
                 />
             ))}
             {errors.length > 0 && (

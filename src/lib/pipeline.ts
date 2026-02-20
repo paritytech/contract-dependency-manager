@@ -2,27 +2,23 @@ import { resolve } from "path";
 import { existsSync, readFileSync } from "fs";
 import {
     detectDeploymentOrderLayered,
-    type DeploymentOrderLayered,
-    type ContractInfo,
     getGitRemoteUrl,
     readReadmeContent,
 } from "./detection.js";
 import {
     pvmContractBuildAsync,
-    type BuildResult,
     type BuildProgressCallback,
     type ContractDeployer,
     type Metadata,
     type AbiEntry,
 } from "./deployer.js";
+import { computeCid } from "./cid.js";
 
 export type ContractState =
     | "waiting"
     | "building"
     | "built"
     | "deploying"
-    | "deployed"
-    | "publishing"
     | "registering"
     | "done"
     | "error";
@@ -33,8 +29,17 @@ export interface ContractStatus {
     error?: string;
     address?: string;
     cid?: string;
+    deployTxHash?: string;
+    deployBlockHash?: string;
+    publishTxHash?: string;
+    publishBlockHash?: string;
+    registerTxHash?: string;
+    registerBlockHash?: string;
     durationMs?: number;
     buildProgress?: { compiled: number; total: number; currentCrate: string };
+    deployInProgress?: boolean;
+    publishInProgress?: boolean;
+    registerInProgress?: boolean;
 }
 
 export interface PipelineOptions {
@@ -138,42 +143,20 @@ export async function executePipeline(
         // 3. Filter to successful builds
         const deployable = runnable.filter((crate) => !failedCrates.has(crate));
 
-        // 4. DEPLOY PHASE - batched
+        // 4. DEPLOY + PUBLISH PHASE (parallel: deploy on AssetHub, publish on Bulletin)
         if (opts.deployer && deployable.length > 0) {
             try {
-                // Mark all as deploying
-                for (const crate of deployable) {
-                    updateStatus(statuses, crate, "deploying", opts.onStatusChange);
-                }
-
-                // Batch deploy
-                const pvmPaths = deployable.map((c) =>
-                    resolve(opts.rootDir, `target/${c}.release.polkavm`),
-                );
-                const batchAddrs = await opts.deployer.deployBatch(pvmPaths);
-                const addrMap: Record<string, string> = {};
-                for (let i = 0; i < deployable.length; i++) {
-                    addrMap[deployable[i]] = batchAddrs[i];
-                    addresses[deployable[i]] = batchAddrs[i];
-                }
-
-                // Mark all as deployed
-                for (const crate of deployable) {
-                    updateStatus(statuses, crate, "deployed", opts.onStatusChange, {
-                        address: addrMap[crate],
-                    });
-                }
-
-                // 5. PUBLISH METADATA PHASE - batched (CDM contracts only)
                 const cdmCrates = deployable.filter((c) => order.cdmPackageMap.has(c));
+                const cdmSet = new Set(cdmCrates);
                 const cidMap: Record<string, string> = {};
+                const addrMap: Record<string, string> = {};
 
+                // Prepare metadata and precompute CIDs for CDM crates
+                let metadataList: Metadata[] = [];
+                let precomputedCids: string[] = [];
                 if (cdmCrates.length > 0) {
-                    for (const crate of cdmCrates) {
-                        updateStatus(statuses, crate, "publishing", opts.onStatusChange);
-                    }
-
-                    const metadataList: Metadata[] = cdmCrates.map((c) => {
+                    const publishedAt = new Date().toISOString();
+                    metadataList = cdmCrates.map((c) => {
                         const contract = order.contractMap.get(c)!;
                         const readmeContent = readReadmeContent(contract.readmePath);
                         const repository = contract.repository ?? getGitRemoteUrl(opts.rootDir) ?? "";
@@ -183,57 +166,103 @@ export async function executePipeline(
                             try { abi = JSON.parse(readFileSync(abiPath, "utf-8")); } catch {}
                         }
                         return {
-                            publish_block: 0,
-                            published_at: "",
+                            publish_block: 0, published_at: publishedAt,
                             description: contract.description ?? "",
-                            readme: readmeContent,
-                            authors: contract.authors,
-                            homepage: contract.homepage ?? "",
-                            repository,
-                            abi,
+                            readme: readmeContent, authors: contract.authors,
+                            homepage: contract.homepage ?? "", repository, abi,
                         };
                     });
-
-                    const { cids } = await opts.deployer.publishMetadataBatch(metadataList);
+                    precomputedCids = metadataList.map((m) =>
+                        computeCid(new TextEncoder().encode(JSON.stringify(m))),
+                    );
                     for (let i = 0; i < cdmCrates.length; i++) {
-                        cidMap[cdmCrates[i]] = cids[i];
+                        cidMap[cdmCrates[i]] = precomputedCids[i];
                     }
+                }
 
-                    // 6. REGISTER PHASE - batched
-                    for (const crate of cdmCrates) {
+                // Mark deploying (+ publishing for CDM crates)
+                for (const crate of deployable) {
+                    updateStatus(statuses, crate, "deploying", opts.onStatusChange, {
+                        deployInProgress: true,
+                        ...(cdmSet.has(crate) ? { publishInProgress: true, cid: cidMap[crate] } : {}),
+                    });
+                }
+
+                // Deploy (AssetHub) + Publish (Bulletin) in parallel
+                const pvmPaths = deployable.map((c) =>
+                    resolve(opts.rootDir, `target/${c}.release.polkavm`),
+                );
+                const [deployResult, publishResult] = await Promise.all([
+                    opts.deployer.deployBatch(pvmPaths),
+                    cdmCrates.length > 0
+                        ? opts.deployer.publishMetadataBatch(metadataList)
+                        : Promise.resolve(null),
+                ]);
+
+                // Process deploy results
+                const { addresses: batchAddrs, txHash: deployTxHash, blockHash: deployBlockHash } = deployResult;
+                for (let i = 0; i < deployable.length; i++) {
+                    addrMap[deployable[i]] = batchAddrs[i];
+                    addresses[deployable[i]] = batchAddrs[i];
+                }
+
+                // Verify published CIDs
+                let publishTxHash = "";
+                let publishBlockHash = "";
+                if (publishResult) {
+                    for (let i = 0; i < precomputedCids.length; i++) {
+                        if (publishResult.cids[i] !== precomputedCids[i]) {
+                            throw new Error(
+                                `CID mismatch for ${cdmCrates[i]}: expected ${precomputedCids[i]}, got ${publishResult.cids[i]}`,
+                            );
+                        }
+                    }
+                    publishTxHash = publishResult.txHash;
+                    publishBlockHash = publishResult.blockHash;
+                }
+
+                // Transition: CDM crates → registering, non-CDM → done
+                for (const crate of deployable) {
+                    if (cdmSet.has(crate)) {
                         updateStatus(statuses, crate, "registering", opts.onStatusChange, {
-                            cid: cidMap[crate],
+                            deployInProgress: false, publishInProgress: false, registerInProgress: true,
+                            address: addrMap[crate], deployTxHash, deployBlockHash, publishTxHash, publishBlockHash,
+                        });
+                    } else {
+                        updateStatus(statuses, crate, "done", opts.onStatusChange, {
+                            deployInProgress: false, address: addrMap[crate], deployTxHash, deployBlockHash,
                         });
                     }
+                }
 
+                // 5. REGISTER PHASE (needs address from deploy + CID from publish)
+                if (cdmCrates.length > 0) {
                     const registerEntries = cdmCrates.map((c) => ({
                         cdmPackage: order.cdmPackageMap.get(c)!,
                         contractAddr: addrMap[c],
                         metadataUri: cidMap[c],
                     }));
-                    await opts.deployer.registerBatch(registerEntries);
-                }
+                    const { txHash: registerTxHash, blockHash: registerBlockHash } =
+                        await opts.deployer.registerBatch(registerEntries);
 
-                // 7. Mark ALL deployable as done
-                for (const crate of deployable) {
-                    updateStatus(statuses, crate, "done", opts.onStatusChange, {
-                        address: addrMap[crate],
-                        cid: cidMap[crate],
-                    });
+                    for (const crate of cdmCrates) {
+                        updateStatus(statuses, crate, "done", opts.onStatusChange, {
+                            registerInProgress: false, registerTxHash, registerBlockHash,
+                        });
+                    }
                 }
             } catch (err) {
-                // If batch fails, mark all deployable as failed
                 for (const crate of deployable) {
                     if (!failedCrates.has(crate)) {
                         failedCrates.add(crate);
                         updateStatus(statuses, crate, "error", opts.onStatusChange, {
+                            deployInProgress: false, publishInProgress: false, registerInProgress: false,
                             error: err instanceof Error ? err.message : String(err),
                         });
                     }
                 }
             }
         } else if (!opts.deployer) {
-            // Build-only mode
             for (const crate of deployable) {
                 updateStatus(statuses, crate, "done", opts.onStatusChange);
             }

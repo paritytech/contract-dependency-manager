@@ -58,6 +58,7 @@ const deploy = new Command("deploy")
 type DeployOptions = {
     assethubUrl?: string;
     bulletinUrl?: string;
+    ipfsGatewayUrl?: string;
     name?: string;
     registryAddress?: string;
     suri?: string;
@@ -71,6 +72,7 @@ deploy.action(async (opts: DeployOptions) => {
         const preset = getChainPreset(opts.name);
         opts.assethubUrl = opts.assethubUrl ?? preset.assethubUrl;
         opts.bulletinUrl = opts.bulletinUrl ?? preset.bulletinUrl;
+        opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? preset.ipfsGatewayUrl;
         opts.registryAddress = opts.registryAddress ?? preset.registryAddress;
     }
 
@@ -148,6 +150,9 @@ async function deployWithRegistry(
         registryAddr,
         skipBuild: opts.skipBuild,
         deployer: d,
+        assethubUrl: opts.assethubUrl,
+        bulletinUrl: opts.bulletinUrl,
+        ipfsGatewayUrl: opts.ipfsGatewayUrl,
     });
 
     if (!deployer) {
@@ -209,7 +214,7 @@ async function bootstrapDeploy(
 
     // Phase 1: Deploy ContractRegistry
     console.log("Deploying ContractRegistry...");
-    const registryAddr = await deployer.deploy(registryPvmPath);
+    const { address: registryAddr } = await deployer.deploy(registryPvmPath);
     console.log(`  ContractRegistry: ${registryAddr}\n`);
 
     // Phase 2+3: Build and deploy all CDM contracts
