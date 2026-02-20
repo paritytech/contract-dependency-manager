@@ -1,9 +1,4 @@
-import {
-    PolkadotClient,
-    TypedApi,
-    Binary,
-    Enum,
-} from "polkadot-api";
+import { PolkadotClient, TypedApi, Binary, Enum } from "polkadot-api";
 import { AssetHub, Bulletin, contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { readFileSync } from "fs";
@@ -54,7 +49,11 @@ export interface BuildResult {
     durationMs: number;
 }
 
-export type BuildProgressCallback = (processed: number, total: number, currentCrate: string) => void;
+export type BuildProgressCallback = (
+    processed: number,
+    total: number,
+    currentCrate: string,
+) => void;
 
 export class ContractDeployer {
     public signer: ReturnType<typeof prepareSigner>;
@@ -79,7 +78,9 @@ export class ContractDeployer {
         this.bulletinApi = api;
     }
 
-    async publishMetadata(metadata: Metadata): Promise<{ cid: string; blockNumber: number }> {
+    async publishMetadata(
+        metadata: Metadata,
+    ): Promise<{ cid: string; blockNumber: number }> {
         metadata.published_at = new Date().toISOString();
         const jsonString = JSON.stringify(metadata);
         const data = Binary.fromText(jsonString);
@@ -110,21 +111,25 @@ export class ContractDeployer {
         return { cid: cid.toString(), blockNumber: result.block.number };
     }
 
-    async publishMetadataBatch(metadataList: Metadata[]): Promise<{ cids: string[]; blockNumber: number }> {
+    /**
+     * Publish metadata for multiple contracts in a single Utility.batch_all transaction.
+     */
+    async publishMetadataBatch(
+        metadataList: Metadata[],
+    ): Promise<{ cids: string[]; blockNumber: number }> {
         if (metadataList.length === 0) return { cids: [], blockNumber: 0 };
         if (metadataList.length === 1) {
             const result = await this.publishMetadata(metadataList[0]);
             return { cids: [result.cid], blockNumber: result.blockNumber };
         }
 
-        // Build store calls
         const txs = metadataList.map((metadata) => {
             metadata.published_at = new Date().toISOString();
-            const data = Binary.fromText(JSON.stringify(metadata));
+            const jsonString = JSON.stringify(metadata);
+            const data = Binary.fromText(jsonString);
             return this.bulletinApi.tx.TransactionStorage.store({ data });
         });
 
-        // Extract decoded calls (may be Promises)
         const calls = await Promise.all(
             txs.map(async (tx) => {
                 const call = tx.decodedCall;
@@ -136,16 +141,38 @@ export class ContractDeployer {
             calls,
         }).signAndSubmit(this.signer);
 
-        const storedEvents = this.bulletinApi.event.TransactionStorage.Stored.filter(result.events);
+        const failures = this.bulletinApi.event.System.ExtrinsicFailed.filter(
+            result.events,
+        );
+        if (failures.length > 0) {
+            const stringify = (obj: unknown) =>
+                JSON.stringify(
+                    obj,
+                    (_, v) => (typeof v === "bigint" ? v.toString() : v),
+                    2,
+                );
+            throw new Error(
+                `Batch metadata publish failed: ${stringify(failures[0])}`,
+            );
+        }
+
+        const storedEvents =
+            this.bulletinApi.event.TransactionStorage.Stored.filter(
+                result.events,
+            );
         if (storedEvents.length !== metadataList.length) {
             throw new Error(
                 `Expected ${metadataList.length} Stored events, got ${storedEvents.length}`,
             );
         }
 
-        const cids = storedEvents.map((e) => {
-            const cidBytes = e.cid;
-            if (!cidBytes) throw new Error("No CID in Stored event");
+        const cids = storedEvents.map((event) => {
+            const { cid: cidBytes } = event;
+            if (!cidBytes) {
+                throw new Error(
+                    "Metadata publishing failed - no CID in Stored event",
+                );
+            }
             return CID.decode(cidBytes.asBytes()).toString();
         });
 
@@ -189,16 +216,26 @@ export class ContractDeployer {
         console.log(`  Registered ${cdmPackage} -> ${addr}`);
     }
 
+    /**
+     * Register multiple contracts in a single Utility.batch_all transaction.
+     */
     async registerBatch(
-        entries: { cdmPackage: string; contractAddr: string; metadataUri: string }[],
+        entries: {
+            cdmPackage: string;
+            contractAddr: string;
+            metadataUri: string;
+        }[],
     ): Promise<void> {
         if (entries.length === 0) return;
         if (entries.length === 1) {
-            await this.register(entries[0].cdmPackage, entries[0].contractAddr, entries[0].metadataUri);
+            await this.register(
+                entries[0].cdmPackage,
+                entries[0].contractAddr,
+                entries[0].metadataUri,
+            );
             return;
         }
 
-        // Build ink contract calls
         const txs = entries.map((entry) =>
             this.registry.send("publishLatest", {
                 data: {
@@ -214,7 +251,6 @@ export class ContractDeployer {
             }),
         );
 
-        // Extract decoded calls (ink SDK returns Promise<decodedCall>)
         const calls = await Promise.all(
             txs.map(async (tx) => {
                 const call = tx.decodedCall;
@@ -226,7 +262,9 @@ export class ContractDeployer {
             calls,
         }).signAndSubmit(this.signer);
 
-        const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
+        const failures = this.api.event.System.ExtrinsicFailed.filter(
+            result.events,
+        );
         if (failures.length > 0) {
             const stringify = (obj: unknown) =>
                 JSON.stringify(
@@ -238,7 +276,9 @@ export class ContractDeployer {
         }
 
         for (const entry of entries) {
-            console.log(`  Registered ${entry.cdmPackage} -> ${entry.contractAddr}`);
+            console.log(
+                `  Registered ${entry.cdmPackage} -> ${entry.contractAddr}`,
+            );
         }
     }
 
@@ -275,14 +315,14 @@ export class ContractDeployer {
 
         // Use weight_required from dry-run with 20% headroom
         const gasLimit = {
-            ref_time: dryRun.weight_required.ref_time * 120n / 100n,
-            proof_size: dryRun.weight_required.proof_size * 120n / 100n,
+            ref_time: (dryRun.weight_required.ref_time * 120n) / 100n,
+            proof_size: (dryRun.weight_required.proof_size * 120n) / 100n,
         };
 
         // Derive storage deposit from dry-run
         let storageDeposit = STORAGE_DEPOSIT_LIMIT;
         if (dryRun.storage_deposit.type === "Charge") {
-            storageDeposit = dryRun.storage_deposit.value * 120n / 100n;
+            storageDeposit = (dryRun.storage_deposit.value * 120n) / 100n;
         }
 
         const result = await this.api.tx.Revive.instantiate_with_code({
@@ -351,13 +391,13 @@ export class ContractDeployer {
         }
 
         const gasLimit = {
-            ref_time: dryRun.weight_required.ref_time * 120n / 100n,
-            proof_size: dryRun.weight_required.proof_size * 120n / 100n,
+            ref_time: (dryRun.weight_required.ref_time * 120n) / 100n,
+            proof_size: (dryRun.weight_required.proof_size * 120n) / 100n,
         };
 
         let storageDeposit = STORAGE_DEPOSIT_LIMIT;
         if (dryRun.storage_deposit.type === "Charge") {
-            storageDeposit = dryRun.storage_deposit.value * 120n / 100n;
+            storageDeposit = (dryRun.storage_deposit.value * 120n) / 100n;
         }
 
         return {
@@ -379,16 +419,18 @@ export class ContractDeployer {
      * Returns addresses in the same order as the input paths.
      * Falls back to sequential deploys if the batch fails.
      */
+    /**
+     * Deploy multiple contracts in a single Utility.batch_all transaction.
+     * Returns addresses in the same order as the input paths.
+     */
     async deployBatch(pvmPaths: string[]): Promise<string[]> {
         if (pvmPaths.length === 0) return [];
         if (pvmPaths.length === 1) return [await this.deploy(pvmPaths[0])];
 
-        // Dry-run each contract to get gas estimates and build tx descriptors
         const prepared = await Promise.all(
             pvmPaths.map((p) => this.dryRunDeploy(p)),
         );
 
-        // Build batch_all call — decodedCall may be a Promise in polkadot-api
         const calls = await Promise.all(
             prepared.map(async (p) => {
                 const call = p.tx.decodedCall;
@@ -461,10 +503,14 @@ export async function pvmContractBuildAsync(
     return new Promise((done) => {
         const startTime = Date.now();
         const args = [
-            "pvm-contract", "build",
-            "--manifest-path", manifestPath,
-            "-p", crateName,
-            "--message-format", "json",
+            "pvm-contract",
+            "build",
+            "--manifest-path",
+            manifestPath,
+            "-p",
+            crateName,
+            "--message-format",
+            "json",
         ];
         const env: Record<string, string> = {
             ...(process.env as Record<string, string>),
