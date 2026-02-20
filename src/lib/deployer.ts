@@ -213,7 +213,6 @@ export class ContractDeployer {
             })
             .signAndSubmit(this.signer);
 
-        console.log(`  Registered ${cdmPackage} -> ${addr}`);
     }
 
     /**
@@ -275,11 +274,6 @@ export class ContractDeployer {
             throw new Error(`Batch register failed: ${stringify(failures[0])}`);
         }
 
-        for (const entry of entries) {
-            console.log(
-                `  Registered ${entry.cdmPackage} -> ${entry.contractAddr}`,
-            );
-        }
     }
 
     /**
@@ -309,8 +303,7 @@ export class ContractDeployer {
                     (_, v) => (typeof v === "bigint" ? v.toString() : v),
                     2,
                 );
-            console.error("Dry-run failed:", stringify(dryRun.result));
-            throw new Error("Contract instantiation dry-run failed");
+            throw new Error(`Contract instantiation dry-run failed: ${stringify(dryRun.result)}`);
         }
 
         // Use weight_required from dry-run with 20% headroom
@@ -344,8 +337,7 @@ export class ContractDeployer {
                     (_, v) => (typeof v === "bigint" ? v.toString() : v),
                     2,
                 );
-            console.error("Transaction failed:", stringify(failures[0]));
-            throw new Error("Deployment transaction failed");
+            throw new Error(`Deployment transaction failed: ${stringify(failures[0])}`);
         }
 
         const instantiated = this.api.event.Revive.Instantiated.filter(

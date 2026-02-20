@@ -91,157 +91,98 @@ export async function executePipeline(
     const failedCrates = new Set<string>();
 
     for (const layer of layers) {
-        // Partition contracts into runnable vs skipped
+        // 1. Skip contracts with failed dependencies
         const runnable: string[] = [];
         for (const crate of layer) {
             const contract = order.contractMap.get(crate);
-            const hasFailed = contract?.dependsOnCrates.some((dep) =>
-                failedCrates.has(dep),
-            );
+            const hasFailed = contract?.dependsOnCrates.some((dep) => failedCrates.has(dep));
             if (hasFailed) {
                 failedCrates.add(crate);
-                updateStatus(
-                    statuses,
-                    crate,
-                    "error",
-                    opts.onStatusChange,
-                    { error: "Skipped: dependency failed" },
-                );
+                updateStatus(statuses, crate, "error", opts.onStatusChange, {
+                    error: "Skipped: dependency failed",
+                });
             } else {
                 runnable.push(crate);
             }
         }
 
-        // BUILD PHASE
+        // 2. BUILD PHASE - parallel within layer
         if (!opts.skipBuild) {
             const buildResults = await Promise.all(
                 runnable.map((crate) => {
-                    updateStatus(
-                        statuses,
-                        crate,
-                        "building",
-                        opts.onStatusChange,
-                    );
-
-                    const onProgress: BuildProgressCallback = (
-                        processed,
-                        total,
-                        currentCrate,
-                    ) => {
-                        updateStatus(
-                            statuses,
-                            crate,
-                            "building",
-                            opts.onStatusChange,
-                            {
-                                buildProgress: {
-                                    compiled: processed,
-                                    total,
-                                    currentCrate,
-                                },
-                            },
-                        );
+                    updateStatus(statuses, crate, "building", opts.onStatusChange);
+                    const onProgress: BuildProgressCallback = (processed, total, currentCrate) => {
+                        updateStatus(statuses, crate, "building", opts.onStatusChange, {
+                            buildProgress: { compiled: processed, total, currentCrate },
+                        });
                     };
-
-                    return pvmContractBuildAsync(
-                        opts.rootDir,
-                        crate,
-                        opts.registryAddr,
-                        onProgress,
-                    );
+                    return pvmContractBuildAsync(opts.rootDir, crate, opts.registryAddr, onProgress);
                 }),
             );
 
             for (const result of buildResults) {
                 if (result.success) {
-                    updateStatus(
-                        statuses,
-                        result.crateName,
-                        "built",
-                        opts.onStatusChange,
-                        { durationMs: result.durationMs },
-                    );
+                    updateStatus(statuses, result.crateName, "built", opts.onStatusChange, {
+                        durationMs: result.durationMs,
+                    });
                 } else {
                     failedCrates.add(result.crateName);
-                    updateStatus(
-                        statuses,
-                        result.crateName,
-                        "error",
-                        opts.onStatusChange,
-                        {
-                            error: result.stderr || "Build failed",
-                            durationMs: result.durationMs,
-                        },
-                    );
+                    updateStatus(statuses, result.crateName, "error", opts.onStatusChange, {
+                        error: result.stderr || "Build failed",
+                        durationMs: result.durationMs,
+                    });
                 }
             }
         }
 
-        // Filter out contracts that failed during build
-        const deployable = runnable.filter(
-            (crate) => !failedCrates.has(crate),
-        );
+        // 3. Filter to successful builds
+        const deployable = runnable.filter((crate) => !failedCrates.has(crate));
 
-        // DEPLOY PHASE
-        if (opts.deployer) {
-            // Deploy sequentially within a layer for nonce safety
-            for (const crate of deployable) {
-                try {
-                    updateStatus(
-                        statuses,
-                        crate,
-                        "deploying",
-                        opts.onStatusChange,
-                    );
+        // 4. DEPLOY PHASE - batched
+        if (opts.deployer && deployable.length > 0) {
+            try {
+                // Mark all as deploying
+                for (const crate of deployable) {
+                    updateStatus(statuses, crate, "deploying", opts.onStatusChange);
+                }
 
-                    const pvmPath = resolve(
-                        opts.rootDir,
-                        `target/${crate}.release.polkavm`,
-                    );
-                    const addr = await opts.deployer.deploy(pvmPath);
-                    updateStatus(
-                        statuses,
-                        crate,
-                        "deployed",
-                        opts.onStatusChange,
-                        { address: addr },
-                    );
-                    addresses[crate] = addr;
+                // Batch deploy
+                const pvmPaths = deployable.map((c) =>
+                    resolve(opts.rootDir, `target/${c}.release.polkavm`),
+                );
+                const batchAddrs = await opts.deployer.deployBatch(pvmPaths);
+                const addrMap: Record<string, string> = {};
+                for (let i = 0; i < deployable.length; i++) {
+                    addrMap[deployable[i]] = batchAddrs[i];
+                    addresses[deployable[i]] = batchAddrs[i];
+                }
 
-                    // Check if contract has a CDM package
-                    const cdmPackage = order.cdmPackageMap.get(crate);
-                    if (cdmPackage) {
-                        updateStatus(
-                            statuses,
-                            crate,
-                            "publishing",
-                            opts.onStatusChange,
-                        );
+                // Mark all as deployed
+                for (const crate of deployable) {
+                    updateStatus(statuses, crate, "deployed", opts.onStatusChange, {
+                        address: addrMap[crate],
+                    });
+                }
 
-                        const contract = order.contractMap.get(crate)!;
-                        const readmeContent = readReadmeContent(
-                            contract.readmePath,
-                        );
-                        const repository =
-                            contract.repository ??
-                            getGitRemoteUrl(opts.rootDir) ??
-                            "";
-                        const abiPath = resolve(
-                            opts.rootDir,
-                            `target/${crate}.release.abi.json`,
-                        );
+                // 5. PUBLISH METADATA PHASE - batched (CDM contracts only)
+                const cdmCrates = deployable.filter((c) => order.cdmPackageMap.has(c));
+                const cidMap: Record<string, string> = {};
+
+                if (cdmCrates.length > 0) {
+                    for (const crate of cdmCrates) {
+                        updateStatus(statuses, crate, "publishing", opts.onStatusChange);
+                    }
+
+                    const metadataList: Metadata[] = cdmCrates.map((c) => {
+                        const contract = order.contractMap.get(c)!;
+                        const readmeContent = readReadmeContent(contract.readmePath);
+                        const repository = contract.repository ?? getGitRemoteUrl(opts.rootDir) ?? "";
+                        const abiPath = resolve(opts.rootDir, `target/${c}.release.abi.json`);
                         let abi: AbiEntry[] = [];
                         if (existsSync(abiPath)) {
-                            try {
-                                abi = JSON.parse(
-                                    readFileSync(abiPath, "utf-8"),
-                                );
-                            } catch {
-                                // ignore parse errors
-                            }
+                            try { abi = JSON.parse(readFileSync(abiPath, "utf-8")); } catch {}
                         }
-
-                        const metadata: Metadata = {
+                        return {
                             publish_block: 0,
                             published_at: "",
                             description: contract.description ?? "",
@@ -251,44 +192,48 @@ export async function executePipeline(
                             repository,
                             abi,
                         };
+                    });
 
-                        const { cid } =
-                            await opts.deployer.publishMetadata(metadata);
-                        updateStatus(
-                            statuses,
-                            crate,
-                            "registering",
-                            opts.onStatusChange,
-                            { cid },
-                        );
-
-                        await opts.deployer.register(cdmPackage, addr, cid);
+                    const { cids } = await opts.deployer.publishMetadataBatch(metadataList);
+                    for (let i = 0; i < cdmCrates.length; i++) {
+                        cidMap[cdmCrates[i]] = cids[i];
                     }
 
-                    updateStatus(
-                        statuses,
-                        crate,
-                        "done",
-                        opts.onStatusChange,
-                    );
-                } catch (err) {
-                    failedCrates.add(crate);
-                    updateStatus(
-                        statuses,
-                        crate,
-                        "error",
-                        opts.onStatusChange,
-                        {
-                            error:
-                                err instanceof Error
-                                    ? err.message
-                                    : String(err),
-                        },
-                    );
+                    // 6. REGISTER PHASE - batched
+                    for (const crate of cdmCrates) {
+                        updateStatus(statuses, crate, "registering", opts.onStatusChange, {
+                            cid: cidMap[crate],
+                        });
+                    }
+
+                    const registerEntries = cdmCrates.map((c) => ({
+                        cdmPackage: order.cdmPackageMap.get(c)!,
+                        contractAddr: addrMap[c],
+                        metadataUri: cidMap[c],
+                    }));
+                    await opts.deployer.registerBatch(registerEntries);
+                }
+
+                // 7. Mark ALL deployable as done
+                for (const crate of deployable) {
+                    updateStatus(statuses, crate, "done", opts.onStatusChange, {
+                        address: addrMap[crate],
+                        cid: cidMap[crate],
+                    });
+                }
+            } catch (err) {
+                // If batch fails, mark all deployable as failed
+                for (const crate of deployable) {
+                    if (!failedCrates.has(crate)) {
+                        failedCrates.add(crate);
+                        updateStatus(statuses, crate, "error", opts.onStatusChange, {
+                            error: err instanceof Error ? err.message : String(err),
+                        });
+                    }
                 }
             }
-        } else {
-            // Build-only mode: mark built contracts as "done"
+        } else if (!opts.deployer) {
+            // Build-only mode
             for (const crate of deployable) {
                 updateStatus(statuses, crate, "done", opts.onStatusChange);
             }
