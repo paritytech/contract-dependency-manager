@@ -1,6 +1,6 @@
 TEMPLATE_DIR = templates/shared-counter
 
-.PHONY: install dev frontend build compile compile-all build-registry build-template test clean
+.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test clean
 
 setup:
 	curl -sL https://raw.githubusercontent.com/paritytech/ppn-proxy/main/install.sh | bash
@@ -47,6 +47,9 @@ compile-all: embed-templates
 build-registry:
 	cargo pvm-contract build --manifest-path $(CURDIR)/Cargo.toml -p contracts
 	bunx papi sol add target/contracts.release.abi.json contractsRegistry
+
+deploy-registry: build-registry
+	bun run scripts/deploy-registry.ts --name $(or $(CHAIN),local)
 
 build-template:
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter
