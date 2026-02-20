@@ -502,7 +502,7 @@ export async function pvmContractBuildAsync(
             "-p",
             crateName,
             "--message-format",
-            "json",
+            "json,json-diagnostic-rendered-ansi",
         ];
         const env: Record<string, string> = {
             ...(process.env as Record<string, string>),
@@ -519,6 +519,7 @@ export async function pvmContractBuildAsync(
 
         let stdout = "";
         let stderr = "";
+        let compilerMessages = "";
         let artifactsSeen = 0;
         let total = 0;
 
@@ -538,6 +539,8 @@ export async function pvmContractBuildAsync(
                         artifactsSeen++;
                         const name = msg.target?.name ?? "unknown";
                         onProgress?.(artifactsSeen, total, name);
+                    } else if (msg.reason === "compiler-message" && msg.message?.rendered) {
+                        compilerMessages += msg.message.rendered;
                     }
                 } catch {
                     // Not JSON, ignore
@@ -551,21 +554,23 @@ export async function pvmContractBuildAsync(
         });
 
         child.on("close", (code) => {
+            const fullStderr = compilerMessages ? compilerMessages + stderr : stderr;
             done({
                 crateName,
                 success: code === 0,
                 stdout,
-                stderr,
+                stderr: fullStderr,
                 durationMs: Date.now() - startTime,
             });
         });
 
         child.on("error", (err) => {
+            const fullStderr = compilerMessages ? compilerMessages + stderr : stderr;
             done({
                 crateName,
                 success: false,
                 stdout,
-                stderr: stderr + "\n" + err.message,
+                stderr: fullStderr + "\n" + err.message,
                 durationMs: Date.now() - startTime,
             });
         });

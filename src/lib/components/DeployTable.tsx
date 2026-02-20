@@ -205,9 +205,10 @@ export function DeployTable({ statuses, displayNames, crates, buildOnly }: Deplo
             {errors.length > 0 && (
                 <Box flexDirection="column" marginTop={1}>
                     {errors.map(({ name, error }) => (
-                        <Text key={name} color="red">
-                            {name}: {error}
-                        </Text>
+                        <Box key={name} flexDirection="column">
+                            <Text color="red">{name}:</Text>
+                            <Text>{error}</Text>
+                        </Box>
                     ))}
                 </Box>
             )}

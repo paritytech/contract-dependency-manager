@@ -10,6 +10,25 @@ import { runPipelineWithUI } from "../lib/ui.js";
 import { CONTRACTS_REGISTRY_CRATE } from "../constants.js";
 import { getChainPreset } from "../lib/known_chains.js";
 
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+function spinner(label: string, detail: string) {
+    let i = 0;
+    const id = setInterval(() => {
+        process.stdout.write(`\r\x1b[2K\x1b[1m${label}\x1b[0m ${SPINNER_FRAMES[i++ % SPINNER_FRAMES.length]} ${detail}`);
+    }, 80);
+    return {
+        succeed() {
+            clearInterval(id);
+            process.stdout.write(`\r\x1b[2K\x1b[1m${label}\x1b[0m \x1b[32m✔\x1b[0m ${detail}\n`);
+        },
+        fail() {
+            clearInterval(id);
+            process.stdout.write(`\r\x1b[2K\x1b[1m${label}\x1b[0m \x1b[31m✖\x1b[0m ${detail}\n`);
+        },
+    };
+}
+
 const deploy = new Command("deploy")
     .description("Deploy and register contracts")
     .option(
@@ -88,13 +107,7 @@ deploy.action(async (opts: DeployOptions) => {
         process.exit(1);
     }
 
-    console.log(`Target: ${opts.assethubUrl}`);
-    console.log(`Bulletin: ${opts.bulletinUrl}`);
-    console.log(`Registry: ${opts.registryAddress}`);
-    console.log(`Root: ${rootDir}\n`);
-
     await deployWithRegistry(opts.registryAddress, rootDir, opts);
-    console.log("\n=== Deployment Complete ===");
 });
 
 /**
@@ -108,18 +121,27 @@ async function deployWithRegistry(
     opts: DeployOptions,
     deployer?: ContractDeployer,
 ): Promise<Record<string, string>> {
-    const d = deployer ?? (await createDeployer(opts));
+    let d: ContractDeployer;
+    if (deployer) {
+        d = deployer;
+    } else {
+        const sp = spinner("AssetHub", opts.assethubUrl!);
+        d = await createDeployer(opts);
+        sp.succeed();
+    }
     d.setRegistry(registryAddr);
 
     // Connect to bulletin if not already connected
     const ownsBulletin = !d.bulletinClient;
     if (ownsBulletin) {
-        console.log("Connecting to Bulletin chain...");
+        const sp = spinner("Bulletin", opts.bulletinUrl!);
         const bulletinConn = connectBulletinWebSocket(opts.bulletinUrl!);
         d.setBulletinConnection(bulletinConn.client, bulletinConn.api);
-        const bulletinChain = await bulletinConn.client.getChainSpecData();
-        console.log(`Connected to Bulletin: ${bulletinChain.name}\n`);
+        await bulletinConn.client.getChainSpecData();
+        sp.succeed();
     }
+
+    console.log(`\x1b[1mRegistry\x1b[0m   ${registryAddr}\n`);
 
     const result = await runPipelineWithUI({
         rootDir,
@@ -148,9 +170,6 @@ async function bootstrapDeploy(
     opts: DeployOptions,
 ): Promise<void> {
     console.log("=== CDM Bootstrap Deploy ===\n");
-    console.log(`Target: ${opts.assethubUrl}`);
-    console.log(`Bulletin: ${opts.bulletinUrl}`);
-    console.log(`Root: ${rootDir}\n`);
 
     const registryPvmPath = resolve(
         rootDir,
@@ -166,15 +185,16 @@ async function bootstrapDeploy(
     }
 
     // Connect to Asset Hub
-    console.log("Connecting to chain...");
+    const sp1 = spinner("AssetHub", opts.assethubUrl!);
     const deployer = await createDeployer(opts);
+    sp1.succeed();
 
     // Connect to Bulletin
-    console.log("Connecting to Bulletin chain...");
+    const sp2 = spinner("Bulletin", opts.bulletinUrl!);
     const bulletinConn = connectBulletinWebSocket(opts.bulletinUrl!);
     deployer.setBulletinConnection(bulletinConn.client, bulletinConn.api);
-    const bulletinChain = await bulletinConn.client.getChainSpecData();
-    console.log(`Connected to Bulletin: ${bulletinChain.name}\n`);
+    await bulletinConn.client.getChainSpecData();
+    sp2.succeed();
 
     // Map account (required for Revive pallet on fresh chains)
     console.log("Mapping account...");
@@ -193,7 +213,6 @@ async function bootstrapDeploy(
     console.log(`  ContractRegistry: ${registryAddr}\n`);
 
     // Phase 2+3: Build and deploy all CDM contracts
-    console.log("Deploying CDM contracts...");
     const addresses = await deployWithRegistry(
         registryAddr,
         rootDir,
@@ -226,9 +245,8 @@ async function createDeployer(
     const { client, api } = connectWebSocket(opts.assethubUrl!);
     deployer.setConnection(client, api);
 
-    // Wait for connection
-    const chain = await deployer.client.getChainSpecData();
-    console.log(`Connected to: ${chain.name}\n`);
+    // Wait for connection to be established
+    await deployer.client.getChainSpecData();
 
     return deployer;
 }
