@@ -85,7 +85,7 @@ describe("e2e: bootstrap deploy", () => {
     }, 300_000);
 
     test("deploy and register all shared-counter contracts", async () => {
-        const result = await executePipeline({ rootDir: TEMPLATE_DIR, deployer, skipBuild: true });
+        const result = await executePipeline({ rootDir: TEMPLATE_DIR, deployer });
         const addresses = result.addresses;
 
         // Verify addresses returned for all contracts

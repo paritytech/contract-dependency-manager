@@ -48,7 +48,6 @@ const deploy = new Command("deploy")
         "Registry contract address (required unless --bootstrap)",
     )
     .option("--suri <uri>", "Secret URI for signing")
-    .option("--skip-build", "Skip build phase (use existing artifacts)", false)
     .option(
         "--bootstrap",
         "Full bootstrap: deploy ContractRegistry first, then all CDM contracts",
@@ -62,7 +61,6 @@ type DeployOptions = {
     name?: string;
     registryAddress?: string;
     suri?: string;
-    skipBuild: boolean;
     bootstrap: boolean;
 };
 
@@ -148,7 +146,6 @@ async function deployWithRegistry(
     const result = await runPipelineWithUI({
         rootDir,
         registryAddr,
-        skipBuild: opts.skipBuild,
         deployer: d,
         assethubUrl: opts.assethubUrl,
         bulletinUrl: opts.bulletinUrl,

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "fs";
 import {
     detectDeploymentOrderLayered,
     getGitRemoteUrl,
+    readCdmPackage,
     readReadmeContent,
 } from "./detection.js";
 import {
@@ -45,10 +46,10 @@ export interface ContractStatus {
 export interface PipelineOptions {
     rootDir: string;
     registryAddr?: string;
-    skipBuild?: boolean;
     deployer?: ContractDeployer; // undefined = build-only mode
     contractFilter?: string[]; // optional filter to only process specific contracts
     onStatusChange?: (crateName: string, status: ContractStatus) => void;
+    onCdmPackageDetected?: (crateName: string, cdmPackage: string) => void;
 }
 
 export interface PipelineResult {
@@ -112,30 +113,39 @@ export async function executePipeline(
         }
 
         // 2. BUILD PHASE - parallel within layer
-        if (!opts.skipBuild) {
-            const buildResults = await Promise.all(
-                runnable.map((crate) => {
-                    updateStatus(statuses, crate, "building", opts.onStatusChange);
-                    const onProgress: BuildProgressCallback = (processed, total, currentCrate) => {
-                        updateStatus(statuses, crate, "building", opts.onStatusChange, {
-                            buildProgress: { compiled: processed, total, currentCrate },
-                        });
-                    };
-                    return pvmContractBuildAsync(opts.rootDir, crate, opts.registryAddr, onProgress);
-                }),
-            );
+        const buildResults = await Promise.all(
+            runnable.map((crate) => {
+                updateStatus(statuses, crate, "building", opts.onStatusChange);
+                const onProgress: BuildProgressCallback = (processed, total, currentCrate) => {
+                    updateStatus(statuses, crate, "building", opts.onStatusChange, {
+                        buildProgress: { compiled: processed, total, currentCrate },
+                    });
+                };
+                return pvmContractBuildAsync(opts.rootDir, crate, opts.registryAddr, onProgress);
+            }),
+        );
 
-            for (const result of buildResults) {
-                if (result.success) {
-                    updateStatus(statuses, result.crateName, "built", opts.onStatusChange, {
-                        durationMs: result.durationMs,
-                    });
-                } else {
-                    failedCrates.add(result.crateName);
-                    updateStatus(statuses, result.crateName, "error", opts.onStatusChange, {
-                        error: result.stderr || "Build failed",
-                        durationMs: result.durationMs,
-                    });
+        for (const result of buildResults) {
+            if (result.success) {
+                updateStatus(statuses, result.crateName, "built", opts.onStatusChange, {
+                    durationMs: result.durationMs,
+                });
+            } else {
+                failedCrates.add(result.crateName);
+                updateStatus(statuses, result.crateName, "error", opts.onStatusChange, {
+                    error: result.stderr || "Build failed",
+                    durationMs: result.durationMs,
+                });
+            }
+        }
+
+        // 2b. Refresh CDM package info from build artifacts (.cdm.json generated during build)
+        for (const crate of runnable) {
+            if (!failedCrates.has(crate) && !order.cdmPackageMap.has(crate)) {
+                const cdmPkg = readCdmPackage(opts.rootDir, crate);
+                if (cdmPkg) {
+                    order.cdmPackageMap.set(crate, cdmPkg);
+                    opts.onCdmPackageDetected?.(crate, cdmPkg);
                 }
             }
         }

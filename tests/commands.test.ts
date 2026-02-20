@@ -25,7 +25,7 @@ describe("CLI commands", () => {
         const output = execSync(`bun run ${CLI} deploy --help`).toString();
         expect(output).toContain("--suri");
         expect(output).toContain("--bootstrap");
-        expect(output).toContain("--skip-build");
+        expect(output).toContain("--bootstrap");
     });
 
     test("cdm install --help shows options", () => {

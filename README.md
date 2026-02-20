@@ -80,7 +80,6 @@ CONTRACTS_REGISTRY_ADDR=0x... cdm deploy ws://127.0.0.1:10020
 # Options
 cdm deploy --signer Bob ws://127.0.0.1:10020     # Use different signer
 cdm deploy --dry-run ws://127.0.0.1:10020         # Preview deployment plan
-cdm deploy --skip-build ws://127.0.0.1:10020      # Use pre-built artifacts
 ```
 
 ### `cdm add <library>`

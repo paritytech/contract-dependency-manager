@@ -53,6 +53,10 @@ export async function runPipelineWithUI(opts: UIOptions): Promise<PipelineResult
         }
     };
 
+    const onCdmPackageDetected = (crateName: string, cdmPackage: string) => {
+        displayNames.set(crateName, cdmPackage);
+    };
+
     // Render ink UI
     const app = render(
         React.createElement(DeployTable, {
@@ -67,7 +71,7 @@ export async function runPipelineWithUI(opts: UIOptions): Promise<PipelineResult
     );
 
     // Run pipeline
-    const result = await executePipeline({ ...opts, onStatusChange });
+    const result = await executePipeline({ ...opts, onStatusChange, onCdmPackageDetected });
 
     // Brief delay for final render
     await new Promise((r) => setTimeout(r, 200));

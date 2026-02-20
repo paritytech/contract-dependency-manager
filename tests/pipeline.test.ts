@@ -136,7 +136,7 @@ describe("pipeline execution", () => {
     test.todo("error in one contract cascades to dependents");
     test.todo("error in one contract does not affect independent contracts");
     test.todo("build-only mode skips deploy phase");
-    test.todo("skip-build mode jumps to deploy");
+    test.todo("CDM packages detected after build on fresh clone");
     test.todo("status callbacks fire in correct order");
     test.todo("empty pipeline succeeds immediately");
     test.todo("single contract works without parallelism overhead");
