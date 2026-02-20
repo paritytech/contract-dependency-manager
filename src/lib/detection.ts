@@ -313,7 +313,10 @@ export function toposortLayers(graph: Map<string, string[]>): string[][] {
         );
     }
 
-    return layers;
+    // TEMPORARY PATCH: Force sequential deployment (one contract per layer) to work
+    // around bulletin chain issues with parallel submissions. Remove this once the
+    // bulletin nonce/parallel submission issue is resolved.
+    return layers.flatMap((layer) => layer.map((contract) => [contract]));
 }
 
 /**
