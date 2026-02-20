@@ -22,7 +22,7 @@ export interface UIOptions extends PipelineOptions {
 }
 
 export async function runPipelineWithUI(opts: UIOptions): Promise<PipelineResult> {
-    const order = detectDeploymentOrderLayered(opts.rootDir);
+    const order = opts.order ?? detectDeploymentOrderLayered(opts.rootDir);
 
     // Apply same filter as pipeline does
     let layers = order.layers;
@@ -34,7 +34,7 @@ export async function runPipelineWithUI(opts: UIOptions): Promise<PipelineResult
     }
 
     const crates = layers.flat();
-    const buildOnly = !opts.deployer;
+    const buildOnly = !opts.services;
 
     // Display names
     const displayNames = new Map<string, string>();
@@ -70,8 +70,8 @@ export async function runPipelineWithUI(opts: UIOptions): Promise<PipelineResult
         })
     );
 
-    // Run pipeline
-    const result = await executePipeline({ ...opts, onStatusChange, onCdmPackageDetected });
+    // Run pipeline — pass order so it doesn't re-detect
+    const result = await executePipeline({ ...opts, order, onStatusChange, onCdmPackageDetected });
 
     // Brief delay for final render
     await new Promise((r) => setTimeout(r, 200));

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { resolve } from "path";
 import { writeFileSync, mkdirSync } from "fs";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { contracts } from "@polkadot-api/descriptors";
 import { createInkSdk, ss58ToEthereum } from "@polkadot-api/sdk-ink";
 import { connectWebSocket } from "../lib/connection.js";
@@ -138,7 +138,7 @@ install.action(async (library: string, opts: AddOptions) => {
     // Register ABI with papi and generate descriptors
     console.log("\nRegistering ABI with papi...");
     try {
-        execSync(`npx papi sol add ${abiPath} ${safeName}`, { cwd: rootDir, stdio: "inherit" });
+        execFileSync("npx", ["papi", "sol", "add", abiPath, safeName], { cwd: rootDir, stdio: "inherit" });
         console.log("\n=== Done! ===");
         console.log(
             `\nYou can now import and use "${library}" contract types in your TypeScript code.`,

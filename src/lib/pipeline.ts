@@ -6,13 +6,18 @@ import {
     readCdmPackage,
     readReadmeContent,
 } from "./detection.js";
+import type { DeploymentOrderLayered } from "./detection.js";
 import {
     pvmContractBuildAsync,
     type BuildProgressCallback,
+} from "./builder.js";
+import {
     type ContractDeployer,
     type Metadata,
     type AbiEntry,
 } from "./deployer.js";
+import type { MetadataPublisher } from "./publisher.js";
+import type { RegistryManager } from "./registry.js";
 import { computeCid } from "./cid.js";
 
 export type ContractState =
@@ -43,13 +48,20 @@ export interface ContractStatus {
     registerInProgress?: boolean;
 }
 
+export interface DeployServices {
+    deployer: ContractDeployer;
+    publisher: MetadataPublisher;
+    registry: RegistryManager;
+}
+
 export interface PipelineOptions {
     rootDir: string;
     registryAddr?: string;
-    deployer?: ContractDeployer; // undefined = build-only mode
+    services?: DeployServices; // undefined = build-only mode
     contractFilter?: string[]; // optional filter to only process specific contracts
     onStatusChange?: (crateName: string, status: ContractStatus) => void;
     onCdmPackageDetected?: (crateName: string, cdmPackage: string) => void;
+    order?: DeploymentOrderLayered; // if provided, skip re-detecting
 }
 
 export interface PipelineResult {
@@ -74,7 +86,7 @@ function updateStatus(
 export async function executePipeline(
     opts: PipelineOptions,
 ): Promise<PipelineResult> {
-    const order = detectDeploymentOrderLayered(opts.rootDir);
+    const order = opts.order ?? detectDeploymentOrderLayered(opts.rootDir);
 
     // Apply contract filter if set
     let layers = order.layers;
@@ -154,7 +166,7 @@ export async function executePipeline(
         const deployable = runnable.filter((crate) => !failedCrates.has(crate));
 
         // 4. DEPLOY + PUBLISH PHASE (parallel: deploy on AssetHub, publish on Bulletin)
-        if (opts.deployer && deployable.length > 0) {
+        if (opts.services && deployable.length > 0) {
             try {
                 const cdmCrates = deployable.filter((c) => order.cdmPackageMap.has(c));
                 const cdmSet = new Set(cdmCrates);
@@ -203,9 +215,9 @@ export async function executePipeline(
                     resolve(opts.rootDir, `target/${c}.release.polkavm`),
                 );
                 const [deployResult, publishResult] = await Promise.all([
-                    opts.deployer.deployBatch(pvmPaths),
+                    opts.services.deployer.deployBatch(pvmPaths),
                     cdmCrates.length > 0
-                        ? opts.deployer.publishMetadataBatch(metadataList)
+                        ? opts.services.publisher.publishBatch(metadataList)
                         : Promise.resolve(null),
                 ]);
 
@@ -253,7 +265,7 @@ export async function executePipeline(
                         metadataUri: cidMap[c],
                     }));
                     const { txHash: registerTxHash, blockHash: registerBlockHash } =
-                        await opts.deployer.registerBatch(registerEntries);
+                        await opts.services.registry.registerBatch(registerEntries);
 
                     for (const crate of cdmCrates) {
                         updateStatus(statuses, crate, "done", opts.onStatusChange, {
@@ -272,7 +284,7 @@ export async function executePipeline(
                     }
                 }
             }
-        } else if (!opts.deployer) {
+        } else if (!opts.services) {
             for (const crate of deployable) {
                 updateStatus(statuses, crate, "done", opts.onStatusChange);
             }

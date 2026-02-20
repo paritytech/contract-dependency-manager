@@ -12,6 +12,7 @@
   "dependencies": {
     "@polkadot-api/descriptors": "file:../.papi/descriptors",
     "@polkadot-api/sdk-ink": "^0.6.2",
+    "dompurify": "^3.3.1",
     "marked": "^17.0.3",
     "polkadot-api": "^1.23.3",
     "react": "^19.2.0",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@types/dompurify": "^3.0.5",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",

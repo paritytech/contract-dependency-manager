@@ -1,19 +1,9 @@
 import { PolkadotClient, TypedApi, Binary, Enum } from "polkadot-api";
-import { AssetHub, Bulletin, contracts } from "@polkadot-api/descriptors";
-import { createInkSdk } from "@polkadot-api/sdk-ink";
+import { AssetHub } from "@polkadot-api/descriptors";
 import { readFileSync } from "fs";
-import { resolve } from "path";
-import { execSync, spawn } from "child_process";
-import { CID } from "multiformats/cid";
 import { prepareSigner } from "./signer.js";
-import { ALICE_SS58, GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "../constants.js";
-
-function getRegistryContract(client: PolkadotClient, addr: string) {
-    const inkSdk = createInkSdk(client);
-    return inkSdk.getContract(contracts.contractsRegistry, addr);
-}
-
-type RegistryContract = ReturnType<typeof getRegistryContract>;
+import { stringifyBigInt } from "./utils.js";
+import { ALICE_SS58, STORAGE_DEPOSIT_LIMIT } from "../constants.js";
 
 export interface AbiParam {
     name: string;
@@ -41,238 +31,15 @@ export interface Metadata {
     abi: AbiEntry[];
 }
 
-export interface BuildResult {
-    crateName: string;
-    success: boolean;
-    stdout: string;
-    stderr: string;
-    durationMs: number;
-}
-
-export type BuildProgressCallback = (
-    processed: number,
-    total: number,
-    currentCrate: string,
-) => void;
-
 export class ContractDeployer {
     public signer: ReturnType<typeof prepareSigner>;
-    public api!: TypedApi<AssetHub>;
-    public client!: PolkadotClient;
-    public registry!: RegistryContract;
-    public lastDeployedAddr: string | null = null;
-    public bulletinApi!: TypedApi<Bulletin>;
-    public bulletinClient!: PolkadotClient;
+    public api: TypedApi<AssetHub>;
+    public client: PolkadotClient;
 
-    constructor(signerName: string = "Alice") {
-        this.signer = prepareSigner(signerName);
-    }
-
-    setConnection(client: PolkadotClient, api: TypedApi<AssetHub>) {
+    constructor(signer: ReturnType<typeof prepareSigner>, client: PolkadotClient, api: TypedApi<AssetHub>) {
+        this.signer = signer;
         this.client = client;
         this.api = api;
-    }
-
-    setBulletinConnection(client: PolkadotClient, api: TypedApi<Bulletin>) {
-        this.bulletinClient = client;
-        this.bulletinApi = api;
-    }
-
-    async publishMetadata(
-        metadata: Metadata,
-    ): Promise<{ cid: string; blockNumber: number; txHash: string; blockHash: string }> {
-        const jsonString = JSON.stringify(metadata);
-        const data = Binary.fromText(jsonString);
-
-        const result = await this.bulletinApi.tx.TransactionStorage.store({
-            data,
-        }).signAndSubmit(this.signer);
-
-        const storedEvents =
-            this.bulletinApi.event.TransactionStorage.Stored.filter(
-                result.events,
-            );
-        if (storedEvents.length === 0) {
-            throw new Error(
-                "Metadata publishing failed - no Stored event found",
-            );
-        }
-
-        const { cid: cidBytes } = storedEvents[0];
-        if (!cidBytes) {
-            throw new Error(
-                "Metadata publishing failed - no CID in Stored event",
-            );
-        }
-
-        // cidBytes is a Binary (Vec<u8> from the chain) containing serialized CIDv1
-        const cid = CID.decode(cidBytes.asBytes());
-        return { cid: cid.toString(), blockNumber: result.block.number, txHash: result.txHash, blockHash: result.block.hash };
-    }
-
-    /**
-     * Publish metadata for multiple contracts in a single Utility.batch_all transaction.
-     */
-    async publishMetadataBatch(
-        metadataList: Metadata[],
-    ): Promise<{ cids: string[]; blockNumber: number; txHash: string; blockHash: string }> {
-        if (metadataList.length === 0) return { cids: [], blockNumber: 0, txHash: "", blockHash: "" };
-        if (metadataList.length === 1) {
-            const result = await this.publishMetadata(metadataList[0]);
-            return { cids: [result.cid], blockNumber: result.blockNumber, txHash: result.txHash, blockHash: result.blockHash };
-        }
-
-        const txs = metadataList.map((metadata) => {
-            const jsonString = JSON.stringify(metadata);
-            const data = Binary.fromText(jsonString);
-            return this.bulletinApi.tx.TransactionStorage.store({ data });
-        });
-
-        const calls = await Promise.all(
-            txs.map(async (tx) => {
-                const call = tx.decodedCall;
-                return call instanceof Promise ? await call : call;
-            }),
-        );
-
-        const result = await this.bulletinApi.tx.Utility.batch_all({
-            calls,
-        }).signAndSubmit(this.signer);
-
-        const failures = this.bulletinApi.event.System.ExtrinsicFailed.filter(
-            result.events,
-        );
-        if (failures.length > 0) {
-            const stringify = (obj: unknown) =>
-                JSON.stringify(
-                    obj,
-                    (_, v) => (typeof v === "bigint" ? v.toString() : v),
-                    2,
-                );
-            throw new Error(
-                `Batch metadata publish failed: ${stringify(failures[0])}`,
-            );
-        }
-
-        const storedEvents =
-            this.bulletinApi.event.TransactionStorage.Stored.filter(
-                result.events,
-            );
-        if (storedEvents.length !== metadataList.length) {
-            throw new Error(
-                `Expected ${metadataList.length} Stored events, got ${storedEvents.length}`,
-            );
-        }
-
-        const cids = storedEvents.map((event) => {
-            const { cid: cidBytes } = event;
-            if (!cidBytes) {
-                throw new Error(
-                    "Metadata publishing failed - no CID in Stored event",
-                );
-            }
-            return CID.decode(cidBytes.asBytes()).toString();
-        });
-
-        return { cids, blockNumber: result.block.number, txHash: result.txHash, blockHash: result.block.hash };
-    }
-
-    setRegistry(registryAddress: string) {
-        this.registry = getRegistryContract(this.client, registryAddress);
-    }
-
-    /**
-     * Register a contract in the contracts registry via ink SDK.
-     */
-    async register(
-        cdmPackage: string,
-        contractAddr?: string,
-        metadataUri: string = "",
-    ): Promise<{ txHash: string; blockHash: string }> {
-        const addr = contractAddr ?? this.lastDeployedAddr;
-        if (!addr) {
-            throw new Error(
-                "No contract address provided and no lastDeployedAddr set.",
-            );
-        }
-
-        const result = await this.registry
-            .send("publishLatest", {
-                data: {
-                    contract_name: cdmPackage,
-                    contract_address: addr,
-                    metadata_uri: metadataUri,
-                },
-                gasLimit: {
-                    ref_time: GAS_LIMIT.refTime,
-                    proof_size: GAS_LIMIT.proofSize,
-                },
-                storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
-            })
-            .signAndSubmit(this.signer);
-
-        return { txHash: result.txHash, blockHash: result.block.hash };
-    }
-
-    /**
-     * Register multiple contracts in a single Utility.batch_all transaction.
-     */
-    async registerBatch(
-        entries: {
-            cdmPackage: string;
-            contractAddr: string;
-            metadataUri: string;
-        }[],
-    ): Promise<{ txHash: string; blockHash: string }> {
-        if (entries.length === 0) return { txHash: "", blockHash: "" };
-        if (entries.length === 1) {
-            return this.register(
-                entries[0].cdmPackage,
-                entries[0].contractAddr,
-                entries[0].metadataUri,
-            );
-        }
-
-        const txs = entries.map((entry) =>
-            this.registry.send("publishLatest", {
-                data: {
-                    contract_name: entry.cdmPackage,
-                    contract_address: entry.contractAddr,
-                    metadata_uri: entry.metadataUri,
-                },
-                gasLimit: {
-                    ref_time: GAS_LIMIT.refTime,
-                    proof_size: GAS_LIMIT.proofSize,
-                },
-                storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
-            }),
-        );
-
-        const calls = await Promise.all(
-            txs.map(async (tx) => {
-                const call = tx.decodedCall;
-                return call instanceof Promise ? await call : call;
-            }),
-        );
-
-        const result = await this.api.tx.Utility.batch_all({
-            calls,
-        }).signAndSubmit(this.signer);
-
-        const failures = this.api.event.System.ExtrinsicFailed.filter(
-            result.events,
-        );
-        if (failures.length > 0) {
-            const stringify = (obj: unknown) =>
-                JSON.stringify(
-                    obj,
-                    (_, v) => (typeof v === "bigint" ? v.toString() : v),
-                    2,
-                );
-            throw new Error(`Batch register failed: ${stringify(failures[0])}`);
-        }
-
-        return { txHash: result.txHash, blockHash: result.block.hash };
     }
 
     /**
@@ -296,13 +63,7 @@ export class ContractDeployer {
         );
 
         if (dryRun.result.success === false) {
-            const stringify = (obj: unknown) =>
-                JSON.stringify(
-                    obj,
-                    (_, v) => (typeof v === "bigint" ? v.toString() : v),
-                    2,
-                );
-            throw new Error(`Contract instantiation dry-run failed: ${stringify(dryRun.result)}`);
+            throw new Error(`Contract instantiation dry-run failed: ${stringifyBigInt(dryRun.result)}`);
         }
 
         // Use weight_required from dry-run with 20% headroom
@@ -330,13 +91,7 @@ export class ContractDeployer {
             result.events,
         );
         if (failures.length > 0) {
-            const stringify = (obj: unknown) =>
-                JSON.stringify(
-                    obj,
-                    (_, v) => (typeof v === "bigint" ? v.toString() : v),
-                    2,
-                );
-            throw new Error(`Deployment transaction failed: ${stringify(failures[0])}`);
+            throw new Error(`Deployment transaction failed: ${stringifyBigInt(failures[0])}`);
         }
 
         const instantiated = this.api.event.Revive.Instantiated.filter(
@@ -348,8 +103,8 @@ export class ContractDeployer {
             );
         }
 
-        this.lastDeployedAddr = instantiated[0].contract.asHex();
-        return { address: this.lastDeployedAddr, txHash: result.txHash, blockHash: result.block.hash };
+        const address = instantiated[0].contract.asHex();
+        return { address, txHash: result.txHash, blockHash: result.block.hash };
     }
 
     /**
@@ -372,13 +127,7 @@ export class ContractDeployer {
         );
 
         if (dryRun.result.success === false) {
-            const stringify = (obj: unknown) =>
-                JSON.stringify(
-                    obj,
-                    (_, v) => (typeof v === "bigint" ? v.toString() : v),
-                    2,
-                );
-            throw new Error(`Dry-run failed: ${stringify(dryRun.result)}`);
+            throw new Error(`Dry-run failed: ${stringifyBigInt(dryRun.result)}`);
         }
 
         const gasLimit = {
@@ -405,11 +154,6 @@ export class ContractDeployer {
         };
     }
 
-    /**
-     * Deploy multiple contracts in a single Utility.batch_all transaction.
-     * Returns addresses in the same order as the input paths.
-     * Falls back to sequential deploys if the batch fails.
-     */
     /**
      * Deploy multiple contracts in a single Utility.batch_all transaction.
      * Returns addresses in the same order as the input paths.
@@ -440,13 +184,7 @@ export class ContractDeployer {
             result.events,
         );
         if (failures.length > 0) {
-            const stringify = (obj: unknown) =>
-                JSON.stringify(
-                    obj,
-                    (_, v) => (typeof v === "bigint" ? v.toString() : v),
-                    2,
-                );
-            throw new Error(`Batch deploy failed: ${stringify(failures[0])}`);
+            throw new Error(`Batch deploy failed: ${stringifyBigInt(failures[0])}`);
         }
 
         const instantiated = this.api.event.Revive.Instantiated.filter(
@@ -459,122 +197,6 @@ export class ContractDeployer {
         }
 
         const addresses = instantiated.map((e) => e.contract.asHex());
-        this.lastDeployedAddr = addresses[addresses.length - 1];
         return { addresses, txHash: result.txHash, blockHash: result.block.hash };
     }
-}
-
-/**
- * Build a single contract using `cargo pvm-contract build`.
- */
-export function pvmContractBuild(
-    rootDir: string,
-    crateName: string,
-    registryAddr?: string,
-): void {
-    const manifestPath = resolve(rootDir, "Cargo.toml");
-    const cmd = `cargo pvm-contract build --manifest-path ${manifestPath} -p ${crateName}`;
-    const env: Record<string, string> = {
-        ...(process.env as Record<string, string>),
-    };
-    if (registryAddr) {
-        env.CONTRACTS_REGISTRY_ADDR = registryAddr;
-    }
-    execSync(cmd, { cwd: rootDir, stdio: "inherit", env });
-}
-
-/**
- * Build a single contract asynchronously with progress tracking.
- */
-export async function pvmContractBuildAsync(
-    rootDir: string,
-    crateName: string,
-    registryAddr?: string,
-    onProgress?: BuildProgressCallback,
-): Promise<BuildResult> {
-    const manifestPath = resolve(rootDir, "Cargo.toml");
-
-    return new Promise((done) => {
-        const startTime = Date.now();
-        const args = [
-            "pvm-contract",
-            "build",
-            "--manifest-path",
-            manifestPath,
-            "-p",
-            crateName,
-            "--message-format",
-            "json,json-diagnostic-rendered-ansi",
-        ];
-        const env: Record<string, string> = {
-            ...(process.env as Record<string, string>),
-        };
-        if (registryAddr) {
-            env.CONTRACTS_REGISTRY_ADDR = registryAddr;
-        }
-
-        const child = spawn("cargo", args, {
-            cwd: rootDir,
-            env,
-            stdio: ["pipe", "pipe", "pipe"],
-        });
-
-        let stdout = "";
-        let stderr = "";
-        let compilerMessages = "";
-        let artifactsSeen = 0;
-        let total = 0;
-
-        child.stdout.on("data", (data: Buffer) => {
-            const text = data.toString();
-            stdout += text;
-
-            for (const line of text.split("\n")) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                try {
-                    const msg = JSON.parse(trimmed);
-                    if (msg.reason === "build-plan") {
-                        // Emitted by cargo-pvm-contract before build starts
-                        total = msg.total ?? 0;
-                    } else if (msg.reason === "compiler-artifact") {
-                        artifactsSeen++;
-                        const name = msg.target?.name ?? "unknown";
-                        onProgress?.(artifactsSeen, total, name);
-                    } else if (msg.reason === "compiler-message" && msg.message?.rendered) {
-                        compilerMessages += msg.message.rendered;
-                    }
-                } catch {
-                    // Not JSON, ignore
-                }
-            }
-        });
-
-        child.stderr.on("data", (data: Buffer) => {
-            const text = data.toString();
-            stderr += text;
-        });
-
-        child.on("close", (code) => {
-            const fullStderr = compilerMessages ? compilerMessages + stderr : stderr;
-            done({
-                crateName,
-                success: code === 0,
-                stdout,
-                stderr: fullStderr,
-                durationMs: Date.now() - startTime,
-            });
-        });
-
-        child.on("error", (err) => {
-            const fullStderr = compilerMessages ? compilerMessages + stderr : stderr;
-            done({
-                crateName,
-                success: false,
-                stdout,
-                stderr: fullStderr + "\n" + err.message,
-                durationMs: Date.now() - startTime,
-            });
-        });
-    });
 }

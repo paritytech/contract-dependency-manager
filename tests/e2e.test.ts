@@ -2,12 +2,11 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { resolve } from "path";
 import { existsSync } from "fs";
 import { connectWebSocket } from "../src/lib/connection.js";
-import {
-    ContractDeployer,
-    pvmContractBuild,
-} from "../src/lib/deployer.js";
+import { ContractDeployer } from "../src/lib/deployer.js";
+import { pvmContractBuild } from "../src/lib/builder.js";
 import { executePipeline } from "../src/lib/pipeline.js";
 import { detectDeploymentOrder } from "../src/lib/detection.js";
+import { prepareSigner } from "../src/lib/signer.js";
 import { contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { CONTRACTS_REGISTRY_CRATE, ALICE_SS58 } from "../src/constants.js";
@@ -17,6 +16,7 @@ const ROOT_DIR = resolve(import.meta.dir, "..");
 const TEMPLATE_DIR = resolve(import.meta.dir, "../templates/shared-counter");
 
 let deployer: ContractDeployer;
+let client: ReturnType<typeof connectWebSocket>["client"];
 let registryAddr: string;
 
 beforeAll(async () => {
@@ -31,27 +31,28 @@ beforeAll(async () => {
     }
 
     // Connect
-    const { client, api } = connectWebSocket(NODE_URL);
-    deployer = new ContractDeployer("Alice");
-    deployer.setConnection(client, api);
+    const conn = connectWebSocket(NODE_URL);
+    client = conn.client;
+    const signer = prepareSigner("Alice");
+    deployer = new ContractDeployer(signer, conn.client, conn.api);
 
-    const chain = await client.getChainSpecData();
+    const chain = await conn.client.getChainSpecData();
     console.log(`Connected to: ${chain.name}`);
 
     // Map account (ignore if already mapped)
     try {
-        await api.tx.Revive.map_account().signAndSubmit(deployer.signer);
+        await conn.api.tx.Revive.map_account().signAndSubmit(deployer.signer);
     } catch {}
 
     // Deploy registry
     console.log("Deploying ContractRegistry...");
-    registryAddr = await deployer.deploy(registryPvm);
+    const result = await deployer.deploy(registryPvm);
+    registryAddr = result.address;
     console.log(`  Registry: ${registryAddr}`);
-    deployer.setRegistry(registryAddr);
 }, 120_000);
 
 afterAll(() => {
-    deployer?.client?.destroy();
+    client?.destroy();
 });
 
 describe("e2e: bootstrap deploy", () => {
@@ -85,7 +86,7 @@ describe("e2e: bootstrap deploy", () => {
     }, 300_000);
 
     test("deploy and register all shared-counter contracts", async () => {
-        const result = await executePipeline({ rootDir: TEMPLATE_DIR, deployer });
+        const result = await executePipeline({ rootDir: TEMPLATE_DIR });
         const addresses = result.addresses;
 
         // Verify addresses returned for all contracts
@@ -96,7 +97,7 @@ describe("e2e: bootstrap deploy", () => {
     }, 300_000);
 
     test("query registry for deployed contract addresses", async () => {
-        const inkSdk = createInkSdk(deployer.client);
+        const inkSdk = createInkSdk(client);
         const registry = inkSdk.getContract(
             contracts.contractsRegistry,
             registryAddr,
@@ -120,7 +121,7 @@ describe("e2e: bootstrap deploy", () => {
     }, 60_000);
 
     test("counter_writer increments and counter_reader reads the shared counter", async () => {
-        const inkSdk = createInkSdk(deployer.client);
+        const inkSdk = createInkSdk(client);
 
         // Resolve deployed addresses from registry
         const registry = inkSdk.getContract(
@@ -188,7 +189,7 @@ describe("e2e: bootstrap deploy", () => {
     }, 120_000);
 
     test("registry contract count matches deployed contracts", async () => {
-        const inkSdk = createInkSdk(deployer.client);
+        const inkSdk = createInkSdk(client);
         const registry = inkSdk.getContract(
             contracts.contractsRegistry,
             registryAddr,

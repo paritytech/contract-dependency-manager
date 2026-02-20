@@ -12,6 +12,7 @@ import { existsSync } from "fs";
 import { parseArgs } from "util";
 import { connectWebSocket } from "../src/lib/connection.js";
 import { ContractDeployer } from "../src/lib/deployer.js";
+import { prepareSigner } from "../src/lib/signer.js";
 import { getChainPreset } from "../src/lib/known_chains.js";
 import { CONTRACTS_REGISTRY_CRATE } from "../src/constants.js";
 
@@ -46,15 +47,16 @@ if (!existsSync(pvmPath)) {
 // Connect
 console.log(`Connecting to ${assethubUrl}...`);
 const signerName = opts.suri?.startsWith("//") ? opts.suri.slice(2) : undefined;
-const deployer = new ContractDeployer(signerName);
+const signer = prepareSigner(signerName ?? "Alice");
 const { client, api } = connectWebSocket(assethubUrl);
-deployer.setConnection(client, api);
 await client.getChainSpecData();
 console.log("Connected.");
 
+const deployer = new ContractDeployer(signer, client, api);
+
 // Map account (required on fresh chains, harmless if already mapped)
 try {
-    await api.tx.Revive.map_account().signAndSubmit(deployer.signer);
+    await api.tx.Revive.map_account().signAndSubmit(signer);
     console.log("Account mapped.");
 } catch {
     // already mapped

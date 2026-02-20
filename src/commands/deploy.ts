@@ -6,6 +6,9 @@ import {
     connectBulletinWebSocket,
 } from "../lib/connection.js";
 import { ContractDeployer } from "../lib/deployer.js";
+import { MetadataPublisher } from "../lib/publisher.js";
+import { RegistryManager } from "../lib/registry.js";
+import { prepareSigner } from "../lib/signer.js";
 import { runPipelineWithUI } from "../lib/ui.js";
 import { CONTRACTS_REGISTRY_CRATE } from "../constants.js";
 import { getChainPreset } from "../lib/known_chains.js";
@@ -113,48 +116,67 @@ deploy.action(async (opts: DeployOptions) => {
 /**
  * Build, deploy, and register all CDM contracts against a known registry.
  * Uses the pipeline TUI for parallel builds and progress display.
- * Optionally accepts an existing deployer to reuse the connection.
+ * Optionally accepts existing connections to reuse.
  */
 async function deployWithRegistry(
     registryAddr: string,
     rootDir: string,
     opts: DeployOptions,
-    deployer?: ContractDeployer,
+    existingConnections?: {
+        signer: ReturnType<typeof prepareSigner>;
+        client: ReturnType<typeof connectWebSocket>["client"];
+        api: ReturnType<typeof connectWebSocket>["api"];
+    },
 ): Promise<Record<string, string>> {
-    let d: ContractDeployer;
-    if (deployer) {
-        d = deployer;
-    } else {
-        const sp = spinner("AssetHub", opts.assethubUrl!);
-        d = await createDeployer(opts);
-        sp.succeed();
-    }
-    d.setRegistry(registryAddr);
+    let signer: ReturnType<typeof prepareSigner>;
+    let client: ReturnType<typeof connectWebSocket>["client"];
+    let api: ReturnType<typeof connectWebSocket>["api"];
+    let ownsAssetHub: boolean;
 
-    // Connect to bulletin if not already connected
-    const ownsBulletin = !d.bulletinClient;
-    if (ownsBulletin) {
-        const sp = spinner("Bulletin", opts.bulletinUrl!);
-        const bulletinConn = connectBulletinWebSocket(opts.bulletinUrl!);
-        d.setBulletinConnection(bulletinConn.client, bulletinConn.api);
-        await bulletinConn.client.getChainSpecData();
+    if (existingConnections) {
+        signer = existingConnections.signer;
+        client = existingConnections.client;
+        api = existingConnections.api;
+        ownsAssetHub = false;
+    } else {
+        const signerName = opts.suri?.startsWith("//")
+            ? opts.suri.slice(2)
+            : undefined;
+        signer = prepareSigner(signerName ?? "Alice");
+
+        const sp = spinner("AssetHub", opts.assethubUrl!);
+        const conn = connectWebSocket(opts.assethubUrl!);
+        client = conn.client;
+        api = conn.api;
+        await client.getChainSpecData();
         sp.succeed();
+        ownsAssetHub = true;
     }
+
+    // Connect to bulletin
+    const sp = spinner("Bulletin", opts.bulletinUrl!);
+    const bulletinConn = connectBulletinWebSocket(opts.bulletinUrl!);
+    await bulletinConn.client.getChainSpecData();
+    sp.succeed();
+
+    const deployer = new ContractDeployer(signer, client, api);
+    const publisher = new MetadataPublisher(signer, bulletinConn.api);
+    const registry = new RegistryManager(signer, api, client, registryAddr);
 
     console.log(`\x1b[1mRegistry\x1b[0m   ${registryAddr}\n`);
 
     const result = await runPipelineWithUI({
         rootDir,
         registryAddr,
-        deployer: d,
+        services: { deployer, publisher, registry },
         assethubUrl: opts.assethubUrl,
         bulletinUrl: opts.bulletinUrl,
         ipfsGatewayUrl: opts.ipfsGatewayUrl,
     });
 
-    if (!deployer) {
-        if (ownsBulletin) d.bulletinClient.destroy();
-        d.client.destroy();
+    bulletinConn.client.destroy();
+    if (ownsAssetHub) {
+        client.destroy();
     }
 
     if (!result.success) {
@@ -186,24 +208,30 @@ async function bootstrapDeploy(
         process.exit(1);
     }
 
+    // Prepare signer
+    const signerName = opts.suri?.startsWith("//")
+        ? opts.suri.slice(2)
+        : undefined;
+    const signer = prepareSigner(signerName ?? "Alice");
+
     // Connect to Asset Hub
     const sp1 = spinner("AssetHub", opts.assethubUrl!);
-    const deployer = await createDeployer(opts);
+    const { client, api } = connectWebSocket(opts.assethubUrl!);
+    await client.getChainSpecData();
     sp1.succeed();
 
     // Connect to Bulletin
     const sp2 = spinner("Bulletin", opts.bulletinUrl!);
     const bulletinConn = connectBulletinWebSocket(opts.bulletinUrl!);
-    deployer.setBulletinConnection(bulletinConn.client, bulletinConn.api);
     await bulletinConn.client.getChainSpecData();
     sp2.succeed();
+
+    const deployer = new ContractDeployer(signer, client, api);
 
     // Map account (required for Revive pallet on fresh chains)
     console.log("Mapping account...");
     try {
-        await deployer.api.tx.Revive.map_account().signAndSubmit(
-            deployer.signer,
-        );
+        await api.tx.Revive.map_account().signAndSubmit(signer);
         console.log("  Account mapped\n");
     } catch {
         console.log("  Account already mapped\n");
@@ -219,7 +247,7 @@ async function bootstrapDeploy(
         registryAddr,
         rootDir,
         opts,
-        deployer,
+        { signer, client, api },
     );
 
     // Save all addresses (registry + CDM contracts)
@@ -232,25 +260,7 @@ async function bootstrapDeploy(
     console.log(`Addresses saved to ${addrPath}`);
 
     bulletinConn.client.destroy();
-    deployer.client.destroy();
-}
-
-async function createDeployer(
-    opts: DeployOptions,
-): Promise<ContractDeployer> {
-    const signerName = opts.suri?.startsWith("//")
-        ? opts.suri.slice(2)
-        : undefined;
-
-    const deployer = new ContractDeployer(signerName);
-
-    const { client, api } = connectWebSocket(opts.assethubUrl!);
-    deployer.setConnection(client, api);
-
-    // Wait for connection to be established
-    await deployer.client.getChainSpecData();
-
-    return deployer;
+    client.destroy();
 }
 
 export const deployCommand = deploy;

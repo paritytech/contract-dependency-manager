@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import Layout from '../components/Layout';
 import { CopyIcon, CheckIcon } from '../components/Icons';
 import { useNetwork } from '../context/NetworkContext';
@@ -171,12 +172,6 @@ function AbiTab({ abi }: { abi: AbiEntry[] }) {
   );
 }
 
-function formatNumber(n: number): string {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toString();
-}
 
 export default function PackagePage() {
   const params = useParams();
@@ -235,13 +230,6 @@ export default function PackagePage() {
   };
 
   const depEntries = Object.entries(pkg.dependencies ?? {});
-  const hasWeeklyCalls = pkg.weeklyCalls != null;
-  const calls = pkg.weeklyCalls ?? 0;
-  const weeklyData = hasWeeklyCalls
-    ? [Math.round(calls * 0.85), Math.round(calls * 0.9), Math.round(calls * 0.95), Math.round(calls * 0.88), calls]
-    : [];
-  const maxCalls = Math.max(...weeklyData, 1);
-
   const versions = pkg.versions ?? [];
   const hasVersions = versions.length > 0;
 
@@ -279,7 +267,7 @@ export default function PackagePage() {
             pkg.readme ? (
               <div
                 className="package-readme"
-                dangerouslySetInnerHTML={{ __html: marked.parse(pkg.readme) as string }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(pkg.readme) as string) }}
               />
             ) : !pkg.metadataLoaded && pkg.metadataUri ? (
               <p className="deps-empty">Loading readme...</p>
@@ -351,22 +339,6 @@ export default function PackagePage() {
         </div>
 
         <aside className="package-sidebar">
-          {hasWeeklyCalls && (
-            <div className="sidebar-section">
-              <div className="sidebar-section-title">Weekly Calls</div>
-              <div className="sidebar-value large">{formatNumber(calls)}</div>
-              <div className="downloads-chart">
-                {weeklyData.map((val, i) => (
-                  <div
-                    key={i}
-                    className="chart-bar"
-                    style={{ height: `${(val / maxCalls) * 100}%` }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className="sidebar-section">
             <div className="sidebar-section-title">Version</div>
             <div className="sidebar-value">v{pkg.version}</div>
