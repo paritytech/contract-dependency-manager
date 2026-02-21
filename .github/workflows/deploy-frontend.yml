@@ -1,60 +1,53 @@
 name: Deploy Frontend
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:
+on: workflow_dispatch
 
 permissions:
-  contents: read
-  statuses: write
-  id-token: write
-  pull-requests: write
+    contents: read
+    statuses: write
+    id-token: write
+    pull-requests: write
 
 concurrency:
-  group: deploy-frontend-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+    group: deploy-frontend-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    name: Build
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    build:
+        runs-on: ubuntu-latest
+        name: Build
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - name: Install and build
+              run: pnpm install && pnpm --filter @dotdm/frontend build
+
+            - name: Upload build artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: frontend-build
+                  path: src/apps/frontend/dist
+                  retention-days: 1
+
+    deploy:
+        needs: build
+        name: Deploy
+        uses: ./.github/workflows/dotns-deploy.yml
         with:
-          node-version: '22'
-
-      - name: Install and build
-        run: pnpm install && pnpm --filter @dotdm/frontend build
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-build
-          path: src/apps/frontend/dist
-          retention-days: 1
-
-  deploy:
-    needs: build
-    name: Deploy
-    uses: ./.github/workflows/dotns-deploy.yml
-    with:
-      basename: contracthub
-      artifact-name: frontend-build
-      mode: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'production' || 'preview' }}
-      register-base: true
-      max-retries: 3
-    secrets:
-      mnemonic: ${{ secrets.MNEMONIC || 'bottom drive obey lake curtain smoke basket hold race lonely fit walk' }}
-      dotns-token: ${{ secrets.DOTNS_TOKEN }}
+            basename: contracthub
+            artifact-name: frontend-build
+            mode: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'production' || 'preview' }}
+            register-base: true
+            max-retries: 3
+        secrets:
+            mnemonic: ${{ secrets.MNEMONIC || 'bottom drive obey lake curtain smoke basket hold race lonely fit walk' }}
+            dotns-token: ${{ secrets.DOTNS_TOKEN }}
