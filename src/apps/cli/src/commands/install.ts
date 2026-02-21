@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { connectWebSocket, getChainPreset, DEFAULT_NODE_URL } from "@dotdm/env";
-import { saveContract } from "@dotdm/contracts";
+import { saveContract, computeTargetHash, readCdmJson, writeCdmJson } from "@dotdm/contracts";
 import { ALICE_SS58 } from "@dotdm/utils";
 
 const install = new Command("install")
@@ -42,8 +42,10 @@ install.action(async (library: string, opts: InstallOptions) => {
         process.exit(1);
     }
 
+    const targetHash = computeTargetHash(opts.assethubUrl, opts.ipfsGatewayUrl!, registryAddr);
     console.log(`=== CDM Install: ${library} ===\n`);
     console.log(`Registry: ${registryAddr}`);
+    console.log(`Target: ${targetHash}`);
     console.log(`Chain: ${opts.assethubUrl}\n`);
 
     // Connect to chain
@@ -127,9 +129,8 @@ install.action(async (library: string, opts: InstallOptions) => {
     }
 
     // Save contract data to ~/.cdm/
-    const chainName = opts.name ?? "network";
     const savedPath = saveContract({
-        chain: chainName,
+        targetHash,
         library,
         version,
         abi,
@@ -138,6 +139,21 @@ install.action(async (library: string, opts: InstallOptions) => {
         metadataCid,
     });
     console.log(`  Saved to ${savedPath}`);
+
+    // Update cdm.json
+    const cdmResult = readCdmJson();
+    const cdmJson = cdmResult?.cdmJson ?? { targets: {}, dependencies: {} };
+    cdmJson.targets[targetHash] = {
+        "asset-hub": opts.assethubUrl,
+        bulletin: opts.ipfsGatewayUrl!,
+        registry: registryAddr,
+    };
+    if (!cdmJson.dependencies[targetHash]) {
+        cdmJson.dependencies[targetHash] = {};
+    }
+    cdmJson.dependencies[targetHash][library] = version;
+    writeCdmJson(cdmJson);
+    console.log(`  Updated cdm.json`);
 
     console.log("\n=== Done! ===");
     console.log(`\nContract "${library}" installed to ${savedPath}`);

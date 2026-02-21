@@ -6,12 +6,12 @@ export function getCdmRoot(): string {
     return resolve(homedir(), ".cdm");
 }
 
-export function getContractDir(chain: string, library: string, version: number): string {
-    return resolve(getCdmRoot(), chain, "contracts", library, String(version));
+export function getContractDir(targetHash: string, library: string, version: number): string {
+    return resolve(getCdmRoot(), targetHash, "contracts", library, String(version));
 }
 
 export interface SaveContractOptions {
-    chain: string;
+    targetHash: string;
     library: string;
     version: number;
     abi: unknown[];
@@ -21,7 +21,7 @@ export interface SaveContractOptions {
 }
 
 export function saveContract(opts: SaveContractOptions): string {
-    const dir = getContractDir(opts.chain, opts.library, opts.version);
+    const dir = getContractDir(opts.targetHash, opts.library, opts.version);
     mkdirSync(dir, { recursive: true });
 
     writeFileSync(resolve(dir, "abi.json"), JSON.stringify(opts.abi, null, 2));
@@ -31,7 +31,7 @@ export function saveContract(opts: SaveContractOptions): string {
         JSON.stringify(
             {
                 name: opts.library,
-                chain: opts.chain,
+                targetHash: opts.targetHash,
                 version: opts.version,
                 address: opts.address,
                 metadataCid: opts.metadataCid,
@@ -50,4 +50,8 @@ export function saveContract(opts: SaveContractOptions): string {
     symlinkSync(String(opts.version), latestLink);
 
     return dir;
+}
+
+export function resolveContractAbiPath(targetHash: string, library: string, version: number): string {
+    return resolve(getContractDir(targetHash, library, version), "abi.json");
 }

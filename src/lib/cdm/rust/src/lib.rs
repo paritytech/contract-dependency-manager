@@ -1,5 +1,3 @@
 #![no_std]
 
-pub fn version() -> &'static str {
-    "0.1.0"
-}
+pub use cdm_macros::import;

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["src/contract", "src/lib/cdm/rust"]
+members = ["src/contract", "src/lib/cdm/rust", "src/lib/cdm/rust-macros"]
 
 [workspace.package]
 version = "0.1.0"
@@ -13,3 +13,10 @@ polkavm-derive = "0.31"
 parity-scale-codec = { version = "3.7", default-features = false, features = ["derive"] }
 picoalloc = "5.2"
 cdm = { path = "src/lib/cdm/rust" }
+cdm-macros = { path = "src/lib/cdm/rust-macros" }
+syn = "2"
+quote = "1"
+proc-macro2 = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+home = "0.5"

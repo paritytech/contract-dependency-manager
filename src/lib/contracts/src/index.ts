@@ -45,4 +45,13 @@ export {
     getContractDir,
     type SaveContractOptions,
     saveContract,
+    resolveContractAbiPath,
 } from "./store";
+
+export {
+    type CdmJsonTarget,
+    type CdmJson,
+    computeTargetHash,
+    readCdmJson,
+    writeCdmJson,
+} from "./cdm-json";
