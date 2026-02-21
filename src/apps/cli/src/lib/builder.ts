@@ -18,20 +18,9 @@ export type BuildProgressCallback = (
 /**
  * Build a single contract using `cargo pvm-contract build`.
  */
-export function pvmContractBuild(
-    rootDir: string,
-    crateName: string,
-    registryAddr?: string,
-): void {
+export function pvmContractBuild(rootDir: string, crateName: string, registryAddr?: string): void {
     const manifestPath = resolve(rootDir, "Cargo.toml");
-    const args = [
-        "pvm-contract",
-        "build",
-        "--manifest-path",
-        manifestPath,
-        "-p",
-        crateName,
-    ];
+    const args = ["pvm-contract", "build", "--manifest-path", manifestPath, "-p", crateName];
     const env: Record<string, string> = {
         ...(process.env as Record<string, string>),
     };

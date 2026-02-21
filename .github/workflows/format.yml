@@ -1,0 +1,33 @@
+name: Format
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+
+jobs:
+    format-ts:
+        name: TypeScript & JSON
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: pnpm/action-setup@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+            - name: Install dependencies
+              run: pnpm install
+            - name: Check formatting
+              run: pnpm biome format .
+
+    format-rs:
+        name: Rust
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: rustfmt
+            - name: Check formatting
+              run: cargo fmt --all -- --check

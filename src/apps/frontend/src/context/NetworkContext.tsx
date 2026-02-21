@@ -1,11 +1,4 @@
-import React, {
-    createContext,
-    useContext,
-    useState,
-    useEffect,
-    useRef,
-    useCallback,
-} from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { createClient, type PolkadotClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws-provider/web";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
@@ -42,19 +35,14 @@ const NetworkContext = createContext<NetworkContextType | null>(null);
 
 export function useNetwork(): NetworkContextType {
     const ctx = useContext(NetworkContext);
-    if (!ctx)
-        throw new Error("useNetwork must be used within a NetworkProvider");
+    if (!ctx) throw new Error("useNetwork must be used within a NetworkProvider");
     return ctx;
 }
 
 export function NetworkProvider({ children }: { children: React.ReactNode }) {
     const [network, setNetworkState] = useState("preview-net");
-    const [assethubUrl, setAssethubUrl] = useState(
-        NETWORK_PRESETS["preview-net"].assethubUrl,
-    );
-    const [bulletinUrl, setBulletinUrl] = useState(
-        NETWORK_PRESETS["preview-net"].bulletinUrl,
-    );
+    const [assethubUrl, setAssethubUrl] = useState(NETWORK_PRESETS["preview-net"].assethubUrl);
+    const [bulletinUrl, setBulletinUrl] = useState(NETWORK_PRESETS["preview-net"].bulletinUrl);
     const [ipfsGatewayUrl, setIpfsGatewayUrl] = useState(
         NETWORK_PRESETS["preview-net"].ipfsGatewayUrl,
     );
@@ -132,10 +120,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
                 if (abort.signal.aborted) return;
 
                 const inkSdk = createInkSdk(client);
-                const reg = inkSdk.getContract(
-                    contracts.contractsRegistry,
-                    registryAddress,
-                );
+                const reg = inkSdk.getContract(contracts.contractsRegistry, registryAddress);
 
                 setRegistry(reg);
                 setConnected(true);
@@ -147,11 +132,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
                         clientRef.current.destroy();
                         clientRef.current = null;
                     }
-                    setError(
-                        err instanceof Error
-                            ? err.message
-                            : "Connection failed",
-                    );
+                    setError(err instanceof Error ? err.message : "Connection failed");
                     setConnecting(false);
                 }
             }

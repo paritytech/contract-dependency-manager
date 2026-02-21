@@ -7,15 +7,8 @@ import {
     readReadmeContent,
 } from "./detection.js";
 import type { DeploymentOrderLayered } from "./detection.js";
-import {
-    pvmContractBuildAsync,
-    type BuildProgressCallback,
-} from "./builder.js";
-import {
-    type ContractDeployer,
-    type Metadata,
-    type AbiEntry,
-} from "./deployer.js";
+import { pvmContractBuildAsync, type BuildProgressCallback } from "./builder.js";
+import { type ContractDeployer, type Metadata, type AbiEntry } from "./deployer.js";
 import type { MetadataPublisher } from "./publisher.js";
 import type { RegistryManager } from "./registry.js";
 import { computeCid } from "./cid.js";
@@ -83,9 +76,7 @@ function updateStatus(
     onStatusChange?.(crateName, updated);
 }
 
-export async function executePipeline(
-    opts: PipelineOptions,
-): Promise<PipelineResult> {
+export async function executePipeline(opts: PipelineOptions): Promise<PipelineResult> {
     const order = opts.order ?? detectDeploymentOrderLayered(opts.rootDir);
 
     // Apply contract filter if set
@@ -181,17 +172,24 @@ export async function executePipeline(
                     metadataList = cdmCrates.map((c) => {
                         const contract = order.contractMap.get(c)!;
                         const readmeContent = readReadmeContent(contract.readmePath);
-                        const repository = contract.repository ?? getGitRemoteUrl(opts.rootDir) ?? "";
+                        const repository =
+                            contract.repository ?? getGitRemoteUrl(opts.rootDir) ?? "";
                         const abiPath = resolve(opts.rootDir, `target/${c}.release.abi.json`);
                         let abi: AbiEntry[] = [];
                         if (existsSync(abiPath)) {
-                            try { abi = JSON.parse(readFileSync(abiPath, "utf-8")); } catch {}
+                            try {
+                                abi = JSON.parse(readFileSync(abiPath, "utf-8"));
+                            } catch {}
                         }
                         return {
-                            publish_block: 0, published_at: publishedAt,
+                            publish_block: 0,
+                            published_at: publishedAt,
                             description: contract.description ?? "",
-                            readme: readmeContent, authors: contract.authors,
-                            homepage: contract.homepage ?? "", repository, abi,
+                            readme: readmeContent,
+                            authors: contract.authors,
+                            homepage: contract.homepage ?? "",
+                            repository,
+                            abi,
                         };
                     });
                     precomputedCids = metadataList.map((m) =>
@@ -206,7 +204,9 @@ export async function executePipeline(
                 for (const crate of deployable) {
                     updateStatus(statuses, crate, "deploying", opts.onStatusChange, {
                         deployInProgress: true,
-                        ...(cdmSet.has(crate) ? { publishInProgress: true, cid: cidMap[crate] } : {}),
+                        ...(cdmSet.has(crate)
+                            ? { publishInProgress: true, cid: cidMap[crate] }
+                            : {}),
                     });
                 }
 
@@ -222,7 +222,11 @@ export async function executePipeline(
                 ]);
 
                 // Process deploy results
-                const { addresses: batchAddrs, txHash: deployTxHash, blockHash: deployBlockHash } = deployResult;
+                const {
+                    addresses: batchAddrs,
+                    txHash: deployTxHash,
+                    blockHash: deployBlockHash,
+                } = deployResult;
                 for (let i = 0; i < deployable.length; i++) {
                     addrMap[deployable[i]] = batchAddrs[i];
                     addresses[deployable[i]] = batchAddrs[i];
@@ -247,12 +251,21 @@ export async function executePipeline(
                 for (const crate of deployable) {
                     if (cdmSet.has(crate)) {
                         updateStatus(statuses, crate, "registering", opts.onStatusChange, {
-                            deployInProgress: false, publishInProgress: false, registerInProgress: true,
-                            address: addrMap[crate], deployTxHash, deployBlockHash, publishTxHash, publishBlockHash,
+                            deployInProgress: false,
+                            publishInProgress: false,
+                            registerInProgress: true,
+                            address: addrMap[crate],
+                            deployTxHash,
+                            deployBlockHash,
+                            publishTxHash,
+                            publishBlockHash,
                         });
                     } else {
                         updateStatus(statuses, crate, "done", opts.onStatusChange, {
-                            deployInProgress: false, address: addrMap[crate], deployTxHash, deployBlockHash,
+                            deployInProgress: false,
+                            address: addrMap[crate],
+                            deployTxHash,
+                            deployBlockHash,
                         });
                     }
                 }
@@ -269,7 +282,9 @@ export async function executePipeline(
 
                     for (const crate of cdmCrates) {
                         updateStatus(statuses, crate, "done", opts.onStatusChange, {
-                            registerInProgress: false, registerTxHash, registerBlockHash,
+                            registerInProgress: false,
+                            registerTxHash,
+                            registerBlockHash,
                         });
                     }
                 }
@@ -278,7 +293,9 @@ export async function executePipeline(
                     if (!failedCrates.has(crate)) {
                         failedCrates.add(crate);
                         updateStatus(statuses, crate, "error", opts.onStatusChange, {
-                            deployInProgress: false, publishInProgress: false, registerInProgress: false,
+                            deployInProgress: false,
+                            publishInProgress: false,
+                            registerInProgress: false,
                             error: err instanceof Error ? err.message : String(err),
                         });
                     }

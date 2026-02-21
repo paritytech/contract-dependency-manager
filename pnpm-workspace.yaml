@@ -37,3 +37,4 @@ catalog:
   "@types/dompurify": ^3.0.5
   "@types/node": ^24.10.1
   "@types/bun": latest
+  "@biomejs/biome": ^1.9.4

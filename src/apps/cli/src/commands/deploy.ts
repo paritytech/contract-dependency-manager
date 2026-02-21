@@ -1,10 +1,7 @@
 import { Command } from "commander";
 import { resolve } from "path";
 import { existsSync, writeFileSync } from "fs";
-import {
-    connectWebSocket,
-    connectBulletinWebSocket,
-} from "../lib/connection.js";
+import { connectWebSocket, connectBulletinWebSocket } from "../lib/connection.js";
 import { ContractDeployer } from "../lib/deployer.js";
 import { MetadataPublisher } from "../lib/publisher.js";
 import { RegistryManager } from "../lib/registry.js";
@@ -18,7 +15,9 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 function spinner(label: string, detail: string) {
     let i = 0;
     const id = setInterval(() => {
-        process.stdout.write(`\r\x1b[2K\x1b[1m${label}\x1b[0m ${SPINNER_FRAMES[i++ % SPINNER_FRAMES.length]} ${detail}`);
+        process.stdout.write(
+            `\r\x1b[2K\x1b[1m${label}\x1b[0m ${SPINNER_FRAMES[i++ % SPINNER_FRAMES.length]} ${detail}`,
+        );
     }, 80);
     return {
         succeed() {
@@ -34,18 +33,9 @@ function spinner(label: string, detail: string) {
 
 const deploy = new Command("deploy")
     .description("Deploy and register contracts")
-    .option(
-        "--assethub-url <url>",
-        "WebSocket URL for Asset Hub chain",
-    )
-    .option(
-        "--bulletin-url <url>",
-        "WebSocket URL for Bulletin chain",
-    )
-    .option(
-        "-n, --name <name>",
-        "Chain preset name (polkadot, paseo, preview-net, local, custom)",
-    )
+    .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
+    .option("--bulletin-url <url>", "WebSocket URL for Bulletin chain")
+    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, preview-net, local, custom)")
     .option(
         "--registry-address <address>",
         "Registry contract address (required unless --bootstrap)",
@@ -94,9 +84,7 @@ deploy.action(async (opts: DeployOptions) => {
     }
 
     if (!opts.registryAddress) {
-        console.error(
-            "Error: --registry-address is required unless using --bootstrap",
-        );
+        console.error("Error: --registry-address is required unless using --bootstrap");
         console.error(
             "  Set it to the deployed ContractRegistry address, or use --bootstrap for a fresh deploy",
         );
@@ -104,9 +92,7 @@ deploy.action(async (opts: DeployOptions) => {
         console.error(
             "  cdm deploy --assethub-url wss://... --bulletin-url wss://... --registry-address 0x...",
         );
-        console.error(
-            "  cdm deploy --bootstrap --assethub-url wss://... --bulletin-url wss://...",
-        );
+        console.error("  cdm deploy --bootstrap --assethub-url wss://... --bulletin-url wss://...");
         process.exit(1);
     }
 
@@ -139,9 +125,7 @@ async function deployWithRegistry(
         api = existingConnections.api;
         ownsAssetHub = false;
     } else {
-        const signerName = opts.suri?.startsWith("//")
-            ? opts.suri.slice(2)
-            : undefined;
+        const signerName = opts.suri?.startsWith("//") ? opts.suri.slice(2) : undefined;
         signer = prepareSigner(signerName ?? "Alice");
 
         const sp = spinner("AssetHub", opts.assethubUrl!);
@@ -189,29 +173,19 @@ async function deployWithRegistry(
 /**
  * Bootstrap deploy: deploy ContractRegistry first, then everything else.
  */
-async function bootstrapDeploy(
-    rootDir: string,
-    opts: DeployOptions,
-): Promise<void> {
+async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<void> {
     console.log("=== CDM Bootstrap Deploy ===\n");
 
-    const registryPvmPath = resolve(
-        rootDir,
-        `target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`,
-    );
+    const registryPvmPath = resolve(rootDir, `target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`);
     if (!existsSync(registryPvmPath)) {
         console.error(`ERROR: ContractRegistry not built: ${registryPvmPath}`);
         console.error("Build contracts first:");
-        console.error(
-            "  cargo pvm-contract build --manifest-path Cargo.toml -p contracts",
-        );
+        console.error("  cargo pvm-contract build --manifest-path Cargo.toml -p contracts");
         process.exit(1);
     }
 
     // Prepare signer
-    const signerName = opts.suri?.startsWith("//")
-        ? opts.suri.slice(2)
-        : undefined;
+    const signerName = opts.suri?.startsWith("//") ? opts.suri.slice(2) : undefined;
     const signer = prepareSigner(signerName ?? "Alice");
 
     // Connect to Asset Hub
@@ -243,12 +217,11 @@ async function bootstrapDeploy(
     console.log(`  ContractRegistry: ${registryAddr}\n`);
 
     // Phase 2+3: Build and deploy all CDM contracts
-    const addresses = await deployWithRegistry(
-        registryAddr,
-        rootDir,
-        opts,
-        { signer, client, api },
-    );
+    const addresses = await deployWithRegistry(registryAddr, rootDir, opts, {
+        signer,
+        client,
+        api,
+    });
 
     // Save all addresses (registry + CDM contracts)
     addresses[CONTRACTS_REGISTRY_CRATE] = registryAddr;

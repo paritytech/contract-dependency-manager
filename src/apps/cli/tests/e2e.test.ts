@@ -22,10 +22,7 @@ let registryAddr: string;
 
 beforeAll(async () => {
     // Build the registry contract
-    const registryPvm = resolve(
-        ROOT_DIR,
-        `target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`,
-    );
+    const registryPvm = resolve(ROOT_DIR, `target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`);
     if (!existsSync(registryPvm)) {
         console.log("Building ContractRegistry...");
         pvmContractBuild(ROOT_DIR, CONTRACTS_REGISTRY_CRATE);
@@ -69,19 +66,13 @@ describe("e2e: bootstrap deploy", () => {
 
         // Verify artifacts exist
         for (const crateName of order.crateNames) {
-            const pvmPath = resolve(
-                TEMPLATE_DIR,
-                `target/${crateName}.release.polkavm`,
-            );
+            const pvmPath = resolve(TEMPLATE_DIR, `target/${crateName}.release.polkavm`);
             expect(existsSync(pvmPath)).toBe(true);
         }
 
         // Verify CDM metadata files
         for (const crateName of order.crateNames) {
-            const cdmPath = resolve(
-                TEMPLATE_DIR,
-                `target/${crateName}.release.cdm.json`,
-            );
+            const cdmPath = resolve(TEMPLATE_DIR, `target/${crateName}.release.cdm.json`);
             expect(existsSync(cdmPath)).toBe(true);
         }
     }, 300_000);
@@ -99,10 +90,7 @@ describe("e2e: bootstrap deploy", () => {
 
     test("query registry for deployed contract addresses", async () => {
         const inkSdk = createInkSdk(client);
-        const registry = inkSdk.getContract(
-            contracts.contractsRegistry,
-            registryAddr,
-        );
+        const registry = inkSdk.getContract(contracts.contractsRegistry, registryAddr);
 
         const order = detectDeploymentOrder(TEMPLATE_DIR);
         for (let i = 0; i < order.crateNames.length; i++) {
@@ -125,10 +113,7 @@ describe("e2e: bootstrap deploy", () => {
         const inkSdk = createInkSdk(client);
 
         // Resolve deployed addresses from registry
-        const registry = inkSdk.getContract(
-            contracts.contractsRegistry,
-            registryAddr,
-        );
+        const registry = inkSdk.getContract(contracts.contractsRegistry, registryAddr);
         const getAddr = async (cdmName: string) => {
             const r = await registry.query("getAddress", {
                 origin: ALICE_SS58,
@@ -138,10 +123,7 @@ describe("e2e: bootstrap deploy", () => {
             return r.success ? r.value.response : "";
         };
 
-        const counter = inkSdk.getContract(
-            contracts.counter,
-            await getAddr("@example/counter"),
-        );
+        const counter = inkSdk.getContract(contracts.counter, await getAddr("@example/counter"));
         const reader = inkSdk.getContract(
             contracts.counterReader,
             await getAddr("@example/counter-reader"),
@@ -191,10 +173,7 @@ describe("e2e: bootstrap deploy", () => {
 
     test("registry contract count matches deployed contracts", async () => {
         const inkSdk = createInkSdk(client);
-        const registry = inkSdk.getContract(
-            contracts.contractsRegistry,
-            registryAddr,
-        );
+        const registry = inkSdk.getContract(contracts.contractsRegistry, registryAddr);
 
         const result = await registry.query("getContractCount", {
             origin: ALICE_SS58,

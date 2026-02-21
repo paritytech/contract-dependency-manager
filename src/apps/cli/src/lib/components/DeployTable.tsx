@@ -4,7 +4,13 @@ import type { ContractStatus } from "../pipeline.js";
 
 /** Terminal hyperlink using OSC 8 escape sequence */
 function Link({ url, children }: { url: string; children: React.ReactNode }) {
-    return <Text>{`\x1b]8;;${url}\x07`}{children}{`\x1b]8;;\x07`}</Text>;
+    return (
+        <Text>
+            {`\x1b]8;;${url}\x07`}
+            {children}
+            {`\x1b]8;;\x07`}
+        </Text>
+    );
 }
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -21,7 +27,10 @@ function ProgressBar({ compiled, total }: { compiled: number; total: number }) {
         <Text>
             <Text color="green">{"█".repeat(filled)}</Text>
             <Text dimColor>{"░".repeat(BAR_WIDTH - filled)}</Text>
-            <Text> {compiled}/{total}</Text>
+            <Text>
+                {" "}
+                {compiled}/{total}
+            </Text>
         </Text>
     );
 }
@@ -81,7 +90,11 @@ function errorPhase(s: ContractStatus): "build" | "deploy" | "metadata" | "regis
     // Deploy completed but publish didn't: metadata/publish failure
     if (s.address && !s.publishTxHash && s.cid) return "metadata";
     // Build completed: deploy phase (or parallel deploy+publish) failed
-    if (s.buildProgress && s.buildProgress.compiled === s.buildProgress.total && s.buildProgress.total > 0) {
+    if (
+        s.buildProgress &&
+        s.buildProgress.compiled === s.buildProgress.total &&
+        s.buildProgress.total > 0
+    ) {
         return "deploy";
     }
     return "build";
@@ -108,7 +121,9 @@ function ContractRow({
     // Build column — keep progress bar even when done, empty bar when waiting
     let buildCell: React.ReactNode;
     if (state === "building" && s?.buildProgress) {
-        buildCell = <ProgressBar compiled={s.buildProgress.compiled} total={s.buildProgress.total} />;
+        buildCell = (
+            <ProgressBar compiled={s.buildProgress.compiled} total={s.buildProgress.total} />
+        );
     } else if (state === "building") {
         buildCell = <Spinner tick={tick} />;
     } else if (state === "error" && errorPhase(s!) === "build") {
@@ -128,7 +143,11 @@ function ContractRow({
     if (buildOnly) {
         return (
             <Box>
-                <Cell width={COL_CONTRACT}><Text bold wrap="truncate">{name}</Text></Cell>
+                <Cell width={COL_CONTRACT}>
+                    <Text bold wrap="truncate">
+                        {name}
+                    </Text>
+                </Cell>
                 <Cell width={COL_BUILD}>{buildCell}</Cell>
             </Box>
         );
@@ -140,8 +159,17 @@ function ContractRow({
         deployCell = <Spinner tick={tick} />;
     } else if (state === "error" && errorPhase(s!) === "deploy") {
         deployCell = <Failed />;
-    } else if (["registering", "done"].includes(state) && s?.deployTxHash && s?.deployBlockHash && assethubUrl) {
-        deployCell = <Link url={pjsExplorerUrl(assethubUrl, s.deployBlockHash)}><Text color="green">{shortHash(s.deployTxHash)}</Text></Link>;
+    } else if (
+        ["registering", "done"].includes(state) &&
+        s?.deployTxHash &&
+        s?.deployBlockHash &&
+        assethubUrl
+    ) {
+        deployCell = (
+            <Link url={pjsExplorerUrl(assethubUrl, s.deployBlockHash)}>
+                <Text color="green">{shortHash(s.deployTxHash)}</Text>
+            </Link>
+        );
     } else if (["registering", "done"].includes(state)) {
         deployCell = <Done />;
     } else {
@@ -155,7 +183,11 @@ function ContractRow({
     } else if (state === "error" && errorPhase(s!) === "metadata") {
         metaCell = <Failed />;
     } else if (["registering", "done"].includes(state) && s?.cid && ipfsGatewayUrl) {
-        metaCell = <Link url={ipfsUrl(ipfsGatewayUrl, s.cid)}><Text color="green">{shortHash(s.cid)}</Text></Link>;
+        metaCell = (
+            <Link url={ipfsUrl(ipfsGatewayUrl, s.cid)}>
+                <Text color="green">{shortHash(s.cid)}</Text>
+            </Link>
+        );
     } else if (["registering", "done"].includes(state) && s?.publishTxHash) {
         metaCell = <Done />;
     } else {
@@ -169,7 +201,11 @@ function ContractRow({
     } else if (state === "error" && errorPhase(s!) === "register") {
         registerCell = <Failed />;
     } else if (state === "done" && s?.registerTxHash && s?.registerBlockHash && assethubUrl) {
-        registerCell = <Link url={pjsExplorerUrl(assethubUrl, s.registerBlockHash)}><Text color="green">{shortHash(s.registerTxHash)}</Text></Link>;
+        registerCell = (
+            <Link url={pjsExplorerUrl(assethubUrl, s.registerBlockHash)}>
+                <Text color="green">{shortHash(s.registerTxHash)}</Text>
+            </Link>
+        );
     } else if (state === "done") {
         registerCell = <Done />;
     } else {
@@ -187,7 +223,11 @@ function ContractRow({
 
     return (
         <Box>
-            <Cell width={COL_CONTRACT}><Text bold wrap="truncate">{name}</Text></Cell>
+            <Cell width={COL_CONTRACT}>
+                <Text bold wrap="truncate">
+                    {name}
+                </Text>
+            </Cell>
             <Cell width={COL_BUILD}>{buildCell}</Cell>
             <Cell width={COL_PHASE}>{deployCell}</Cell>
             <Cell width={COL_PHASE}>{metaCell}</Cell>
@@ -207,7 +247,14 @@ export interface DeployTableProps {
     ipfsGatewayUrl?: string;
 }
 
-export function DeployTable({ statuses, displayNames, crates, buildOnly, assethubUrl, ipfsGatewayUrl }: DeployTableProps) {
+export function DeployTable({
+    statuses,
+    displayNames,
+    crates,
+    buildOnly,
+    assethubUrl,
+    ipfsGatewayUrl,
+}: DeployTableProps) {
     const [tick, setTick] = useState(0);
 
     useEffect(() => {

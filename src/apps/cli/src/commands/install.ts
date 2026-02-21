@@ -16,14 +16,8 @@ const install = new Command("install")
         "--registry <address>",
         "ContractRegistry address (or set CONTRACTS_REGISTRY_ADDR env var)",
     )
-    .option(
-        "-n, --name <name>",
-        "Chain preset name (polkadot, paseo, preview-net, local)",
-    )
-    .option(
-        "--ipfs-gateway <url>",
-        "IPFS gateway URL for fetching bulletin metadata",
-    )
+    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, preview-net, local)")
+    .option("--ipfs-gateway <url>", "IPFS gateway URL for fetching bulletin metadata")
     .option("--url <url>", "Chain WebSocket URL", DEFAULT_NODE_URL)
     .option("--root <path>", "Project root directory", process.cwd());
 
@@ -68,10 +62,7 @@ install.action(async (library: string, opts: AddOptions) => {
     // Query registry for metadata URI via ink SDK
     console.log(`Looking up "${library}" in registry...`);
     const inkSdk = createInkSdk(client);
-    const registry = inkSdk.getContract(
-        contracts.contractsRegistry,
-        registryAddr,
-    );
+    const registry = inkSdk.getContract(contracts.contractsRegistry, registryAddr);
 
     const result = await registry.query("getMetadataUri", {
         origin: ALICE_SS58,
@@ -86,11 +77,8 @@ install.action(async (library: string, opts: AddOptions) => {
 
     const response = result.value.response;
     // getMetadataUri returns Option<string> = { isSome: bool, value: string }
-    const metadataCid = typeof response === "string"
-        ? response
-        : response?.isSome
-            ? response.value
-            : null;
+    const metadataCid =
+        typeof response === "string" ? response : response?.isSome ? response.value : null;
     if (!metadataCid) {
         console.error(`Contract "${library}" not found in registry`);
         client.destroy();
@@ -101,7 +89,9 @@ install.action(async (library: string, opts: AddOptions) => {
 
     // Fetch metadata from IPFS gateway using the CID
     if (!opts.ipfsGateway) {
-        console.error("Error: IPFS gateway URL required to fetch metadata. Use --ipfs-gateway or --name for a preset.");
+        console.error(
+            "Error: IPFS gateway URL required to fetch metadata. Use --ipfs-gateway or --name for a preset.",
+        );
         client.destroy();
         process.exit(1);
     }
@@ -138,7 +128,10 @@ install.action(async (library: string, opts: AddOptions) => {
     // Register ABI with papi and generate descriptors
     console.log("\nRegistering ABI with papi...");
     try {
-        execFileSync("npx", ["papi", "sol", "add", abiPath, safeName], { cwd: rootDir, stdio: "inherit" });
+        execFileSync("npx", ["papi", "sol", "add", abiPath, safeName], {
+            cwd: rootDir,
+            stdio: "inherit",
+        });
         console.log("\n=== Done! ===");
         console.log(
             `\nYou can now import and use "${library}" contract types in your TypeScript code.`,

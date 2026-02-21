@@ -36,7 +36,11 @@ export class ContractDeployer {
     public api: TypedApi<AssetHub>;
     public client: PolkadotClient;
 
-    constructor(signer: ReturnType<typeof prepareSigner>, client: PolkadotClient, api: TypedApi<AssetHub>) {
+    constructor(
+        signer: ReturnType<typeof prepareSigner>,
+        client: PolkadotClient,
+        api: TypedApi<AssetHub>,
+    ) {
         this.signer = signer;
         this.client = client;
         this.api = api;
@@ -63,7 +67,9 @@ export class ContractDeployer {
         );
 
         if (dryRun.result.success === false) {
-            throw new Error(`Contract instantiation dry-run failed: ${stringifyBigInt(dryRun.result)}`);
+            throw new Error(
+                `Contract instantiation dry-run failed: ${stringifyBigInt(dryRun.result)}`,
+            );
         }
 
         // Use weight_required from dry-run with 20% headroom
@@ -87,20 +93,14 @@ export class ContractDeployer {
             salt: undefined,
         }).signAndSubmit(this.signer);
 
-        const failures = this.api.event.System.ExtrinsicFailed.filter(
-            result.events,
-        );
+        const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
         if (failures.length > 0) {
             throw new Error(`Deployment transaction failed: ${stringifyBigInt(failures[0])}`);
         }
 
-        const instantiated = this.api.event.Revive.Instantiated.filter(
-            result.events,
-        );
+        const instantiated = this.api.event.Revive.Instantiated.filter(result.events);
         if (instantiated.length === 0) {
-            throw new Error(
-                "Contract instantiation failed - no Instantiated event",
-            );
+            throw new Error("Contract instantiation failed - no Instantiated event");
         }
 
         const address = instantiated[0].contract.asHex();
@@ -158,16 +158,20 @@ export class ContractDeployer {
      * Deploy multiple contracts in a single Utility.batch_all transaction.
      * Returns addresses in the same order as the input paths.
      */
-    async deployBatch(pvmPaths: string[]): Promise<{ addresses: string[]; txHash: string; blockHash: string }> {
+    async deployBatch(
+        pvmPaths: string[],
+    ): Promise<{ addresses: string[]; txHash: string; blockHash: string }> {
         if (pvmPaths.length === 0) return { addresses: [], txHash: "", blockHash: "" };
         if (pvmPaths.length === 1) {
             const result = await this.deploy(pvmPaths[0]);
-            return { addresses: [result.address], txHash: result.txHash, blockHash: result.blockHash };
+            return {
+                addresses: [result.address],
+                txHash: result.txHash,
+                blockHash: result.blockHash,
+            };
         }
 
-        const prepared = await Promise.all(
-            pvmPaths.map((p) => this.dryRunDeploy(p)),
-        );
+        const prepared = await Promise.all(pvmPaths.map((p) => this.dryRunDeploy(p)));
 
         const calls = await Promise.all(
             prepared.map(async (p) => {
@@ -180,16 +184,12 @@ export class ContractDeployer {
             calls,
         }).signAndSubmit(this.signer);
 
-        const failures = this.api.event.System.ExtrinsicFailed.filter(
-            result.events,
-        );
+        const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
         if (failures.length > 0) {
             throw new Error(`Batch deploy failed: ${stringifyBigInt(failures[0])}`);
         }
 
-        const instantiated = this.api.event.Revive.Instantiated.filter(
-            result.events,
-        );
+        const instantiated = this.api.event.Revive.Instantiated.filter(result.events);
         if (instantiated.length !== pvmPaths.length) {
             throw new Error(
                 `Expected ${pvmPaths.length} Instantiated events, got ${instantiated.length}`,
@@ -197,6 +197,10 @@ export class ContractDeployer {
         }
 
         const addresses = instantiated.map((e) => e.contract.asHex());
-        return { addresses, txHash: result.txHash, blockHash: result.block.hash };
+        return {
+            addresses,
+            txHash: result.txHash,
+            blockHash: result.block.hash,
+        };
     }
 }

@@ -101,9 +101,7 @@ export class RegistryManager {
             calls,
         }).signAndSubmit(this.signer);
 
-        const failures = this.api.event.System.ExtrinsicFailed.filter(
-            result.events,
-        );
+        const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
         if (failures.length > 0) {
             throw new Error(`Batch register failed: ${stringifyBigInt(failures[0])}`);
         }

@@ -24,26 +24,24 @@ export class MetadataPublisher {
             data,
         }).signAndSubmit(this.signer);
 
-        const storedEvents =
-            this.bulletinApi.event.TransactionStorage.Stored.filter(
-                result.events,
-            );
+        const storedEvents = this.bulletinApi.event.TransactionStorage.Stored.filter(result.events);
         if (storedEvents.length === 0) {
-            throw new Error(
-                "Metadata publishing failed - no Stored event found",
-            );
+            throw new Error("Metadata publishing failed - no Stored event found");
         }
 
         const { cid: cidBytes } = storedEvents[0];
         if (!cidBytes) {
-            throw new Error(
-                "Metadata publishing failed - no CID in Stored event",
-            );
+            throw new Error("Metadata publishing failed - no CID in Stored event");
         }
 
         // cidBytes is a Binary (Vec<u8> from the chain) containing serialized CIDv1
         const cid = CID.decode(cidBytes.asBytes());
-        return { cid: cid.toString(), blockNumber: result.block.number, txHash: result.txHash, blockHash: result.block.hash };
+        return {
+            cid: cid.toString(),
+            blockNumber: result.block.number,
+            txHash: result.txHash,
+            blockHash: result.block.hash,
+        };
     }
 
     /**
@@ -52,10 +50,16 @@ export class MetadataPublisher {
     async publishBatch(
         metadataList: Metadata[],
     ): Promise<{ cids: string[]; blockNumber: number; txHash: string; blockHash: string }> {
-        if (metadataList.length === 0) return { cids: [], blockNumber: 0, txHash: "", blockHash: "" };
+        if (metadataList.length === 0)
+            return { cids: [], blockNumber: 0, txHash: "", blockHash: "" };
         if (metadataList.length === 1) {
             const result = await this.publish(metadataList[0]);
-            return { cids: [result.cid], blockNumber: result.blockNumber, txHash: result.txHash, blockHash: result.blockHash };
+            return {
+                cids: [result.cid],
+                blockNumber: result.blockNumber,
+                txHash: result.txHash,
+                blockHash: result.blockHash,
+            };
         }
 
         const txs = metadataList.map((metadata) => {
@@ -75,19 +79,12 @@ export class MetadataPublisher {
             calls,
         }).signAndSubmit(this.signer);
 
-        const failures = this.bulletinApi.event.System.ExtrinsicFailed.filter(
-            result.events,
-        );
+        const failures = this.bulletinApi.event.System.ExtrinsicFailed.filter(result.events);
         if (failures.length > 0) {
-            throw new Error(
-                `Batch metadata publish failed: ${stringifyBigInt(failures[0])}`,
-            );
+            throw new Error(`Batch metadata publish failed: ${stringifyBigInt(failures[0])}`);
         }
 
-        const storedEvents =
-            this.bulletinApi.event.TransactionStorage.Stored.filter(
-                result.events,
-            );
+        const storedEvents = this.bulletinApi.event.TransactionStorage.Stored.filter(result.events);
         if (storedEvents.length !== metadataList.length) {
             throw new Error(
                 `Expected ${metadataList.length} Stored events, got ${storedEvents.length}`,
@@ -97,13 +94,16 @@ export class MetadataPublisher {
         const cids = storedEvents.map((event) => {
             const { cid: cidBytes } = event;
             if (!cidBytes) {
-                throw new Error(
-                    "Metadata publishing failed - no CID in Stored event",
-                );
+                throw new Error("Metadata publishing failed - no CID in Stored event");
             }
             return CID.decode(cidBytes.asBytes()).toString();
         });
 
-        return { cids, blockNumber: result.block.number, txHash: result.txHash, blockHash: result.block.hash };
+        return {
+            cids,
+            blockNumber: result.block.number,
+            txHash: result.txHash,
+            blockHash: result.block.hash,
+        };
     }
 }

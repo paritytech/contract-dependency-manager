@@ -38,9 +38,7 @@ template.action(async (name: string | undefined, dir: string) => {
 
     const existingFiles = readdirSync(targetDir);
     if (existingFiles.length > 0 && existingFiles.some((f) => f !== ".git")) {
-        console.log(
-            "Warning: Target directory is not empty. Files may be overwritten.\n",
-        );
+        console.log("Warning: Target directory is not empty. Files may be overwritten.\n");
     }
 
     let filesWritten = 0;
@@ -60,9 +58,7 @@ template.action(async (name: string | undefined, dir: string) => {
     console.log("  # Build all contracts:");
     console.log("  cdm build");
     console.log("");
-    console.log(
-        "  # Deploy (bootstrap mode - deploys ContractRegistry first):",
-    );
+    console.log("  # Deploy (bootstrap mode - deploys ContractRegistry first):");
     console.log("  cdm deploy --bootstrap ws://localhost:9944");
 });
 

@@ -91,9 +91,7 @@ function getCargoMetadata(rootDir: string): CargoMetadata {
  */
 function isPvmContract(pkg: CargoPackage): boolean {
     return pkg.dependencies.some(
-        (d) =>
-            d.name === "pvm_contract" &&
-            (d.kind === null || d.kind === "normal"),
+        (d) => d.name === "pvm_contract" && (d.kind === null || d.kind === "normal"),
     );
 }
 
@@ -140,11 +138,7 @@ export function detectContracts(rootDir: string): ContractInfo[] {
         // Get inter-contract dependencies from Cargo's dependency list
         // Only include normal dependencies that are also PVM contracts in this workspace
         const deps = pkg.dependencies
-            .filter(
-                (d) =>
-                    (d.kind === null || d.kind === "normal") &&
-                    contractNames.has(d.name),
-            )
+            .filter((d) => (d.kind === null || d.kind === "normal") && contractNames.has(d.name))
             .map((d) => d.name);
 
         const manifestDir = resolve(pkg.manifest_path, "..");
@@ -156,9 +150,7 @@ export function detectContracts(rootDir: string): ContractInfo[] {
             authors: pkg.authors,
             homepage: pkg.homepage,
             repository: pkg.repository,
-            readmePath: pkg.readme
-                ? resolve(manifestDir, pkg.readme)
-                : findReadme(manifestDir),
+            readmePath: pkg.readme ? resolve(manifestDir, pkg.readme) : findReadme(manifestDir),
             path: manifestDir,
             dependsOnCrates: deps,
         };
@@ -168,16 +160,12 @@ export function detectContracts(rootDir: string): ContractInfo[] {
 /**
  * Build a dependency graph from contract info.
  */
-export function buildDependencyGraph(
-    contracts: ContractInfo[],
-): Map<string, string[]> {
+export function buildDependencyGraph(contracts: ContractInfo[]): Map<string, string[]> {
     const graph = new Map<string, string[]>();
     const knownCrates = new Set<string>(contracts.map((c) => c.name));
 
     for (const contract of contracts) {
-        const validDeps = contract.dependsOnCrates.filter((dep) =>
-            knownCrates.has(dep),
-        );
+        const validDeps = contract.dependsOnCrates.filter((dep) => knownCrates.has(dep));
         graph.set(contract.name, validDeps);
     }
 
@@ -245,9 +233,7 @@ export function toposort(graph: Map<string, string[]>): string[] {
         const remaining = [...inDegree.entries()]
             .filter(([_, degree]) => degree > 0)
             .map(([node]) => node);
-        throw new Error(
-            `Circular dependency detected involving: ${remaining.join(", ")}`,
-        );
+        throw new Error(`Circular dependency detected involving: ${remaining.join(", ")}`);
     }
 
     return result;
@@ -305,12 +291,8 @@ export function toposortLayers(graph: Map<string, string[]>): string[][] {
     }
 
     if (processed !== inDegree.size) {
-        const remaining = [...inDegree.entries()]
-            .filter(([_, d]) => d > 0)
-            .map(([n]) => n);
-        throw new Error(
-            `Circular dependency detected involving: ${remaining.join(", ")}`,
-        );
+        const remaining = [...inDegree.entries()].filter(([_, d]) => d > 0).map(([n]) => n);
+        throw new Error(`Circular dependency detected involving: ${remaining.join(", ")}`);
     }
 
     // TEMPORARY PATCH: Force sequential deployment (one contract per layer) to work
@@ -322,9 +304,7 @@ export function toposortLayers(graph: Map<string, string[]>): string[][] {
 /**
  * Create a mapping from crate name to CDM package name.
  */
-export function createCrateToPackageMap(
-    contracts: ContractInfo[],
-): Map<string, string> {
+export function createCrateToPackageMap(contracts: ContractInfo[]): Map<string, string> {
     const map = new Map<string, string>();
     for (const contract of contracts) {
         if (contract.cdmPackage) {
@@ -344,14 +324,10 @@ export function detectDeploymentOrder(rootDir: string): DeploymentOrder {
     const sortedCrates = toposort(graph);
 
     const crateToPackage = createCrateToPackageMap(contracts);
-    const sortedPackages = sortedCrates.map(
-        (crate) => crateToPackage.get(crate) || null,
-    );
+    const sortedPackages = sortedCrates.map((crate) => crateToPackage.get(crate) || null);
 
     const crateToContract = new Map(contracts.map((c) => [c.name, c]));
-    const sortedContracts = sortedCrates.map(
-        (crate) => crateToContract.get(crate)!,
-    );
+    const sortedContracts = sortedCrates.map((crate) => crateToContract.get(crate)!);
 
     return {
         crateNames: sortedCrates,

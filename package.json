@@ -8,9 +8,12 @@
     "lint": "turbo lint",
     "clean": "turbo clean",
     "test": "turbo test",
-    "postinstall": "papi"
+    "postinstall": "papi",
+    "format": "biome format --write .",
+    "format:check": "biome format ."
   },
   "devDependencies": {
+    "@biomejs/biome": "catalog:",
     "polkadot-api": "catalog:",
     "turbo": "catalog:",
     "typescript": "catalog:"

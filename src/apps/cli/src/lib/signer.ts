@@ -1,10 +1,6 @@
 import { getPolkadotSigner } from "polkadot-api/signer";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
-import {
-    DEV_PHRASE,
-    entropyToMiniSecret,
-    mnemonicToEntropy,
-} from "@polkadot-labs/hdkd-helpers";
+import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
 
 /**
  * Prepares a signer from a dev account name (e.g., "Alice", "Bob").
@@ -16,11 +12,7 @@ export function prepareSigner(name: string) {
     const derive = sr25519CreateDerive(miniSecret);
     const hdkdKeyPair = derive(`//${name}`);
 
-    return getPolkadotSigner(
-        hdkdKeyPair.publicKey,
-        "Sr25519",
-        hdkdKeyPair.sign,
-    );
+    return getPolkadotSigner(hdkdKeyPair.publicKey, "Sr25519", hdkdKeyPair.sign);
 }
 
 /**

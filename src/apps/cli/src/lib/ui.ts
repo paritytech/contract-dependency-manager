@@ -67,7 +67,7 @@ export async function runPipelineWithUI(opts: UIOptions): Promise<PipelineResult
             assethubUrl: opts.assethubUrl,
             bulletinUrl: opts.bulletinUrl,
             ipfsGatewayUrl: opts.ipfsGatewayUrl,
-        })
+        }),
     );
 
     // Run pipeline — pass order so it doesn't re-detect

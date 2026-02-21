@@ -1,7 +1,7 @@
 CLI_DIR = src/apps/cli
 TEMPLATE_DIR = src/templates/shared-counter
 
-.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test clean
+.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test clean format format-check format-ts format-rs format-ts-check format-rs-check
 
 setup:
 	curl -sL https://raw.githubusercontent.com/paritytech/ppn-proxy/main/install.sh | bash
@@ -66,3 +66,21 @@ test:
 
 clean:
 	rm -rf dist/ target/ node_modules/
+
+format-ts:
+	pnpm biome format --write .
+
+format-rs:
+	cargo fmt --all
+	cargo fmt --all --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml
+
+format-ts-check:
+	pnpm biome format .
+
+format-rs-check:
+	cargo fmt --all -- --check
+	cargo fmt --all --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -- --check
+
+format: format-ts format-rs
+
+format-check: format-ts-check format-rs-check
