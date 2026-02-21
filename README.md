@@ -169,10 +169,13 @@ src/
       src/
         cli.ts            Entry point
         commands/          build, deploy, install, template
-        lib/              Core modules (detection, deployer, pipeline, etc.)
+        lib/              Pipeline orchestration, Ink UI
     frontend/             Web dashboard (React 19, Vite)
   lib/
-    utils/                Shared package (@dotdm/utils)
+    contracts/            @dotdm/contracts — Detection, deployer, publisher, registry, builder
+    env/                  @dotdm/env — Chain connections, signer, chain presets
+    utils/                @dotdm/utils — Shared constants, utilities
+    scripts/              @dotdm/scripts — embed-templates, deploy-registry
     cdm/                  Stub packages (Rust + TypeScript)
   contract/               ContractRegistry (Rust/PolkaVM)
   templates/              Project scaffolding templates
