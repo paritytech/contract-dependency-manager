@@ -1,61 +1,54 @@
 import { Command } from "commander";
-import { resolve } from "path";
-import { writeFileSync, mkdirSync } from "fs";
-import { execFileSync } from "child_process";
 import { contracts } from "@polkadot-api/descriptors";
-import { createInkSdk, ss58ToEthereum } from "@polkadot-api/sdk-ink";
+import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { connectWebSocket, getChainPreset, DEFAULT_NODE_URL } from "@dotdm/env";
 import { saveContract } from "@dotdm/contracts";
 import { ALICE_SS58 } from "@dotdm/utils";
 
 const install = new Command("install")
     .alias("i")
-    .description("Install a CDM contract library for use with polkadot-api")
+    .description("Install a CDM contract library to ~/.cdm/")
     .argument("<library>", 'CDM library name (e.g., "@polkadot/reputation")')
+    .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain", DEFAULT_NODE_URL)
     .option(
-        "--registry <address>",
-        "ContractRegistry address (or set CONTRACTS_REGISTRY_ADDR env var)",
+        "--registry-address <address>",
+        "Registry contract address (or set CONTRACTS_REGISTRY_ADDR env var)",
     )
     .option("-n, --name <name>", "Chain preset name (polkadot, paseo, preview-net, local)")
-    .option("--ipfs-gateway <url>", "IPFS gateway URL for fetching bulletin metadata")
-    .option("--url <url>", "Chain WebSocket URL", DEFAULT_NODE_URL)
-    .option("--root <path>", "Project root directory", process.cwd());
+    .option("--ipfs-gateway-url <url>", "IPFS gateway URL for fetching metadata");
 
-type AddOptions = {
-    registry?: string;
+type InstallOptions = {
+    assethubUrl: string;
+    registryAddress?: string;
     name?: string;
-    ipfsGateway?: string;
-    url: string;
-    root: string;
+    ipfsGatewayUrl?: string;
 };
 
-install.action(async (library: string, opts: AddOptions) => {
+install.action(async (library: string, opts: InstallOptions) => {
     // Resolve chain preset
     if (opts.name && opts.name !== "custom") {
         const preset = getChainPreset(opts.name);
-        opts.url = opts.url === DEFAULT_NODE_URL ? preset.assethubUrl : opts.url;
-        opts.registry = opts.registry ?? preset.registryAddress;
-        opts.ipfsGateway = opts.ipfsGateway ?? preset.ipfsGatewayUrl;
+        opts.assethubUrl =
+            opts.assethubUrl === DEFAULT_NODE_URL ? preset.assethubUrl : opts.assethubUrl;
+        opts.registryAddress = opts.registryAddress ?? preset.registryAddress;
+        opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? preset.ipfsGatewayUrl;
     }
 
-    const registryAddr = opts.registry ?? process.env.CONTRACTS_REGISTRY_ADDR;
+    const registryAddr = opts.registryAddress ?? process.env.CONTRACTS_REGISTRY_ADDR;
     if (!registryAddr) {
         console.error(
-            "Error: Registry address required. Use --registry, --name for a preset, or set CONTRACTS_REGISTRY_ADDR",
+            "Error: Registry address required. Use --registry-address, --name for a preset, or set CONTRACTS_REGISTRY_ADDR",
         );
         process.exit(1);
     }
 
-    const rootDir = resolve(opts.root);
-
     console.log(`=== CDM Install: ${library} ===\n`);
     console.log(`Registry: ${registryAddr}`);
-    console.log(`Chain: ${opts.url}`);
-    console.log(`Root: ${rootDir}\n`);
+    console.log(`Chain: ${opts.assethubUrl}\n`);
 
     // Connect to chain
     console.log("Connecting to chain...");
-    const { client } = connectWebSocket(opts.url);
+    const { client } = connectWebSocket(opts.assethubUrl);
     const chain = await client.getChainSpecData();
     console.log(`Connected to: ${chain.name}\n`);
 
@@ -88,15 +81,15 @@ install.action(async (library: string, opts: AddOptions) => {
     console.log(`  Metadata CID: ${metadataCid}`);
 
     // Fetch metadata from IPFS gateway using the CID
-    if (!opts.ipfsGateway) {
+    if (!opts.ipfsGatewayUrl) {
         console.error(
-            "Error: IPFS gateway URL required to fetch metadata. Use --ipfs-gateway or --name for a preset.",
+            "Error: IPFS gateway URL required to fetch metadata. Use --ipfs-gateway-url or --name for a preset.",
         );
         client.destroy();
         process.exit(1);
     }
 
-    const metadataUrl = `${opts.ipfsGateway}/${metadataCid}`;
+    const metadataUrl = `${opts.ipfsGatewayUrl}/${metadataCid}`;
     console.log(`\nFetching metadata from ${metadataUrl}...`);
     const metadataResponse = await fetch(metadataUrl);
     if (!metadataResponse.ok) {
@@ -146,33 +139,8 @@ install.action(async (library: string, opts: AddOptions) => {
     });
     console.log(`  Saved to ${savedPath}`);
 
-    // Save ABI and register with papi
-    const safeName = library
-        .replace(/[@/]/g, "_")
-        .replace(/^_/, "")
-        .replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-    const contractsDir = resolve(rootDir, ".papi/contracts");
-    mkdirSync(contractsDir, { recursive: true });
-    const abiPath = resolve(contractsDir, `${safeName}.json`);
-    writeFileSync(abiPath, JSON.stringify(abi, null, 2));
-    console.log(`  Saved ABI to ${abiPath}`);
-
-    // Register ABI with papi and generate descriptors
-    console.log("\nRegistering ABI with papi...");
-    try {
-        execFileSync("npx", ["papi", "sol", "add", abiPath, safeName], {
-            cwd: rootDir,
-            stdio: "inherit",
-        });
-        console.log("\n=== Done! ===");
-        console.log(
-            `\nYou can now import and use "${library}" contract types in your TypeScript code.`,
-        );
-    } catch {
-        console.log(
-            "\nABI saved. Run 'npx papi sol add' to register and generate TypeScript types.",
-        );
-    }
+    console.log("\n=== Done! ===");
+    console.log(`\nContract "${library}" installed to ${savedPath}`);
 
     client.destroy();
 });
