@@ -11,6 +11,7 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
+        "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
         "@polkadot-api/descriptors": "workspace:*",
         "@polkadot-api/sdk-ink": "catalog:",

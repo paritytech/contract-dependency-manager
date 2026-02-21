@@ -1,9 +1,8 @@
 import { PolkadotClient, TypedApi, Binary, Enum } from "polkadot-api";
 import { AssetHub } from "@polkadot-api/descriptors";
 import { readFileSync } from "fs";
-import { prepareSigner } from "./signer.js";
-import { stringifyBigInt, ALICE_SS58 } from "@dotdm/utils";
-import { STORAGE_DEPOSIT_LIMIT } from "../constants.js";
+import { prepareSigner } from "@dotdm/env";
+import { stringifyBigInt, ALICE_SS58, STORAGE_DEPOSIT_LIMIT } from "@dotdm/utils";
 
 export interface AbiParam {
     name: string;

@@ -1,9 +1,9 @@
 import React from "react";
 import { render } from "ink";
-import { detectDeploymentOrderLayered } from "./detection.js";
-import { executePipeline } from "./pipeline.js";
-import type { PipelineOptions, PipelineResult, ContractStatus } from "./pipeline.js";
-import { DeployTable } from "./components/DeployTable.js";
+import { detectDeploymentOrderLayered } from "@dotdm/contracts";
+import { executePipeline } from "./pipeline";
+import type { PipelineOptions, PipelineResult, ContractStatus } from "./pipeline";
+import { DeployTable } from "./components/DeployTable";
 
 export function progressBar(current: number, total: number, width: number = 20): string {
     if (total === 0) return "░".repeat(width);

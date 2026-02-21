@@ -4,7 +4,7 @@ import {
     buildDependencyGraph,
     toposort,
     detectDeploymentOrder,
-} from "../src/lib/detection.js";
+} from "@dotdm/contracts";
 import { resolve } from "path";
 import { rmSync } from "fs";
 

@@ -1,16 +1,17 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { resolve } from "path";
 import { existsSync } from "fs";
-import { connectWebSocket } from "../src/lib/connection.js";
-import { ContractDeployer } from "../src/lib/deployer.js";
-import { pvmContractBuild } from "../src/lib/builder.js";
-import { executePipeline } from "../src/lib/pipeline.js";
-import { detectDeploymentOrder } from "../src/lib/detection.js";
-import { prepareSigner } from "../src/lib/signer.js";
+import { connectWebSocket, prepareSigner } from "@dotdm/env";
+import {
+    ContractDeployer,
+    pvmContractBuild,
+    detectDeploymentOrder,
+    CONTRACTS_REGISTRY_CRATE,
+} from "@dotdm/contracts";
+import { executePipeline } from "../src/lib/pipeline";
 import { contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { ALICE_SS58 } from "@dotdm/utils";
-import { CONTRACTS_REGISTRY_CRATE } from "../src/constants.js";
 
 const NODE_URL = process.env.NODE_URL ?? "ws://127.0.0.1:10020";
 const ROOT_DIR = resolve(import.meta.dir, "../../../..");

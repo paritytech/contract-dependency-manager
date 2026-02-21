@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { toposortLayers } from "../src/lib/detection.js";
+import { toposortLayers } from "@dotdm/contracts";
 
 describe("toposortLayers", () => {
     test("diamond graph", () => {

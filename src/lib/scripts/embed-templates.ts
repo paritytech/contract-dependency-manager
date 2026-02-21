@@ -2,17 +2,17 @@
  * Reads all template directories under templates/ and generates
  * a TypeScript module that embeds their file contents.
  *
- * Run: bun run scripts/embed-templates.ts
+ * Run: bun run src/lib/scripts/embed-templates.ts
  * Output: src/generated/templates.ts
  */
 
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, statSync } from "fs";
+import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, relative } from "path";
 
-const PACKAGE_ROOT = join(import.meta.dir, "..");
-const SRC_ROOT = join(import.meta.dir, "../../..");
-const TEMPLATES_DIR = join(SRC_ROOT, "templates");
-const OUT_FILE = join(PACKAGE_ROOT, "src/generated/templates.ts");
+const PROJECT_ROOT = join(import.meta.dir, "../../..");
+const CLI_ROOT = join(PROJECT_ROOT, "src/apps/cli");
+const TEMPLATES_DIR = join(PROJECT_ROOT, "src/templates");
+const OUT_FILE = join(CLI_ROOT, "src/generated/templates.ts");
 
 const IGNORE = new Set(["target", "node_modules", ".DS_Store", "Cargo.lock"]);
 
@@ -64,7 +64,7 @@ for (const name of names) {
 }
 output += "};\n";
 
-mkdirSync(join(PACKAGE_ROOT, "src/generated"), { recursive: true });
+mkdirSync(join(CLI_ROOT, "src/generated"), { recursive: true });
 writeFileSync(OUT_FILE, output);
 console.log(`Embedded ${names.length} template(s): ${names.join(", ")}`);
-console.log(`Written to ${relative(PACKAGE_ROOT, OUT_FILE)}`);
+console.log(`Written to ${relative(PROJECT_ROOT, OUT_FILE)}`);

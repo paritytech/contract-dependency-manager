@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { resolve, dirname } from "path";
 import { mkdirSync, readdirSync, writeFileSync } from "fs";
-import { TEMPLATES } from "../generated/templates.js";
+import { TEMPLATES } from "../generated/templates";
 
 const template = new Command("template")
     .description("Scaffold a CDM example project from a template")

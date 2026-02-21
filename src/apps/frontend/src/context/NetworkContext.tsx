@@ -4,7 +4,7 @@ import { getWsProvider } from "polkadot-api/ws-provider/web";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
 import { contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
-import { KNOWN_CHAINS, type ChainPreset } from "@dotdm/utils";
+import { KNOWN_CHAINS, type ChainPreset } from "@dotdm/env";
 
 const NETWORK_PRESETS: Record<string, ChainPreset> = {
     ...KNOWN_CHAINS,

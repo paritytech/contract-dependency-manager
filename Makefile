@@ -34,7 +34,7 @@ build:
 	pnpm --filter @dotdm/frontend build
 
 embed-templates:
-	bun run $(CLI_DIR)/scripts/embed-templates.ts
+	bun run src/lib/scripts/embed-templates.ts
 
 compile: embed-templates
 	bun build --compile $(CLI_DIR)/src/cli.ts --outfile dist/cdm
@@ -51,7 +51,7 @@ build-registry:
 	pnpm exec papi sol add target/contracts.release.abi.json contractsRegistry
 
 deploy-registry: build-registry
-	bun run $(CLI_DIR)/scripts/deploy-registry.ts --name $(or $(CHAIN),local)
+	bun run src/lib/scripts/deploy-registry.ts --name $(or $(CHAIN),local)
 
 build-template:
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter

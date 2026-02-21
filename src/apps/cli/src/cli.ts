@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { buildCommand } from "./commands/build.js";
-import { deployCommand } from "./commands/deploy.js";
-import { installCommand } from "./commands/install.js";
-import { templateCommand } from "./commands/template.js";
+import { buildCommand } from "./commands/build";
+import { deployCommand } from "./commands/deploy";
+import { installCommand } from "./commands/install";
+import { templateCommand } from "./commands/template";
 
 const program = new Command();
 

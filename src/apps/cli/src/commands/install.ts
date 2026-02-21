@@ -4,9 +4,9 @@ import { writeFileSync, mkdirSync } from "fs";
 import { execFileSync } from "child_process";
 import { contracts } from "@polkadot-api/descriptors";
 import { createInkSdk, ss58ToEthereum } from "@polkadot-api/sdk-ink";
-import { connectWebSocket } from "../lib/connection.js";
-import { ALICE_SS58, getChainPreset } from "@dotdm/utils";
-import { DEFAULT_NODE_URL } from "../constants.js";
+import { connectWebSocket, getChainPreset, DEFAULT_NODE_URL } from "@dotdm/env";
+import { saveContract } from "@dotdm/contracts";
+import { ALICE_SS58 } from "@dotdm/utils";
 
 const install = new Command("install")
     .alias("i")
@@ -107,12 +107,44 @@ install.action(async (library: string, opts: AddOptions) => {
     const metadata = await metadataResponse.json();
     console.log(`  Description: ${metadata.description || "(none)"}`);
 
+    // Query version count and address for local storage
+    const versionResult = await registry.query("getVersionCount", {
+        origin: ALICE_SS58,
+        data: { contract_name: library },
+    });
+    const version = versionResult.success ? versionResult.value.response - 1 : 0;
+
+    const addressResult = await registry.query("getAddress", {
+        origin: ALICE_SS58,
+        data: { contract_name: library },
+    });
+    const addressResponse = addressResult.success ? addressResult.value.response : null;
+    const contractAddress =
+        typeof addressResponse === "string"
+            ? addressResponse
+            : addressResponse?.isSome
+              ? addressResponse.value
+              : "";
+
     const abi = metadata.abi;
     if (!abi || !Array.isArray(abi) || abi.length === 0) {
         console.error(`No ABI found in metadata for "${library}"`);
         client.destroy();
         process.exit(1);
     }
+
+    // Save contract data to ~/.cdm/
+    const chainName = opts.name ?? "network";
+    const savedPath = saveContract({
+        chain: chainName,
+        library,
+        version,
+        abi,
+        metadata,
+        address: contractAddress,
+        metadataCid,
+    });
+    console.log(`  Saved to ${savedPath}`);
 
     // Save ABI and register with papi
     const safeName = library

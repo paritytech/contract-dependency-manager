@@ -1,9 +1,9 @@
 import { TypedApi, Binary } from "polkadot-api";
 import { Bulletin } from "@polkadot-api/descriptors";
 import { CID } from "multiformats/cid";
-import { prepareSigner } from "./signer.js";
+import { prepareSigner } from "@dotdm/env";
 import { stringifyBigInt } from "@dotdm/utils";
-import type { Metadata } from "./deployer.js";
+import type { Metadata } from "./deployer";
 
 export class MetadataPublisher {
     public signer: ReturnType<typeof prepareSigner>;

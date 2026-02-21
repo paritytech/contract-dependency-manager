@@ -3,18 +3,15 @@
  * Deploy the ContractRegistry contract to Asset Hub.
  *
  * Usage:
- *   bun run scripts/deploy-registry.ts --name local
- *   bun run scripts/deploy-registry.ts --assethub-url ws://127.0.0.1:10020
- *   bun run scripts/deploy-registry.ts --name preview-net --suri //Bob
+ *   bun run src/lib/scripts/deploy-registry.ts --name local
+ *   bun run src/lib/scripts/deploy-registry.ts --assethub-url ws://127.0.0.1:10020
+ *   bun run src/lib/scripts/deploy-registry.ts --name preview-net --suri //Bob
  */
 import { resolve } from "path";
 import { existsSync } from "fs";
 import { parseArgs } from "util";
-import { connectWebSocket } from "../src/lib/connection.js";
-import { ContractDeployer } from "../src/lib/deployer.js";
-import { prepareSigner } from "../src/lib/signer.js";
-import { getChainPreset } from "@dotdm/utils";
-import { CONTRACTS_REGISTRY_CRATE } from "../src/constants.js";
+import { connectWebSocket, prepareSigner, getChainPreset } from "@dotdm/env";
+import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@dotdm/contracts";
 
 const { values: opts } = parseArgs({
     args: process.argv.slice(2),
@@ -35,7 +32,7 @@ if (!assethubUrl) {
     process.exit(1);
 }
 
-const rootDir = resolve(import.meta.dir, "../../../..");
+const rootDir = resolve(import.meta.dir, "../../..");
 const pvmPath = resolve(rootDir, `target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`);
 
 if (!existsSync(pvmPath)) {

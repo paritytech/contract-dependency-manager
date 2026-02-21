@@ -1,9 +1,8 @@
 import { PolkadotClient, TypedApi } from "polkadot-api";
 import { AssetHub, contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
-import { prepareSigner } from "./signer.js";
-import { stringifyBigInt } from "@dotdm/utils";
-import { GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "../constants.js";
+import { prepareSigner } from "@dotdm/env";
+import { stringifyBigInt, GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "@dotdm/utils";
 
 export function getRegistryContract(client: PolkadotClient, addr: string) {
     const inkSdk = createInkSdk(client);

@@ -1,14 +1,19 @@
 import { Command } from "commander";
 import { resolve } from "path";
 import { existsSync, writeFileSync } from "fs";
-import { connectWebSocket, connectBulletinWebSocket } from "../lib/connection.js";
-import { ContractDeployer } from "../lib/deployer.js";
-import { MetadataPublisher } from "../lib/publisher.js";
-import { RegistryManager } from "../lib/registry.js";
-import { prepareSigner } from "../lib/signer.js";
-import { runPipelineWithUI } from "../lib/ui.js";
-import { CONTRACTS_REGISTRY_CRATE } from "../constants.js";
-import { getChainPreset } from "@dotdm/utils";
+import {
+    connectWebSocket,
+    connectBulletinWebSocket,
+    prepareSigner,
+    getChainPreset,
+} from "@dotdm/env";
+import {
+    ContractDeployer,
+    MetadataPublisher,
+    RegistryManager,
+    CONTRACTS_REGISTRY_CRATE,
+} from "@dotdm/contracts";
+import { runPipelineWithUI } from "../lib/ui";
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 

@@ -15,21 +15,16 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
+        "@dotdm/contracts": "workspace:*",
+        "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
-        "@noble/hashes": "catalog:",
         "@polkadot-api/descriptors": "workspace:*",
         "@polkadot-api/sdk-ink": "catalog:",
-        "@polkadot-api/smoldot": "catalog:",
-        "@polkadot-labs/hdkd": "catalog:",
-        "@polkadot-labs/hdkd-helpers": "catalog:",
-        "@polkadot/util-crypto": "catalog:",
         "commander": "catalog:",
         "ink": "catalog:",
-        "multiformats": "catalog:",
         "polkadot-api": "catalog:",
         "react": "catalog:",
-        "react-devtools-core": "file:../../stubs/react-devtools-core",
-        "smoldot": "catalog:"
+        "react-devtools-core": "file:../../stubs/react-devtools-core"
     },
     "devDependencies": {
         "@polkadot-api/cli": "catalog:",

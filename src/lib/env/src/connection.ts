@@ -1,10 +1,11 @@
-import { createClient, PolkadotClient, TypedApi } from "polkadot-api";
+import { createClient } from "polkadot-api";
+import type { PolkadotClient, TypedApi } from "polkadot-api";
 import { getSmProvider } from "polkadot-api/sm-provider";
 import { start } from "polkadot-api/smoldot";
-import { getWsProvider } from "polkadot-api/ws-provider/node";
+import { getWsProvider } from "polkadot-api/ws-provider";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
-import { AssetHub, assetHub, Bulletin, bulletin } from "@polkadot-api/descriptors";
-import { readFileSync } from "fs";
+import { assetHub, bulletin } from "@polkadot-api/descriptors";
+import type { AssetHub, Bulletin } from "@polkadot-api/descriptors";
 
 export interface Connection {
     client: PolkadotClient;
@@ -56,6 +57,7 @@ export async function connectSmoldot(
 ): Promise<Connection> {
     const smoldot = start();
 
+    const { readFileSync } = await import("fs");
     const relaySpec = readFileSync(relayChainspec, "utf-8");
     const parachainSpec = readFileSync(parachainChainspec, "utf-8");
 

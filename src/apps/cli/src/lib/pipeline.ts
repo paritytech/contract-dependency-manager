@@ -5,13 +5,18 @@ import {
     getGitRemoteUrl,
     readCdmPackage,
     readReadmeContent,
-} from "./detection.js";
-import type { DeploymentOrderLayered } from "./detection.js";
-import { pvmContractBuildAsync, type BuildProgressCallback } from "./builder.js";
-import { type ContractDeployer, type Metadata, type AbiEntry } from "./deployer.js";
-import type { MetadataPublisher } from "./publisher.js";
-import type { RegistryManager } from "./registry.js";
-import { computeCid } from "./cid.js";
+    pvmContractBuildAsync,
+    computeCid,
+} from "@dotdm/contracts";
+import type {
+    DeploymentOrderLayered,
+    BuildProgressCallback,
+    ContractDeployer,
+    Metadata,
+    AbiEntry,
+    MetadataPublisher,
+    RegistryManager,
+} from "@dotdm/contracts";
 
 export type ContractState =
     | "waiting"

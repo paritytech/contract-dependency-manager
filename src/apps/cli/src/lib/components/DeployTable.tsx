@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
-import type { ContractStatus } from "../pipeline.js";
+import type { ContractStatus } from "../pipeline";
 
 /** Terminal hyperlink using OSC 8 escape sequence */
 function Link({ url, children }: { url: string; children: React.ReactNode }) {

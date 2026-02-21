@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { resolve } from "path";
-import { runPipelineWithUI } from "../lib/ui.js";
+import { runPipelineWithUI } from "../lib/ui";
 
 const build = new Command("build")
     .description("Build all contracts (requires CONTRACTS_REGISTRY_ADDR env var)")

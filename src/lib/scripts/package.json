@@ -1,0 +1,19 @@
+{
+    "name": "@dotdm/scripts",
+    "version": "0.0.1",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "echo 'No build needed'",
+        "clean": "echo 'Nothing to clean'"
+    },
+    "dependencies": {
+        "@dotdm/contracts": "workspace:*",
+        "@dotdm/env": "workspace:*"
+    },
+    "devDependencies": {
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "typescript": "catalog:"
+    }
+}

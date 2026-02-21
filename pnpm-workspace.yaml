@@ -1,6 +1,9 @@
 packages:
   - "src/apps/*"
   - "src/lib/utils"
+  - "src/lib/env"
+  - "src/lib/contracts"
+  - "src/lib/scripts"
   - "src/lib/cdm/typescript"
   - ".papi/descriptors"
 
