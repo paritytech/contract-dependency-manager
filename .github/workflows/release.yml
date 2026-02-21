@@ -30,6 +30,7 @@ jobs:
               run: |
                   make embed-templates
                   bun build --compile --target=bun-linux-x64 src/apps/cli/src/cli.ts --outfile cdm-linux-x64
+                  bun build --compile --target=bun-linux-arm64 src/apps/cli/src/cli.ts --outfile cdm-linux-arm64
                   bun build --compile --target=bun-darwin-x64 src/apps/cli/src/cli.ts --outfile cdm-darwin-x64
                   bun build --compile --target=bun-darwin-arm64 src/apps/cli/src/cli.ts --outfile cdm-darwin-arm64
 
@@ -46,6 +47,7 @@ jobs:
                   name: Release ${{ steps.tag.outputs.tag }}
                   files: |
                       cdm-linux-x64
+                      cdm-linux-arm64
                       cdm-darwin-x64
                       cdm-darwin-arm64
                   generate_release_notes: true
