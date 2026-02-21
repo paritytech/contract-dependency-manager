@@ -20,14 +20,21 @@ jobs:
         steps:
             - uses: actions/checkout@v4
             - uses: oven-sh/setup-bun@v2
-            - run: bun install
+            - uses: pnpm/action-setup@v4
+              with:
+                  version: 9
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '22'
+                  cache: 'pnpm'
+            - run: pnpm install
 
             - name: Compile binaries
               run: |
                   make embed-templates
-                  bun build --compile --target=bun-linux-x64 src/cli.ts --outfile cdm-linux-x64
-                  bun build --compile --target=bun-darwin-x64 src/cli.ts --outfile cdm-darwin-x64
-                  bun build --compile --target=bun-darwin-arm64 src/cli.ts --outfile cdm-darwin-arm64
+                  bun build --compile --target=bun-linux-x64 src/apps/cli/src/cli.ts --outfile cdm-linux-x64
+                  bun build --compile --target=bun-darwin-x64 src/apps/cli/src/cli.ts --outfile cdm-darwin-x64
+                  bun build --compile --target=bun-darwin-arm64 src/apps/cli/src/cli.ts --outfile cdm-darwin-arm64
 
             - name: Generate release tag
               id: tag

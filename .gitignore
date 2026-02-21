@@ -1,15 +1,19 @@
 node_modules/
-src/generated/
+src/apps/cli/src/generated/
 
 dist/
 !.papi/descriptors/dist/
 
+.turbo/
 
 target/
 
 *.polkavm
 
 *.lock
+*-lock.yaml
+
+reference-repos/
 
 ppn/
 

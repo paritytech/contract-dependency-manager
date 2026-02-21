@@ -37,16 +37,16 @@ jobs:
         with:
           node-version: '22'
           cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install and build
-        run: cd frontend && pnpm install && pnpm run build
+        run: pnpm install && pnpm --filter @dotdm/frontend build
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build
-          path: frontend/dist
+          path: src/apps/frontend/dist
           retention-days: 1
 
   deploy:

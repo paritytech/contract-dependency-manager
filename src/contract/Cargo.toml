@@ -1,0 +1,13 @@
+[package]
+name = "contract-registry"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+pvm_contract.workspace = true
+polkavm-derive.workspace = true
+parity-scale-codec.workspace = true
+picoalloc.workspace = true
+
+[lib]
+path = "src/lib.rs"

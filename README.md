@@ -145,10 +145,10 @@ cd ts && bun install && bun run src/validate.ts
 ```bash
 git clone https://github.com/paritytech/contract-dependency-manager.git
 cd contract-dependency-manager
-./scripts/setup.sh
+make setup
 
 # Run in dev mode
-bun run src/cli.ts --help
+bun run src/apps/cli/src/cli.ts --help
 
 # Run tests
 make test
@@ -164,21 +164,18 @@ make compile-all
 
 ```
 src/
-  cli.ts              Entry point (Commander.js)
-  commands/
-    build.ts          Build contracts with registry address
-    deploy.ts         Deploy + register contracts on-chain
-    add.ts            Add contract types via papi
-    template.ts       Scaffold example project
+  apps/
+    cli/                  CLI tool (Commander.js, Bun runtime)
+      src/
+        cli.ts            Entry point
+        commands/          build, deploy, install, template
+        lib/              Core modules (detection, deployer, pipeline, etc.)
+    frontend/             Web dashboard (React 19, Vite)
   lib/
-    detection.ts      Workspace scanning, dependency graph, topological sort
-    deployer.ts       On-chain deployment + ABI encoding
-    connection.ts     WebSocket / Smoldot chain connections
-    signer.ts         sr25519 key derivation
-contracts/
-  registry/           ContractRegistry on-chain contract (Rust/PolkaVM)
-templates/
-  shared-counter/     Example project template
+    utils/                Shared package (@dotdm/utils)
+    cdm/                  Stub packages (Rust + TypeScript)
+  contract/               ContractRegistry (Rust/PolkaVM)
+  templates/              Project scaffolding templates
 ```
 
 ## License
