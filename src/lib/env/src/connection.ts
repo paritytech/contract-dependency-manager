@@ -70,3 +70,17 @@ export async function connectSmoldot(
     const client = createClient(getSmProvider(parachain));
     return { client, api: client.getTypedApi(assetHub) };
 }
+
+export interface IpfsGateway {
+    fetch: (cid: string) => Promise<Response>;
+}
+
+export function connectIpfsGateway(url: string): IpfsGateway {
+    return {
+        fetch: (cid: string) =>
+            globalThis.fetch(`${url}/${cid}`, { signal: AbortSignal.timeout(10_000) }).then((r) => {
+                if (!r.ok) throw new Error(`IPFS fetch failed: ${r.statusText}`);
+                return r;
+            }),
+    };
+}

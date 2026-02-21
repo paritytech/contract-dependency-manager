@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
-import { connectAssetHubWebSocket, getChainPreset, DEFAULT_NODE_URL } from "@dotdm/env";
+import { connectAssetHubWebSocket, connectIpfsGateway, getChainPreset, DEFAULT_NODE_URL } from "@dotdm/env";
 import { saveContract, computeTargetHash, readCdmJson, writeCdmJson } from "@dotdm/contracts";
 import { ALICE_SS58 } from "@dotdm/utils";
 
@@ -91,15 +91,9 @@ install.action(async (library: string, opts: InstallOptions) => {
         process.exit(1);
     }
 
-    const metadataUrl = `${opts.ipfsGatewayUrl}/${metadataCid}`;
-    console.log(`\nFetching metadata from ${metadataUrl}...`);
-    const metadataResponse = await fetch(metadataUrl);
-    if (!metadataResponse.ok) {
-        console.error(`Failed to fetch metadata: ${metadataResponse.statusText}`);
-        client.destroy();
-        process.exit(1);
-    }
-    const metadata = await metadataResponse.json();
+    const ipfs = connectIpfsGateway(opts.ipfsGatewayUrl);
+    console.log(`\nFetching metadata from IPFS (${metadataCid})...`);
+    const metadata = (await (await ipfs.fetch(metadataCid)).json()) as Record<string, unknown>;
     console.log(`  Description: ${metadata.description || "(none)"}`);
 
     // Query version count and address for local storage

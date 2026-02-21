@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNetwork } from "../context/NetworkContext";
 import type { Package, AbiEntry } from "../data/types";
 import { ALICE_SS58 } from "@dotdm/utils";
+import { connectIpfsGateway } from "@dotdm/env";
 
 const PAGE_SIZE = 10;
-const IPFS_TIMEOUT_MS = 8000;
 
 function unwrapOption<T>(val: unknown): T | undefined {
     if (val && typeof val === "object" && "isSome" in val) {
@@ -146,15 +146,12 @@ export function useRegistry() {
             metadataAttempted.current.add(p.name);
         }
 
+        const ipfs = connectIpfsGateway(ipfsGatewayUrl);
+
         for (const pkg of packagesToFetch) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), IPFS_TIMEOUT_MS);
-
-            fetch(`${ipfsGatewayUrl}/${pkg.metadataUri}`, { signal: controller.signal })
-                .then((res) => res.json())
-                .then((metadata) => {
-                    clearTimeout(timeout);
-
+            ipfs.fetch(pkg.metadataUri!)
+                .then((r) => r.json())
+                .then((metadata: any) => {
                     let author: string | undefined;
                     if (Array.isArray(metadata.authors) && metadata.authors.length > 0) {
                         author = metadata.authors.join(", ");
@@ -197,7 +194,6 @@ export function useRegistry() {
                     );
                 })
                 .catch(() => {
-                    clearTimeout(timeout);
                     // Mark as loaded even on failure so the card stops showing shimmer
                     setPackages((prev) =>
                         prev.map((p) => (p.name === pkg.name ? { ...p, metadataLoaded: true } : p)),
