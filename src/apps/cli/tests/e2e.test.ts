@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { resolve } from "path";
 import { existsSync } from "fs";
-import { connectWebSocket, prepareSigner } from "@dotdm/env";
+import { connectAssetHubWebSocket, prepareSigner } from "@dotdm/env";
 import {
     ContractDeployer,
     pvmContractBuild,
@@ -18,7 +18,7 @@ const ROOT_DIR = resolve(import.meta.dir, "../../../..");
 const TEMPLATE_DIR = resolve(import.meta.dir, "../../../templates/shared-counter");
 
 let deployer: ContractDeployer;
-let client: ReturnType<typeof connectWebSocket>["client"];
+let client: ReturnType<typeof connectAssetHubWebSocket>["client"];
 let registryAddr: string;
 
 beforeAll(async () => {
@@ -30,7 +30,7 @@ beforeAll(async () => {
     }
 
     // Connect
-    const conn = connectWebSocket(NODE_URL);
+    const conn = connectAssetHubWebSocket(NODE_URL);
     client = conn.client;
     const signer = prepareSigner("Alice");
     deployer = new ContractDeployer(signer, conn.client, conn.api);

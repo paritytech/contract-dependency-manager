@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
-import { connectWebSocket, getChainPreset, DEFAULT_NODE_URL } from "@dotdm/env";
+import { connectAssetHubWebSocket, getChainPreset, DEFAULT_NODE_URL } from "@dotdm/env";
 import { saveContract, computeTargetHash, readCdmJson, writeCdmJson } from "@dotdm/contracts";
 import { ALICE_SS58 } from "@dotdm/utils";
 
@@ -50,7 +50,7 @@ install.action(async (library: string, opts: InstallOptions) => {
 
     // Connect to chain
     console.log("Connecting to chain...");
-    const { client } = connectWebSocket(opts.assethubUrl);
+    const { client } = connectAssetHubWebSocket(opts.assethubUrl);
     const chain = await client.getChainSpecData();
     console.log(`Connected to: ${chain.name}\n`);
 

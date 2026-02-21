@@ -10,7 +10,7 @@
 import { resolve } from "path";
 import { existsSync } from "fs";
 import { parseArgs } from "util";
-import { connectWebSocket, prepareSigner, getChainPreset } from "@dotdm/env";
+import { connectAssetHubWebSocket, prepareSigner, getChainPreset } from "@dotdm/env";
 import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@dotdm/contracts";
 
 const { values: opts } = parseArgs({
@@ -45,7 +45,7 @@ if (!existsSync(pvmPath)) {
 console.log(`Connecting to ${assethubUrl}...`);
 const signerName = opts.suri?.startsWith("//") ? opts.suri.slice(2) : undefined;
 const signer = prepareSigner(signerName ?? "Alice");
-const { client, api } = connectWebSocket(assethubUrl);
+const { client, api } = connectAssetHubWebSocket(assethubUrl);
 await client.getChainSpecData();
 console.log("Connected.");
 

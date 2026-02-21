@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { resolve } from "path";
 import { existsSync, writeFileSync } from "fs";
 import {
-    connectWebSocket,
+    connectAssetHubWebSocket,
     connectBulletinWebSocket,
     prepareSigner,
     getChainPreset,
@@ -115,13 +115,13 @@ async function deployWithRegistry(
     opts: DeployOptions,
     existingConnections?: {
         signer: ReturnType<typeof prepareSigner>;
-        client: ReturnType<typeof connectWebSocket>["client"];
-        api: ReturnType<typeof connectWebSocket>["api"];
+        client: ReturnType<typeof connectAssetHubWebSocket>["client"];
+        api: ReturnType<typeof connectAssetHubWebSocket>["api"];
     },
 ): Promise<Record<string, string>> {
     let signer: ReturnType<typeof prepareSigner>;
-    let client: ReturnType<typeof connectWebSocket>["client"];
-    let api: ReturnType<typeof connectWebSocket>["api"];
+    let client: ReturnType<typeof connectAssetHubWebSocket>["client"];
+    let api: ReturnType<typeof connectAssetHubWebSocket>["api"];
     let ownsAssetHub: boolean;
 
     if (existingConnections) {
@@ -134,7 +134,7 @@ async function deployWithRegistry(
         signer = prepareSigner(signerName ?? "Alice");
 
         const sp = spinner("AssetHub", opts.assethubUrl!);
-        const conn = connectWebSocket(opts.assethubUrl!);
+        const conn = connectAssetHubWebSocket(opts.assethubUrl!);
         client = conn.client;
         api = conn.api;
         await client.getChainSpecData();
@@ -195,7 +195,7 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
 
     // Connect to Asset Hub
     const sp1 = spinner("AssetHub", opts.assethubUrl!);
-    const { client, api } = connectWebSocket(opts.assethubUrl!);
+    const { client, api } = connectAssetHubWebSocket(opts.assethubUrl!);
     await client.getChainSpecData();
     sp1.succeed();
 

@@ -7,7 +7,7 @@ import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
 import { assetHub, bulletin } from "@polkadot-api/descriptors";
 import type { AssetHub, Bulletin } from "@polkadot-api/descriptors";
 
-export interface Connection {
+export interface AssetHubConnection {
     client: PolkadotClient;
     api: TypedApi<AssetHub>;
 }
@@ -27,7 +27,7 @@ export function detectConnectionType(url: string): "websocket" | "smoldot" {
 /**
  * Connect to a chain via WebSocket.
  */
-export function connectWebSocket(url: string): Connection {
+export function connectAssetHubWebSocket(url: string): AssetHubConnection {
     const client = createClient(withPolkadotSdkCompat(getWsProvider(url)));
     return { client, api: client.getTypedApi(assetHub) };
 }
@@ -54,7 +54,7 @@ export function connectBulletinWebSocket(url: string): BulletinConnection {
 export async function connectSmoldot(
     parachainChainspec: string,
     relayChainspec: string,
-): Promise<Connection> {
+): Promise<AssetHubConnection> {
     const smoldot = start();
 
     const { readFileSync } = await import("fs");
