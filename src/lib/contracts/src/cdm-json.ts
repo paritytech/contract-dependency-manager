@@ -20,17 +20,13 @@ export function computeTargetHash(assethubUrl: string, ipfsGatewayUrl: string, r
 }
 
 export function readCdmJson(startDir?: string): { cdmJson: CdmJson; cdmJsonPath: string } | null {
-    let dir = startDir ?? process.cwd();
-    while (true) {
-        const candidate = resolve(dir, "cdm.json");
-        if (existsSync(candidate)) {
-            const content = readFileSync(candidate, "utf-8");
-            return { cdmJson: JSON.parse(content) as CdmJson, cdmJsonPath: candidate };
-        }
-        const parent = dirname(dir);
-        if (parent === dir) return null;
-        dir = parent;
+    const dir = startDir ?? process.cwd();
+    const candidate = resolve(dir, "cdm.json");
+    if (existsSync(candidate)) {
+        const content = readFileSync(candidate, "utf-8");
+        return { cdmJson: JSON.parse(content) as CdmJson, cdmJsonPath: candidate };
     }
+    return null;
 }
 
 export function writeCdmJson(cdmJson: CdmJson, dir?: string): void {

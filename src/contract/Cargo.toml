@@ -11,3 +11,7 @@ picoalloc.workspace = true
 
 [lib]
 path = "src/lib.rs"
+
+[[bin]]
+name = "contract-registry"
+path = "src/lib.rs"
