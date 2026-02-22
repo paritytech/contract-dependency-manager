@@ -1,5 +1,11 @@
 # @dotdm/contracts
 
+## 0.1.3
+
+### Patch Changes
+
+- c81cf62: Fix readCdmJson to accept both file paths and directory paths. Default signer and origin to Alice in createCdm().
+
 ## 0.1.2
 
 ### Patch Changes
