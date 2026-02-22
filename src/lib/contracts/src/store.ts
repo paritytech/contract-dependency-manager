@@ -3,7 +3,7 @@ import { resolve } from "path";
 import { mkdirSync, writeFileSync, symlinkSync, unlinkSync } from "fs";
 
 export function getCdmRoot(): string {
-    return resolve(homedir(), ".cdm");
+    return process.env.CDM_ROOT ?? resolve(homedir(), ".cdm");
 }
 
 export function getContractDir(targetHash: string, library: string, version: number): string {

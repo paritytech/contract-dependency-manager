@@ -9,6 +9,10 @@
         ".": {
             "types": "./src/index.ts",
             "import": "./src/index.ts"
+        },
+        "./codegen": {
+            "types": "./src/codegen.ts",
+            "import": "./src/codegen.ts"
         }
     },
     "scripts": {
@@ -17,5 +21,11 @@
     },
     "devDependencies": {
         "typescript": "catalog:"
+    },
+    "dependencies": {
+        "polkadot-api": "catalog:",
+        "@dotdm/contracts": "workspace:*",
+        "@dotdm/env": "workspace:*",
+        "@polkadot-api/sdk-ink": "catalog:"
     }
 }

@@ -15,6 +15,7 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
+        "@dotdm/cdm": "workspace:*",
         "@dotdm/contracts": "workspace:*",
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",

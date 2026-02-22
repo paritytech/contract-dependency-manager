@@ -1,9 +1,41 @@
+import { existsSync } from "fs";
+import { resolve } from "path";
 import { Command } from "commander";
 import { contracts } from "@polkadot-api/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
-import { connectAssetHubWebSocket, connectIpfsGateway, getChainPreset, DEFAULT_NODE_URL } from "@dotdm/env";
-import { saveContract, computeTargetHash, readCdmJson, writeCdmJson } from "@dotdm/contracts";
+import {
+    connectAssetHubWebSocket,
+    connectIpfsGateway,
+    getChainPreset,
+    DEFAULT_NODE_URL,
+} from "@dotdm/env";
+import {
+    type AbiEntry,
+    saveContract,
+    computeTargetHash,
+    readCdmJson,
+    writeCdmJson,
+} from "@dotdm/contracts";
 import { ALICE_SS58 } from "@dotdm/utils";
+import { postInstallRust } from "./rust";
+import { postInstallTypeScript } from "./typescript";
+
+export interface InstallResult {
+    targetHash: string;
+    library: string;
+    version: number;
+    address: string;
+    abi: AbiEntry[];
+    savedPath: string;
+    metadataCid: string;
+}
+
+function detectProjectType(dir: string): { hasRust: boolean; hasTypeScript: boolean } {
+    return {
+        hasRust: existsSync(resolve(dir, "Cargo.toml")),
+        hasTypeScript: existsSync(resolve(dir, "package.json")),
+    };
+}
 
 const install = new Command("install")
     .alias("i")
@@ -148,6 +180,24 @@ install.action(async (library: string, opts: InstallOptions) => {
     cdmJson.dependencies[targetHash][library] = version;
     writeCdmJson(cdmJson);
     console.log(`  Updated cdm.json`);
+
+    // Detect project type and run post-install
+    const projectType = detectProjectType(process.cwd());
+
+    if (projectType.hasRust) {
+        await postInstallRust();
+    }
+    if (projectType.hasTypeScript) {
+        await postInstallTypeScript({
+            targetHash,
+            library,
+            version,
+            address: contractAddress,
+            abi: abi as AbiEntry[],
+            savedPath,
+            metadataCid,
+        });
+    }
 
     console.log("\n=== Done! ===");
     console.log(`\nContract "${library}" installed to ${savedPath}`);
