@@ -51,8 +51,8 @@ const install = new Command("install")
     .alias("i")
     .description("Install CDM contract libraries to ~/.cdm/")
     .argument(
-        "[library]",
-        'CDM library (e.g., "@polkadot/reputation" or "@polkadot/reputation:3"). Omit to install all from cdm.json.',
+        "[libraries...]",
+        'CDM libraries (e.g., "@polkadot/reputation" or "@polkadot/reputation:3"). Omit to install all from cdm.json.',
     )
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain", DEFAULT_NODE_URL)
     .option(
@@ -195,7 +195,7 @@ async function installOne(
     };
 }
 
-install.action(async (library: string | undefined, opts: InstallOptions) => {
+install.action(async (libraries: string[], opts: InstallOptions) => {
     // Read cdm.json early so its target info can fill in missing options
     const cdmResult = readCdmJson();
     const cdmJson = cdmResult?.cdmJson ?? { targets: {}, dependencies: {} };
@@ -262,10 +262,12 @@ install.action(async (library: string | undefined, opts: InstallOptions) => {
     // Determine what to install
     let toInstall: { library: string; requestedVersion: number | "latest" }[];
 
-    if (library) {
-        // Single install: parse version from argument
-        const parsed = parseLibraryArg(library);
-        toInstall = [{ library: parsed.library, requestedVersion: parsed.version }];
+    if (libraries.length > 0) {
+        // Install from arguments (one or more libraries)
+        toInstall = libraries.map((arg) => {
+            const parsed = parseLibraryArg(arg);
+            return { library: parsed.library, requestedVersion: parsed.version };
+        });
     } else {
         // Batch install: read from cdm.json
         const deps = cdmJson.dependencies[targetHash];
