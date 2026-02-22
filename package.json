@@ -20,6 +20,6 @@
     "typescript": "catalog:"
   },
   "dependencies": {
-    "@polkadot-api/descriptors": "file:.papi/descriptors"
+    "@polkadot-api/descriptors": "workspace:*"
   }
 }

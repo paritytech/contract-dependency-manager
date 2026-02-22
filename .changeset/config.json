@@ -7,5 +7,5 @@
     "access": "public",
     "baseBranch": "main",
     "updateInternalDependencies": "patch",
-    "ignore": ["@dotdm/cli", "@dotdm/frontend", "@dotdm/scripts", "@polkadot-api/descriptors", "contract-dependency-manager"]
+    "ignore": ["@dotdm/cli", "@dotdm/frontend", "@dotdm/scripts", "@polkadot-api/descriptors"]
 }
