@@ -9,26 +9,14 @@ import {
     getChainPreset,
     DEFAULT_NODE_URL,
 } from "@dotdm/env";
-import {
-    type AbiEntry,
-    saveContract,
-    computeTargetHash,
-    readCdmJson,
-    writeCdmJson,
-} from "@dotdm/contracts";
-import { ALICE_SS58 } from "@dotdm/utils";
+import { computeTargetHash, readCdmJson, writeCdmJson } from "@dotdm/contracts";
+import { spinner } from "../../lib/ui";
+import { runInstallWithUI } from "../../lib/install-pipeline";
+import type { InstallResult } from "../../lib/install-pipeline";
 import { postInstallRust } from "./rust";
 import { postInstallTypeScript } from "./typescript";
 
-export interface InstallResult {
-    targetHash: string;
-    library: string;
-    version: number;
-    address: string;
-    abi: AbiEntry[];
-    savedPath: string;
-    metadataCid: string;
-}
+export type { InstallResult } from "../../lib/install-pipeline";
 
 function detectProjectType(dir: string): { hasRust: boolean; hasTypeScript: boolean } {
     return {
@@ -68,132 +56,6 @@ type InstallOptions = {
     name?: string;
     ipfsGatewayUrl?: string;
 };
-
-async function installOne(
-    library: string,
-    requestedVersion: number | "latest",
-    registry: any,
-    ipfs: any,
-    targetHash: string,
-): Promise<InstallResult> {
-    console.log(`\nLooking up "${library}" in registry...`);
-
-    let version: number;
-    let metadataCid: string;
-    let contractAddress: string;
-
-    if (requestedVersion === "latest") {
-        // Use existing getVersionCount → compute latest index, then getMetadataUri + getAddress
-        const versionResult = await registry.query("getVersionCount", {
-            origin: ALICE_SS58,
-            data: { contract_name: library },
-        });
-        if (!versionResult.success || versionResult.value.response === 0) {
-            throw new Error(`Contract "${library}" not found in registry`);
-        }
-        version = versionResult.value.response - 1;
-
-        const metaResult = await registry.query("getMetadataUri", {
-            origin: ALICE_SS58,
-            data: { contract_name: library },
-        });
-        if (!metaResult.success) {
-            throw new Error(`Failed to query metadata URI for "${library}"`);
-        }
-        const metaResponse = metaResult.value.response;
-        metadataCid =
-            typeof metaResponse === "string"
-                ? metaResponse
-                : metaResponse?.isSome
-                  ? metaResponse.value
-                  : "";
-        if (!metadataCid) {
-            throw new Error(`No metadata URI found for "${library}"`);
-        }
-
-        const addrResult = await registry.query("getAddress", {
-            origin: ALICE_SS58,
-            data: { contract_name: library },
-        });
-        const addrResponse = addrResult.success ? addrResult.value.response : null;
-        contractAddress =
-            typeof addrResponse === "string"
-                ? addrResponse
-                : addrResponse?.isSome
-                  ? addrResponse.value
-                  : "";
-    } else {
-        // Use version-specific queries: getMetadataUriAtVersion + getAddressAtVersion
-        version = requestedVersion;
-
-        const metaResult = await registry.query("getMetadataUriAtVersion", {
-            origin: ALICE_SS58,
-            data: { contract_name: library, version: requestedVersion },
-        });
-        if (!metaResult.success) {
-            throw new Error(
-                `Failed to query metadata URI for "${library}" version ${requestedVersion}`,
-            );
-        }
-        const metaResponse = metaResult.value.response;
-        metadataCid =
-            typeof metaResponse === "string"
-                ? metaResponse
-                : metaResponse?.isSome
-                  ? metaResponse.value
-                  : "";
-        if (!metadataCid) {
-            throw new Error(`Version ${requestedVersion} of "${library}" not found in registry`);
-        }
-
-        const addrResult = await registry.query("getAddressAtVersion", {
-            origin: ALICE_SS58,
-            data: { contract_name: library, version: requestedVersion },
-        });
-        const addrResponse = addrResult.success ? addrResult.value.response : null;
-        contractAddress =
-            typeof addrResponse === "string"
-                ? addrResponse
-                : addrResponse?.isSome
-                  ? addrResponse.value
-                  : "";
-    }
-
-    console.log(`  Version: ${version}`);
-    console.log(`  Metadata CID: ${metadataCid}`);
-
-    // Fetch metadata from IPFS
-    console.log(`  Fetching metadata from IPFS (${metadataCid})...`);
-    const metadata = (await (await ipfs.fetch(metadataCid)).json()) as Record<string, unknown>;
-    console.log(`  Description: ${metadata.description || "(none)"}`);
-
-    const abi = metadata.abi;
-    if (!abi || !Array.isArray(abi) || abi.length === 0) {
-        throw new Error(`No ABI found in metadata for "${library}"`);
-    }
-
-    // Save contract data to ~/.cdm/
-    const savedPath = saveContract({
-        targetHash,
-        library,
-        version,
-        abi,
-        metadata,
-        address: contractAddress,
-        metadataCid,
-    });
-    console.log(`  Saved to ${savedPath}`);
-
-    return {
-        targetHash,
-        library,
-        version,
-        address: contractAddress,
-        abi: abi as AbiEntry[],
-        savedPath,
-        metadataCid,
-    };
-}
 
 install.action(async (libraries: string[], opts: InstallOptions) => {
     // Read cdm.json early so its target info can fill in missing options
@@ -239,11 +101,11 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
 
     const targetHash = computeTargetHash(opts.assethubUrl, opts.ipfsGatewayUrl, registryAddr);
 
-    // Connect to chain
-    console.log("Connecting to chain...");
+    // Connect to chain with spinner (matching deploy command style)
+    const sp = spinner("AssetHub", opts.assethubUrl);
     const { client } = connectAssetHubWebSocket(opts.assethubUrl);
-    const chain = await client.getChainSpecData();
-    console.log(`Connected to: ${chain.name}`);
+    await client.getChainSpecData();
+    sp.succeed();
 
     const inkSdk = createInkSdk(client);
     const registry = inkSdk.getContract(contracts.contractsRegistry, registryAddr);
@@ -263,7 +125,6 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
     let toInstall: { library: string; requestedVersion: number | "latest" }[];
 
     if (libraries.length > 0) {
-        // Install from arguments (one or more libraries)
         toInstall = libraries.map((arg) => {
             const parsed = parseLibraryArg(arg);
             return { library: parsed.library, requestedVersion: parsed.version };
@@ -282,51 +143,49 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
             library: lib,
             requestedVersion: ver,
         }));
-        console.log(`\nBatch install: ${toInstall.length} contract(s) from cdm.json`);
     }
 
-    console.log(`\n=== CDM Install ===\n`);
-    console.log(`Registry: ${registryAddr}`);
-    console.log(`Target: ${targetHash}`);
-    console.log(`Chain: ${opts.assethubUrl}`);
+    // Header (matching deploy command style)
+    console.log(`\x1b[1mRegistry\x1b[0m   ${registryAddr}`);
+    console.log(`\x1b[1mTarget\x1b[0m     ${targetHash}`);
 
-    // Install each contract
-    const results: InstallResult[] = [];
-    for (const { library: lib, requestedVersion } of toInstall) {
-        try {
-            const result = await installOne(lib, requestedVersion, registry, ipfs, targetHash);
-            results.push(result);
+    // Run parallel install with Ink table UI
+    const { results, success } = await runInstallWithUI({
+        libraries: toInstall,
+        registry,
+        ipfs,
+        targetHash,
+    });
 
-            // Update cdm.json dependency with requested version (not resolved version)
-            cdmJson.dependencies[targetHash][lib] = requestedVersion;
-        } catch (err) {
-            console.error(`\nError installing "${lib}": ${(err as Error).message}`);
-            client.destroy();
-            process.exit(1);
+    // Update cdm.json dependencies for successful installs
+    for (const result of results) {
+        const entry = toInstall.find((t) => t.library === result.library);
+        if (entry) {
+            cdmJson.dependencies[targetHash][result.library] = entry.requestedVersion;
         }
     }
 
     // Write cdm.json once
     writeCdmJson(cdmJson);
-    console.log(`\nUpdated cdm.json`);
+    console.log(`Updated cdm.json`);
 
     // Run post-install hooks once at the end
-    const projectType = detectProjectType(process.cwd());
+    if (results.length > 0) {
+        const projectType = detectProjectType(process.cwd());
 
-    if (projectType.hasRust) {
-        await postInstallRust();
-    }
-    if (projectType.hasTypeScript && results.length > 0) {
-        // Pass the last result for postInstallTypeScript (it reads all deps from cdm.json anyway)
-        await postInstallTypeScript(results[results.length - 1]);
-    }
-
-    console.log("\n=== Done! ===");
-    for (const r of results) {
-        console.log(`  "${r.library}" v${r.version} → ${r.savedPath}`);
+        if (projectType.hasRust) {
+            await postInstallRust();
+        }
+        if (projectType.hasTypeScript) {
+            await postInstallTypeScript(results[results.length - 1]);
+        }
     }
 
     client.destroy();
+
+    if (!success) {
+        process.exit(1);
+    }
 });
 
 export const installCommand = install;

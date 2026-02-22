@@ -13,28 +13,7 @@ import {
     RegistryManager,
     CONTRACTS_REGISTRY_CRATE,
 } from "@dotdm/contracts";
-import { runPipelineWithUI } from "../lib/ui";
-
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-function spinner(label: string, detail: string) {
-    let i = 0;
-    const id = setInterval(() => {
-        process.stdout.write(
-            `\r\x1b[2K\x1b[1m${label}\x1b[0m ${SPINNER_FRAMES[i++ % SPINNER_FRAMES.length]} ${detail}`,
-        );
-    }, 80);
-    return {
-        succeed() {
-            clearInterval(id);
-            process.stdout.write(`\r\x1b[2K\x1b[1m${label}\x1b[0m \x1b[32m✔\x1b[0m ${detail}\n`);
-        },
-        fail() {
-            clearInterval(id);
-            process.stdout.write(`\r\x1b[2K\x1b[1m${label}\x1b[0m \x1b[31m✖\x1b[0m ${detail}\n`);
-        },
-    };
-}
+import { runPipelineWithUI, spinner } from "../lib/ui";
 
 const deploy = new Command("deploy")
     .description("Deploy and register contracts")

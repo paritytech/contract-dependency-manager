@@ -1,87 +1,25 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
-import type { ContractStatus } from "../pipeline";
-
-/** Terminal hyperlink using OSC 8 escape sequence */
-function Link({ url, children }: { url: string; children: React.ReactNode }) {
-    return (
-        <Text>
-            {`\x1b]8;;${url}\x07`}
-            {children}
-            {`\x1b]8;;\x07`}
-        </Text>
-    );
-}
-
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-function Spinner({ tick }: { tick: number }) {
-    return <Text color="yellow">{SPINNER_FRAMES[tick % SPINNER_FRAMES.length]}</Text>;
-}
-
-const BAR_WIDTH = 12;
-
-function ProgressBar({ compiled, total }: { compiled: number; total: number }) {
-    const filled = total > 0 ? Math.round((compiled / total) * BAR_WIDTH) : 0;
-    return (
-        <Text>
-            <Text color="green">{"█".repeat(filled)}</Text>
-            <Text dimColor>{"░".repeat(BAR_WIDTH - filled)}</Text>
-            <Text>
-                {" "}
-                {compiled}/{total}
-            </Text>
-        </Text>
-    );
-}
-
-function EmptyBar() {
-    return <Text dimColor>{"░".repeat(BAR_WIDTH)}</Text>;
-}
-
-function truncateAddress(addr: string): string {
-    if (addr.length <= 14) return addr;
-    return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
+import type { ContractStatus } from "../deploy-pipeline";
+import {
+    Link,
+    Spinner,
+    ProgressBar,
+    EmptyBar,
+    Cell,
+    Idle,
+    Done,
+    Failed,
+    truncateAddress,
+    shortHash,
+    pjsExplorerUrl,
+    ipfsUrl,
+} from "./shared";
 
 const COL_CONTRACT = 24;
 const COL_BUILD = 20;
 const COL_PHASE = 5;
 const COL_ADDR = 14;
-
-function pjsExplorerUrl(rpcUrl: string, blockHash: string): string {
-    return `https://polkadot.js.org/apps/?rpc=${encodeURIComponent(rpcUrl)}#/explorer/query/${blockHash}`;
-}
-
-function ipfsUrl(gatewayUrl: string, cid: string): string {
-    return `${gatewayUrl}/${cid}`;
-}
-
-function shortHash(hash: string): string {
-    if (hash.startsWith("0x")) return hash.slice(2, 6);
-    // CIDs share a common prefix (e.g. "bafk"), so use last 4 chars
-    return hash.slice(-4);
-}
-
-function Cell({ children, width }: { children: React.ReactNode; width: number }) {
-    return (
-        <Box width={width} marginRight={1}>
-            {typeof children === "string" ? <Text>{children}</Text> : children}
-        </Box>
-    );
-}
-
-function Idle() {
-    return <Text dimColor>.</Text>;
-}
-
-function Done() {
-    return <Text color="green">✔</Text>;
-}
-
-function Failed() {
-    return <Text color="red">✖</Text>;
-}
 
 /** Infer which phase failed based on what fields exist on the status */
 function errorPhase(s: ContractStatus): "build" | "deploy" | "metadata" | "register" {
