@@ -1,5 +1,11 @@
 # @dotdm/utils
 
+## 0.1.1
+
+### Patch Changes
+
+- d0f0c48: fix: release pipeline configuration
+
 ## 0.1.0
 
 ### Minor Changes

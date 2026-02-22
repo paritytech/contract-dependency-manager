@@ -1,5 +1,14 @@
 # @dotdm/contracts
 
+## 0.1.1
+
+### Patch Changes
+
+- d0f0c48: fix: release pipeline configuration
+- Updated dependencies [d0f0c48]
+  - @dotdm/utils@0.1.1
+  - @dotdm/env@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes
