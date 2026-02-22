@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2 # need parent commit for diff
+          fetch-depth: 0 # full history so we can diff against any prior commit
 
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -29,16 +29,22 @@ jobs:
       - name: Clean descriptors for publish
         run: node -e "const f='src/lib/descriptors/package.json';const p=JSON.parse(require('fs').readFileSync(f));delete p.dependencies;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
 
-      # Detect changes and set dev versions
+      # Detect changes across ALL commits in this push (not just the last one)
       - name: Detect changes & set dev versions
         id: detect
         run: |
           TIMESTAMP=$(date +%s)
           CHANGED=""
+          BEFORE="${{ github.event.before }}"
+
+          # Fall back to HEAD~1 if before SHA is unavailable (e.g. new branch)
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE="HEAD~1"
+          fi
 
           # Check each package for changes
           for pkg in descriptors utils env contracts; do
-            if git diff --name-only HEAD~1 -- "src/lib/$pkg/" | grep -q .; then
+            if git diff --name-only "$BEFORE" HEAD -- "src/lib/$pkg/" | grep -q .; then
               VERSION=$(node -p "require('./src/lib/$pkg/package.json').version")
               DEV_VERSION="${VERSION}-dev.${TIMESTAMP}"
               node -e "const f='src/lib/$pkg/package.json';const p=JSON.parse(require('fs').readFileSync(f,'utf-8'));p.version='${DEV_VERSION}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
@@ -47,7 +53,7 @@ jobs:
           done
 
           # CDM package (different path structure)
-          if git diff --name-only HEAD~1 -- "src/lib/cdm/typescript/" | grep -q .; then
+          if git diff --name-only "$BEFORE" HEAD -- "src/lib/cdm/typescript/" | grep -q .; then
             VERSION=$(node -p "require('./src/lib/cdm/typescript/package.json').version")
             DEV_VERSION="${VERSION}-dev.${TIMESTAMP}"
             node -e "const f='src/lib/cdm/typescript/package.json';const p=JSON.parse(require('fs').readFileSync(f,'utf-8'));p.version='${DEV_VERSION}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"

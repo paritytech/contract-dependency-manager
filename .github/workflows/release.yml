@@ -1,46 +1,68 @@
 name: Release
 
-on: workflow_dispatch
+on:
+    push:
+        branches: [main]
 
 permissions:
     contents: write
 
 jobs:
     release:
+        # Skip bot commits (from version bump commits pushed by this workflow)
+        if: github.actor != 'github-actions[bot]'
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
               with:
                   fetch-depth: 0
 
-            - uses: oven-sh/setup-bun@v2
-            - uses: pnpm/action-setup@v4
-            - uses: actions/setup-node@v4
+            # Check for pending changesets before doing anything expensive
+            - name: Check for changesets
+              id: changesets
+              run: |
+                  if ls .changeset/*.md 2>/dev/null | grep -qv README.md; then
+                    echo "found=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "found=false" >> $GITHUB_OUTPUT
+                  fi
+
+            - if: steps.changesets.outputs.found == 'true'
+              uses: oven-sh/setup-bun@v2
+            - if: steps.changesets.outputs.found == 'true'
+              uses: pnpm/action-setup@v4
+            - if: steps.changesets.outputs.found == 'true'
+              uses: actions/setup-node@v4
               with:
                   node-version: "22"
                   registry-url: "https://registry.npmjs.org"
 
-            - run: pnpm install
+            - if: steps.changesets.outputs.found == 'true'
+              run: pnpm install
 
-            # papi's postinstall adds a "file:generated" dep to descriptors/package.json
-            # which would break npm consumers — strip it before versioning/publishing
+            # papi's postinstall adds a "file:generated" dep — strip before publishing
             - name: Clean descriptors for publish
+              if: steps.changesets.outputs.found == 'true'
               run: node -e "const f='src/lib/descriptors/package.json';const p=JSON.parse(require('fs').readFileSync(f));delete p.dependencies;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
 
             # Version packages (consumes changesets, bumps versions)
             - name: Version packages
+              if: steps.changesets.outputs.found == 'true'
               run: pnpm changeset version
 
             # Format files modified by changeset version
             - name: Format
+              if: steps.changesets.outputs.found == 'true'
               run: pnpm format
 
             # Build all publishable packages
             - name: Build packages
+              if: steps.changesets.outputs.found == 'true'
               run: pnpm -r --filter "@dotdm/descriptors" --filter "@dotdm/utils" --filter "@dotdm/env" --filter "@dotdm/contracts" --filter "@dotdm/cdm" build
 
             # Commit version bumps
             - name: Commit version changes
+              if: steps.changesets.outputs.found == 'true'
               run: |
                   git config user.name "github-actions[bot]"
                   git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -50,16 +72,19 @@ jobs:
 
             # Publish to npm
             - name: Publish to npm
+              if: steps.changesets.outputs.found == 'true'
               run: pnpm changeset publish
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
             # Push git tags created by changeset publish
             - name: Push tags
+              if: steps.changesets.outputs.found == 'true'
               run: git push --tags
 
             # Compile CLI binaries
             - name: Compile binaries
+              if: steps.changesets.outputs.found == 'true'
               run: |
                   make embed-templates
                   bun build --compile --target=bun-linux-x64 src/apps/cli/src/cli.ts --outfile cdm-linux-x64
@@ -69,15 +94,17 @@ jobs:
 
             # Create GitHub Release with binaries
             - name: Generate release tag
+              if: steps.changesets.outputs.found == 'true'
               id: tag
               run: |
-                  # Use the @dotdm/cdm version as the release tag
-                  VERSION=$(node -p "require('./src/lib/cdm/typescript/package.json').version")
+                  # Use the @dotdm/cli version as the release tag
+                  VERSION=$(node -p "require('./src/apps/cli/package.json').version")
                   TAG="v${VERSION}"
                   echo "tag=$TAG" >> $GITHUB_OUTPUT
                   echo "version=$VERSION" >> $GITHUB_OUTPUT
 
             - name: Create Release
+              if: steps.changesets.outputs.found == 'true'
               uses: softprops/action-gh-release@v2
               with:
                   tag_name: ${{ steps.tag.outputs.tag }}
