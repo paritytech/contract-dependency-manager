@@ -118,6 +118,18 @@ mod contract_registry {
         }
     }
 
+    /// Get the address of a specific version of a contract.
+    #[pvm::method]
+    pub fn get_address_at_version(contract_name: String, version: u32) -> Option<Address> {
+        Storage::published_address().get(&(contract_name, version))
+    }
+
+    /// Get the metadata URI of a specific version of a contract.
+    #[pvm::method]
+    pub fn get_metadata_uri_at_version(contract_name: String, version: u32) -> Option<String> {
+        Storage::published_metadata_uri().get(&(contract_name, version))
+    }
+
     /// Get the contract name at a given index.
     #[pvm::method]
     pub fn get_contract_name_at(index: u32) -> String {

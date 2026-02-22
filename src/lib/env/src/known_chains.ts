@@ -16,13 +16,13 @@ export const KNOWN_CHAINS: Record<string, ChainPreset> = {
         assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
         bulletinUrl: "wss://bulletin.dotspark.app",
         ipfsGatewayUrl: "https://ipfs.dotspark.app/ipfs",
-        registryAddress: "0x21fa63bfac2a77b1a6de8bd9a0c2c172a48bb5e3",
+        registryAddress: "0xd984e8407838138eff926814b802a66f3938017f",
     },
     "preview-net": {
         assethubUrl: "wss://previewnet.substrate.dev/asset-hub",
         bulletinUrl: "wss://bulletin.dotspark.app",
         ipfsGatewayUrl: "https://ipfs.dotspark.app/ipfs",
-        registryAddress: "0x5801b439a678d9d3a68b8019da6a4abfa507de11",
+        registryAddress: "0xf78bc1cd6e8e13d178dd0b1aaeb71e9d094327a3",
     },
     local: {
         assethubUrl: "ws://127.0.0.1:10020",

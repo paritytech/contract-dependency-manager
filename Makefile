@@ -47,8 +47,8 @@ compile-all: embed-templates
 	bun build --compile --target=bun-linux-arm64 $(CLI_DIR)/src/cli.ts --outfile dist/cdm-linux-arm64
 
 build-registry:
-	cargo pvm-contract build --manifest-path $(CURDIR)/Cargo.toml -p contracts
-	pnpm exec papi sol add target/contracts.release.abi.json contractsRegistry
+	cargo pvm-contract build --manifest-path $(CURDIR)/Cargo.toml -p contract-registry
+	pnpm exec papi sol add target/contract-registry.release.abi.json contractsRegistry
 
 deploy-registry: build-registry
 	bun run src/lib/scripts/deploy-registry.ts --name $(or $(CHAIN),local)

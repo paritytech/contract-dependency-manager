@@ -73,8 +73,35 @@ var genesis4 = "0x5a26fe1a13a254c1ed7600d191b71176f768cc23e9dc0f9a34720cec37d1b1
 var _allDescriptors4 = { descriptors: descriptorValues4, metadataTypes: metadataTypes4, asset: asset4, extensions: extensions4, getMetadata: getMetadata4, genesis: genesis4 };
 var bulletin_default = _allDescriptors4;
 
+// node_modules/.pnpm/@polkadot-api+substrate-bindings@0.17.0/node_modules/@polkadot-api/substrate-bindings/dist/esm/types/enum.mjs
+var discriminant = {
+  is(value, type) {
+    return value.type === type;
+  },
+  as(value, type) {
+    if (type !== value.type)
+      throw new Error(
+        `Enum.as(enum, ${type}) used with actual type ${value.type}`
+      );
+    return value;
+  }
+};
+var Enum = Object.assign((type, value) => {
+  return {
+    type,
+    value
+  };
+}, discriminant);
+var _Enum = new Proxy(
+  {},
+  {
+    get(_, prop) {
+      return (value) => Enum(prop, value);
+    }
+  }
+);
+
 // .papi/descriptors/src/common-types.ts
-import { _Enum } from "polkadot-api";
 var DigestItem = _Enum;
 var Phase = _Enum;
 var DispatchClass = _Enum;
@@ -202,7 +229,7 @@ __export(contracts_exports, {
 });
 
 // .papi/descriptors/src/contracts/contractsRegistry.ts
-var descriptor = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "publishLatest", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "contract_address", "type": "address" }, { "name": "metadata_uri", "type": "string" }], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "getAddress", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "tuple", "components": [{ "name": "isSome", "type": "bool" }, { "name": "value", "type": "address" }] }], "stateMutability": "view" }, { "type": "function", "name": "getMetadataUri", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "tuple", "components": [{ "name": "isSome", "type": "bool" }, { "name": "value", "type": "string" }] }], "stateMutability": "view" }, { "type": "function", "name": "getContractNameAt", "inputs": [{ "name": "index", "type": "uint32" }], "outputs": [{ "name": "", "type": "string" }], "stateMutability": "view" }, { "type": "function", "name": "getOwner", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "address" }], "stateMutability": "view" }, { "type": "function", "name": "getVersionCount", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }, { "type": "function", "name": "getContractCount", "inputs": [], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }] };
+var descriptor = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "publishLatest", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "contract_address", "type": "address" }, { "name": "metadata_uri", "type": "string" }], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "getAddress", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "tuple" }], "stateMutability": "view" }, { "type": "function", "name": "getMetadataUri", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "tuple" }], "stateMutability": "view" }, { "type": "function", "name": "getAddressAtVersion", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "version", "type": "uint32" }], "outputs": [{ "name": "", "type": "tuple" }], "stateMutability": "view" }, { "type": "function", "name": "getMetadataUriAtVersion", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "version", "type": "uint32" }], "outputs": [{ "name": "", "type": "tuple" }], "stateMutability": "view" }, { "type": "function", "name": "getContractNameAt", "inputs": [{ "name": "index", "type": "uint32" }], "outputs": [{ "name": "", "type": "string" }], "stateMutability": "view" }, { "type": "function", "name": "getOwner", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "address" }], "stateMutability": "view" }, { "type": "function", "name": "getVersionCount", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }, { "type": "function", "name": "getContractCount", "inputs": [], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }] };
 
 // .papi/descriptors/src/contracts/counter.ts
 var descriptor2 = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "increment", "inputs": [], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "getCount", "inputs": [], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }] };

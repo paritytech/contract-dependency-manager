@@ -330,124 +330,151 @@ var genesis4 = "0x5a26fe1a13a254c1ed7600d191b71176f768cc23e9dc0f9a34720cec37d1b1
 var _allDescriptors4 = { descriptors: descriptorValues4, metadataTypes: metadataTypes4, asset: asset4, extensions: extensions4, getMetadata: getMetadata4, genesis: genesis4 };
 var bulletin_default = _allDescriptors4;
 
+// node_modules/.pnpm/@polkadot-api+substrate-bindings@0.17.0/node_modules/@polkadot-api/substrate-bindings/dist/esm/types/enum.mjs
+var discriminant = {
+  is(value, type) {
+    return value.type === type;
+  },
+  as(value, type) {
+    if (type !== value.type)
+      throw new Error(
+        `Enum.as(enum, ${type}) used with actual type ${value.type}`
+      );
+    return value;
+  }
+};
+var Enum = Object.assign((type, value) => {
+  return {
+    type,
+    value
+  };
+}, discriminant);
+var _Enum = new Proxy(
+  {},
+  {
+    get(_, prop) {
+      return (value) => Enum(prop, value);
+    }
+  }
+);
+
 // .papi/descriptors/src/common-types.ts
-var import_polkadot_api = require("polkadot-api");
-var DigestItem = import_polkadot_api._Enum;
-var Phase = import_polkadot_api._Enum;
-var DispatchClass = import_polkadot_api._Enum;
-var TokenError = import_polkadot_api._Enum;
-var ArithmeticError = import_polkadot_api._Enum;
-var TransactionalError = import_polkadot_api._Enum;
-var PreimageEvent = import_polkadot_api._Enum;
-var BalanceStatus = import_polkadot_api._Enum;
-var TransactionPaymentEvent = import_polkadot_api._Enum;
-var StakingRewardDestination = import_polkadot_api._Enum;
-var StakingForcing = import_polkadot_api._Enum;
-var OffencesEvent = import_polkadot_api._Enum;
-var GrandpaEvent = import_polkadot_api._Enum;
-var XcmV3Junctions = import_polkadot_api._Enum;
-var XcmV3Junction = import_polkadot_api._Enum;
-var XcmV3JunctionNetworkId = import_polkadot_api._Enum;
-var XcmV3JunctionBodyId = import_polkadot_api._Enum;
-var XcmV2JunctionBodyPart = import_polkadot_api._Enum;
-var XcmV3MultiassetAssetId = import_polkadot_api._Enum;
-var XcmV5Junctions = import_polkadot_api._Enum;
-var XcmV5Junction = import_polkadot_api._Enum;
-var XcmV5NetworkId = import_polkadot_api._Enum;
-var XcmVersionedLocation = import_polkadot_api._Enum;
-var ConvictionVotingVoteAccountVote = import_polkadot_api._Enum;
-var PreimagesBounded = import_polkadot_api._Enum;
-var CommonClaimsEvent = import_polkadot_api._Enum;
-var ChildBountiesEvent = import_polkadot_api._Enum;
-var ElectionProviderMultiPhaseEvent = import_polkadot_api._Enum;
-var ElectionProviderMultiPhaseElectionCompute = import_polkadot_api._Enum;
-var ElectionProviderMultiPhasePhase = import_polkadot_api._Enum;
-var BagsListEvent = import_polkadot_api._Enum;
-var NominationPoolsPoolState = import_polkadot_api._Enum;
-var NominationPoolsCommissionClaimPermission = import_polkadot_api._Enum;
-var NominationPoolsClaimPermission = import_polkadot_api._Enum;
-var ParachainsHrmpEvent = import_polkadot_api._Enum;
-var ParachainsDisputesEvent = import_polkadot_api._Enum;
-var ParachainsDisputeLocation = import_polkadot_api._Enum;
-var ParachainsDisputeResult = import_polkadot_api._Enum;
-var CommonParasRegistrarEvent = import_polkadot_api._Enum;
-var CommonSlotsEvent = import_polkadot_api._Enum;
-var CommonAuctionsEvent = import_polkadot_api._Enum;
-var PolkadotRuntimeParachainsCoretimeEvent = import_polkadot_api._Enum;
-var XcmV5Instruction = import_polkadot_api._Enum;
-var XcmV3MultiassetFungibility = import_polkadot_api._Enum;
-var XcmV3MultiassetAssetInstance = import_polkadot_api._Enum;
-var XcmV3MaybeErrorCode = import_polkadot_api._Enum;
-var XcmV2OriginKind = import_polkadot_api._Enum;
-var XcmV5AssetFilter = import_polkadot_api._Enum;
-var XcmV5WildAsset = import_polkadot_api._Enum;
-var XcmV2MultiassetWildFungibility = import_polkadot_api._Enum;
-var XcmV3WeightLimit = import_polkadot_api._Enum;
-var XcmVersionedAssets = import_polkadot_api._Enum;
-var ParachainsInclusionAggregateMessageOrigin = import_polkadot_api._Enum;
-var ParachainsInclusionUmpQueueId = import_polkadot_api._Enum;
-var GovernanceOrigin = import_polkadot_api._Enum;
-var ParachainsOrigin = import_polkadot_api._Enum;
-var PreimageOldRequestStatus = import_polkadot_api._Enum;
-var PreimageRequestStatus = import_polkadot_api._Enum;
-var BabeDigestsNextConfigDescriptor = import_polkadot_api._Enum;
-var BabeAllowedSlots = import_polkadot_api._Enum;
-var BabeDigestsPreDigest = import_polkadot_api._Enum;
-var BalancesTypesReasons = import_polkadot_api._Enum;
-var PreimagePalletHoldReason = import_polkadot_api._Enum;
-var WestendRuntimeRuntimeFreezeReason = import_polkadot_api._Enum;
-var NominationPoolsPalletFreezeReason = import_polkadot_api._Enum;
-var TransactionPaymentReleases = import_polkadot_api._Enum;
-var GrandpaStoredState = import_polkadot_api._Enum;
-var TreasuryPaymentState = import_polkadot_api._Enum;
-var ConvictionVotingVoteVoting = import_polkadot_api._Enum;
-var VotingConviction = import_polkadot_api._Enum;
-var TraitsScheduleDispatchTime = import_polkadot_api._Enum;
-var ClaimsStatementKind = import_polkadot_api._Enum;
-var Version = import_polkadot_api._Enum;
-var ChildBountyStatus = import_polkadot_api._Enum;
-var PolkadotPrimitivesV6ExecutorParamsExecutorParam = import_polkadot_api._Enum;
-var PolkadotPrimitivesV6PvfPrepKind = import_polkadot_api._Enum;
-var PvfExecKind = import_polkadot_api._Enum;
-var ValidityAttestation = import_polkadot_api._Enum;
-var PolkadotPrimitivesV6DisputeStatement = import_polkadot_api._Enum;
-var PolkadotPrimitivesV6ValidDisputeStatementKind = import_polkadot_api._Enum;
-var InvalidDisputeStatementKind = import_polkadot_api._Enum;
-var PolkadotRuntimeParachainsSchedulerCommonAssignment = import_polkadot_api._Enum;
-var ParachainsParasParaLifecycle = import_polkadot_api._Enum;
-var UpgradeGoAhead = import_polkadot_api._Enum;
-var UpgradeRestriction = import_polkadot_api._Enum;
-var BrokerCoretimeInterfaceCoreAssignment = import_polkadot_api._Enum;
-var MultiSigner = import_polkadot_api._Enum;
-var CommonCrowdloanLastContribution = import_polkadot_api._Enum;
-var XcmV3Response = import_polkadot_api._Enum;
-var XcmV3TraitsError = import_polkadot_api._Enum;
-var XcmV4Response = import_polkadot_api._Enum;
-var XcmPalletVersionMigrationStage = import_polkadot_api._Enum;
-var XcmVersionedAssetId = import_polkadot_api._Enum;
-var MultiAddress = import_polkadot_api._Enum;
-var BalancesAdjustmentDirection = import_polkadot_api._Enum;
-var StakingPalletConfigOpBig = import_polkadot_api._Enum;
-var StakingPalletConfigOp = import_polkadot_api._Enum;
-var GrandpaEquivocation = import_polkadot_api._Enum;
-var NominationPoolsBondExtra = import_polkadot_api._Enum;
-var NominationPoolsConfigOp = import_polkadot_api._Enum;
-var MultiSignature = import_polkadot_api._Enum;
-var XcmVersionedXcm = import_polkadot_api._Enum;
-var XcmV3Instruction = import_polkadot_api._Enum;
-var XcmV3MultiassetMultiAssetFilter = import_polkadot_api._Enum;
-var XcmV3MultiassetWildMultiAsset = import_polkadot_api._Enum;
-var XcmV4Instruction = import_polkadot_api._Enum;
-var XcmV4AssetAssetFilter = import_polkadot_api._Enum;
-var XcmV4AssetWildAsset = import_polkadot_api._Enum;
-var ReferendaTypesCurve = import_polkadot_api._Enum;
-var TransactionValidityUnknownTransaction = import_polkadot_api._Enum;
-var TransactionValidityTransactionSource = import_polkadot_api._Enum;
-var OccupiedCoreAssumption = import_polkadot_api._Enum;
-var SlashingOffenceKind = import_polkadot_api._Enum;
-var MmrPrimitivesError = import_polkadot_api._Enum;
-var IdentityData = import_polkadot_api._Enum;
-var XcmVersionedAsset = import_polkadot_api._Enum;
+var DigestItem = _Enum;
+var Phase = _Enum;
+var DispatchClass = _Enum;
+var TokenError = _Enum;
+var ArithmeticError = _Enum;
+var TransactionalError = _Enum;
+var PreimageEvent = _Enum;
+var BalanceStatus = _Enum;
+var TransactionPaymentEvent = _Enum;
+var StakingRewardDestination = _Enum;
+var StakingForcing = _Enum;
+var OffencesEvent = _Enum;
+var GrandpaEvent = _Enum;
+var XcmV3Junctions = _Enum;
+var XcmV3Junction = _Enum;
+var XcmV3JunctionNetworkId = _Enum;
+var XcmV3JunctionBodyId = _Enum;
+var XcmV2JunctionBodyPart = _Enum;
+var XcmV3MultiassetAssetId = _Enum;
+var XcmV5Junctions = _Enum;
+var XcmV5Junction = _Enum;
+var XcmV5NetworkId = _Enum;
+var XcmVersionedLocation = _Enum;
+var ConvictionVotingVoteAccountVote = _Enum;
+var PreimagesBounded = _Enum;
+var CommonClaimsEvent = _Enum;
+var ChildBountiesEvent = _Enum;
+var ElectionProviderMultiPhaseEvent = _Enum;
+var ElectionProviderMultiPhaseElectionCompute = _Enum;
+var ElectionProviderMultiPhasePhase = _Enum;
+var BagsListEvent = _Enum;
+var NominationPoolsPoolState = _Enum;
+var NominationPoolsCommissionClaimPermission = _Enum;
+var NominationPoolsClaimPermission = _Enum;
+var ParachainsHrmpEvent = _Enum;
+var ParachainsDisputesEvent = _Enum;
+var ParachainsDisputeLocation = _Enum;
+var ParachainsDisputeResult = _Enum;
+var CommonParasRegistrarEvent = _Enum;
+var CommonSlotsEvent = _Enum;
+var CommonAuctionsEvent = _Enum;
+var PolkadotRuntimeParachainsCoretimeEvent = _Enum;
+var XcmV5Instruction = _Enum;
+var XcmV3MultiassetFungibility = _Enum;
+var XcmV3MultiassetAssetInstance = _Enum;
+var XcmV3MaybeErrorCode = _Enum;
+var XcmV2OriginKind = _Enum;
+var XcmV5AssetFilter = _Enum;
+var XcmV5WildAsset = _Enum;
+var XcmV2MultiassetWildFungibility = _Enum;
+var XcmV3WeightLimit = _Enum;
+var XcmVersionedAssets = _Enum;
+var ParachainsInclusionAggregateMessageOrigin = _Enum;
+var ParachainsInclusionUmpQueueId = _Enum;
+var GovernanceOrigin = _Enum;
+var ParachainsOrigin = _Enum;
+var PreimageOldRequestStatus = _Enum;
+var PreimageRequestStatus = _Enum;
+var BabeDigestsNextConfigDescriptor = _Enum;
+var BabeAllowedSlots = _Enum;
+var BabeDigestsPreDigest = _Enum;
+var BalancesTypesReasons = _Enum;
+var PreimagePalletHoldReason = _Enum;
+var WestendRuntimeRuntimeFreezeReason = _Enum;
+var NominationPoolsPalletFreezeReason = _Enum;
+var TransactionPaymentReleases = _Enum;
+var GrandpaStoredState = _Enum;
+var TreasuryPaymentState = _Enum;
+var ConvictionVotingVoteVoting = _Enum;
+var VotingConviction = _Enum;
+var TraitsScheduleDispatchTime = _Enum;
+var ClaimsStatementKind = _Enum;
+var Version = _Enum;
+var ChildBountyStatus = _Enum;
+var PolkadotPrimitivesV6ExecutorParamsExecutorParam = _Enum;
+var PolkadotPrimitivesV6PvfPrepKind = _Enum;
+var PvfExecKind = _Enum;
+var ValidityAttestation = _Enum;
+var PolkadotPrimitivesV6DisputeStatement = _Enum;
+var PolkadotPrimitivesV6ValidDisputeStatementKind = _Enum;
+var InvalidDisputeStatementKind = _Enum;
+var PolkadotRuntimeParachainsSchedulerCommonAssignment = _Enum;
+var ParachainsParasParaLifecycle = _Enum;
+var UpgradeGoAhead = _Enum;
+var UpgradeRestriction = _Enum;
+var BrokerCoretimeInterfaceCoreAssignment = _Enum;
+var MultiSigner = _Enum;
+var CommonCrowdloanLastContribution = _Enum;
+var XcmV3Response = _Enum;
+var XcmV3TraitsError = _Enum;
+var XcmV4Response = _Enum;
+var XcmPalletVersionMigrationStage = _Enum;
+var XcmVersionedAssetId = _Enum;
+var MultiAddress = _Enum;
+var BalancesAdjustmentDirection = _Enum;
+var StakingPalletConfigOpBig = _Enum;
+var StakingPalletConfigOp = _Enum;
+var GrandpaEquivocation = _Enum;
+var NominationPoolsBondExtra = _Enum;
+var NominationPoolsConfigOp = _Enum;
+var MultiSignature = _Enum;
+var XcmVersionedXcm = _Enum;
+var XcmV3Instruction = _Enum;
+var XcmV3MultiassetMultiAssetFilter = _Enum;
+var XcmV3MultiassetWildMultiAsset = _Enum;
+var XcmV4Instruction = _Enum;
+var XcmV4AssetAssetFilter = _Enum;
+var XcmV4AssetWildAsset = _Enum;
+var ReferendaTypesCurve = _Enum;
+var TransactionValidityUnknownTransaction = _Enum;
+var TransactionValidityTransactionSource = _Enum;
+var OccupiedCoreAssumption = _Enum;
+var SlashingOffenceKind = _Enum;
+var MmrPrimitivesError = _Enum;
+var IdentityData = _Enum;
+var XcmVersionedAsset = _Enum;
 
 // .papi/descriptors/src/contracts/index.ts
 var contracts_exports = {};
@@ -459,7 +486,7 @@ __export(contracts_exports, {
 });
 
 // .papi/descriptors/src/contracts/contractsRegistry.ts
-var descriptor = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "publishLatest", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "contract_address", "type": "address" }, { "name": "metadata_uri", "type": "string" }], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "getAddress", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "tuple", "components": [{ "name": "isSome", "type": "bool" }, { "name": "value", "type": "address" }] }], "stateMutability": "view" }, { "type": "function", "name": "getMetadataUri", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "tuple", "components": [{ "name": "isSome", "type": "bool" }, { "name": "value", "type": "string" }] }], "stateMutability": "view" }, { "type": "function", "name": "getContractNameAt", "inputs": [{ "name": "index", "type": "uint32" }], "outputs": [{ "name": "", "type": "string" }], "stateMutability": "view" }, { "type": "function", "name": "getOwner", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "address" }], "stateMutability": "view" }, { "type": "function", "name": "getVersionCount", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }, { "type": "function", "name": "getContractCount", "inputs": [], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }] };
+var descriptor = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "publishLatest", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "contract_address", "type": "address" }, { "name": "metadata_uri", "type": "string" }], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "getAddress", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "tuple" }], "stateMutability": "view" }, { "type": "function", "name": "getMetadataUri", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "tuple" }], "stateMutability": "view" }, { "type": "function", "name": "getAddressAtVersion", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "version", "type": "uint32" }], "outputs": [{ "name": "", "type": "tuple" }], "stateMutability": "view" }, { "type": "function", "name": "getMetadataUriAtVersion", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "version", "type": "uint32" }], "outputs": [{ "name": "", "type": "tuple" }], "stateMutability": "view" }, { "type": "function", "name": "getContractNameAt", "inputs": [{ "name": "index", "type": "uint32" }], "outputs": [{ "name": "", "type": "string" }], "stateMutability": "view" }, { "type": "function", "name": "getOwner", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "address" }], "stateMutability": "view" }, { "type": "function", "name": "getVersionCount", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }, { "type": "function", "name": "getContractCount", "inputs": [], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }] };
 
 // .papi/descriptors/src/contracts/counter.ts
 var descriptor2 = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "increment", "inputs": [], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "getCount", "inputs": [], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }] };

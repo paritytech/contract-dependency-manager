@@ -15,19 +15,27 @@ type MessagesDescriptor = {
         message: {
             "contract_name": string;
         };
-        response: {
-            "isSome": boolean;
-            "value": Address;
-        };
+        response: {};
     };
     "getMetadataUri": {
         message: {
             "contract_name": string;
         };
-        response: {
-            "isSome": boolean;
-            "value": string;
+        response: {};
+    };
+    "getAddressAtVersion": {
+        message: {
+            "contract_name": string;
+            "version": number;
         };
+        response: {};
+    };
+    "getMetadataUriAtVersion": {
+        message: {
+            "contract_name": string;
+            "version": number;
+        };
+        response: {};
     };
     "getContractNameAt": {
         message: {

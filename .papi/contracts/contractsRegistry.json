@@ -36,17 +36,7 @@
     "outputs": [
       {
         "name": "",
-        "type": "tuple",
-        "components": [
-          {
-            "name": "isSome",
-            "type": "bool"
-          },
-          {
-            "name": "value",
-            "type": "address"
-          }
-        ]
+        "type": "tuple"
       }
     ],
     "stateMutability": "view"
@@ -63,17 +53,49 @@
     "outputs": [
       {
         "name": "",
-        "type": "tuple",
-        "components": [
-          {
-            "name": "isSome",
-            "type": "bool"
-          },
-          {
-            "name": "value",
-            "type": "string"
-          }
-        ]
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getAddressAtVersion",
+    "inputs": [
+      {
+        "name": "contract_name",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getMetadataUriAtVersion",
+    "inputs": [
+      {
+        "name": "contract_name",
+        "type": "string"
+      },
+      {
+        "name": "version",
+        "type": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple"
       }
     ],
     "stateMutability": "view"
