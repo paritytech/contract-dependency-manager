@@ -1,18 +1,14 @@
 #!/usr/bin/env node
 
-// TEMPORARY WORKAROUND: Filter out "Incompatible runtime entry" errors from the ink SDK's reviveProvider
-// This just silences an annoying harmless error spammed by papi b/c of preview-net runtime
-//
-// The ink SDK's reviveProvider calls ReviveApi.trace_call on every contract
-// query. When the chain's trace_call type signature doesn't match the SDK's
-// bundled descriptors (common on preview-net), the SDK catches the error and
-// logs it via console.error before returning { success: false }. Filter these
-// out so they don't spam stderr — the actual query results are unaffected.
-const _consoleError = console.error;
-console.error = (...args: unknown[]) => {
-    const first = args[0];
-    if (first instanceof Error && first.message.startsWith("Incompatible runtime entry")) return;
-    _consoleError(...args);
+// WORKAROUND: papi throws "Incompatible runtime entry" errors on preview-net
+// because ReviveApi.trace_call doesn't match bundled descriptors. These are
+// harmless noise — filter them from stderr so they don't spam the terminal.
+const _stderrWrite = process.stderr.write.bind(process.stderr);
+// @ts-ignore — overriding for filtering
+process.stderr.write = (chunk: any, ...args: any[]) => {
+    const str = typeof chunk === "string" ? chunk : chunk instanceof Buffer ? chunk.toString() : "";
+    if (str.includes("Incompatible runtime entry")) return true;
+    return _stderrWrite(chunk, ...args);
 };
 
 import { Command } from "commander";
