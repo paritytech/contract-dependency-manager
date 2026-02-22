@@ -69,7 +69,7 @@ jobs:
         run: |
           FILTERS=""
           for pkg in ${{ steps.detect.outputs.changed }}; do
-            FILTERS="${FILTERS} --filter ${pkg}"
+            FILTERS="${FILTERS} --filter ${pkg}..."
           done
           pnpm -r ${FILTERS} build
 
