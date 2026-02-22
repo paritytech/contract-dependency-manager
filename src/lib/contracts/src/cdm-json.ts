@@ -13,7 +13,11 @@ export interface CdmJson {
     dependencies: Record<string, Record<string, number | "latest">>;
 }
 
-export function computeTargetHash(assethubUrl: string, ipfsGatewayUrl: string, registryAddress: string): string {
+export function computeTargetHash(
+    assethubUrl: string,
+    ipfsGatewayUrl: string,
+    registryAddress: string,
+): string {
     const input = `${assethubUrl}\n${ipfsGatewayUrl}\n${registryAddress}`;
     const hash = blake2b(new TextEncoder().encode(input), { dkLen: 32 });
     return Buffer.from(hash.slice(0, 8)).toString("hex");

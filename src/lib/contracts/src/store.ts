@@ -52,6 +52,10 @@ export function saveContract(opts: SaveContractOptions): string {
     return dir;
 }
 
-export function resolveContractAbiPath(targetHash: string, library: string, version: number): string {
+export function resolveContractAbiPath(
+    targetHash: string,
+    library: string,
+    version: number,
+): string {
     return resolve(getContractDir(targetHash, library, version), "abi.json");
 }
