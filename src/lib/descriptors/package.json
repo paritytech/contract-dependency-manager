@@ -29,8 +29,5 @@
     },
     "devDependencies": {
         "polkadot-api": "catalog:"
-    },
-    "dependencies": {
-        "@polkadot-api/descriptors": "file:generated"
     }
 }
