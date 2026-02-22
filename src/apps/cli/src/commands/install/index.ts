@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import { resolve } from "path";
 import { Command } from "commander";
-import { contracts } from "@polkadot-api/descriptors";
+import { contracts } from "@dotdm/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import {
     connectAssetHubWebSocket,

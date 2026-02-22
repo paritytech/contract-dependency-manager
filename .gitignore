@@ -2,7 +2,7 @@ node_modules/
 src/apps/cli/src/generated/
 
 dist/
-!.papi/descriptors/dist/
+src/lib/descriptors/generated/
 
 .turbo/
 

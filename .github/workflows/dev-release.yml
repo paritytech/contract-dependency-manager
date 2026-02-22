@@ -25,9 +25,9 @@ jobs:
 
       - run: pnpm install
 
-      # Ensure descriptors stays private
-      - name: Mark descriptors as private
-        run: node -e "const f='.papi/descriptors/package.json';const p=JSON.parse(require('fs').readFileSync(f));p.private=true;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+      # papi's postinstall adds a "file:generated" dep — strip before publishing
+      - name: Clean descriptors for publish
+        run: node -e "const f='src/lib/descriptors/package.json';const p=JSON.parse(require('fs').readFileSync(f));delete p.dependencies;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
 
       # Detect changes and set dev versions
       - name: Detect changes & set dev versions
@@ -37,7 +37,7 @@ jobs:
           CHANGED=""
 
           # Check each package for changes
-          for pkg in utils env contracts; do
+          for pkg in descriptors utils env contracts; do
             if git diff --name-only HEAD~1 -- "src/lib/$pkg/" | grep -q .; then
               VERSION=$(node -p "require('./src/lib/$pkg/package.json').version")
               DEV_VERSION="${VERSION}-dev.${TIMESTAMP}"

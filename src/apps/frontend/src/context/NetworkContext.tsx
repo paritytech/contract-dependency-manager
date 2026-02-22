@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import { createClient, type PolkadotClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws-provider/web";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
-import { contracts } from "@polkadot-api/descriptors";
+import { contracts } from "@dotdm/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { KNOWN_CHAINS, type ChainPreset } from "@dotdm/env";
 

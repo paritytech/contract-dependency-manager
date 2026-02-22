@@ -19,7 +19,7 @@
         "@dotdm/contracts": "workspace:*",
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
-        "@polkadot-api/descriptors": "workspace:*",
+        "@dotdm/descriptors": "workspace:*",
         "@polkadot-api/sdk-ink": "catalog:",
         "commander": "catalog:",
         "ink": "catalog:",

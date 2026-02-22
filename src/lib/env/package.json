@@ -19,22 +19,14 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
+        "@dotdm/descriptors": "workspace:*",
         "@dotdm/utils": "workspace:*",
         "@polkadot-labs/hdkd": "catalog:",
         "@polkadot-labs/hdkd-helpers": "catalog:",
         "polkadot-api": "catalog:",
         "smoldot": "catalog:"
     },
-    "peerDependencies": {
-        "@polkadot-api/descriptors": "*"
-    },
-    "peerDependenciesMeta": {
-        "@polkadot-api/descriptors": {
-            "optional": true
-        }
-    },
     "devDependencies": {
-        "@polkadot-api/descriptors": "workspace:*",
         "@types/node": "catalog:",
         "typescript": "catalog:"
     }

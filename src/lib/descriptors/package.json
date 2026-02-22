@@ -1,0 +1,36 @@
+{
+    "name": "@dotdm/descriptors",
+    "version": "0.1.0",
+    "type": "module",
+    "main": "./generated/dist/index.mjs",
+    "types": "./generated/dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./generated/dist/index.d.ts",
+            "module": "./generated/dist/index.mjs",
+            "import": "./generated/dist/index.mjs",
+            "require": "./generated/dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "module": "./generated/dist/index.mjs",
+    "browser": "./generated/dist/index.mjs",
+    "sideEffects": false,
+    "files": ["generated/dist"],
+    "publishConfig": {
+        "access": "public"
+    },
+    "scripts": {
+        "build": "test -d generated/dist || papi",
+        "clean": "rm -rf generated"
+    },
+    "peerDependencies": {
+        "polkadot-api": ">=1.21.0"
+    },
+    "devDependencies": {
+        "polkadot-api": "catalog:"
+    },
+    "dependencies": {
+        "@polkadot-api/descriptors": "file:generated"
+    }
+}

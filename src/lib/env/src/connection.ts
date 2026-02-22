@@ -4,8 +4,8 @@ import { getSmProvider } from "polkadot-api/sm-provider";
 import { start } from "polkadot-api/smoldot";
 import { getWsProvider } from "polkadot-api/ws-provider";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
-import { assetHub, bulletin } from "@polkadot-api/descriptors";
-import type { AssetHub, Bulletin } from "@polkadot-api/descriptors";
+import { assetHub, bulletin } from "@dotdm/descriptors";
+import type { AssetHub, Bulletin } from "@dotdm/descriptors";
 
 export interface AssetHubConnection {
     client: PolkadotClient;

@@ -1,5 +1,5 @@
 import { PolkadotClient, TypedApi } from "polkadot-api";
-import { AssetHub, contracts } from "@polkadot-api/descriptors";
+import { AssetHub, contracts } from "@dotdm/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { prepareSigner } from "@dotdm/env";
 import { stringifyBigInt, GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "@dotdm/utils";

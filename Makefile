@@ -9,14 +9,11 @@ setup:
 	$(MAKE) build-template
 
 generate-papi:
-	mkdir -p .papi/descriptors
-	[ -f .papi/descriptors/package.json ] || echo '{"name":"@polkadot-api/descriptors","version":"0.0.0"}' > .papi/descriptors/package.json
-	pnpm add polkadot-api
-	pnpm exec papi add relay -n polkadot --skip-codegen
-	pnpm exec papi add bulletin --wasm ppn/bin/bulletin_westend_runtime.wasm --skip-codegen
-	pnpm exec papi add individuality --wasm ppn/bin/people_westend_individuality_runtime.wasm --skip-codegen
-	pnpm exec papi add assetHub --wasm ppn/bin/asset_hub_westend_runtime.wasm --skip-codegen
-	pnpm exec papi
+	cd src/lib/descriptors && pnpm exec papi add relay -n polkadot --skip-codegen
+	cd src/lib/descriptors && pnpm exec papi add bulletin --wasm ../../../ppn/bin/bulletin_westend_runtime.wasm --skip-codegen
+	cd src/lib/descriptors && pnpm exec papi add individuality --wasm ../../../ppn/bin/people_westend_individuality_runtime.wasm --skip-codegen
+	cd src/lib/descriptors && pnpm exec papi add assetHub --wasm ../../../ppn/bin/asset_hub_westend_runtime.wasm --skip-codegen
+	cd src/lib/descriptors && pnpm exec papi
 
 start-network:
 	cd ppn && make start
@@ -48,7 +45,7 @@ compile-all: embed-templates
 
 build-registry:
 	cargo pvm-contract build --manifest-path $(CURDIR)/Cargo.toml -p contract-registry
-	pnpm exec papi sol add target/contract-registry.release.abi.json contractsRegistry
+	cd src/lib/descriptors && pnpm exec papi sol add ../../../target/contract-registry.release.abi.json contractsRegistry
 
 deploy-registry: build-registry
 	bun run src/lib/scripts/deploy-registry.ts --name $(or $(CHAIN),local)
@@ -57,9 +54,9 @@ build-template:
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter_reader
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter_writer
-	pnpm exec papi sol add $(TEMPLATE_DIR)/target/counter.release.abi.json counter --skip-codegen
-	pnpm exec papi sol add $(TEMPLATE_DIR)/target/counter_reader.release.abi.json counterReader --skip-codegen
-	pnpm exec papi sol add $(TEMPLATE_DIR)/target/counter_writer.release.abi.json counterWriter
+	cd src/lib/descriptors && pnpm exec papi sol add ../../../$(TEMPLATE_DIR)/target/counter.release.abi.json counter --skip-codegen
+	cd src/lib/descriptors && pnpm exec papi sol add ../../../$(TEMPLATE_DIR)/target/counter_reader.release.abi.json counterReader --skip-codegen
+	cd src/lib/descriptors && pnpm exec papi sol add ../../../$(TEMPLATE_DIR)/target/counter_writer.release.abi.json counterWriter
 
 test:
 	bun test $(CLI_DIR)/tests/detection.test.ts $(CLI_DIR)/tests/commands.test.ts $(CLI_DIR)/tests/e2e.test.ts

@@ -19,6 +19,7 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
+        "@dotdm/descriptors": "workspace:*",
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
         "@noble/hashes": "catalog:",
@@ -26,16 +27,7 @@
         "multiformats": "catalog:",
         "polkadot-api": "catalog:"
     },
-    "peerDependencies": {
-        "@polkadot-api/descriptors": "*"
-    },
-    "peerDependenciesMeta": {
-        "@polkadot-api/descriptors": {
-            "optional": true
-        }
-    },
     "devDependencies": {
-        "@polkadot-api/descriptors": "workspace:*",
         "@types/node": "catalog:",
         "typescript": "catalog:"
     }

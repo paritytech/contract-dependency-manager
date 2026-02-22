@@ -8,7 +8,7 @@
     "lint": "turbo lint",
     "clean": "turbo clean",
     "test": "turbo test",
-    "postinstall": "papi",
+    "postinstall": "cd src/lib/descriptors && papi",
     "format": "biome format --write .",
     "format:check": "biome format ."
   },
@@ -18,8 +18,5 @@
     "polkadot-api": "catalog:",
     "turbo": "catalog:",
     "typescript": "catalog:"
-  },
-  "dependencies": {
-    "@polkadot-api/descriptors": "workspace:*"
   }
 }

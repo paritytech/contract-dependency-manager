@@ -9,7 +9,7 @@ import {
     CONTRACTS_REGISTRY_CRATE,
 } from "@dotdm/contracts";
 import { executePipeline } from "../src/lib/pipeline";
-import { contracts } from "@polkadot-api/descriptors";
+import { contracts } from "@dotdm/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { ALICE_SS58 } from "@dotdm/utils";
 

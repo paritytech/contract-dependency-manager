@@ -5,7 +5,7 @@ packages:
   - "src/lib/contracts"
   - "src/lib/scripts"
   - "src/lib/cdm/typescript"
-  - ".papi/descriptors"
+  - "src/lib/descriptors"
 
 catalog:
   polkadot-api: ^1.23.3
