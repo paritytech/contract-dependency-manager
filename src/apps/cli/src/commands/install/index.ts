@@ -196,6 +196,10 @@ async function installOne(
 }
 
 install.action(async (library: string | undefined, opts: InstallOptions) => {
+    // Read cdm.json early so its target info can fill in missing options
+    const cdmResult = readCdmJson();
+    const cdmJson = cdmResult?.cdmJson ?? { targets: {}, dependencies: {} };
+
     // Resolve chain preset
     if (opts.name && opts.name !== "custom") {
         const preset = getChainPreset(opts.name);
@@ -203,6 +207,19 @@ install.action(async (library: string | undefined, opts: InstallOptions) => {
             opts.assethubUrl === DEFAULT_NODE_URL ? preset.assethubUrl : opts.assethubUrl;
         opts.registryAddress = opts.registryAddress ?? preset.registryAddress;
         opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? preset.ipfsGatewayUrl;
+    }
+
+    // If still missing connection info, populate from cdm.json targets
+    if (!opts.registryAddress && !process.env.CONTRACTS_REGISTRY_ADDR) {
+        const targetEntries = Object.entries(cdmJson.targets);
+        if (targetEntries.length > 0) {
+            const [, target] = targetEntries[0];
+            if (opts.assethubUrl === DEFAULT_NODE_URL) {
+                opts.assethubUrl = target["asset-hub"];
+            }
+            opts.registryAddress = opts.registryAddress ?? target.registry;
+            opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? target.bulletin;
+        }
     }
 
     const registryAddr = opts.registryAddress ?? process.env.CONTRACTS_REGISTRY_ADDR;
@@ -213,14 +230,14 @@ install.action(async (library: string | undefined, opts: InstallOptions) => {
         process.exit(1);
     }
 
-    const targetHash = computeTargetHash(opts.assethubUrl, opts.ipfsGatewayUrl!, registryAddr);
-
     if (!opts.ipfsGatewayUrl) {
         console.error(
             "Error: IPFS gateway URL required to fetch metadata. Use --ipfs-gateway-url or --name for a preset.",
         );
         process.exit(1);
     }
+
+    const targetHash = computeTargetHash(opts.assethubUrl, opts.ipfsGatewayUrl, registryAddr);
 
     // Connect to chain
     console.log("Connecting to chain...");
@@ -232,12 +249,10 @@ install.action(async (library: string | undefined, opts: InstallOptions) => {
     const registry = inkSdk.getContract(contracts.contractsRegistry, registryAddr);
     const ipfs = connectIpfsGateway(opts.ipfsGatewayUrl);
 
-    // Read existing cdm.json (or create new)
-    const cdmResult = readCdmJson();
-    const cdmJson = cdmResult?.cdmJson ?? { targets: {}, dependencies: {} };
+    // Update cdm.json targets with resolved connection info
     cdmJson.targets[targetHash] = {
         "asset-hub": opts.assethubUrl,
-        bulletin: opts.ipfsGatewayUrl!,
+        bulletin: opts.ipfsGatewayUrl,
         registry: registryAddr,
     };
     if (!cdmJson.dependencies[targetHash]) {
