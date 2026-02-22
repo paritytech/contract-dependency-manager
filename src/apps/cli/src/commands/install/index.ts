@@ -145,9 +145,16 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         }));
     }
 
+    // Detect project type early for header display
+    const projectType = detectProjectType(process.cwd());
+
     // Header (matching deploy command style)
     console.log(`\x1b[1mRegistry\x1b[0m   ${registryAddr}`);
     console.log(`\x1b[1mTarget\x1b[0m     ${targetHash}`);
+    console.log(
+        `\x1b[1mRust\x1b[0m ${projectType.hasRust ? "\x1b[32m✔\x1b[0m" : "\x1b[2m-\x1b[0m"}` +
+        `  \x1b[1mTypeScript\x1b[0m ${projectType.hasTypeScript ? "\x1b[32m✔\x1b[0m" : "\x1b[2m-\x1b[0m"}`,
+    );
 
     // Run parallel install with Ink table UI
     const { results, success } = await runInstallWithUI({
@@ -155,6 +162,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         registry,
         ipfs,
         targetHash,
+        ipfsGatewayUrl: opts.ipfsGatewayUrl,
     });
 
     // Update cdm.json dependencies for successful installs
@@ -165,14 +173,10 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         }
     }
 
-    // Write cdm.json once
     writeCdmJson(cdmJson);
-    console.log(`Updated cdm.json`);
 
-    // Run post-install hooks once at the end
+    // Run post-install hooks and update status line
     if (results.length > 0) {
-        const projectType = detectProjectType(process.cwd());
-
         if (projectType.hasRust) {
             await postInstallRust();
         }

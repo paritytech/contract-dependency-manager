@@ -42,7 +42,6 @@ function ensureTsconfigInclude(): void {
     include.push(`./${CDM_INCLUDE}`);
     tsconfig.include = include;
     writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 4) + "\n");
-    console.log(`  TypeScript: Added "./${CDM_INCLUDE}" to tsconfig.json include`);
 }
 
 /**
@@ -76,8 +75,6 @@ export async function postInstallTypeScript(result: InstallResult): Promise<void
     const cdmDir = resolve(process.cwd(), ".cdm");
     mkdirSync(cdmDir, { recursive: true });
     writeFileSync(resolve(cdmDir, "cdm.d.ts"), types);
-
-    console.log(`  TypeScript: Generated .cdm/cdm.d.ts (${contracts.length} contract(s))`);
 
     // Ensure tsconfig.json includes .cdm/ for module augmentation
     ensureTsconfigInclude();

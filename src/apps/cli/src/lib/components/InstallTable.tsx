@@ -1,60 +1,55 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import type { InstallStatus } from "../install-pipeline";
-import { Spinner, Cell, Idle, Done, Failed, truncateAddress, shortHash } from "./shared";
+import { Link, Spinner, Cell, Idle, Done, Failed, truncateAddress, shortHash, ipfsUrl } from "./shared";
 
 const COL_CONTRACT = 24;
-const COL_REGISTRY = 10;
-const COL_IPFS = 10;
-const COL_SAVE = 10;
+const COL_VERSION = 10;
+const COL_META = 10;
 const COL_ADDR = 14;
 
 function InstallRow({
     library,
     status,
     tick,
+    ipfsGatewayUrl,
 }: {
     library: string;
     status: InstallStatus | undefined;
     tick: number;
+    ipfsGatewayUrl?: string;
 }) {
     const s = status;
     const state = s?.state ?? "waiting";
 
-    // Registry column
-    let registryCell: React.ReactNode;
+    // Version column
+    let versionCell: React.ReactNode;
     if (state === "querying") {
-        registryCell = <Spinner tick={tick} />;
+        versionCell = <Spinner tick={tick} />;
     } else if (state === "error" && !s?.version) {
-        registryCell = <Failed />;
+        versionCell = <Failed />;
     } else if (s?.version !== undefined) {
-        registryCell = <Text color="green">v{s.version}</Text>;
+        versionCell = <Text color="green">v{s.version}</Text>;
     } else {
-        registryCell = <Idle />;
+        versionCell = <Idle />;
     }
 
-    // IPFS column
-    let ipfsCell: React.ReactNode;
+    // Metadata column
+    let metaCell: React.ReactNode;
     if (state === "fetching") {
-        ipfsCell = <Spinner tick={tick} />;
+        metaCell = <Spinner tick={tick} />;
     } else if (state === "error" && s?.version !== undefined && !s?.metadataCid) {
-        ipfsCell = <Failed />;
+        metaCell = <Failed />;
+    } else if (state === "done" && s?.metadataCid && ipfsGatewayUrl) {
+        metaCell = (
+            <Link url={ipfsUrl(ipfsGatewayUrl, s.metadataCid)}>
+                <Text color="green">{shortHash(s.metadataCid)}</Text>
+            </Link>
+        );
     } else if (s?.metadataCid) {
-        ipfsCell = <Text color="green">{shortHash(s.metadataCid)}</Text>;
+        metaCell = <Text color="green">{shortHash(s.metadataCid)}</Text>;
     } else {
-        ipfsCell = <Idle />;
-    }
-
-    // Save column
-    let saveCell: React.ReactNode;
-    if (state === "saving") {
-        saveCell = <Spinner tick={tick} />;
-    } else if (state === "error" && s?.metadataCid && !s?.savedPath) {
-        saveCell = <Failed />;
-    } else if (state === "done") {
-        saveCell = <Done />;
-    } else {
-        saveCell = <Idle />;
+        metaCell = <Idle />;
     }
 
     // Address column
@@ -72,9 +67,8 @@ function InstallRow({
                     {library}
                 </Text>
             </Cell>
-            <Cell width={COL_REGISTRY}>{registryCell}</Cell>
-            <Cell width={COL_IPFS}>{ipfsCell}</Cell>
-            <Cell width={COL_SAVE}>{saveCell}</Cell>
+            <Cell width={COL_VERSION}>{versionCell}</Cell>
+            <Cell width={COL_META}>{metaCell}</Cell>
             <Cell width={COL_ADDR}>{addrCell}</Cell>
         </Box>
     );
@@ -83,9 +77,10 @@ function InstallRow({
 export interface InstallTableProps {
     statuses: Map<string, InstallStatus>;
     libraries: string[];
+    ipfsGatewayUrl?: string;
 }
 
-export function InstallTable({ statuses, libraries }: InstallTableProps) {
+export function InstallTable({ statuses, libraries, ipfsGatewayUrl }: InstallTableProps) {
     const [tick, setTick] = useState(0);
 
     useEffect(() => {
@@ -109,21 +104,24 @@ export function InstallTable({ statuses, libraries }: InstallTableProps) {
                 <Cell width={COL_CONTRACT}>
                     <Text dimColor>Contract</Text>
                 </Cell>
-                <Cell width={COL_REGISTRY}>
-                    <Text dimColor>Registry</Text>
+                <Cell width={COL_VERSION}>
+                    <Text dimColor>Version</Text>
                 </Cell>
-                <Cell width={COL_IPFS}>
-                    <Text dimColor>IPFS</Text>
-                </Cell>
-                <Cell width={COL_SAVE}>
-                    <Text dimColor>Save</Text>
+                <Cell width={COL_META}>
+                    <Text dimColor>Metadata</Text>
                 </Cell>
                 <Cell width={COL_ADDR}>
                     <Text dimColor>Address</Text>
                 </Cell>
             </Box>
             {libraries.map((lib) => (
-                <InstallRow key={lib} library={lib} status={statuses.get(lib)} tick={tick} />
+                <InstallRow
+                    key={lib}
+                    library={lib}
+                    status={statuses.get(lib)}
+                    tick={tick}
+                    ipfsGatewayUrl={ipfsGatewayUrl}
+                />
             ))}
             {errors.length > 0 && (
                 <Box flexDirection="column" marginTop={1}>

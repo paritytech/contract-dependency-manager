@@ -4,7 +4,7 @@ import { type AbiEntry, saveContract } from "@dotdm/contracts";
 import { ALICE_SS58 } from "@dotdm/utils";
 import { InstallTable } from "./components/InstallTable";
 
-export type InstallState = "waiting" | "querying" | "fetching" | "saving" | "done" | "error";
+export type InstallState = "waiting" | "querying" | "fetching" | "done" | "error";
 
 export interface InstallStatus {
     library: string;
@@ -31,6 +31,7 @@ export interface InstallRunnerOptions {
     registry: any;
     ipfs: any;
     targetHash: string;
+    ipfsGatewayUrl?: string;
 }
 
 function updateStatus(
@@ -147,9 +148,7 @@ async function installOneWithStatus(
         throw new Error(`No ABI found in metadata for "${library}"`);
     }
 
-    // Phase 3: Save to disk
-    updateStatus(statuses, library, "saving");
-
+    // Save to disk
     const savedPath = saveContract({
         targetHash,
         library,
@@ -195,6 +194,7 @@ export async function runInstallWithUI(
         React.createElement(InstallTable, {
             statuses,
             libraries: libraryNames,
+            ipfsGatewayUrl: opts.ipfsGatewayUrl,
         }),
     );
 
