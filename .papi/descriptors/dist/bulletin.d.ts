@@ -1,5 +1,5 @@
 import { StorageDescriptor, PlainDescriptor, TxDescriptor, RuntimeDescriptor, Enum, ApisFromDef, QueryFromPalletsDef, TxFromPalletsDef, EventsFromPalletsDef, ErrorsFromPalletsDef, ConstFromPalletsDef, ViewFnsFromPalletsDef, SS58String, FixedSizeBinary, Binary, FixedSizeArray } from "polkadot-api";
-import { I5sesotjlssv2d, Iffmde3ekjedi9, I4mddgoa69c0a2, Ic1qn45u9b9hhu, I95g6i7ilua7lq, Ieniouoqkq4icf, Phase, Ibgl04rn6nbfm6, I4q39t5hn830vp, I1v7jbnil3tjns, I8jgj1nhcr2dg8, Ifn6q3equiq9qi, Ia3sb0vgvovhtg, Iav8k1edbj86k7, Itom7fk49o0c9, I4i91h98n3cv1b, I4iumukclgj8ej, Iqnbvitf7a7l3, I48i407regf59r, I6r5cbv8ttrb09, I1q8tnt1cluu5j, I8ds64oj6581v0, Ia7pdug7cdsg8g, Iafsev9pf8ur2h, I9bin2jc70qt6q, TransactionPaymentReleases, I52552vmt51a1m, Icd998p53cb80u, Ianratlvp36bb8, Idftgde1j2kabb, Ia2lhg7l2hilo3, Ifi4da1gej1fri, Ifvgo9568rpmqc, I82jm9g7pufuel, Ic5m5lp1oioo8r, I6cs1itejju2vv, Icgljjb6j82uhn, Ib77b0fp1a6mjr, I5g2vv0ckl2m8b, Ifup3lg9ro8a0f, I5qfubnuvrnqn6, I8t3u2dv73ahbd, I7vlvrrl2pnbgk, Ie0rpl5bahldfk, XcmPalletVersionMigrationStage, I7e5oaj2qi4kl1, Ie849h3gncgvok, Iat62vud7hlod2, Ict03eedr8de9s, Ibkm2gcn4pji30, XcmVersionedLocation, Idh2ug6ou4a8og, Iejeo53sea6n4q, I53esa2ms463bk, Ib4jhb8tt3uung, In7a38730s6qs, If15el53dd76v9, I9s0ave7t0vnrk, I4fo08joqmcqnm, XcmV5Junctions, Iasb8k6ash5mjn, I8ofcg5rbj0g2c, I4adgbll7gku4i, I6pjjpfvhvcfru, I9pj91mj79qekl, I39uah9nss64h9, Ik64dknsq7k08, Ib51vk42m1po4n, Ial23jn8hp0aen, Ifpj261e8s63m3, Idcr6u6361oad9, I9h5d8o0h4us2s, Idpvojgpgnt7ds, I84vt11fffi5pu, Ifk4i407a994t0, I72adfp735qakq, I4ktuaksf5i1gk, I9bqtpv2ii35mp, I9j7pagd6d4bda, I2h9pmio37r7fb, Ibmr18suc9ikh9, I9iq22t0burs89, I5u8olqbbvfnvf, I5utcetro501ir, Itrlf5b2o2l8q, I4vj3ndsquheo1, I7h5kud22qmfsg, I2i8iea6e4ne1j, I4jotama61aldv, I4cbvqmqadhrea, I3rfugj0vt1ug5, Ifccifqltb5obi, Iadtsfv699cq8b, Ialpmgmhr3gk5r, I3sdol54kg5jaq, I8fougodaj6di6, I81vt5eq60l4b6, I3vh014cqgmrfd, Ia5cotcvi888ln, I21jsa919m88fd, Iegif7m3upfe1k, I9kt8c221c83ln, Ic76kfh5ebqkpl, Icscpmubum33bq, I21d2olof7eb60, Ibgm4rnf22lal1, Ie68np0vpihith, I9bnv6lu0crf1q, Iauhjqifrdklq7, Ie1uso9m8rt5cf, I40pqum1mu8qg3, I1r4c2ghbtvjuc, Iaf4fc4gf84bv5, I8k3rnvpeeh4hv, I4dcn5cv3m3r34, Ia82mnkmeo2rhc, Icsa46bnbuohqc, Icbccs0ug47ilf, I855j4i3kr8ko1, I67n6mbhp91nlg, Idd7hd99u0ho0n, Iafscmv8tjf0ou, I100l07kaehdlp, I6gnbnvip5vvdi, I368e0tjmrcvlt, I6akqkga7li13u, I133qpg6ru2jqi, I3bp93psani87u, Icv68aq8841478, Ic262ibdoec56a, Iflcfm9b6nlmdd, Ijrsf4mnp3eka, Id5fm4p8lj5qgi, I8tjvj9uq4b7hi, I3qt1hgg4djhgb, I4fooe9dun9o0t, I8mvf14goplnni, Ie09mpthond7d6, I1ispultrc7caq, Iph9c4rn81ub2, Ier2cke86dqbr2, I351cnlhk17436, I395h9meqpi2hf, I66jdpl6lile9j, I39t01nnod9109, I6v8sm60vvkmk7, I1qmtmbe5so8r3, Ih99m6ehpcar7, Idgorhsbgdq2ap, I9ubb2kqevnu6t, I2hq50pu2kdjpo, I9acqruh7322g2, I137t1cld92pod, I61d51nv4cou88, If8u5kl4h8070m, Ibmuil6p3vl83l, I7lul91g50ae87, Icl7nl1rfeog3i, Iasr6pj6shs0fl, I2uqmls7kcdnii, Idg69klialbkb8, I7r6b7145022pp, I30pg328m00nr3, Icmrn7bogp28cs, I7m9b5plj4h5ot, I9onhk772nfs4f, I3l6bnksrmt56r, Idh09k0l2pmdcg, I7uoiphbm0tj4r, I512p1n7qt24l8, I6s1nbislhk619, I3gghqnh2mj0is, I6iv852roh6t3h, I9oc2o6itbiopq, Ibslgga81p36aa, I1rvj4ubaplho0, Ia3uu7lqcc1q1i, I7crucfnonitkn, I7tmrp94r9sq4n, I4kigljjkan2n6, I5rtkmhm2dng4u, I5r8t4iaend96p, Iaqet9jc3ihboe, Ic952bubvq4k7d, I2v50gu3s1aqk6, Iabpgqcjikia83, Ieeb2u9t56qdcr, If7uv525tdvv7a, I2an1fs2eiebjp, TransactionValidityTransactionSource, I9ask1o4tfvcvs, I4ph3d1eepnmr1, Icerf8h8pdu8ss, I6spmpef2c7svf, Iei2mvq0mjvt81, Ifi3i9borjqiav, Iftvbctbo05fu4, XcmVersionedXcm, Ic0c3req3mlc1l, XcmVersionedAssetId, I7ocn4njqde3v5, Iek7ha36da9mf5, I9g869l9vmunib, I2srrkue8s0910, I1abqdpbsc75ie, Ieh6nis3hdbtgi, XcmVersionedAsset, Icujp6hmv35vbn, I4tjame31218k9, I5gif8vomct5i8, Ic1d4u2opv3fst, Ie9sr1iqcg3cgm, I1mqgk2tmnn9i2, I6lr8sctk0bi4e, Ideol201iiphm6, Id3cclc8rha27v } from "./common-types";
+import { I5sesotjlssv2d, Iffmde3ekjedi9, I4mddgoa69c0a2, Ic1qn45u9b9hhu, I95g6i7ilua7lq, Ieniouoqkq4icf, Phase, Ibgl04rn6nbfm6, I4q39t5hn830vp, I1v7jbnil3tjns, I8jgj1nhcr2dg8, Ifn6q3equiq9qi, Ia3sb0vgvovhtg, Iav8k1edbj86k7, Itom7fk49o0c9, I4i91h98n3cv1b, I4iumukclgj8ej, Iqnbvitf7a7l3, I48i407regf59r, I6r5cbv8ttrb09, I1q8tnt1cluu5j, I8ds64oj6581v0, Ia7pdug7cdsg8g, Iafsev9pf8ur2h, I9bin2jc70qt6q, TransactionPaymentReleases, I52552vmt51a1m, Icd998p53cb80u, Ianratlvp36bb8, Ia2lhg7l2hilo3, Ifi4da1gej1fri, Ifvgo9568rpmqc, I82jm9g7pufuel, Ic5m5lp1oioo8r, I6cs1itejju2vv, Icgljjb6j82uhn, Ib77b0fp1a6mjr, I5g2vv0ckl2m8b, Ifup3lg9ro8a0f, I5qfubnuvrnqn6, I8t3u2dv73ahbd, I7vlvrrl2pnbgk, Ie0rpl5bahldfk, XcmPalletVersionMigrationStage, I7e5oaj2qi4kl1, Ie849h3gncgvok, Iat62vud7hlod2, Ict03eedr8de9s, Ibkm2gcn4pji30, XcmVersionedLocation, Idh2ug6ou4a8og, Iejeo53sea6n4q, I53esa2ms463bk, Ib4jhb8tt3uung, In7a38730s6qs, If15el53dd76v9, I9s0ave7t0vnrk, I4fo08joqmcqnm, XcmV5Junctions, Iasb8k6ash5mjn, I8ofcg5rbj0g2c, I4adgbll7gku4i, I6pjjpfvhvcfru, I9pj91mj79qekl, I39uah9nss64h9, Ik64dknsq7k08, Ib51vk42m1po4n, Ial23jn8hp0aen, Ifpj261e8s63m3, Idcr6u6361oad9, If7r4ec4rcbutr, I4f7ojrl003883, I9pcmvr27k88j6, Ie5nfvp73mk1cp, I39imp7k99fvuf, I4ktuaksf5i1gk, I9bqtpv2ii35mp, I9j7pagd6d4bda, I2h9pmio37r7fb, Ibmr18suc9ikh9, I9iq22t0burs89, I5u8olqbbvfnvf, I5utcetro501ir, Itrlf5b2o2l8q, Icegg8a2cqf1gu, I4vj3ndsquheo1, I7h5kud22qmfsg, I2i8iea6e4ne1j, I4jotama61aldv, I4cbvqmqadhrea, I3rfugj0vt1ug5, Ifccifqltb5obi, Iadtsfv699cq8b, Ialpmgmhr3gk5r, I3sdol54kg5jaq, I8fougodaj6di6, I81vt5eq60l4b6, I3vh014cqgmrfd, Ia5cotcvi888ln, I21jsa919m88fd, Iegif7m3upfe1k, I9kt8c221c83ln, Ic76kfh5ebqkpl, Icscpmubum33bq, I21d2olof7eb60, Ibgm4rnf22lal1, Ie68np0vpihith, I9bnv6lu0crf1q, Iauhjqifrdklq7, Ie1uso9m8rt5cf, I40pqum1mu8qg3, I1r4c2ghbtvjuc, I71iofbp4gm9ic, I8k3rnvpeeh4hv, Idb6pjdldfi4cc, Ia82mnkmeo2rhc, Icsa46bnbuohqc, Icbccs0ug47ilf, I855j4i3kr8ko1, I67n6mbhp91nlg, Idd7hd99u0ho0n, Iafscmv8tjf0ou, I100l07kaehdlp, I6gnbnvip5vvdi, I368e0tjmrcvlt, I6akqkga7li13u, I133qpg6ru2jqi, I3bp93psani87u, Icv68aq8841478, Ic262ibdoec56a, Iflcfm9b6nlmdd, Ijrsf4mnp3eka, Id5fm4p8lj5qgi, I8tjvj9uq4b7hi, I3qt1hgg4djhgb, I4fooe9dun9o0t, I8mvf14goplnni, Ie09mpthond7d6, I1ispultrc7caq, Iph9c4rn81ub2, Ier2cke86dqbr2, I351cnlhk17436, I395h9meqpi2hf, I66jdpl6lile9j, I39t01nnod9109, I6v8sm60vvkmk7, I1qmtmbe5so8r3, Ih99m6ehpcar7, Idgorhsbgdq2ap, I9ubb2kqevnu6t, I2hq50pu2kdjpo, I9acqruh7322g2, I137t1cld92pod, I61d51nv4cou88, If8u5kl4h8070m, Ibmuil6p3vl83l, I7lul91g50ae87, Icl7nl1rfeog3i, Iasr6pj6shs0fl, I2uqmls7kcdnii, Idg69klialbkb8, I7r6b7145022pp, I30pg328m00nr3, Icmrn7bogp28cs, I7m9b5plj4h5ot, I9onhk772nfs4f, I3l6bnksrmt56r, Idh09k0l2pmdcg, I7uoiphbm0tj4r, I512p1n7qt24l8, I6s1nbislhk619, I3gghqnh2mj0is, I6iv852roh6t3h, I9oc2o6itbiopq, Ibslgga81p36aa, I1rvj4ubaplho0, Ia3uu7lqcc1q1i, I7crucfnonitkn, I7tmrp94r9sq4n, I4kigljjkan2n6, I5rtkmhm2dng4u, I5r8t4iaend96p, Iaqet9jc3ihboe, Ic952bubvq4k7d, I2v50gu3s1aqk6, Iabpgqcjikia83, Ieeb2u9t56qdcr, If7uv525tdvv7a, I2an1fs2eiebjp, TransactionValidityTransactionSource, I9ask1o4tfvcvs, I4ph3d1eepnmr1, Icerf8h8pdu8ss, I6spmpef2c7svf, Iei2mvq0mjvt81, I70tguv6bl335o, Iftvbctbo05fu4, XcmVersionedXcm, Ic0c3req3mlc1l, XcmVersionedAssetId, I7ocn4njqde3v5, Iek7ha36da9mf5, I9g869l9vmunib, I2srrkue8s0910, I1abqdpbsc75ie, Ieh6nis3hdbtgi, XcmVersionedAsset, Icujp6hmv35vbn, I4tjame31218k9, I5gif8vomct5i8, Ic1d4u2opv3fst, Ie9sr1iqcg3cgm, I1mqgk2tmnn9i2, I6lr8sctk0bi4e, Id3cclc8rha27v } from "./common-types";
 type AnonymousEnum<T extends {}> = T & {
     __anonymous: true;
 };
@@ -416,11 +416,6 @@ type IStorage = {
          * Was the proof checked in this block?
          */
         ProofChecked: StorageDescriptor<[], boolean, false, never>;
-        /**
-         * Ephemeral value killed on the block finalization. So it never ends up in the storage trie.
-         * (Used by [`extension::ProvideCidConfig`])
-         */
-        CidConfigForStore: StorageDescriptor<[], Anonymize<Idftgde1j2kabb>, true, never>;
     };
     Authorship: {
         /**
@@ -804,7 +799,7 @@ type ICalls = {
          * and the error of the failed call. If all were successful, then the `BatchCompleted`
          * event is deposited.
          */
-        batch: TxDescriptor<Anonymize<I9h5d8o0h4us2s>>;
+        batch: TxDescriptor<Anonymize<If7r4ec4rcbutr>>;
         /**
          * Send a call through an indexed pseudonym of the sender.
          *
@@ -820,7 +815,7 @@ type ICalls = {
          *
          * The dispatch origin for this call must be _Signed_.
          */
-        as_derivative: TxDescriptor<Anonymize<Idpvojgpgnt7ds>>;
+        as_derivative: TxDescriptor<Anonymize<I4f7ojrl003883>>;
         /**
          * Send a batch of dispatch calls and atomically execute them.
          * The whole transaction will rollback and fail if any of the calls failed.
@@ -836,7 +831,7 @@ type ICalls = {
          * ## Complexity
          * - O(C) where C is the number of calls to be batched.
          */
-        batch_all: TxDescriptor<Anonymize<I9h5d8o0h4us2s>>;
+        batch_all: TxDescriptor<Anonymize<If7r4ec4rcbutr>>;
         /**
          * Dispatches a function call with a provided origin.
          *
@@ -845,7 +840,7 @@ type ICalls = {
          * ## Complexity
          * - O(1).
          */
-        dispatch_as: TxDescriptor<Anonymize<I84vt11fffi5pu>>;
+        dispatch_as: TxDescriptor<Anonymize<I9pcmvr27k88j6>>;
         /**
          * Send a batch of dispatch calls.
          * Unlike `batch`, it allows errors and won't interrupt.
@@ -861,7 +856,7 @@ type ICalls = {
          * ## Complexity
          * - O(C) where C is the number of calls to be batched.
          */
-        force_batch: TxDescriptor<Anonymize<I9h5d8o0h4us2s>>;
+        force_batch: TxDescriptor<Anonymize<If7r4ec4rcbutr>>;
         /**
          * Dispatch a function call with a specified weight.
          *
@@ -870,7 +865,7 @@ type ICalls = {
          *
          * The dispatch origin for this call must be _Root_.
          */
-        with_weight: TxDescriptor<Anonymize<Ifk4i407a994t0>>;
+        with_weight: TxDescriptor<Anonymize<Ie5nfvp73mk1cp>>;
         /**
          * Dispatch a fallback call in the event the main call fails to execute.
          * May be called from any origin except `None`.
@@ -896,7 +891,7 @@ type ICalls = {
          * - Some use cases might involve submitting a `batch` type call in either main, fallback
          * or both.
          */
-        if_else: TxDescriptor<Anonymize<I72adfp735qakq>>;
+        if_else: TxDescriptor<Anonymize<I39imp7k99fvuf>>;
         /**
          * Dispatches a function call with a provided origin.
          *
@@ -904,7 +899,7 @@ type ICalls = {
          *
          * The dispatch origin for this call must be _Root_.
          */
-        dispatch_as_fallible: TxDescriptor<Anonymize<I84vt11fffi5pu>>;
+        dispatch_as_fallible: TxDescriptor<Anonymize<I9pcmvr27k88j6>>;
     };
     Balances: {
         /**
@@ -1010,6 +1005,15 @@ type ICalls = {
          */
         store: TxDescriptor<Anonymize<Itrlf5b2o2l8q>>;
         /**
+         * Index and store data off chain with an explicit CID configuration.
+         *
+         * Behaves identically to [`store`](Self::store), but the CID configuration
+         * (codec and hashing algorithm) is passed directly as a parameter.
+         *
+         * Emits [`Stored`](Event::Stored) when successful.
+         */
+        store_with_cid_config: TxDescriptor<Anonymize<Icegg8a2cqf1gu>>;
+        /**
          * Renew previously stored data. Parameters are the block number that contains previous
          * `store` or `renew` call and transaction index within that block. Transaction index is
          * emitted in the `Stored` or `Renewed` event.
@@ -1053,7 +1057,7 @@ type ICalls = {
          */
         authorize_account: TxDescriptor<Anonymize<I2i8iea6e4ne1j>>;
         /**
-         * Authorize anyone to store a preimage of the given BLAKE2b hash. The authorization will
+         * Authorize anyone to store a preimage of the given content hash. The authorization will
          * expire after a configured number of blocks.
          *
          * If authorization already exists for a preimage of the given hash to be stored, the
@@ -1062,7 +1066,9 @@ type ICalls = {
          *
          * Parameters:
          *
-         * - `content_hash`: The BLAKE2b hash of the data to be submitted.
+         * - `content_hash`: The hash of the data to be submitted. For [`store`](Self::store) this
+         * is the BLAKE2b-256 hash; for [`store_with_cid_config`](Self::store_with_cid_config)
+         * this is the hash produced by the CID config's hashing algorithm.
          * - `max_size`: The maximum size, in bytes, of the preimage.
          *
          * The origin for this call must be the pallet's `Authorizer`. Emits
@@ -1583,7 +1589,7 @@ type ICalls = {
         /**
          * Authenticates the sudo key and dispatches a function call with `Root` origin.
          */
-        sudo: TxDescriptor<Anonymize<Iaf4fc4gf84bv5>>;
+        sudo: TxDescriptor<Anonymize<I71iofbp4gm9ic>>;
         /**
          * Authenticates the sudo key and dispatches a function call with `Root` origin.
          * This function does not check the weight of the call, and instead allows the
@@ -1591,7 +1597,7 @@ type ICalls = {
          *
          * The dispatch origin for this call must be _Signed_.
          */
-        sudo_unchecked_weight: TxDescriptor<Anonymize<Ifk4i407a994t0>>;
+        sudo_unchecked_weight: TxDescriptor<Anonymize<Ie5nfvp73mk1cp>>;
         /**
          * Authenticates the current sudo key and sets the given AccountId (`new`) as the new sudo
          * key.
@@ -1603,7 +1609,7 @@ type ICalls = {
          *
          * The dispatch origin for this call must be _Signed_.
          */
-        sudo_as: TxDescriptor<Anonymize<I4dcn5cv3m3r34>>;
+        sudo_as: TxDescriptor<Anonymize<Idb6pjdldfi4cc>>;
         /**
          * Permanently removes the sudo key.
          *
@@ -3098,11 +3104,11 @@ type IRuntimeCalls = {
         /**
          * Query information of a dispatch class, weight, and fee of a given encoded `Call`.
          */
-        query_call_info: RuntimeDescriptor<[call: Anonymize<Ifi3i9borjqiav>, len: number], Anonymize<I6spmpef2c7svf>>;
+        query_call_info: RuntimeDescriptor<[call: Anonymize<I70tguv6bl335o>, len: number], Anonymize<I6spmpef2c7svf>>;
         /**
          * Query fee details of a given encoded `Call`.
          */
-        query_call_fee_details: RuntimeDescriptor<[call: Anonymize<Ifi3i9borjqiav>, len: number], Anonymize<Iei2mvq0mjvt81>>;
+        query_call_fee_details: RuntimeDescriptor<[call: Anonymize<I70tguv6bl335o>, len: number], Anonymize<Iei2mvq0mjvt81>>;
         /**
          * Query the output of the current `WeightToFee` given some input.
          */
@@ -3180,7 +3186,7 @@ type IRuntimeCalls = {
         /**
          * Dry run call V2.
          */
-        dry_run_call: RuntimeDescriptor<[origin: Anonymize<I9g869l9vmunib>, call: Anonymize<Ifi3i9borjqiav>, result_xcms_version: number], Anonymize<I2srrkue8s0910>>;
+        dry_run_call: RuntimeDescriptor<[origin: Anonymize<I9g869l9vmunib>, call: Anonymize<I70tguv6bl335o>, result_xcms_version: number], Anonymize<I2srrkue8s0910>>;
         /**
          * Dry run XCM program
          */
@@ -3308,11 +3314,7 @@ type IRuntimeCalls = {
 };
 export type BulletinDispatchError = Anonymize<Id3cclc8rha27v>;
 type IAsset = PlainDescriptor<void>;
-export type BulletinExtensions = {
-    "ProvideCidConfig": {
-        value: Anonymize<Ideol201iiphm6>;
-    };
-};
+export type BulletinExtensions = {};
 type PalletsTypedef = {
     __storage: IStorage;
     __tx: ICalls;
@@ -3341,7 +3343,7 @@ export type BulletinEvents = EventsFromPalletsDef<PalletsTypedef>;
 export type BulletinErrors = ErrorsFromPalletsDef<PalletsTypedef>;
 export type BulletinConstants = ConstFromPalletsDef<PalletsTypedef>;
 export type BulletinViewFns = ViewFnsFromPalletsDef<PalletsTypedef>;
-export type BulletinCallData = Anonymize<Ifi3i9borjqiav> & {
+export type BulletinCallData = Anonymize<I70tguv6bl335o> & {
     value: {
         type: string;
     };
@@ -3354,7 +3356,7 @@ type AllInteractions = {
         ParachainInfo: ['ParachainId'];
         Balances: ['TotalIssuance', 'InactiveIssuance', 'Account', 'Locks', 'Reserves', 'Holds', 'Freezes'];
         TransactionPayment: ['NextFeeMultiplier', 'StorageVersion', 'TxPaymentCredit'];
-        TransactionStorage: ['Authorizations', 'Transactions', 'ByteFee', 'EntryFee', 'RetentionPeriod', 'BlockTransactions', 'ProofChecked', 'CidConfigForStore'];
+        TransactionStorage: ['Authorizations', 'Transactions', 'ByteFee', 'EntryFee', 'RetentionPeriod', 'BlockTransactions', 'ProofChecked'];
         Authorship: ['Author'];
         CollatorSelection: ['Invulnerables', 'CandidateList', 'LastAuthoredBlock', 'DesiredCandidates', 'CandidacyBond'];
         Session: ['Validators', 'CurrentIndex', 'QueuedChanged', 'QueuedKeys', 'DisabledValidators', 'NextKeys', 'KeyOwner'];
@@ -3371,7 +3373,7 @@ type AllInteractions = {
         Timestamp: ['set'];
         Utility: ['batch', 'as_derivative', 'batch_all', 'dispatch_as', 'force_batch', 'with_weight', 'if_else', 'dispatch_as_fallible'];
         Balances: ['transfer_allow_death', 'force_transfer', 'transfer_keep_alive', 'transfer_all', 'force_unreserve', 'upgrade_accounts', 'force_set_balance', 'force_adjust_total_issuance', 'burn'];
-        TransactionStorage: ['store', 'renew', 'check_proof', 'authorize_account', 'authorize_preimage', 'remove_expired_account_authorization', 'remove_expired_preimage_authorization', 'refresh_account_authorization', 'refresh_preimage_authorization'];
+        TransactionStorage: ['store', 'store_with_cid_config', 'renew', 'check_proof', 'authorize_account', 'authorize_preimage', 'remove_expired_account_authorization', 'remove_expired_preimage_authorization', 'refresh_account_authorization', 'refresh_preimage_authorization'];
         CollatorSelection: ['set_invulnerables', 'set_desired_candidates', 'set_candidacy_bond', 'register_as_candidate', 'leave_intent', 'add_invulnerable', 'remove_invulnerable', 'update_bond', 'take_candidate_slot'];
         Session: ['set_keys', 'purge_keys'];
         XcmpQueue: ['suspend_xcm_execution', 'resume_xcm_execution', 'update_suspend_threshold', 'update_drop_threshold', 'update_resume_threshold'];

@@ -18,13 +18,13 @@ var toBinary = (base64) => {
 };
 
 // .papi/descriptors/src/relay.ts
-var descriptorValues = import("./descriptors-SFUV6UN2.mjs").then((module) => module["Relay"]);
-var metadataTypes = import("./metadataTypes-JY4XRAYQ.mjs").then(
+var descriptorValues = import("./descriptors-555SONBO.mjs").then((module) => module["Relay"]);
+var metadataTypes = import("./metadataTypes-XFTYQF4J.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
 var asset = {};
 var extensions = {};
-var getMetadata = () => import("./relay_metadata-IQGUE4AA.mjs").then(
+var getMetadata = () => import("./relay_metadata-K5LSHXBT.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
 var genesis = "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3";
@@ -32,8 +32,8 @@ var _allDescriptors = { descriptors: descriptorValues, metadataTypes, asset, ext
 var relay_default = _allDescriptors;
 
 // .papi/descriptors/src/individuality.ts
-var descriptorValues2 = import("./descriptors-SFUV6UN2.mjs").then((module) => module["Individuality"]);
-var metadataTypes2 = import("./metadataTypes-JY4XRAYQ.mjs").then(
+var descriptorValues2 = import("./descriptors-555SONBO.mjs").then((module) => module["Individuality"]);
+var metadataTypes2 = import("./metadataTypes-XFTYQF4J.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
 var asset2 = {};
@@ -46,30 +46,30 @@ var _allDescriptors2 = { descriptors: descriptorValues2, metadataTypes: metadata
 var individuality_default = _allDescriptors2;
 
 // .papi/descriptors/src/assetHub.ts
-var descriptorValues3 = import("./descriptors-SFUV6UN2.mjs").then((module) => module["AssetHub"]);
-var metadataTypes3 = import("./metadataTypes-JY4XRAYQ.mjs").then(
+var descriptorValues3 = import("./descriptors-555SONBO.mjs").then((module) => module["AssetHub"]);
+var metadataTypes3 = import("./metadataTypes-XFTYQF4J.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
 var asset3 = {};
 var extensions3 = {};
-var getMetadata3 = () => import("./assetHub_metadata-HP7CVUOW.mjs").then(
+var getMetadata3 = () => import("./assetHub_metadata-M2DZR6PQ.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
-var genesis3 = "0xa77d4408fe2febf5d403329ab76169c6ebb39b537dd815aafd33a5687412d409";
+var genesis3 = "0x7765f98d559faf44baff547e8876a47c64cd1161f239d7df5a9e26194617f775";
 var _allDescriptors3 = { descriptors: descriptorValues3, metadataTypes: metadataTypes3, asset: asset3, extensions: extensions3, getMetadata: getMetadata3, genesis: genesis3 };
 var assetHub_default = _allDescriptors3;
 
 // .papi/descriptors/src/bulletin.ts
-var descriptorValues4 = import("./descriptors-SFUV6UN2.mjs").then((module) => module["Bulletin"]);
-var metadataTypes4 = import("./metadataTypes-JY4XRAYQ.mjs").then(
+var descriptorValues4 = import("./descriptors-555SONBO.mjs").then((module) => module["Bulletin"]);
+var metadataTypes4 = import("./metadataTypes-XFTYQF4J.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
 var asset4 = {};
 var extensions4 = {};
-var getMetadata4 = () => import("./bulletin_metadata-7REQP7XP.mjs").then(
+var getMetadata4 = () => import("./bulletin_metadata-4GGVBF5Z.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
-var genesis4 = "0x5a26fe1a13a254c1ed7600d191b71176f768cc23e9dc0f9a34720cec37d1b1c9";
+var genesis4 = "0x6fdf4baff0328ddaca1812e6d2f8f26afc439e6e0a339c0094d17013f8da246d";
 var _allDescriptors4 = { descriptors: descriptorValues4, metadataTypes: metadataTypes4, asset: asset4, extensions: extensions4, getMetadata: getMetadata4, genesis: genesis4 };
 var bulletin_default = _allDescriptors4;
 
@@ -229,7 +229,7 @@ __export(contracts_exports, {
 });
 
 // .papi/descriptors/src/contracts/contractsRegistry.ts
-var descriptor = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "publishLatest", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "contract_address", "type": "address" }, { "name": "metadata_uri", "type": "string" }], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "getAddress", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "tuple" }], "stateMutability": "view" }, { "type": "function", "name": "getMetadataUri", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "tuple" }], "stateMutability": "view" }, { "type": "function", "name": "getAddressAtVersion", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "version", "type": "uint32" }], "outputs": [{ "name": "", "type": "tuple" }], "stateMutability": "view" }, { "type": "function", "name": "getMetadataUriAtVersion", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "version", "type": "uint32" }], "outputs": [{ "name": "", "type": "tuple" }], "stateMutability": "view" }, { "type": "function", "name": "getContractNameAt", "inputs": [{ "name": "index", "type": "uint32" }], "outputs": [{ "name": "", "type": "string" }], "stateMutability": "view" }, { "type": "function", "name": "getOwner", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "address" }], "stateMutability": "view" }, { "type": "function", "name": "getVersionCount", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }, { "type": "function", "name": "getContractCount", "inputs": [], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }] };
+var descriptor = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "publishLatest", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "contract_address", "type": "address" }, { "name": "metadata_uri", "type": "string" }], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "getAddress", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "tuple", "components": [{ "name": "isSome", "type": "bool" }, { "name": "value", "type": "address" }] }], "stateMutability": "view" }, { "type": "function", "name": "getMetadataUri", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "tuple", "components": [{ "name": "isSome", "type": "bool" }, { "name": "value", "type": "string" }] }], "stateMutability": "view" }, { "type": "function", "name": "getAddressAtVersion", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "version", "type": "uint32" }], "outputs": [{ "name": "", "type": "tuple", "components": [{ "name": "isSome", "type": "bool" }, { "name": "value", "type": "address" }] }], "stateMutability": "view" }, { "type": "function", "name": "getMetadataUriAtVersion", "inputs": [{ "name": "contract_name", "type": "string" }, { "name": "version", "type": "uint32" }], "outputs": [{ "name": "", "type": "tuple", "components": [{ "name": "isSome", "type": "bool" }, { "name": "value", "type": "string" }] }], "stateMutability": "view" }, { "type": "function", "name": "getContractNameAt", "inputs": [{ "name": "index", "type": "uint32" }], "outputs": [{ "name": "", "type": "string" }], "stateMutability": "view" }, { "type": "function", "name": "getOwner", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "address" }], "stateMutability": "view" }, { "type": "function", "name": "getVersionCount", "inputs": [{ "name": "contract_name", "type": "string" }], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }, { "type": "function", "name": "getContractCount", "inputs": [], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }] };
 
 // .papi/descriptors/src/contracts/counter.ts
 var descriptor2 = { abi: [{ "type": "constructor", "inputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "increment", "inputs": [], "outputs": [], "stateMutability": "nonpayable" }, { "type": "function", "name": "getCount", "inputs": [], "outputs": [{ "name": "", "type": "uint32" }], "stateMutability": "view" }] };
@@ -242,9 +242,9 @@ var descriptor4 = { abi: [{ "type": "constructor", "inputs": [], "stateMutabilit
 
 // .papi/descriptors/src/index.ts
 var metadatas = {
-  ["0x763725f38b64ed84ae844dfc5d468258d35ef2f090dde5485d5b1afcfc9bf568"]: relay_default,
-  ["0x522a2b46e08090b1d32cda20d9d4cd0b30129101f6732001ef3f6697ad2a41cb"]: assetHub_default,
-  ["0x4b5246c6f067da11aa539393453b01f26daf7499856317aea480d83e9af0f70c"]: bulletin_default
+  ["0xea937e06567742acd4321eb8acc4911a389130405c8ce6a9a6f81e3557d66740"]: relay_default,
+  ["0x511c27332557b745d42dc3d691bc4bcf72835b39290b538e1b3b32685faabada"]: assetHub_default,
+  ["0xce76768a4d9db3a9dbea8acdefeec037a1119dafdc98c62c30c90453ef3a2c75"]: bulletin_default
 };
 var getMetadata5 = async (codeHash) => {
   try {

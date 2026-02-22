@@ -15,27 +15,39 @@ type MessagesDescriptor = {
         message: {
             "contract_name": string;
         };
-        response: {};
+        response: {
+            "isSome": boolean;
+            "value": Address;
+        };
     };
     "getMetadataUri": {
         message: {
             "contract_name": string;
         };
-        response: {};
+        response: {
+            "isSome": boolean;
+            "value": string;
+        };
     };
     "getAddressAtVersion": {
         message: {
             "contract_name": string;
             "version": number;
         };
-        response: {};
+        response: {
+            "isSome": boolean;
+            "value": Address;
+        };
     };
     "getMetadataUriAtVersion": {
         message: {
             "contract_name": string;
             "version": number;
         };
-        response: {};
+        response: {
+            "isSome": boolean;
+            "value": string;
+        };
     };
     "getContractNameAt": {
         message: {
