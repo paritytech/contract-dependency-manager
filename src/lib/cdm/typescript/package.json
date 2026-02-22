@@ -25,6 +25,7 @@
     "dependencies": {
         "@dotdm/contracts": "workspace:*",
         "@dotdm/env": "workspace:*",
+        "@dotdm/utils": "workspace:*",
         "@polkadot-api/sdk-ink": "catalog:",
         "polkadot-api": "catalog:"
     },

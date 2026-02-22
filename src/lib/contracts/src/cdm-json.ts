@@ -23,9 +23,10 @@ export function computeTargetHash(
     return Buffer.from(hash.slice(0, 8)).toString("hex");
 }
 
-export function readCdmJson(startDir?: string): { cdmJson: CdmJson; cdmJsonPath: string } | null {
-    const dir = startDir ?? process.cwd();
-    const candidate = resolve(dir, "cdm.json");
+export function readCdmJson(pathOrDir?: string): { cdmJson: CdmJson; cdmJsonPath: string } | null {
+    const input = pathOrDir ?? process.cwd();
+    // If the input already points to a file, use it directly; otherwise treat as directory
+    const candidate = input.endsWith(".json") ? resolve(input) : resolve(input, "cdm.json");
     if (existsSync(candidate)) {
         const content = readFileSync(candidate, "utf-8");
         return { cdmJson: JSON.parse(content) as CdmJson, cdmJsonPath: candidate };

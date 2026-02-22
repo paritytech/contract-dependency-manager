@@ -6,6 +6,8 @@ import type { PolkadotClient, SS58String, PolkadotSigner, HexString } from "polk
 import type { InkSdk } from "@polkadot-api/sdk-ink";
 import { readCdmJson } from "@dotdm/contracts";
 import type { CdmJson } from "@dotdm/contracts";
+import { prepareSigner } from "@dotdm/env";
+import { ALICE_SS58 } from "@dotdm/utils";
 import { resolveContract } from "./resolver";
 import { wrapContract } from "./wrap";
 import type { CdmContract, CdmContracts, CdmOptions } from "./types";
@@ -44,8 +46,8 @@ export class Cdm {
             this.ownsClient = false;
         }
 
-        this.defaultOrigin = options?.defaultOrigin;
-        this.defaultSigner = options?.defaultSigner;
+        this.defaultOrigin = options?.defaultOrigin ?? (ALICE_SS58 as SS58String);
+        this.defaultSigner = options?.defaultSigner ?? prepareSigner("Alice");
     }
 
     get client(): PolkadotClient {

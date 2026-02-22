@@ -18,6 +18,8 @@ jobs:
                   node-version: "22"
             - name: Install dependencies
               run: pnpm install
+            - name: Restore papi-modified files
+              run: git checkout -- src/lib/descriptors/package.json
             - name: Check formatting
               run: pnpm biome format .
 
