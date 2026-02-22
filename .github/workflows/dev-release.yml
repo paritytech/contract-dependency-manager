@@ -1,0 +1,78 @@
+name: Dev Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dev-release:
+    # Skip bot commits (from stable release workflow)
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # need parent commit for diff
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - run: pnpm install
+
+      # Ensure descriptors stays private
+      - name: Mark descriptors as private
+        run: node -e "const f='.papi/descriptors/package.json';const p=JSON.parse(require('fs').readFileSync(f));p.private=true;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+
+      # Detect changes and set dev versions
+      - name: Detect changes & set dev versions
+        id: detect
+        run: |
+          TIMESTAMP=$(date +%s)
+          CHANGED=""
+
+          # Check each package for changes
+          for pkg in utils env contracts; do
+            if git diff --name-only HEAD~1 -- "src/lib/$pkg/" | grep -q .; then
+              VERSION=$(node -p "require('./src/lib/$pkg/package.json').version")
+              DEV_VERSION="${VERSION}-dev.${TIMESTAMP}"
+              node -e "const f='src/lib/$pkg/package.json';const p=JSON.parse(require('fs').readFileSync(f,'utf-8'));p.version='${DEV_VERSION}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+              CHANGED="${CHANGED} @dotdm/$pkg"
+            fi
+          done
+
+          # CDM package (different path structure)
+          if git diff --name-only HEAD~1 -- "src/lib/cdm/typescript/" | grep -q .; then
+            VERSION=$(node -p "require('./src/lib/cdm/typescript/package.json').version")
+            DEV_VERSION="${VERSION}-dev.${TIMESTAMP}"
+            node -e "const f='src/lib/cdm/typescript/package.json';const p=JSON.parse(require('fs').readFileSync(f,'utf-8'));p.version='${DEV_VERSION}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+            CHANGED="${CHANGED} @dotdm/cdm"
+          fi
+
+          echo "changed=${CHANGED}" >> $GITHUB_OUTPUT
+          echo "Changed packages:${CHANGED:-" (none)"}"
+
+      # Build changed packages
+      - name: Build
+        if: steps.detect.outputs.changed != ''
+        run: |
+          FILTERS=""
+          for pkg in ${{ steps.detect.outputs.changed }}; do
+            FILTERS="${FILTERS} --filter ${pkg}"
+          done
+          pnpm -r ${FILTERS} build
+
+      # Publish with dev tag
+      - name: Publish
+        if: steps.detect.outputs.changed != ''
+        run: |
+          for pkg in ${{ steps.detect.outputs.changed }}; do
+            pnpm -r --filter "${pkg}" publish --tag dev --no-git-checks --access public
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
