@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import type { InstallStatus } from "../install-pipeline";
-import { Link, Spinner, Cell, Idle, Done, Failed, truncateAddress, shortHash, ipfsUrl } from "./shared";
+import {
+    Link,
+    Spinner,
+    Cell,
+    Idle,
+    Done,
+    Failed,
+    truncateAddress,
+    shortHash,
+    ipfsUrl,
+} from "./shared";
 
 const COL_CONTRACT = 24;
 const COL_VERSION = 10;
@@ -128,7 +138,7 @@ export function InstallTable({ statuses, libraries, ipfsGatewayUrl }: InstallTab
                     {errors.map(({ name, error }) => (
                         <Box key={name} flexDirection="column">
                             <Text color="red">{name}:</Text>
-                            <Text>  {error}</Text>
+                            <Text> {error}</Text>
                         </Box>
                     ))}
                 </Box>

@@ -153,7 +153,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
     console.log(`\x1b[1mTarget\x1b[0m     ${targetHash}`);
     console.log(
         `\x1b[1mRust\x1b[0m ${projectType.hasRust ? "\x1b[32m✔\x1b[0m" : "\x1b[2m-\x1b[0m"}` +
-        `  \x1b[1mTypeScript\x1b[0m ${projectType.hasTypeScript ? "\x1b[32m✔\x1b[0m" : "\x1b[2m-\x1b[0m"}`,
+            `  \x1b[1mTypeScript\x1b[0m ${projectType.hasTypeScript ? "\x1b[32m✔\x1b[0m" : "\x1b[2m-\x1b[0m"}`,
     );
 
     // Run parallel install with Ink table UI
