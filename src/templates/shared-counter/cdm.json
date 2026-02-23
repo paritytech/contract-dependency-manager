@@ -1,0 +1,16 @@
+{
+  "targets": {
+    "da9cf8dad00e22bf": {
+      "asset-hub": "wss://previewnet.substrate.dev/asset-hub",
+      "bulletin": "https://ipfs.dotspark.app/ipfs",
+      "registry": "0xf78bc1cd6e8e13d178dd0b1aaeb71e9d094327a3"
+    }
+  },
+  "dependencies": {
+    "da9cf8dad00e22bf": {
+      "@example/counter": "latest",
+      "@example/counter-writer": "latest",
+      "@example/counter-reader": "latest"
+    }
+  }
+}
