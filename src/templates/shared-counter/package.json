@@ -3,9 +3,10 @@
     "version": "0.1.0",
     "type": "module",
     "scripts": {
-        "validate": "bun run src/validate.ts"
+        "start": "bun src/index.ts"
     },
     "dependencies": {
+        "@dotdm/cdm": "latest",
         "polkadot-api": "^1.23.3",
         "@polkadot-labs/hdkd": "^0.0.26",
         "@polkadot-labs/hdkd-helpers": "^0.0.27"

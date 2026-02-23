@@ -9,6 +9,7 @@ homepage = "https://polkadot.com/"
 edition = "2024"
 
 [workspace.dependencies]
+cdm = { git = "https://github.com/paritytech/contract-dependency-manager" }
 pvm_contract = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "charles/cdm-integration" }
 polkavm-derive = "0.31"
 parity-scale-codec = { version = "3.7", default-features = false, features = ["derive"] }
