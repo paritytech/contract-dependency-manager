@@ -1,5 +1,11 @@
 # @dotdm/cli
 
+## 0.1.4
+
+### Patch Changes
+
+- f52bebb: Improved templates
+
 ## 0.1.3
 
 ### Patch Changes
