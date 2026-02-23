@@ -78,7 +78,7 @@ export interface IpfsGateway {
 export function connectIpfsGateway(url: string): IpfsGateway {
     return {
         fetch: (cid: string) =>
-            globalThis.fetch(`${url}/${cid}`, { signal: AbortSignal.timeout(10_000) }).then((r) => {
+            globalThis.fetch(`${url}/${cid}`, { signal: AbortSignal.timeout(15_000) }).then((r) => {
                 if (!r.ok) throw new Error(`IPFS fetch failed: ${r.statusText}`);
                 return r;
             }),

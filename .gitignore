@@ -12,6 +12,10 @@ target/
 
 *.lock
 *-lock.yaml
+*-lock.json
+
+src/templates/*/**/cdm.json
+src/templates/*/**/.cdm/
 
 reference-repos/
 
