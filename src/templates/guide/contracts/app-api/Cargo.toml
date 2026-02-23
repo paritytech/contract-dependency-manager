@@ -1,0 +1,22 @@
+[package]
+name = "app-api"
+version.workspace = true
+edition.workspace = true
+description = "Shared counter contract that holds on-chain state, exposing increment and read methods via CDM"
+authors.workspace = true
+homepage.workspace = true
+
+[lib]
+path = "lib.rs"
+
+[[bin]]
+name = "app-api"
+path = "lib.rs"
+
+[dependencies]
+cdm = { workspace = true }
+pvm_contract = { workspace = true }
+polkavm-derive = { workspace = true }
+parity-scale-codec = { workspace = true }
+picoalloc = { workspace = true }
+support_contract = { path = "../support_contract" }

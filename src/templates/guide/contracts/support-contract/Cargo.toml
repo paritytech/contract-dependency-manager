@@ -1,0 +1,21 @@
+[package]
+name = "suuport_contract"
+version.workspace = true
+edition.workspace = true
+description = "Reads the current count from the shared counter contract via cross-contract CDM reference"
+authors.workspace = true
+homepage.workspace = true
+
+[lib]
+path = "lib.rs"
+
+[[bin]]
+name = "support_contract"
+path = "lib.rs"
+
+[dependencies]
+cdm = { workspace = true }
+pvm_contract = { workspace = true }
+polkavm-derive = { workspace = true }
+parity-scale-codec = { workspace = true }
+picoalloc = { workspace = true }
