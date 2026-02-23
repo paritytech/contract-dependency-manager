@@ -178,9 +178,7 @@ export interface InstallRunnerResult {
     success: boolean;
 }
 
-export async function runInstallWithUI(
-    opts: InstallRunnerOptions,
-): Promise<InstallRunnerResult> {
+export async function runInstallWithUI(opts: InstallRunnerOptions): Promise<InstallRunnerResult> {
     const libraryNames = opts.libraries.map((l) => l.library);
 
     // Initialize statuses
@@ -232,7 +230,8 @@ export async function runInstallWithUI(
         } else {
             errors.push({
                 library: opts.libraries[i].library,
-                error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+                error:
+                    result.reason instanceof Error ? result.reason.message : String(result.reason),
             });
         }
     }
