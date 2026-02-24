@@ -19,6 +19,9 @@ export interface QueryResult<T> {
 // Transaction options override
 export interface TxOpts {
     signer?: PolkadotSigner;
+    value?: bigint;
+    gasLimit?: { refTime: bigint; proofSize: bigint };
+    storageDepositLimit?: bigint;
 }
 
 // Transaction call result

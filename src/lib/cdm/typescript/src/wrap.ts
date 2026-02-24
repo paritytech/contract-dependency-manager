@@ -56,10 +56,10 @@ export function wrapContract(
 
             return {
                 query: async (...args: unknown[]) => {
-                    const { positionalArgs, overrides } = extractOverrides<{ origin?: SS58String }>(
-                        argNames,
-                        args,
-                    );
+                    const { positionalArgs, overrides } = extractOverrides<{
+                        origin?: SS58String;
+                        value?: bigint;
+                    }>(argNames, args);
                     const data = positionalToNamed(argNames, positionalArgs);
                     const origin = overrides?.origin ?? defaults.origin;
                     if (!origin)
@@ -67,7 +67,11 @@ export function wrapContract(
                             "No origin provided for query. Pass { origin } or set defaultOrigin.",
                         );
 
-                    const result = await papiContract.query(methodName, { origin, data });
+                    const result = await papiContract.query(methodName, {
+                        origin,
+                        data,
+                        ...(overrides?.value !== undefined && { value: overrides.value }),
+                    });
                     return {
                         success: result.success,
                         value: result.success ? result.value.response : undefined,
@@ -84,7 +88,15 @@ export function wrapContract(
                         );
 
                     const origin = defaults.origin;
-                    const tx = papiContract.send(methodName, { data, origin: origin ?? "" });
+                    const tx = papiContract.send(methodName, {
+                        data,
+                        origin: origin ?? "",
+                        ...(overrides?.value !== undefined && { value: overrides.value }),
+                        ...(overrides?.gasLimit && { gasLimit: overrides.gasLimit }),
+                        ...(overrides?.storageDepositLimit !== undefined && {
+                            storageDepositLimit: overrides.storageDepositLimit,
+                        }),
+                    });
                     const result = await tx.signAndSubmit(signer);
                     return {
                         txHash: result.txHash,
