@@ -1,5 +1,12 @@
 # @dotdm/cli
 
+## 0.1.6
+
+### Patch Changes
+
+- Updated dependencies [af2bb25]
+  - @dotdm/cdm@0.2.0
+
 ## 0.1.5
 
 ### Patch Changes
