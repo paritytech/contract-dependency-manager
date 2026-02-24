@@ -62,10 +62,14 @@ export async function postInstallTypeScript(result: InstallResult): Promise<void
 
     const deps = cdmResult.cdmJson.dependencies[result.targetHash] ?? {};
 
-    // Collect all contracts for this target
-    const contracts = Object.entries(deps).map(([lib, ver]) => {
-        const resolved = resolveContract(result.targetHash, lib, ver);
-        return { library: lib, abi: resolved.abi };
+    // Collect all contracts for this target, skipping any that failed to install
+    const contracts = Object.entries(deps).flatMap(([lib, ver]) => {
+        try {
+            const resolved = resolveContract(result.targetHash, lib, ver);
+            return [{ library: lib, abi: resolved.abi }];
+        } catch {
+            return [];
+        }
     });
 
     if (contracts.length === 0) return;

@@ -34,6 +34,11 @@ export interface InstallRunnerOptions {
     ipfsGatewayUrl?: string;
 }
 
+function isRegistryQueryError(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err);
+    return msg.includes("zero data") || msg.includes("0x") || msg.includes("AbiDecoding");
+}
+
 function updateStatus(
     statuses: Map<string, InstallStatus>,
     library: string,
@@ -60,19 +65,35 @@ async function installOneWithStatus(
     let contractAddress: string;
 
     if (requestedVersion === "latest") {
-        const versionResult = await registry.query("getVersionCount", {
-            origin: ALICE_SS58,
-            data: { contract_name: library },
-        });
+        let versionResult;
+        try {
+            versionResult = await registry.query("getVersionCount", {
+                origin: ALICE_SS58,
+                data: { contract_name: library },
+            });
+        } catch (err) {
+            if (isRegistryQueryError(err)) {
+                throw new Error(`Contract "${library}" not found in registry`);
+            }
+            throw err;
+        }
         if (!versionResult.success || versionResult.value.response === 0) {
             throw new Error(`Contract "${library}" not found in registry`);
         }
         version = versionResult.value.response - 1;
 
-        const metaResult = await registry.query("getMetadataUri", {
-            origin: ALICE_SS58,
-            data: { contract_name: library },
-        });
+        let metaResult;
+        try {
+            metaResult = await registry.query("getMetadataUri", {
+                origin: ALICE_SS58,
+                data: { contract_name: library },
+            });
+        } catch (err) {
+            if (isRegistryQueryError(err)) {
+                throw new Error(`Failed to fetch metadata for "${library}" from registry`);
+            }
+            throw err;
+        }
         if (!metaResult.success) {
             throw new Error(`Failed to query metadata URI for "${library}"`);
         }
@@ -87,10 +108,18 @@ async function installOneWithStatus(
             throw new Error(`No metadata URI found for "${library}"`);
         }
 
-        const addrResult = await registry.query("getAddress", {
-            origin: ALICE_SS58,
-            data: { contract_name: library },
-        });
+        let addrResult;
+        try {
+            addrResult = await registry.query("getAddress", {
+                origin: ALICE_SS58,
+                data: { contract_name: library },
+            });
+        } catch (err) {
+            if (isRegistryQueryError(err)) {
+                throw new Error(`Failed to fetch address for "${library}" from registry`);
+            }
+            throw err;
+        }
         const addrResponse = addrResult.success ? addrResult.value.response : null;
         contractAddress =
             typeof addrResponse === "string"
@@ -101,10 +130,20 @@ async function installOneWithStatus(
     } else {
         version = requestedVersion;
 
-        const metaResult = await registry.query("getMetadataUriAtVersion", {
-            origin: ALICE_SS58,
-            data: { contract_name: library, version: requestedVersion },
-        });
+        let metaResult;
+        try {
+            metaResult = await registry.query("getMetadataUriAtVersion", {
+                origin: ALICE_SS58,
+                data: { contract_name: library, version: requestedVersion },
+            });
+        } catch (err) {
+            if (isRegistryQueryError(err)) {
+                throw new Error(
+                    `Version ${requestedVersion} of "${library}" not found in registry`,
+                );
+            }
+            throw err;
+        }
         if (!metaResult.success) {
             throw new Error(
                 `Failed to query metadata URI for "${library}" version ${requestedVersion}`,
@@ -121,10 +160,20 @@ async function installOneWithStatus(
             throw new Error(`Version ${requestedVersion} of "${library}" not found in registry`);
         }
 
-        const addrResult = await registry.query("getAddressAtVersion", {
-            origin: ALICE_SS58,
-            data: { contract_name: library, version: requestedVersion },
-        });
+        let addrResult;
+        try {
+            addrResult = await registry.query("getAddressAtVersion", {
+                origin: ALICE_SS58,
+                data: { contract_name: library, version: requestedVersion },
+            });
+        } catch (err) {
+            if (isRegistryQueryError(err)) {
+                throw new Error(
+                    `Failed to fetch address for "${library}" version ${requestedVersion} from registry`,
+                );
+            }
+            throw err;
+        }
         const addrResponse = addrResult.success ? addrResult.value.response : null;
         contractAddress =
             typeof addrResponse === "string"
