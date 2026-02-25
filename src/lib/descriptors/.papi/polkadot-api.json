@@ -1,33 +1,33 @@
 {
-    "version": 0,
-    "descriptorPath": "generated",
-    "entries": {
-        "relay": {
-            "chain": "polkadot",
-            "metadata": ".papi/metadata/relay.scale",
-            "genesis": "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
-            "codeHash": "0xea937e06567742acd4321eb8acc4911a389130405c8ce6a9a6f81e3557d66740"
-        },
-        "individuality": {
-            "metadata": ".papi/metadata/individuality.scale"
-        },
-        "assetHub": {
-            "wsUrl": "wss://previewnet.substrate.dev/asset-hub",
-            "metadata": ".papi/metadata/assetHub.scale",
-            "genesis": "0x7765f98d559faf44baff547e8876a47c64cd1161f239d7df5a9e26194617f775",
-            "codeHash": "0x511c27332557b745d42dc3d691bc4bcf72835b39290b538e1b3b32685faabada"
-        },
-        "bulletin": {
-            "wsUrl": "wss://previewnet.substrate.dev/bulletin",
-            "metadata": ".papi/metadata/bulletin.scale",
-            "genesis": "0x6fdf4baff0328ddaca1812e6d2f8f26afc439e6e0a339c0094d17013f8da246d",
-            "codeHash": "0xce76768a4d9db3a9dbea8acdefeec037a1119dafdc98c62c30c90453ef3a2c75"
-        }
+  "version": 0,
+  "descriptorPath": "generated",
+  "entries": {
+    "relay": {
+      "chain": "polkadot",
+      "metadata": ".papi/metadata/relay.scale",
+      "genesis": "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
+      "codeHash": "0xea937e06567742acd4321eb8acc4911a389130405c8ce6a9a6f81e3557d66740"
     },
-    "sol": {
-        "contractsRegistry": ".papi/contracts/contractsRegistry.json",
-        "counter": ".papi/contracts/counter.json",
-        "counterReader": ".papi/contracts/counterReader.json",
-        "counterWriter": ".papi/contracts/counterWriter.json"
+    "individuality": {
+      "metadata": ".papi/metadata/individuality.scale"
+    },
+    "assetHub": {
+      "wsUrl": "wss://previewnet.substrate.dev/asset-hub",
+      "metadata": ".papi/metadata/assetHub.scale",
+      "genesis": "0x7765f98d559faf44baff547e8876a47c64cd1161f239d7df5a9e26194617f775",
+      "codeHash": "0x511c27332557b745d42dc3d691bc4bcf72835b39290b538e1b3b32685faabada"
+    },
+    "bulletin": {
+      "wsUrl": "wss://previewnet.substrate.dev/bulletin",
+      "metadata": ".papi/metadata/bulletin.scale",
+      "genesis": "0x6fdf4baff0328ddaca1812e6d2f8f26afc439e6e0a339c0094d17013f8da246d",
+      "codeHash": "0xce76768a4d9db3a9dbea8acdefeec037a1119dafdc98c62c30c90453ef3a2c75"
     }
+  },
+  "sol": {
+    "contractsRegistry": ".papi/contracts/contractsRegistry.json",
+    "counter": ".papi/contracts/counter.json",
+    "counterReader": ".papi/contracts/counterReader.json",
+    "counterWriter": ".papi/contracts/counterWriter.json"
+  }
 }
