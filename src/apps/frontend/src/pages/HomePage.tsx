@@ -20,7 +20,7 @@ export default function HomePage() {
     const [copied, setCopied] = useState(false);
     const sentinelRef = useRef<HTMLDivElement>(null);
 
-    const installCmd = "curl -fsSL https://polkadot.com/install-cdm | bash";
+    const installCmd = "curl -fsSL https://contracts.paseo.li/install | bash";
     const error = networkError || registryError;
 
     const loadMoreRef = useRef(loadMore);
