@@ -1,5 +1,11 @@
 # @dotdm/cdm
 
+## 0.2.1
+
+### Patch Changes
+
+- 31a8e60: Allow `TxOpts.origin` to override the dry-run caller address, fixing gas estimation failures when a non-Alice wallet signs transactions with caller-dependent assertions.
+
 ## 0.2.0
 
 ### Minor Changes
