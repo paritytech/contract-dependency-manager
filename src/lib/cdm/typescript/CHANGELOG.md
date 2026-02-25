@@ -1,5 +1,13 @@
 # @dotdm/cdm
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [00add1d]
+  - @dotdm/env@0.1.3
+  - @dotdm/contracts@0.1.4
+
 ## 0.2.1
 
 ### Patch Changes

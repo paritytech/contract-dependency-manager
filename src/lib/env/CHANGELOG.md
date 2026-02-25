@@ -1,5 +1,11 @@
 # @dotdm/env
 
+## 0.1.3
+
+### Patch Changes
+
+- 00add1d: Update preview-net registry address after chain reset.
+
 ## 0.1.2
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @dotdm/contracts
 
+## 0.1.4
+
+### Patch Changes
+
+- Updated dependencies [00add1d]
+  - @dotdm/env@0.1.3
+
 ## 0.1.3
 
 ### Patch Changes
