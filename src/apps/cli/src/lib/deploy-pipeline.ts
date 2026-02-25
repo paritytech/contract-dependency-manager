@@ -316,3 +316,252 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
     const success = failedCrates.size === 0;
     return { addresses, statuses, success };
 }
+
+if (import.meta.vitest) {
+    const { describe, test, expect, vi, beforeEach } = import.meta.vitest;
+
+    // ── mocks ──────────────────────────────────────────────────────────
+    vi.mock("@dotdm/contracts", () => ({
+        pvmContractBuildAsync: vi.fn(
+            async (_root: string, crateName: string) =>
+                ({ crateName, success: true, stdout: "", stderr: "", durationMs: 100 }) as any,
+        ),
+        detectDeploymentOrderLayered: vi.fn(),
+        readCdmPackage: vi.fn(() => null),
+        getGitRemoteUrl: vi.fn(() => "https://github.com/test/repo"),
+        readReadmeContent: vi.fn(() => ""),
+        computeCid: vi.fn(() => "fakeCid123"),
+    }));
+
+    vi.mock("fs", () => ({
+        existsSync: vi.fn(() => true),
+        readFileSync: vi.fn(() => "[]"),
+    }));
+
+    // Pull references so we can tweak per-test
+    const {
+        pvmContractBuildAsync: mockBuild,
+        readCdmPackage: mockReadCdm,
+        computeCid: mockComputeCid,
+    } = await import("@dotdm/contracts");
+
+    // ── helpers ─────────────────────────────────────────────────────────
+    type CI = import("@dotdm/contracts").ContractInfo;
+
+    function makeOrder(
+        layers: string[][],
+        deps: Record<string, string[]> = {},
+        cdm: Record<string, string> = {},
+    ): DeploymentOrderLayered {
+        const contractMap = new Map<string, CI>();
+        for (const layer of layers) {
+            for (const crate of layer) {
+                contractMap.set(crate, {
+                    name: crate,
+                    cdmPackage: cdm[crate] ?? null,
+                    description: null,
+                    authors: [],
+                    homepage: null,
+                    repository: null,
+                    readmePath: null,
+                    path: `/fake/${crate}`,
+                    dependsOnCrates: deps[crate] ?? [],
+                });
+            }
+        }
+        const cdmPackageMap = new Map(Object.entries(cdm));
+        return { layers, contractMap, cdmPackageMap };
+    }
+
+    function makeServices(): DeployServices {
+        return {
+            deployer: {
+                deployBatch: vi.fn(async (paths: string[]) => ({
+                    addresses: paths.map((_, i) => `0xaddr${i}`),
+                    txHash: "0xdeploy",
+                    blockHash: "0xblock",
+                })),
+            } as any,
+            publisher: {
+                publishBatch: vi.fn(async (metaList: any[]) => ({
+                    cids: metaList.map(() => "fakeCid123"),
+                    blockNumber: 1,
+                    txHash: "0xpub",
+                    blockHash: "0xpblock",
+                })),
+            } as any,
+            registry: {
+                registerBatch: vi.fn(async () => ({
+                    txHash: "0xreg",
+                    blockHash: "0xrblock",
+                })),
+            } as any,
+        };
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        // restore default happy-path mock for build
+        (mockBuild as any).mockImplementation(async (_root: string, crateName: string) => ({
+            crateName,
+            success: true,
+            stdout: "",
+            stderr: "",
+            durationMs: 100,
+        }));
+        (mockReadCdm as any).mockReturnValue(null);
+        (mockComputeCid as any).mockReturnValue("fakeCid123");
+    });
+
+    // ── tests ───────────────────────────────────────────────────────────
+    describe("pipeline execution", () => {
+        test("contracts in same layer build concurrently", async () => {
+            const order = makeOrder([["a", "b"]]);
+            const result = await executePipeline({ rootDir: "/fake", order });
+
+            expect(mockBuild).toHaveBeenCalledTimes(2);
+            expect(result.success).toBe(true);
+            expect(result.statuses.get("a")!.state).toBe("done");
+            expect(result.statuses.get("b")!.state).toBe("done");
+        });
+
+        test("layer N+1 waits for layer N to complete", async () => {
+            const callOrder: string[] = [];
+            (mockBuild as any).mockImplementation(async (_root: string, crateName: string) => {
+                callOrder.push(`start:${crateName}`);
+                // small delay to make ordering observable
+                await new Promise((r) => setTimeout(r, 5));
+                callOrder.push(`end:${crateName}`);
+                return { crateName, success: true, stdout: "", stderr: "", durationMs: 50 };
+            });
+
+            const order = makeOrder([["a"], ["b"]], { b: ["a"] });
+            await executePipeline({ rootDir: "/fake", order });
+
+            const endA = callOrder.indexOf("end:a");
+            const startB = callOrder.indexOf("start:b");
+            expect(endA).toBeLessThan(startB);
+        });
+
+        test("error in one contract cascades to dependents", async () => {
+            (mockBuild as any).mockImplementation(async (_root: string, crateName: string) => {
+                if (crateName === "a") {
+                    return {
+                        crateName,
+                        success: false,
+                        stdout: "",
+                        stderr: "fail",
+                        durationMs: 10,
+                    };
+                }
+                return { crateName, success: true, stdout: "", stderr: "", durationMs: 10 };
+            });
+
+            const order = makeOrder([["a"], ["b"]], { b: ["a"] });
+            const result = await executePipeline({ rootDir: "/fake", order });
+
+            expect(result.success).toBe(false);
+            expect(result.statuses.get("a")!.state).toBe("error");
+            expect(result.statuses.get("b")!.state).toBe("error");
+            expect(result.statuses.get("b")!.error).toBe("Skipped: dependency failed");
+        });
+
+        test("error in one contract does not affect independent contracts", async () => {
+            (mockBuild as any).mockImplementation(async (_root: string, crateName: string) => {
+                if (crateName === "a") {
+                    return {
+                        crateName,
+                        success: false,
+                        stdout: "",
+                        stderr: "fail",
+                        durationMs: 10,
+                    };
+                }
+                return { crateName, success: true, stdout: "", stderr: "", durationMs: 10 };
+            });
+
+            const order = makeOrder([["a", "b"]]);
+            const result = await executePipeline({ rootDir: "/fake", order });
+
+            expect(result.success).toBe(false);
+            expect(result.statuses.get("a")!.state).toBe("error");
+            expect(result.statuses.get("b")!.state).toBe("done");
+        });
+
+        test("build-only mode skips deploy phase", async () => {
+            const order = makeOrder([["a"]]);
+            const result = await executePipeline({
+                rootDir: "/fake",
+                order,
+                services: undefined,
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.statuses.get("a")!.state).toBe("done");
+            expect(Object.keys(result.addresses)).toHaveLength(0);
+        });
+
+        test("CDM packages detected after build on fresh clone", async () => {
+            (mockReadCdm as any).mockReturnValue("@test/my-contract");
+
+            const detected: [string, string][] = [];
+            const order = makeOrder([["a"]]);
+            await executePipeline({
+                rootDir: "/fake",
+                order,
+                onCdmPackageDetected: (crate, pkg) => detected.push([crate, pkg]),
+            });
+
+            expect(detected).toEqual([["a", "@test/my-contract"]]);
+            expect(order.cdmPackageMap.get("a")).toBe("@test/my-contract");
+        });
+
+        test("status callbacks fire in correct order", async () => {
+            (mockReadCdm as any).mockReturnValue("@test/pkg");
+
+            const states: ContractState[] = [];
+            const services = makeServices();
+            const order = makeOrder([["a"]], {}, { a: "@test/pkg" });
+            await executePipeline({
+                rootDir: "/fake",
+                order,
+                services,
+                onStatusChange: (_crate, status) => states.push(status.state),
+            });
+
+            expect(states).toEqual(["building", "built", "deploying", "registering", "done"]);
+        });
+
+        test("empty pipeline succeeds immediately", async () => {
+            const order: DeploymentOrderLayered = {
+                layers: [],
+                contractMap: new Map(),
+                cdmPackageMap: new Map(),
+            };
+            const result = await executePipeline({ rootDir: "/fake", order });
+
+            expect(result.success).toBe(true);
+            expect(result.addresses).toEqual({});
+            expect(result.statuses.size).toBe(0);
+        });
+
+        test("single contract works without parallelism overhead", async () => {
+            (mockReadCdm as any).mockReturnValue("@test/solo");
+
+            const services = makeServices();
+            const order = makeOrder([["solo"]], {}, { solo: "@test/solo" });
+            const result = await executePipeline({
+                rootDir: "/fake",
+                order,
+                services,
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.statuses.get("solo")!.state).toBe("done");
+            expect(result.addresses["solo"]).toBe("0xaddr0");
+            expect(services.deployer.deployBatch).toHaveBeenCalledTimes(1);
+            expect(services.publisher.publishBatch).toHaveBeenCalledTimes(1);
+            expect(services.registry.registerBatch).toHaveBeenCalledTimes(1);
+        });
+    });
+}

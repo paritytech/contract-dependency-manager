@@ -3,7 +3,7 @@
     "compilerOptions": {
         "outDir": "./dist",
         "rootDir": ".",
-        "types": ["@types/bun"]
+        "types": ["@types/bun", "vitest/importMeta"]
     },
     "include": ["*.ts"]
 }

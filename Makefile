@@ -59,7 +59,7 @@ build-template:
 	cd src/lib/descriptors && pnpm exec papi sol add ../../../$(TEMPLATE_DIR)/target/counter_writer.release.abi.json counterWriter
 
 test:
-	bun test $(CLI_DIR)/tests/detection.test.ts $(CLI_DIR)/tests/commands.test.ts $(CLI_DIR)/tests/e2e.test.ts
+	pnpm vitest run
 
 clean:
 	rm -rf dist/ target/ node_modules/

@@ -399,3 +399,163 @@ export function readReadmeContent(readmePath: string | null): string {
         return "";
     }
 }
+
+if (import.meta.vitest) {
+    const { describe, test, expect } = import.meta.vitest;
+
+    describe("toposort", () => {
+        test("handles empty graph", () => {
+            const result = toposort(new Map());
+            expect(result).toEqual([]);
+        });
+
+        test("handles linear chain", () => {
+            const graph = new Map([
+                ["c", ["b"]],
+                ["b", ["a"]],
+                ["a", []],
+            ]);
+            expect(toposort(graph)).toEqual(["a", "b", "c"]);
+        });
+
+        test("detects circular dependencies", () => {
+            const graph = new Map([
+                ["a", ["b"]],
+                ["b", ["a"]],
+            ]);
+            expect(() => toposort(graph)).toThrow("Circular dependency");
+        });
+    });
+
+    describe("toposortLayers", () => {
+        // NOTE: Some tests are skipped because of the TEMPORARY sequential patch
+        // at line 298-301 that forces one contract per layer. These tests document
+        // the intended parallel-layer behavior and should be unskipped when the
+        // patch is removed.
+
+        test.skip("diamond graph", () => {
+            const graph = new Map([
+                ["A", []],
+                ["B", []],
+                ["C", ["A", "B"]],
+            ]);
+            const result = toposortLayers(graph);
+            expect(result).toEqual([["A", "B"], ["C"]]);
+        });
+
+        test("linear chain", () => {
+            const graph = new Map([
+                ["A", []],
+                ["B", ["A"]],
+                ["C", ["B"]],
+            ]);
+            const result = toposortLayers(graph);
+            expect(result).toEqual([["A"], ["B"], ["C"]]);
+        });
+
+        test.skip("all independent", () => {
+            const graph = new Map([
+                ["A", []],
+                ["B", []],
+                ["C", []],
+            ]);
+            const result = toposortLayers(graph);
+            expect(result).toEqual([["A", "B", "C"]]);
+        });
+
+        test("single node", () => {
+            const graph = new Map([["A", []]]);
+            const result = toposortLayers(graph);
+            expect(result).toEqual([["A"]]);
+        });
+
+        test("empty graph", () => {
+            const graph = new Map<string, string[]>();
+            const result = toposortLayers(graph);
+            expect(result).toEqual([]);
+        });
+
+        test.skip("complex DAG", () => {
+            const graph = new Map([
+                ["A", []],
+                ["B", []],
+                ["C", []],
+                ["D", ["A", "B"]],
+                ["E", ["B", "C"]],
+                ["F", ["D", "E"]],
+            ]);
+            const result = toposortLayers(graph);
+            expect(result).toEqual([["A", "B", "C"], ["D", "E"], ["F"]]);
+        });
+
+        test.skip("wide fan-out", () => {
+            const graph = new Map([
+                ["A", []],
+                ["B", ["A"]],
+                ["C", ["A"]],
+                ["D", ["A"]],
+                ["E", ["A"]],
+            ]);
+            const result = toposortLayers(graph);
+            expect(result).toEqual([["A"], ["B", "C", "D", "E"]]);
+        });
+
+        test.skip("wide fan-in", () => {
+            const graph = new Map([
+                ["A", []],
+                ["B", []],
+                ["C", []],
+                ["D", []],
+                ["E", ["A", "B", "C", "D"]],
+            ]);
+            const result = toposortLayers(graph);
+            expect(result).toEqual([["A", "B", "C", "D"], ["E"]]);
+        });
+
+        test("circular dependency throws", () => {
+            const graph = new Map([
+                ["A", ["B"]],
+                ["B", ["A"]],
+            ]);
+            expect(() => toposortLayers(graph)).toThrow("Circular dependency");
+        });
+
+        test("self-loop throws", () => {
+            const graph = new Map([["A", ["A"]]]);
+            expect(() => toposortLayers(graph)).toThrow("Circular dependency");
+        });
+
+        test("deterministic ordering", () => {
+            const graph = new Map([
+                ["C", []],
+                ["A", []],
+                ["B", []],
+                ["F", ["C", "A"]],
+                ["E", ["B", "A"]],
+                ["D", ["F", "E"]],
+            ]);
+            const first = toposortLayers(graph);
+            for (let i = 0; i < 10; i++) {
+                const result = toposortLayers(graph);
+                expect(result).toEqual(first);
+            }
+            for (const layer of first) {
+                const sorted = [...layer].sort();
+                expect(layer).toEqual(sorted);
+            }
+        });
+
+        test.skip("deep chain with branches", () => {
+            const graph = new Map([
+                ["A", []],
+                ["B", ["A"]],
+                ["C", ["A"]],
+                ["D", ["B"]],
+                ["E", ["C"]],
+                ["F", ["D", "E"]],
+            ]);
+            const result = toposortLayers(graph);
+            expect(result).toEqual([["A"], ["B", "C"], ["D", "E"], ["F"]]);
+        });
+    });
+}

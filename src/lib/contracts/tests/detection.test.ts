@@ -1,18 +1,19 @@
-import { describe, test, expect, beforeAll } from "bun:test";
+import { describe, test, expect, beforeAll } from "vitest";
 import {
     detectContracts,
     buildDependencyGraph,
     toposort,
     detectDeploymentOrder,
-} from "@dotdm/contracts";
-import { resolve } from "path";
-import { rmSync } from "fs";
+} from "../src/detection";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { rmSync } from "node:fs";
 
-const TEMPLATE_DIR = resolve(import.meta.dir, "../../../templates/shared-counter");
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMPLATE_DIR = resolve(__dirname, "../../../templates/shared-counter");
 
 describe("detection via cargo metadata", () => {
     beforeAll(() => {
-        // Clean any .cdm.json files from previous builds so tests start fresh
         const targetDir = resolve(TEMPLATE_DIR, "target");
         for (const name of ["counter", "counter_reader", "counter_writer"]) {
             try {
@@ -47,29 +48,5 @@ describe("detection via cargo metadata", () => {
         for (const c of contracts) {
             expect(c.cdmPackage).toBeNull();
         }
-    });
-});
-
-describe("toposort algorithm", () => {
-    test("handles empty graph", () => {
-        const result = toposort(new Map());
-        expect(result).toEqual([]);
-    });
-
-    test("handles linear chain", () => {
-        const graph = new Map([
-            ["c", ["b"]],
-            ["b", ["a"]],
-            ["a", []],
-        ]);
-        expect(toposort(graph)).toEqual(["a", "b", "c"]);
-    });
-
-    test("detects circular dependencies", () => {
-        const graph = new Map([
-            ["a", ["b"]],
-            ["b", ["a"]],
-        ]);
-        expect(() => toposort(graph)).toThrow("Circular dependency");
     });
 });

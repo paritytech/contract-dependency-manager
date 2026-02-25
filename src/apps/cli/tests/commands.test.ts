@@ -1,10 +1,12 @@
-import { describe, test, expect } from "bun:test";
-import { execSync } from "child_process";
-import { existsSync, mkdtempSync, rmSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
+import { describe, test, expect } from "vitest";
+import { execSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const CLI = join(import.meta.dir, "../src/cli.ts");
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const CLI = join(__dirname, "../src/cli.ts");
 
 describe("CLI commands", () => {
     test("cdm --help shows all 4 commands", () => {
@@ -30,21 +32,23 @@ describe("CLI commands", () => {
 
     test("cdm install --help shows options", () => {
         const output = execSync(`bun run ${CLI} install --help`).toString();
-        expect(output).toContain("--registry");
-        expect(output).toContain("--url");
+        expect(output).toContain("--registry-address");
+        expect(output).toContain("--assethub-url");
     });
 
     test("cdm template scaffolds project", () => {
         const tmpDir = mkdtempSync(join(tmpdir(), "cdm-test-"));
         try {
-            execSync(`bun run ${CLI} template shared-counter ${tmpDir}`, { stdio: "pipe" });
+            execSync(`bun run ${CLI} template shared-counter ${tmpDir}`, {
+                stdio: "pipe",
+            });
 
             expect(existsSync(join(tmpDir, "Cargo.toml"))).toBe(true);
             expect(existsSync(join(tmpDir, "contracts/counter/lib.rs"))).toBe(true);
             expect(existsSync(join(tmpDir, "contracts/counter-writer/lib.rs"))).toBe(true);
             expect(existsSync(join(tmpDir, "contracts/counter-reader/lib.rs"))).toBe(true);
-            expect(existsSync(join(tmpDir, "ts/package.json"))).toBe(true);
-            expect(existsSync(join(tmpDir, "ts/src/validate.ts"))).toBe(true);
+            expect(existsSync(join(tmpDir, "package.json"))).toBe(true);
+            expect(existsSync(join(tmpDir, "src/index.ts"))).toBe(true);
         } finally {
             rmSync(tmpDir, { recursive: true, force: true });
         }

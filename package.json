@@ -7,7 +7,7 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "clean": "turbo clean",
-    "test": "turbo test",
+    "test": "vitest run",
     "postinstall": "cd src/lib/descriptors && papi",
     "format": "biome format --write .",
     "format:check": "biome format ."
@@ -17,6 +17,7 @@
     "@changesets/cli": "^2.29.8",
     "polkadot-api": "catalog:",
     "turbo": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

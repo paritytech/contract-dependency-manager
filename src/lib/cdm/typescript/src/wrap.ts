@@ -87,7 +87,7 @@ export function wrapContract(
                             "No signer provided for tx. Pass { signer } or set defaultSigner.",
                         );
 
-                    const origin = defaults.origin;
+                    const origin = overrides?.origin ?? defaults.origin;
                     const tx = papiContract.send(methodName, {
                         data,
                         origin: origin ?? "",
