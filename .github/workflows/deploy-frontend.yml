@@ -1,6 +1,18 @@
 name: Deploy Frontend
 
-on: workflow_dispatch
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+    workflow_dispatch:
+        inputs:
+            skip-cache:
+                description: "Skip deployment cache and force redeploy"
+                type: boolean
+                default: false
 
 permissions:
     contents: read
@@ -38,16 +50,90 @@ jobs:
                   path: src/apps/frontend/dist
                   retention-days: 1
 
+    comment-deploying:
+        needs: build
+        if: github.event_name == 'pull_request'
+        runs-on: ubuntu-latest
+        name: Comment Deploying
+        steps:
+            - name: Comment deployment in progress
+              uses: marocchino/sticky-pull-request-comment@v2
+              with:
+                  header: deploy-preview
+                  message: |
+                      ## Preview Deployment
+
+                      | App | Status |
+                      |:---:|:------:|
+                      | Frontend | Deploying... |
+
+                      <sub>Deployment in progress. This comment will update when ready. [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})</sub>
+
     deploy:
         needs: build
         name: Deploy
-        uses: ./.github/workflows/dotns-deploy.yml
+        uses: paritytech/dotns-sdk/.github/workflows/deploy.yml@main
         with:
-            basename: contracthub
-            artifact-name: frontend-build
+            basename: contracts
             mode: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'production' || 'preview' }}
+            artifact-name: frontend-build
             register-base: true
+            skip-cache: ${{ inputs.skip-cache || false }}
             max-retries: 3
         secrets:
-            mnemonic: ${{ secrets.MNEMONIC || 'bottom drive obey lake curtain smoke basket hold race lonely fit walk' }}
-            dotns-token: ${{ secrets.DOTNS_TOKEN }}
+            dotns-mnemonic: ${{ secrets.MNEMONIC }}
+
+    comment-success:
+        needs: [build, deploy]
+        if: github.event_name == 'pull_request' && success()
+        runs-on: ubuntu-latest
+        name: Comment Success
+        steps:
+            - name: Comment on PR
+              uses: marocchino/sticky-pull-request-comment@v2
+              with:
+                  header: deploy-preview
+                  message: |
+                      ## Preview Deployment Ready!
+
+                      | App | Status | Preview |
+                      |:---:|:------:|:-------:|
+                      | **Frontend** | Ready | [**Visit Preview**](${{ needs.deploy.outputs.url }}) |
+
+                      <details>
+                      <summary>Deployment Details</summary>
+
+                      | Detail | Value |
+                      |--------|-------|
+                      | **Domain** | `${{ needs.deploy.outputs.fqdn }}` |
+                      | **CID** | `${{ needs.deploy.outputs.cid }}` |
+                      | **Commit** | [`${{ github.event.pull_request.head.sha }}`](${{ github.event.pull_request.head.repo.html_url }}/commit/${{ github.event.pull_request.head.sha }}) |
+                      | **Branch** | `${{ github.head_ref }}` |
+
+                      </details>
+
+                      ---
+                      <sub>This preview updates automatically on each push to this PR. [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})</sub>
+
+    comment-failure:
+        needs: [build, deploy]
+        if: github.event_name == 'pull_request' && failure()
+        runs-on: ubuntu-latest
+        name: Comment Failure
+        steps:
+            - name: Comment on PR
+              uses: marocchino/sticky-pull-request-comment@v2
+              with:
+                  header: deploy-preview
+                  message: |
+                      ## Preview Deployment Failed
+
+                      | Stage | Status |
+                      |:------|:------:|
+                      | **Build** | ${{ needs.build.result == 'success' && 'Built' || needs.build.result == 'skipped' && 'Skipped' || 'Failed' }} |
+                      | **Deploy** | ${{ needs.deploy.result == 'success' && 'Deployed' || needs.deploy.result == 'skipped' && 'Skipped' || 'Failed' }} |
+
+                      [**View workflow run**](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+                      ---
+                      <sub>Fix any issues and push again to retry.</sub>
