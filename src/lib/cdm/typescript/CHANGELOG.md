@@ -1,5 +1,11 @@
 # @dotdm/cdm
 
+## 0.2.0
+
+### Minor Changes
+
+- af2bb25: Add `value`, `gasLimit`, and `storageDepositLimit` to `TxOpts`, enabling payable contract method calls and custom gas/storage configuration through CDM's `.tx()` and `.query()` wrappers.
+
 ## 0.1.3
 
 ### Patch Changes
