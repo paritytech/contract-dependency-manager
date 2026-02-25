@@ -81,7 +81,6 @@ if command -v fish >/dev/null 2>&1; then
   echo "fish PATH configured"
 fi
 
-echo "Restart your shell or open a new terminal to use cdm."
 echo ""
 echo -e "\033[1mcdm template shared-counter\033[0m"
 echo -e "\033[1mcdm deploy -n preview-net\033[0m"
