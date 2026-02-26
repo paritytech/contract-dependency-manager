@@ -14,14 +14,14 @@ export const KNOWN_CHAINS: Record<string, ChainPreset> = {
     },
     paseo: {
         assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
-        bulletinUrl: "wss://bulletin.dotspark.app",
+        bulletinUrl: "wss://paseo-bulletin-rpc.polkadot.io",
         ipfsGatewayUrl: "https://ipfs.dotspark.app/ipfs",
         registryAddress: "0xd984e8407838138eff926814b802a66f3938017f",
     },
     "preview-net": {
         assethubUrl: "wss://previewnet.substrate.dev/asset-hub",
-        bulletinUrl: "wss://bulletin.dotspark.app",
-        ipfsGatewayUrl: "https://ipfs.dotspark.app/ipfs",
+        bulletinUrl: "wss://previewnet.substrate.dev/bulletin",
+        ipfsGatewayUrl: "https://previewnet.substrate.dev/ipfs/",
         registryAddress: "0x5801b439a678d9d3a68b8019da6a4abfa507de11",
     },
     local: {

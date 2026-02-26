@@ -4,16 +4,8 @@ TEMPLATE_DIR = src/templates/shared-counter
 .PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test clean format format-check format-ts format-rs format-ts-check format-rs-check
 
 setup:
-	curl -sL https://raw.githubusercontent.com/paritytech/ppn-proxy/main/install.sh | bash
 	pnpm install
 	$(MAKE) build-template
-
-generate-papi:
-	cd src/lib/descriptors && pnpm exec papi add relay -n polkadot --skip-codegen
-	cd src/lib/descriptors && pnpm exec papi add bulletin --wasm ../../../ppn/bin/bulletin_westend_runtime.wasm --skip-codegen
-	cd src/lib/descriptors && pnpm exec papi add individuality --wasm ../../../ppn/bin/people_westend_individuality_runtime.wasm --skip-codegen
-	cd src/lib/descriptors && pnpm exec papi add assetHub --wasm ../../../ppn/bin/asset_hub_westend_runtime.wasm --skip-codegen
-	cd src/lib/descriptors && pnpm exec papi
 
 start-network:
 	cd ppn && make start
