@@ -10,7 +10,7 @@ const DISPLAY_NAMES: Record<string, string> = {
     custom: "Custom",
 };
 
-const NETWORK_OPTIONS = ["preview-net", "paseo", "polkadot", "local", "custom"];
+const NETWORK_OPTIONS = ["paseo", "preview-net", "polkadot", "local", "custom"];
 
 export default function NetworkConfig() {
     const {

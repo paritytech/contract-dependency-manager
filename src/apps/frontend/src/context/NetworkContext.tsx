@@ -40,14 +40,12 @@ export function useNetwork(): NetworkContextType {
 }
 
 export function NetworkProvider({ children }: { children: React.ReactNode }) {
-    const [network, setNetworkState] = useState("preview-net");
-    const [assethubUrl, setAssethubUrl] = useState(NETWORK_PRESETS["preview-net"].assethubUrl);
-    const [bulletinUrl, setBulletinUrl] = useState(NETWORK_PRESETS["preview-net"].bulletinUrl);
-    const [ipfsGatewayUrl, setIpfsGatewayUrl] = useState(
-        NETWORK_PRESETS["preview-net"].ipfsGatewayUrl,
-    );
+    const [network, setNetworkState] = useState("paseo");
+    const [assethubUrl, setAssethubUrl] = useState(NETWORK_PRESETS["paseo"].assethubUrl);
+    const [bulletinUrl, setBulletinUrl] = useState(NETWORK_PRESETS["paseo"].bulletinUrl);
+    const [ipfsGatewayUrl, setIpfsGatewayUrl] = useState(NETWORK_PRESETS["paseo"].ipfsGatewayUrl);
     const [registryAddress, setRegistryAddress] = useState(
-        NETWORK_PRESETS["preview-net"].registryAddress ?? "",
+        NETWORK_PRESETS["paseo"].registryAddress ?? "",
     );
     const [registry, setRegistry] = useState<RegistryContract | null>(null);
     const [connected, setConnected] = useState(false);

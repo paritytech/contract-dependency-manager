@@ -19,6 +19,7 @@ start-network:
 	cd ppn && make start
 
 install: embed-templates
+	pnpm -r build
 	bun build --compile $(CLI_DIR)/src/cli.ts --outfile ~/.cdm/bin/cdm
 
 dev: embed-templates
