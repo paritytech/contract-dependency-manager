@@ -1,5 +1,11 @@
 # @dotdm/cli
 
+## 0.1.9
+
+### Patch Changes
+
+- 787ae34: Add rust-toolchain.toml to shared-counter template to fix builds on stable Rust
+
 ## 0.1.8
 
 ### Patch Changes
