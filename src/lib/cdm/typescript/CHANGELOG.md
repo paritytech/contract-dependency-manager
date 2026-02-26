@@ -1,5 +1,11 @@
 # @dotdm/cdm
 
+## 0.2.3
+
+### Patch Changes
+
+- c534754: Fix ws-provider import path from `polkadot-api/ws-provider/node` to `polkadot-api/ws-provider`
+
 ## 0.2.2
 
 ### Patch Changes

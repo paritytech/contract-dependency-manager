@@ -1,5 +1,12 @@
 # @dotdm/cli
 
+## 0.1.10
+
+### Patch Changes
+
+- Updated dependencies [c534754]
+  - @dotdm/cdm@0.2.3
+
 ## 0.1.9
 
 ### Patch Changes
