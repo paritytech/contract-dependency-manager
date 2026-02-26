@@ -1,5 +1,5 @@
 import { createClient } from "polkadot-api";
-import { getWsProvider } from "polkadot-api/ws-provider/node";
+import { getWsProvider } from "polkadot-api/ws-provider";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import type { PolkadotClient, SS58String, PolkadotSigner, HexString } from "polkadot-api";
