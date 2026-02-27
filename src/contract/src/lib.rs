@@ -4,8 +4,12 @@
 use alloc::string::String;
 use parity_scale_codec::{Decode, Encode};
 use pvm::storage::Mapping;
-use pvm::{Address, caller};
+use pvm::{Address, ReturnFlags, caller};
 use pvm_contract as pvm;
+
+fn revert(msg: &[u8]) -> ! {
+    pvm::api::return_value(ReturnFlags::REVERT, msg)
+}
 
 pub type Version = u32;
 
@@ -74,16 +78,16 @@ mod contract_registry {
             }
         };
 
-        // Abort if not owner
+        // Only the owner can publish under this name
         if info.owner != caller {
-            return;
+            revert(b"Unauthorized");
         }
 
         // Increment version count & save info
-        info.version_count = info
-            .version_count
-            .checked_add(1)
-            .expect("publish_latest: version_count overflow");
+        info.version_count = match info.version_count.checked_add(1) {
+            Some(v) => v,
+            None => revert(b"VersionOverflow"),
+        };
         Storage::info().insert(&contract_name, &info);
 
         // Store published contract data at latest version index

@@ -21,8 +21,8 @@ export const KNOWN_CHAINS: Record<string, ChainPreset> = {
     paseo: {
         assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
         bulletinUrl: "wss://paseo-bulletin-rpc.polkadot.io",
-        ipfsGatewayUrl: "https://ipfs.dotspark.app/ipfs",
-        registryAddress: "0xd984e8407838138eff926814b802a66f3938017f",
+        ipfsGatewayUrl: "https://paseo-ipfs.polkadot.io/ipfs",
+        registryAddress: "0xede6d5f092de34152f8952baa99a35363ed087c0",
         faucets: [
             { label: "Asset Hub", url: "https://faucet.polkadot.io/" },
             {

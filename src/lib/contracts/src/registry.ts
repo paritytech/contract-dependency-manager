@@ -52,6 +52,11 @@ export class RegistryManager {
             })
             .signAndSubmit(this.signer);
 
+        const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
+        if (failures.length > 0) {
+            throw new Error(`Register failed: ${stringifyBigInt(failures[0])}`);
+        }
+
         return { txHash: result.txHash, blockHash: result.block.hash };
     }
 
