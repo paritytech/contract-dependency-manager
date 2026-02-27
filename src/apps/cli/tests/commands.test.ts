@@ -9,12 +9,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI = join(__dirname, "../src/cli.ts");
 
 describe("CLI commands", () => {
-    test("cdm --help shows all 4 commands", () => {
+    test("cdm --help shows all commands", () => {
         const output = execSync(`bun run ${CLI} --help`).toString();
         expect(output).toContain("build");
         expect(output).toContain("deploy");
         expect(output).toContain("install");
         expect(output).toContain("template");
+        expect(output).toContain("init");
+        expect(output).toContain("account");
     });
 
     test("cdm build --help shows options", () => {

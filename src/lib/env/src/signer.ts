@@ -16,8 +16,21 @@ export function prepareSigner(name: string) {
 }
 
 /**
+ * Prepares a signer from a mnemonic phrase.
+ * Derives sr25519 keypair from the mnemonic with no derivation path.
+ */
+export function prepareSignerFromMnemonic(mnemonic: string) {
+    const entropy = mnemonicToEntropy(mnemonic);
+    const miniSecret = entropyToMiniSecret(entropy);
+    const derive = sr25519CreateDerive(miniSecret);
+    const hdkdKeyPair = derive("");
+
+    return getPolkadotSigner(hdkdKeyPair.publicKey, "Sr25519", hdkdKeyPair.sign);
+}
+
+/**
  * Prepares a signer from a secret URI (SURI).
- * Format: "//Alice" for dev accounts or a full mnemonic + derivation path.
+ * Format: "//Alice" for dev accounts or a full mnemonic.
  */
 export function prepareSignerFromSuri(suri: string) {
     // Simple case: dev account shorthand like "//Alice"
@@ -25,9 +38,6 @@ export function prepareSignerFromSuri(suri: string) {
         return prepareSigner(suri.slice(2));
     }
 
-    // For now, just support dev accounts
-    // TODO: Support full mnemonics with derivation paths
-    throw new Error(
-        "Custom SURI not yet supported. Use dev account names like 'Alice' or '//Alice'",
-    );
+    // Full mnemonic
+    return prepareSignerFromMnemonic(suri);
 }

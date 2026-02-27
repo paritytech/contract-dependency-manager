@@ -8,6 +8,10 @@
         ".": {
             "types": "./dist/index.d.ts",
             "import": "./dist/index.js"
+        },
+        "./accounts": {
+            "types": "./dist/accounts.d.ts",
+            "import": "./dist/accounts.js"
         }
     },
     "files": ["dist"],
@@ -18,7 +22,12 @@
         "build": "tsc -p tsconfig.json",
         "clean": "rm -rf dist"
     },
+    "dependencies": {
+        "@polkadot-labs/hdkd": "catalog:",
+        "@polkadot-labs/hdkd-helpers": "catalog:"
+    },
     "devDependencies": {
+        "@types/node": "catalog:",
         "typescript": "catalog:"
     }
 }

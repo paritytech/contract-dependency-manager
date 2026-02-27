@@ -5,8 +5,11 @@ import {
     connectAssetHubWebSocket,
     connectBulletinWebSocket,
     prepareSigner,
+    prepareSignerFromSuri,
+    prepareSignerFromMnemonic,
     getChainPreset,
 } from "@dotdm/env";
+import { getAccount } from "@dotdm/utils/accounts";
 import {
     ContractDeployer,
     MetadataPublisher,
@@ -19,7 +22,7 @@ const deploy = new Command("deploy")
     .description("Deploy and register contracts")
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
     .option("--bulletin-url <url>", "WebSocket URL for Bulletin chain")
-    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, preview-net, local, custom)")
+    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, local, custom)")
     .option(
         "--registry-address <address>",
         "Registry contract address (required unless --bootstrap)",
@@ -40,6 +43,22 @@ type DeployOptions = {
     suri?: string;
     bootstrap: boolean;
 };
+
+/**
+ * Resolve signer: --suri >> accounts.json >> Alice
+ */
+function resolveSigner(opts: DeployOptions) {
+    if (opts.suri) {
+        return prepareSignerFromSuri(opts.suri);
+    }
+    if (opts.name) {
+        const account = getAccount(opts.name);
+        if (account) {
+            return prepareSignerFromMnemonic(account.mnemonic);
+        }
+    }
+    return prepareSigner("Alice");
+}
 
 deploy.action(async (opts: DeployOptions) => {
     // Resolve chain preset
@@ -109,8 +128,7 @@ async function deployWithRegistry(
         api = existingConnections.api;
         ownsAssetHub = false;
     } else {
-        const signerName = opts.suri?.startsWith("//") ? opts.suri.slice(2) : undefined;
-        signer = prepareSigner(signerName ?? "Alice");
+        signer = resolveSigner(opts);
 
         const sp = spinner("AssetHub", opts.assethubUrl!);
         const conn = connectAssetHubWebSocket(opts.assethubUrl!);
@@ -169,8 +187,7 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     }
 
     // Prepare signer
-    const signerName = opts.suri?.startsWith("//") ? opts.suri.slice(2) : undefined;
-    const signer = prepareSigner(signerName ?? "Alice");
+    const signer = resolveSigner(opts);
 
     // Connect to Asset Hub
     const sp1 = spinner("AssetHub", opts.assethubUrl!);

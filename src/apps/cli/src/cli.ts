@@ -16,6 +16,8 @@ import { buildCommand } from "./commands/build";
 import { deployCommand } from "./commands/deploy";
 import { installCommand } from "./commands/install";
 import { templateCommand } from "./commands/template";
+import { initCommand } from "./commands/init";
+import { accountCommand } from "./commands/account";
 
 const program = new Command();
 
@@ -28,5 +30,7 @@ program.addCommand(buildCommand);
 program.addCommand(deployCommand);
 program.addCommand(installCommand);
 program.addCommand(templateCommand);
+program.addCommand(initCommand);
+program.addCommand(accountCommand);
 
 program.parse();
