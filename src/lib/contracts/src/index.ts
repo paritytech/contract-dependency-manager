@@ -49,6 +49,7 @@ export {
 } from "./store";
 
 export {
+    type CdmJsonContract,
     type CdmJsonTarget,
     type CdmJson,
     computeTargetHash,

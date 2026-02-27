@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { readCdmJson } from "@dotdm/contracts";
-import { resolveContract, generateContractTypes } from "@dotdm/cdm";
+import { generateContractTypes } from "@dotdm/cdm";
 import type { InstallResult } from "./index";
 
 const CDM_INCLUDE = ".cdm/**/*";
@@ -60,17 +60,14 @@ export async function postInstallTypeScript(result: InstallResult): Promise<void
     const cdmResult = readCdmJson();
     if (!cdmResult) return;
 
-    const deps = cdmResult.cdmJson.dependencies[result.targetHash] ?? {};
+    const contractsForTarget = cdmResult.cdmJson.contracts?.[result.targetHash];
+    if (!contractsForTarget) return;
 
-    // Collect all contracts for this target, skipping any that failed to install
-    const contracts = Object.entries(deps).flatMap(([lib, ver]) => {
-        try {
-            const resolved = resolveContract(result.targetHash, lib, ver);
-            return [{ library: lib, abi: resolved.abi }];
-        } catch {
-            return [];
-        }
-    });
+    // Collect all contracts for this target from embedded data
+    const contracts = Object.entries(contractsForTarget).map(([lib, data]) => ({
+        library: lib,
+        abi: data.abi as any[],
+    }));
 
     if (contracts.length === 0) return;
 

@@ -8,9 +8,17 @@ export interface CdmJsonTarget {
     registry: string;
 }
 
+export interface CdmJsonContract {
+    version: number;
+    address: string;
+    abi: unknown[];
+    metadataCid: string;
+}
+
 export interface CdmJson {
     targets: Record<string, CdmJsonTarget>;
-    dependencies: Record<string, Record<string, number | "latest">>;
+    dependencies: Record<string, Record<string, number | string>>;
+    contracts?: Record<string, Record<string, CdmJsonContract>>;
 }
 
 export function computeTargetHash(

@@ -60,7 +60,7 @@ type InstallOptions = {
 install.action(async (libraries: string[], opts: InstallOptions) => {
     // Read cdm.json early so its target info can fill in missing options
     const cdmResult = readCdmJson();
-    const cdmJson = cdmResult?.cdmJson ?? { targets: {}, dependencies: {} };
+    const cdmJson = cdmResult?.cdmJson ?? { targets: {}, dependencies: {}, contracts: {} };
 
     // Resolve chain preset
     if (opts.name && opts.name !== "custom") {
@@ -165,11 +165,20 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         ipfsGatewayUrl: opts.ipfsGatewayUrl,
     });
 
-    // Update cdm.json dependencies for successful installs
+    // Update cdm.json dependencies and contracts for successful installs
+    if (!cdmJson.contracts) cdmJson.contracts = {};
+    if (!cdmJson.contracts[targetHash]) cdmJson.contracts[targetHash] = {};
+
     for (const result of results) {
         const entry = toInstall.find((t) => t.library === result.library);
         if (entry) {
             cdmJson.dependencies[targetHash][result.library] = entry.requestedVersion;
+            cdmJson.contracts[targetHash][result.library] = {
+                version: result.version,
+                address: result.address,
+                abi: result.abi,
+                metadataCid: result.metadataCid,
+            };
         }
     }
 
