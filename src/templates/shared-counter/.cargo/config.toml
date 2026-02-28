@@ -2,7 +2,7 @@
 target = ".cargo/riscv64emac-unknown-none-polkavm.json"
 
 [unstable]
-build-std = ["core", "alloc"]
+build-std = ["core", "alloc", "test"]
 
 [env]
 RUSTC_BOOTSTRAP = "1"

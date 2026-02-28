@@ -81,6 +81,12 @@ if command -v fish >/dev/null 2>&1; then
   echo "fish PATH configured"
 fi
 
+# 8) Make cdm available in the current session
+export PATH="$HOME/.cdm/bin:$HOME/.local/bin:$PATH"
+
 echo ""
+echo "cdm is ready! Try:"
 echo -e "\033[1mcdm template shared-counter\033[0m"
-echo -e "\033[1mcdm deploy -n preview-net\033[0m"
+echo -e "\033[1mcdm init\033[0m"
+echo -e "\033[1mcdm account map -n paseo\033[0m"
+echo -e "\033[1mcdm deploy -n paseo\033[0m"
