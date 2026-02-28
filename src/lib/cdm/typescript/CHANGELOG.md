@@ -1,5 +1,15 @@
 # @dotdm/cdm
 
+## 0.3.4
+
+### Patch Changes
+
+- 7507475: Add json-target-spec to .cargo/config.toml for newer nightly Rust compatibility
+- Updated dependencies [7507475]
+  - @dotdm/utils@0.2.3
+  - @dotdm/contracts@0.2.4
+  - @dotdm/env@0.2.3
+
 ## 0.3.3
 
 ### Patch Changes
