@@ -8,8 +8,10 @@ import {
     prepareSignerFromSuri,
     prepareSignerFromMnemonic,
     getChainPreset,
+    ss58Address,
 } from "@dotdm/env";
 import { getAccount } from "@dotdm/utils/accounts";
+import { ALICE_SS58 } from "@dotdm/utils";
 import {
     ContractDeployer,
     MetadataPublisher,
@@ -46,18 +48,26 @@ type DeployOptions = {
 
 /**
  * Resolve signer: --suri >> accounts.json >> Alice
+ * Returns both the signer and the SS58 origin address for dry-run queries.
  */
-function resolveSigner(opts: DeployOptions) {
+function resolveSigner(opts: DeployOptions): {
+    signer: ReturnType<typeof prepareSigner>;
+    origin: string;
+} {
     if (opts.suri) {
-        return prepareSignerFromSuri(opts.suri);
+        const signer = prepareSignerFromSuri(opts.suri);
+        return { signer, origin: ss58Address(signer.publicKey) };
     }
     if (opts.name) {
         const account = getAccount(opts.name);
         if (account) {
-            return prepareSignerFromMnemonic(account.mnemonic);
+            return {
+                signer: prepareSignerFromMnemonic(account.mnemonic),
+                origin: account.address,
+            };
         }
     }
-    return prepareSigner("Alice");
+    return { signer: prepareSigner("Alice"), origin: ALICE_SS58 };
 }
 
 deploy.action(async (opts: DeployOptions) => {
@@ -113,22 +123,25 @@ async function deployWithRegistry(
     opts: DeployOptions,
     existingConnections?: {
         signer: ReturnType<typeof prepareSigner>;
+        origin: string;
         client: ReturnType<typeof connectAssetHubWebSocket>["client"];
         api: ReturnType<typeof connectAssetHubWebSocket>["api"];
     },
 ): Promise<Record<string, string>> {
     let signer: ReturnType<typeof prepareSigner>;
+    let origin: string;
     let client: ReturnType<typeof connectAssetHubWebSocket>["client"];
     let api: ReturnType<typeof connectAssetHubWebSocket>["api"];
     let ownsAssetHub: boolean;
 
     if (existingConnections) {
         signer = existingConnections.signer;
+        origin = existingConnections.origin;
         client = existingConnections.client;
         api = existingConnections.api;
         ownsAssetHub = false;
     } else {
-        signer = resolveSigner(opts);
+        ({ signer, origin } = resolveSigner(opts));
 
         const sp = spinner("AssetHub", opts.assethubUrl!);
         const conn = connectAssetHubWebSocket(opts.assethubUrl!);
@@ -147,7 +160,7 @@ async function deployWithRegistry(
 
     const deployer = new ContractDeployer(signer, client, api);
     const publisher = new MetadataPublisher(signer, bulletinConn.api);
-    const registry = new RegistryManager(signer, api, client, registryAddr);
+    const registry = new RegistryManager(signer, origin, api, client, registryAddr);
 
     console.log(`\x1b[1mRegistry\x1b[0m   ${registryAddr}\n`);
 
@@ -187,7 +200,7 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     }
 
     // Prepare signer
-    const signer = resolveSigner(opts);
+    const { signer, origin } = resolveSigner(opts);
 
     // Connect to Asset Hub
     const sp1 = spinner("AssetHub", opts.assethubUrl!);
@@ -220,6 +233,7 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     // Phase 2+3: Build and deploy all CDM contracts
     const addresses = await deployWithRegistry(registryAddr, rootDir, opts, {
         signer,
+        origin,
         client,
         api,
     });

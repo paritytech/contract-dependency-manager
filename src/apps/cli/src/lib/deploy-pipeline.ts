@@ -149,7 +149,7 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
 
         // 2b. Refresh CDM package info from build artifacts (.cdm.json generated during build)
         for (const crate of runnable) {
-            if (!failedCrates.has(crate) && !order.cdmPackageMap.has(crate)) {
+            if (!failedCrates.has(crate)) {
                 const cdmPkg = readCdmPackage(opts.rootDir, crate);
                 if (cdmPkg) {
                     order.cdmPackageMap.set(crate, cdmPkg);

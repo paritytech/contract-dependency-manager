@@ -1,6 +1,13 @@
 import { getPolkadotSigner } from "polkadot-api/signer";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
-import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy } from "@polkadot-labs/hdkd-helpers";
+import {
+    DEV_PHRASE,
+    entropyToMiniSecret,
+    mnemonicToEntropy,
+    ss58Address,
+} from "@polkadot-labs/hdkd-helpers";
+
+export { ss58Address };
 
 /**
  * Prepares a signer from a dev account name (e.g., "Alice", "Bob").

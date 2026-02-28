@@ -11,4 +11,9 @@ export {
     connectIpfsGateway,
 } from "./connection";
 
-export { prepareSigner, prepareSignerFromSuri, prepareSignerFromMnemonic } from "./signer";
+export {
+    prepareSigner,
+    prepareSignerFromSuri,
+    prepareSignerFromMnemonic,
+    ss58Address,
+} from "./signer";
