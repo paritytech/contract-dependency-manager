@@ -1,5 +1,11 @@
 # @dotdm/utils
 
+## 0.2.2
+
+### Patch Changes
+
+- ef832d0: updated template
+
 ## 0.2.1
 
 ### Patch Changes

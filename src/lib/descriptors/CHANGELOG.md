@@ -1,5 +1,11 @@
 # @dotdm/descriptors
 
+## 0.1.2
+
+### Patch Changes
+
+- ef832d0: updated template
+
 ## 0.1.1
 
 ### Patch Changes

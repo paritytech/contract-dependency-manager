@@ -1,5 +1,15 @@
 # @dotdm/cdm
 
+## 0.3.3
+
+### Patch Changes
+
+- ef832d0: updated template
+- Updated dependencies [ef832d0]
+  - @dotdm/utils@0.2.2
+  - @dotdm/contracts@0.2.3
+  - @dotdm/env@0.2.2
+
 ## 0.3.2
 
 ### Patch Changes

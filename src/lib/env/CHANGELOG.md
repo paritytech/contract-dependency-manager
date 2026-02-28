@@ -1,5 +1,14 @@
 # @dotdm/env
 
+## 0.2.2
+
+### Patch Changes
+
+- ef832d0: updated template
+- Updated dependencies [ef832d0]
+  - @dotdm/utils@0.2.2
+  - @dotdm/descriptors@0.1.2
+
 ## 0.2.1
 
 ### Patch Changes
