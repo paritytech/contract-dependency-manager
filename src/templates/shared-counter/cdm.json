@@ -1,16 +1,106 @@
 {
   "targets": {
-    "5c8dab1013ef5e47": {
+    "e3e86a66aadc74a1": {
       "asset-hub": "wss://asset-hub-paseo-rpc.n.dwellir.com",
-      "bulletin": "https://ipfs.dotspark.app/ipfs",
-      "registry": "0xd984e8407838138eff926814b802a66f3938017f"
+      "bulletin": "https://paseo-ipfs.polkadot.io/ipfs",
+      "registry": "0xede6d5f092de34152f8952baa99a35363ed087c0"
     }
   },
   "dependencies": {
-    "5c8dab1013ef5e47": {
+    "e3e86a66aadc74a1": {
       "@example/counter": "latest",
       "@example/counter-writer": "latest",
       "@example/counter-reader": "latest"
+    }
+  },
+  "contracts": {
+    "e3e86a66aadc74a1": {
+      "@example/counter": {
+        "version": 0,
+        "address": "0xC47274C987491d58b99747F344AE661986B580E8",
+        "abi": [
+          {
+            "type": "constructor",
+            "inputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "increment",
+            "inputs": [],
+            "outputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "getCount",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "",
+                "type": "uint32"
+              }
+            ],
+            "stateMutability": "view"
+          }
+        ],
+        "metadataCid": "bafk2bzacedfjnsqjwbzbuvqgelzp5g7klbipuksnsepf3efit55u5l4dsyjkq"
+      },
+      "@example/counter-writer": {
+        "version": 0,
+        "address": "0xF0cfa61E013aa6E64AbDF15FA8f1E6739B060Bd0",
+        "abi": [
+          {
+            "type": "constructor",
+            "inputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "writeIncrement",
+            "inputs": [],
+            "outputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "writeIncrementN",
+            "inputs": [
+              {
+                "name": "n",
+                "type": "uint32"
+              }
+            ],
+            "outputs": [],
+            "stateMutability": "nonpayable"
+          }
+        ],
+        "metadataCid": "bafk2bzacebcwes6powrpuyhv5dpemnavts3xylrbaqimr4qebbkyvdu5vsbyq"
+      },
+      "@example/counter-reader": {
+        "version": 0,
+        "address": "0x45D71e0475F675816380e36e384fF69ebF503Ad1",
+        "abi": [
+          {
+            "type": "constructor",
+            "inputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "readCount",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "",
+                "type": "uint32"
+              }
+            ],
+            "stateMutability": "view"
+          }
+        ],
+        "metadataCid": "bafk2bzaceaadlofrckys7rtqhaa5j5udfcto2eay4hh4u7tmtm5wh44tejaiw"
+      }
     }
   }
 }
