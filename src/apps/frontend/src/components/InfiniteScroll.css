@@ -1,0 +1,10 @@
+.infinite-scroll-sentinel {
+    height: 4px;
+}
+
+.infinite-scroll-loading {
+    text-align: center;
+    padding: 20px;
+    color: var(--color-text-tertiary);
+    font-size: 0.875rem;
+}

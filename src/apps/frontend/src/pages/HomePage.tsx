@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import Layout from "../components/Layout";
 import PackageCard from "../components/PackageCard";
+import InfiniteScroll from "../components/InfiniteScroll";
 import GrainCanvas from "../components/GrainCanvas";
 import { CopyIcon, CheckIcon } from "../components/Icons";
 import { useNetwork } from "../context/NetworkContext";
@@ -18,34 +19,9 @@ export default function HomePage() {
         loadMore,
     } = useRegistry();
     const [copied, setCopied] = useState(false);
-    const sentinelRef = useRef<HTMLDivElement>(null);
 
     const installCmd = "curl -fsSL https://contracts.paseo.li/install | bash";
     const error = networkError || registryError;
-
-    const loadMoreRef = useRef(loadMore);
-    loadMoreRef.current = loadMore;
-    const hasMoreRef = useRef(hasMore);
-    hasMoreRef.current = hasMore;
-    const loadingRef = useRef(loading);
-    loadingRef.current = loading;
-
-    useEffect(() => {
-        const sentinel = sentinelRef.current;
-        if (!sentinel) return;
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
-                    loadMoreRef.current();
-                }
-            },
-            { threshold: 0 },
-        );
-
-        observer.observe(sentinel);
-        return () => observer.disconnect();
-    }, []);
 
     const handleCopy = () => {
         navigator.clipboard.writeText(installCmd);
@@ -115,15 +91,13 @@ export default function HomePage() {
                         <p>No contracts found.</p>
                     </div>
                 ) : (
-                    <>
+                    <InfiniteScroll hasMore={hasMore} loading={loading} loadMore={loadMore}>
                         <div className="featured-grid">
                             {packages.map((pkg) => (
                                 <PackageCard key={pkg.name} pkg={pkg} />
                             ))}
                         </div>
-                        <div ref={sentinelRef} className="scroll-sentinel" />
-                        {loading && <div className="loading-more">Loading more...</div>}
-                    </>
+                    </InfiniteScroll>
                 )}
             </section>
         </Layout>

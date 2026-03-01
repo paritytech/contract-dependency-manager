@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNetwork } from "../context/NetworkContext";
 import type { Package, AbiEntry } from "../data/types";
 import { ALICE_SS58 } from "@dotdm/utils";
 import { connectIpfsGateway } from "@dotdm/env";
+import { useInfiniteLoad } from "./useInfiniteLoad";
 
 const PAGE_SIZE = 10;
 
@@ -23,60 +24,24 @@ export function useRegistry() {
         network,
         ipfsGatewayUrl,
     } = useNetwork();
-    const [packages, setPackages] = useState<Package[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [queryError, setQueryError] = useState<string | null>(null);
-    const [totalCount, setTotalCount] = useState(0);
-    const nextIndex = useRef(-1);
-    const metadataAttempted = useRef<Set<string>>(new Set());
 
-    // Reset when registry changes
-    useEffect(() => {
-        setPackages([]);
-        setQueryError(null);
-        setTotalCount(0);
-        nextIndex.current = -1;
-        metadataAttempted.current = new Set();
+    // Phase 1: Paginated on-chain data via useInfiniteLoad
+    const fetchCount = useCallback(async () => {
+        if (!registry) throw new Error("Registry not connected");
+        const result = await registry.query("getContractCount", {
+            origin: ALICE_SS58,
+            data: {},
+        });
+        if (!result.success) throw new Error("Failed to query contract count");
+        return result.value.response;
     }, [registry]);
 
-    // Phase 1: Load on-chain data only (fast)
-    const loadBatch = useCallback(async () => {
-        if (!registry || !connected) return;
+    const fetchPage = useCallback(
+        async (start: number, count: number) => {
+            if (!registry) throw new Error("Registry not connected");
 
-        setLoading(true);
-        setQueryError(null);
-
-        try {
-            // Get total count if we don't have it yet
-            let count = totalCount;
-            if (count === 0) {
-                const countResult = await registry.query("getContractCount", {
-                    origin: ALICE_SS58,
-                    data: {},
-                });
-                if (!countResult.success) {
-                    throw new Error("Failed to query contract count");
-                }
-                count = countResult.value.response;
-                setTotalCount(count);
-            }
-
-            if (count === 0) {
-                setLoading(false);
-                return;
-            }
-
-            // On first load, start from the newest contract
-            if (nextIndex.current === -1) {
-                nextIndex.current = count - 1;
-            }
-
-            const start = nextIndex.current;
-            const end = Math.max(start - PAGE_SIZE, -1);
-
-            const newPackages: Package[] = [];
-
-            for (let i = start; i > end; i--) {
+            const packages: Package[] = [];
+            for (let i = start; i < start + count; i++) {
                 const nameResult = await registry.query("getContractNameAt", {
                     origin: ALICE_SS58,
                     data: { index: i },
@@ -84,7 +49,6 @@ export function useRegistry() {
                 if (!nameResult.success) continue;
                 const name = nameResult.value.response;
 
-                // Fetch version count, metadata URI, and address in parallel
                 const [versionResult, metadataResult, addressResult] = await Promise.all([
                     registry.query("getVersionCount", {
                         origin: ALICE_SS58,
@@ -108,7 +72,7 @@ export function useRegistry() {
                     ? unwrapOption<string>(addressResult.value.response)
                     : undefined;
 
-                newPackages.push({
+                packages.push({
                     name,
                     version: String(versionCount),
                     weeklyCalls: 0,
@@ -117,38 +81,56 @@ export function useRegistry() {
                     metadataLoaded: false,
                 });
             }
+            return packages;
+        },
+        [registry],
+    );
 
-            nextIndex.current = end;
-            setPackages((prev) => [...prev, ...newPackages]);
-        } catch (err) {
-            setQueryError(err instanceof Error ? err.message : "Failed to load contracts");
-        } finally {
-            setLoading(false);
-        }
-    }, [registry, connected, totalCount]);
+    const {
+        items: basePackages,
+        loading: pageLoading,
+        error: pageError,
+        hasMore,
+        loadMore,
+        totalCount,
+    } = useInfiniteLoad<Package>({
+        fetchCount,
+        fetchPage,
+        getId: (pkg) => pkg.name,
+        pageSize: PAGE_SIZE,
+        enabled: !!registry && connected,
+        reverse: true,
+    });
 
-    // Phase 2: Fetch IPFS metadata independently per-package
+    // Phase 2: IPFS metadata enrichment (separate from pagination)
+    const [metadataMap, setMetadataMap] = useState<Record<string, Partial<Package>>>({});
+    const metadataAttempted = useRef<Set<string>>(new Set());
+
+    // Reset metadata when the registry changes
+    useEffect(() => {
+        setMetadataMap({});
+        metadataAttempted.current = new Set();
+    }, [registry]);
+
     useEffect(() => {
         if (!ipfsGatewayUrl) return;
 
-        const packagesToFetch = packages.filter(
+        const toFetch = basePackages.filter(
             (p) =>
-                !p.metadataLoaded &&
                 p.metadataUri &&
                 !p.metadataUri.includes(":") &&
                 !metadataAttempted.current.has(p.name),
         );
 
-        if (packagesToFetch.length === 0) return;
+        if (toFetch.length === 0) return;
 
-        // Mark all as attempted immediately to prevent re-fetching
-        for (const p of packagesToFetch) {
+        for (const p of toFetch) {
             metadataAttempted.current.add(p.name);
         }
 
         const ipfs = connectIpfsGateway(ipfsGatewayUrl);
 
-        for (const pkg of packagesToFetch) {
+        for (const pkg of toFetch) {
             ipfs.fetch(pkg.metadataUri!)
                 .then((r) => r.json())
                 .then((metadata: any) => {
@@ -174,52 +156,44 @@ export function useRegistry() {
                         abi = metadata.abi;
                     }
 
-                    setPackages((prev) =>
-                        prev.map((p) =>
-                            p.name === pkg.name
-                                ? {
-                                      ...p,
-                                      description: metadata.description || undefined,
-                                      readme: metadata.readme || undefined,
-                                      homepage: metadata.homepage || undefined,
-                                      repository: metadata.repository || undefined,
-                                      author,
-                                      lastPublished,
-                                      publishedDate: lastPublished,
-                                      abi,
-                                      metadataLoaded: true,
-                                  }
-                                : p,
-                        ),
-                    );
+                    setMetadataMap((prev) => ({
+                        ...prev,
+                        [pkg.name]: {
+                            description: metadata.description || undefined,
+                            readme: metadata.readme || undefined,
+                            homepage: metadata.homepage || undefined,
+                            repository: metadata.repository || undefined,
+                            author,
+                            lastPublished,
+                            publishedDate: lastPublished,
+                            abi,
+                            metadataLoaded: true,
+                        },
+                    }));
                 })
                 .catch(() => {
-                    // Mark as loaded even on failure so the card stops showing shimmer
-                    setPackages((prev) =>
-                        prev.map((p) => (p.name === pkg.name ? { ...p, metadataLoaded: true } : p)),
-                    );
+                    setMetadataMap((prev) => ({
+                        ...prev,
+                        [pkg.name]: { metadataLoaded: true },
+                    }));
                 });
         }
-    }, [packages, ipfsGatewayUrl]);
+    }, [basePackages, ipfsGatewayUrl]);
 
-    // Auto-load first batch when registry connects
-    useEffect(() => {
-        if (registry && connected && nextIndex.current === -1) {
-            loadBatch();
-        }
-    }, [registry, connected, loadBatch]);
+    // Merge on-chain data with IPFS metadata
+    const packages = useMemo(
+        () => basePackages.map((pkg) => ({ ...pkg, ...metadataMap[pkg.name] })),
+        [basePackages, metadataMap],
+    );
 
-    const hasMore = nextIndex.current >= 0;
-
-    // Surface whichever error is relevant: network-level or query-level
-    const error = networkError ?? queryError;
+    const error = networkError ?? pageError;
 
     return {
         packages,
-        loading: loading || connecting,
+        loading: pageLoading || connecting,
         error,
         hasMore,
-        loadMore: loadBatch,
+        loadMore,
         totalCount,
         network,
     };
