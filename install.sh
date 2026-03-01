@@ -24,9 +24,9 @@ OS=$(uname -s); case "$OS" in Linux) OS=linux;; Darwin) OS=darwin;; *) echo "Uns
 ARCH=$(uname -m); case "$ARCH" in x86_64|amd64) ARCH=x64;; arm64|aarch64) ARCH=arm64;; *) echo "Unsupported arch: $ARCH"; exit 1;; esac
 ASSET="$BIN-$OS-$ARCH"
 
-# 3) Fetch latest release tag
-TAG=${CDM_TAG:-$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
-      | sed -n 's/.*"tag_name":[[:space:]]*"\(.*\)".*/\1/p' | head -n1)}
+# 3) Fetch latest release tag (uses redirect URL to avoid GitHub API rate limits)
+TAG=${CDM_TAG:-$(curl -fsSI "https://github.com/$REPO/releases/latest" \
+      | sed -n 's|^location:.*/tag/\(.*\)$|\1|p' | tr -d '\r' | head -n1)}
 [ -z "$TAG" ] && echo "Could not determine latest release" && exit 1
 
 # 4) Install binary
