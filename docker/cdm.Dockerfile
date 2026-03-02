@@ -21,6 +21,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     make \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Node.js 22 + pnpm (for working with TS contract projects)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g pnpm@9.15.0 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install nightly toolchain with rust-src (required for PolkaVM targets)
 RUN rustup toolchain install nightly \
     && rustup default nightly \
