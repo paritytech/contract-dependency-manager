@@ -2,47 +2,33 @@
 
 A CLI tool for managing PVM smart contract dependencies on Polkadot. CDM automates contract deployment ordering, cross-contract address resolution, and TypeScript type generation.
 
-## Quick Install
+Browse published contracts at [contracts.paseo.li](https://contracts.paseo.li/#/).
+
+## Install
 
 ```bash
-curl -fsSL \
-  -H "Authorization: token $(printf 'protocol=https\nhost=github.com\n' | git credential fill 2>/dev/null | grep '^password=' | cut -d= -f2)" \
-  -H "Accept: application/vnd.github.raw" \
-  https://api.github.com/repos/paritytech/contract-dependency-manager/contents/install.sh | bash
+curl -fsSL https://contracts.paseo.li/install | bash
 ```
+
+This installs the `cdm` binary, the Rust nightly toolchain with `rust-src`, and `cargo-pvm-contract`.
 
 ## Quick Start
 
 ```bash
-# Start a local network (Product Preview Net)
-curl -sL https://raw.githubusercontent.com/paritytech/ppn-proxy/main/install.sh | bash
-cd ppn && make start
-
 # Scaffold a new project
-cdm template my-project
-cd my-project
+cdm template shared-counter
 
-# Build contracts
-cdm build
+# Initialize dev account for deploying to paseo
+cdm init
 
-# Deploy to local Asset Hub (bootstrap mode)
-cdm deploy --bootstrap ws://127.0.0.1:10020
+# Map your newly generated paseo deployment account
+cdm account map -n paseo
 
-# Add a contract library to your TypeScript project
-cdm add @polkadot/reputation --registry 0x...
+# Deploy to Paseo
+cdm deploy -n paseo
 ```
 
-## Local Network (PPN)
-
-CDM requires a running Polkadot chain with the Revive pallet for contract deployment. For local development, use **Product Preview Net (PPN)**, which spins up both a Bulletin and Asset Hub parachain locally.
-
-```bash
-# Install and start PPN
-curl -sL https://raw.githubusercontent.com/paritytech/ppn-proxy/main/install.sh | bash
-cd ppn && make start
-```
-
-Once running, Asset Hub is available at `ws://127.0.0.1:10020`. This is the default URL used by CDM scripts for local development.
+> **Important:** Before deploying, open `cdm.json` and change the org name from `"example"` to your own unique org name (e.g. `"myteam"`). Contract names are scoped by org, so deploying with `"example"` will conflict with other users.
 
 ## How It Works
 
