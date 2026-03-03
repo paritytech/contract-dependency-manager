@@ -55,11 +55,14 @@ template.action(async (name: string | undefined, dir: string) => {
     if (dir !== ".") {
         console.log(`  cd ${dir}`);
     }
-    console.log("  # Build all contracts:");
-    console.log("  cdm build");
+    console.log("  # Initialize dev account for deploying to paseo:");
+    console.log("  cdm init");
     console.log("");
-    console.log("  # Deploy (bootstrap mode - deploys ContractRegistry first):");
-    console.log("  cdm deploy --bootstrap ws://localhost:9944");
+    console.log("  # Map your newly generated paseo deployment account:");
+    console.log("  cdm account map -n paseo");
+    console.log("");
+    console.log("  # Deploy to Paseo:");
+    console.log("  cdm deploy -n paseo");
 });
 
 export const templateCommand = template;
