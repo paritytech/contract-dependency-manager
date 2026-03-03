@@ -81,7 +81,7 @@ This fetches contract ABIs from the on-chain registry, saves them to `cdm.json`,
 import { createCdm } from "@dotdm/cdm";
 
 // Reads cdm.json from cwd, connects to the chain automatically
-const cdm = createCdm();
+const cdm = createCdm({ defaultSigner: signer });
 
 // Get typed contract handles
 const counter = cdm.getContract("@yourorg/counter");
