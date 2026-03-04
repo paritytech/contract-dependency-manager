@@ -1,5 +1,17 @@
 # @dotdm/cli
 
+## 0.3.0
+
+### Minor Changes
+
+- 64993ba: `cdm init` now automatically sets up a preview-net account (fund, bulletin authorize, account map) using the same mnemonic as paseo. Contract crate detection now excludes lib-only crates that depend on pvm_contract but have no binary target.
+
+### Patch Changes
+
+- Updated dependencies [64993ba]
+  - @dotdm/contracts@0.2.6
+  - @dotdm/cdm@0.3.6
+
 ## 0.2.4
 
 ### Patch Changes
