@@ -49,6 +49,11 @@ interface CargoMetadata {
     resolve: { nodes: ResolveNode[] } | null;
 }
 
+interface CargoTarget {
+    name: string;
+    kind: string[];
+}
+
 interface CargoPackage {
     name: string;
     id: string;
@@ -59,6 +64,7 @@ interface CargoPackage {
     readme: string | null;
     manifest_path: string;
     dependencies: CargoDependency[];
+    targets: CargoTarget[];
 }
 
 interface CargoDependency {
@@ -86,13 +92,17 @@ function getCargoMetadata(rootDir: string): CargoMetadata {
 }
 
 /**
- * Check if a package is a PVM contract by checking its dependencies.
- * A PVM contract has pvm_contract as a normal (non-dev, non-build) dependency.
+ * Check if a package is a deployable PVM contract.
+ * A PVM contract must:
+ * 1. Have pvm_contract as a normal (non-dev, non-build) dependency
+ * 2. Have a binary target (lib-only crates like shared type libraries are excluded)
  */
 function isPvmContract(pkg: CargoPackage): boolean {
-    return pkg.dependencies.some(
+    const hasPvmDep = pkg.dependencies.some(
         (d) => d.name === "pvm_contract" && (d.kind === null || d.kind === "normal"),
     );
+    const hasBinTarget = pkg.targets.some((t) => t.kind.includes("bin"));
+    return hasPvmDep && hasBinTarget;
 }
 
 /**
