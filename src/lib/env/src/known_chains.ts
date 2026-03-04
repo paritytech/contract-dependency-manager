@@ -35,7 +35,7 @@ export const KNOWN_CHAINS: Record<string, ChainPreset> = {
         assethubUrl: "wss://previewnet.substrate.dev/asset-hub",
         bulletinUrl: "wss://previewnet.substrate.dev/bulletin",
         ipfsGatewayUrl: "https://previewnet.substrate.dev/ipfs/",
-        registryAddress: "0x5801b439a678d9d3a68b8019da6a4abfa507de11",
+        registryAddress: "0xcf5f4af8f99f361a620fffa8ed3a62742bd8876d",
     },
     local: {
         assethubUrl: "ws://127.0.0.1:10020",
