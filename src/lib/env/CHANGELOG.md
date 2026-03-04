@@ -1,5 +1,11 @@
 # @dotdm/env
 
+## 0.2.4
+
+### Patch Changes
+
+- 214fa72: Update preview-net registry contract address after redeployment
+
 ## 0.2.3
 
 ### Patch Changes
