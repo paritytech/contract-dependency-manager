@@ -1,5 +1,15 @@
 # @dotdm/cdm
 
+## 0.3.7
+
+### Patch Changes
+
+- b4a9361: Patch version bump for all packages.
+- Updated dependencies [b4a9361]
+  - @dotdm/utils@0.2.4
+  - @dotdm/env@0.2.5
+  - @dotdm/contracts@0.2.7
+
 ## 0.3.6
 
 ### Patch Changes

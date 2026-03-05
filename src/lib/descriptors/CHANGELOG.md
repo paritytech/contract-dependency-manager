@@ -1,5 +1,11 @@
 # @dotdm/descriptors
 
+## 0.1.4
+
+### Patch Changes
+
+- b4a9361: Patch version bump for all packages.
+
 ## 0.1.3
 
 ### Patch Changes

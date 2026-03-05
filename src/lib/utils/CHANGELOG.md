@@ -1,5 +1,11 @@
 # @dotdm/utils
 
+## 0.2.4
+
+### Patch Changes
+
+- b4a9361: Patch version bump for all packages.
+
 ## 0.2.3
 
 ### Patch Changes
