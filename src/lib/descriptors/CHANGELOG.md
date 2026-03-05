@@ -1,5 +1,11 @@
 # @dotdm/descriptors
 
+## 0.1.5
+
+### Patch Changes
+
+- 7f93a67: Patch version bump for all packages.
+
 ## 0.1.4
 
 ### Patch Changes

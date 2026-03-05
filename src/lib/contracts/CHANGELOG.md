@@ -1,5 +1,15 @@
 # @dotdm/contracts
 
+## 0.2.8
+
+### Patch Changes
+
+- 7f93a67: Patch version bump for all packages.
+- Updated dependencies [7f93a67]
+  - @dotdm/utils@0.2.5
+  - @dotdm/env@0.2.6
+  - @dotdm/descriptors@0.1.5
+
 ## 0.2.7
 
 ### Patch Changes

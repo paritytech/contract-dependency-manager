@@ -1,5 +1,11 @@
 # @dotdm/utils
 
+## 0.2.5
+
+### Patch Changes
+
+- 7f93a67: Patch version bump for all packages.
+
 ## 0.2.4
 
 ### Patch Changes
