@@ -4,22 +4,34 @@ import "./PackageCard.css";
 
 interface PackageCardProps {
     pkg: Package;
+    linkTarget?: string;
 }
 
 function formatCalls(n: number): string {
     return n.toLocaleString();
 }
 
-export default function PackageCard({ pkg }: PackageCardProps) {
+export default function PackageCard({ pkg, linkTarget }: PackageCardProps) {
     const metadataLoading =
         pkg.metadataUri && !pkg.metadataUri.includes(":") && !pkg.metadataLoaded;
 
     return (
         <div className="package-card">
             <div className="package-card-header">
-                <Link to={`/package/${pkg.name}`} className="package-card-name">
-                    {pkg.name}
-                </Link>
+                {linkTarget ? (
+                    <a
+                        href={`/#/package/${pkg.name}`}
+                        target={linkTarget}
+                        rel="noopener noreferrer"
+                        className="package-card-name"
+                    >
+                        {pkg.name}
+                    </a>
+                ) : (
+                    <Link to={`/package/${pkg.name}`} className="package-card-name">
+                        {pkg.name}
+                    </Link>
+                )}
                 <span className="package-card-version">v{pkg.version}</span>
             </div>
 
@@ -49,15 +61,27 @@ export default function PackageCard({ pkg }: PackageCardProps) {
 
             {(pkg.keywords ?? []).length > 0 && (
                 <div className="package-card-keywords">
-                    {(pkg.keywords ?? []).map((kw) => (
-                        <Link
-                            key={kw}
-                            to={`/search?q=${encodeURIComponent(kw)}`}
-                            className="package-card-keyword"
-                        >
-                            {kw}
-                        </Link>
-                    ))}
+                    {(pkg.keywords ?? []).map((kw) =>
+                        linkTarget ? (
+                            <a
+                                key={kw}
+                                href={`/#/search?q=${encodeURIComponent(kw)}`}
+                                target={linkTarget}
+                                rel="noopener noreferrer"
+                                className="package-card-keyword"
+                            >
+                                {kw}
+                            </a>
+                        ) : (
+                            <Link
+                                key={kw}
+                                to={`/search?q=${encodeURIComponent(kw)}`}
+                                className="package-card-keyword"
+                            >
+                                {kw}
+                            </Link>
+                        ),
+                    )}
                 </div>
             )}
         </div>

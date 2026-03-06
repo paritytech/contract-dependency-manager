@@ -1,7 +1,6 @@
 import { useState } from "react";
 import Layout from "../components/Layout";
-import PackageCard from "../components/PackageCard";
-import InfiniteScroll from "../components/InfiniteScroll";
+import ContractGrid from "../components/ContractGrid";
 import GrainCanvas from "../components/GrainCanvas";
 import { CopyIcon, CheckIcon } from "../components/Icons";
 import { useNetwork } from "../context/NetworkContext";
@@ -74,31 +73,15 @@ export default function HomePage() {
 
             <section className="featured-section">
                 <h2 className="featured-title">Featured Contracts</h2>
-                {error ? (
-                    <div className="connection-error">
-                        <p>
-                            Could not connect to <strong>{network}</strong>. Check your connection
-                            settings.
-                        </p>
-                        <p className="connection-error-detail">{error}</p>
-                    </div>
-                ) : connecting || (loading && packages.length === 0) ? (
-                    <div className="loading-state">
-                        <p>Connecting to {network}...</p>
-                    </div>
-                ) : packages.length === 0 ? (
-                    <div className="loading-state">
-                        <p>No contracts found.</p>
-                    </div>
-                ) : (
-                    <InfiniteScroll hasMore={hasMore} loading={loading} loadMore={loadMore}>
-                        <div className="featured-grid">
-                            {packages.map((pkg) => (
-                                <PackageCard key={pkg.name} pkg={pkg} />
-                            ))}
-                        </div>
-                    </InfiniteScroll>
-                )}
+                <ContractGrid
+                    packages={packages}
+                    loading={loading}
+                    hasMore={hasMore}
+                    loadMore={loadMore}
+                    network={network}
+                    connecting={connecting}
+                    error={error}
+                />
             </section>
         </Layout>
     );

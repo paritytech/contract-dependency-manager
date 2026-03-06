@@ -1,0 +1,29 @@
+.contract-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 16px;
+}
+
+.contract-grid-message {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--color-text-secondary);
+}
+
+.contract-grid-message p:first-child {
+    font-size: 1.1rem;
+    color: var(--color-text-primary);
+    margin-bottom: 8px;
+}
+
+.contract-grid-error-detail {
+    font-size: 0.85rem;
+    color: var(--color-text-tertiary);
+    font-family: var(--font-code);
+}
+
+@media (max-width: 768px) {
+    .contract-grid {
+        grid-template-columns: 1fr;
+    }
+}
