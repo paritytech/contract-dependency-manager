@@ -6,12 +6,18 @@ on:
 
 permissions:
     contents: write
+    packages: write
+    attestations: write
+    id-token: write
 
 jobs:
     release:
         # Skip bot commits (from version bump commits pushed by this workflow)
         if: github.actor != 'github-actions[bot]'
         runs-on: ubuntu-latest
+        outputs:
+            tag: ${{ steps.tag.outputs.tag }}
+            released: ${{ steps.changesets.outputs.found }}
         steps:
             - uses: actions/checkout@v4
               with:
@@ -115,3 +121,10 @@ jobs:
                       cdm-darwin-x64
                       cdm-darwin-arm64
                   generate_release_notes: true
+
+    docker:
+        needs: release
+        if: needs.release.outputs.released == 'true'
+        uses: ./.github/workflows/docker.yml
+        with:
+            tag: ${{ needs.release.outputs.tag }}

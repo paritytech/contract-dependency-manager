@@ -1,6 +1,14 @@
 name: Build and Publish Container Image
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Image tag"
+        required: false
+        default: "latest"
+        type: string
+
   workflow_dispatch:
     inputs:
       tag:
@@ -8,10 +16,6 @@ on:
         required: false
         default: "latest"
         type: string
-
-  # Trigger after a new release is published (so install.sh picks up the new version)
-  release:
-    types: [published]
 
   push:
     branches:
@@ -63,7 +67,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}
           tags: |
-            type=raw,value=${{ github.event.release.tag_name || inputs.tag || 'latest' }}
+            type=raw,value=${{ inputs.tag || 'latest' }}
             type=raw,value=latest
             type=sha,prefix=
 
