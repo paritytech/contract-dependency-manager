@@ -1,5 +1,11 @@
 # @dotdm/cli
 
+## 0.3.3
+
+### Patch Changes
+
+- f573e2e: Chain Docker image build after release workflow
+
 ## 0.3.2
 
 ### Patch Changes
