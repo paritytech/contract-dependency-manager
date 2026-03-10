@@ -1,5 +1,15 @@
 # @dotdm/cdm
 
+## 0.3.10
+
+### Patch Changes
+
+- fee0ba2: Patch bump to trigger CI release pipeline
+- Updated dependencies [fee0ba2]
+  - @dotdm/utils@0.2.7
+  - @dotdm/env@0.2.8
+  - @dotdm/contracts@0.2.10
+
 ## 0.3.9
 
 ### Patch Changes

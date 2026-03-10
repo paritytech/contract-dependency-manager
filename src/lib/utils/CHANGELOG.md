@@ -1,5 +1,11 @@
 # @dotdm/utils
 
+## 0.2.7
+
+### Patch Changes
+
+- fee0ba2: Patch bump to trigger CI release pipeline
+
 ## 0.2.6
 
 ### Patch Changes
