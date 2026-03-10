@@ -1,4 +1,5 @@
 import { createCdm } from "@dotdm/cdm";
+import cdmJson from "../cdm.json";
 import { DEV_PHRASE } from "@polkadot-labs/hdkd-helpers";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import { getPolkadotSigner } from "polkadot-api/signer";
@@ -20,7 +21,7 @@ const signer = getPolkadotSigner(
 );
 
 // --- Create CDM instance ---
-const cdm = createCdm();
+const cdm = createCdm(cdmJson);
 
 // --- Get typed contract handles ---
 // TRY : running `cdm i -n preview-net @example/counter @example/counter-writer @example/counter-reader`
