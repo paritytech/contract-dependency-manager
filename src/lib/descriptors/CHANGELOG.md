@@ -1,5 +1,11 @@
 # @dotdm/descriptors
 
+## 0.1.6
+
+### Patch Changes
+
+- 8102a92: Patch bump to trigger CI release pipeline
+
 ## 0.1.5
 
 ### Patch Changes

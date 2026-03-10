@@ -1,5 +1,14 @@
 # @dotdm/env
 
+## 0.2.7
+
+### Patch Changes
+
+- 8102a92: Patch bump to trigger CI release pipeline
+- Updated dependencies [8102a92]
+  - @dotdm/utils@0.2.6
+  - @dotdm/descriptors@0.1.6
+
 ## 0.2.6
 
 ### Patch Changes
