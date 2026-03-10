@@ -369,7 +369,6 @@ let seconds = u64::from_le_bytes(buf[0..8].try_into().unwrap());
 
 **no_std heap types (when needed):**
 ```rust
-extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 ```
