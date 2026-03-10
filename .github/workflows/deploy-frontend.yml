@@ -71,18 +71,269 @@ jobs:
 
     deploy:
         needs: build
+        runs-on: ubuntu-latest
         name: Deploy
-        uses: paritytech/dotns-sdk/.github/workflows/deploy.yml@feat/deploy-use-car
-        with:
-            basename: contracts
-            mode: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'production' || 'preview' }}
-            artifact-name: frontend-build
-            register-base: true
-            skip-cache: ${{ inputs.skip-cache || false }}
-            max-retries: 3
-            use-car: true
-        secrets:
-            dotns-mnemonic: ${{ secrets.MNEMONIC }}
+        outputs:
+            cid: ${{ steps.final.outputs.cid }}
+            fqdn: ${{ steps.final.outputs.fqdn }}
+            url: ${{ steps.final.outputs.url }}
+        env:
+            BASENAME: contracts
+            DOTNS_MNEMONIC: ${{ secrets.MNEMONIC }}
+        steps:
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: "1.2.6"
+
+            - name: Install dotns CLI
+              run: npm install -g @dotns/cli@0.4.1
+
+            - name: Setup IPFS Kubo
+              uses: ipfs/download-ipfs-distribution-action@v1
+              with:
+                  name: kubo
+                  version: v0.33.2
+
+            - name: Initialize IPFS
+              run: ipfs init
+
+            - name: Download build artifact
+              uses: actions/download-artifact@v4
+              with:
+                  name: frontend-build
+                  path: build
+
+            - name: List build contents
+              run: |
+                  echo "=== Build directory contents ==="
+                  find build -type f | sort
+                  echo "=== File count ==="
+                  find build -type f | wc -l
+
+            - name: Merkleize with IPFS Kubo
+              id: kubo
+              run: |
+                  CID=$(ipfs add -Q -r --cid-version=1 --raw-leaves --pin=false ./build)
+                  echo "cid=$CID" >> "$GITHUB_OUTPUT"
+                  echo "::notice::Kubo CID: $CID"
+
+                  # List all blocks in the DAG for verification later
+                  ipfs refs -r "$CID" > /tmp/all-block-cids.txt
+                  echo "$CID" >> /tmp/all-block-cids.txt
+                  BLOCK_COUNT=$(wc -l < /tmp/all-block-cids.txt)
+                  echo "block-count=$BLOCK_COUNT" >> "$GITHUB_OUTPUT"
+                  echo "::notice::Total blocks in DAG: $BLOCK_COUNT"
+
+            - name: Compute build hash
+              id: hash
+              run: |
+                  HASH=$(find build -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1)
+                  echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+
+            - name: Check deployment cache
+              id: cache
+              if: inputs.skip-cache != true
+              uses: actions/cache@v4
+              with:
+                  path: .deploy-cache
+                  key: deploy-v2-${{ steps.hash.outputs.hash }}
+
+            - name: Load cached CID
+              id: cached
+              if: steps.cache.outputs.cache-hit == 'true'
+              run: |
+                  CACHED_CID=$(cat .deploy-cache/cid)
+                  KUBO_CID="${{ steps.kubo.outputs.cid }}"
+
+                  if [[ "$CACHED_CID" == "$KUBO_CID" ]]; then
+                    echo "cid=$CACHED_CID" >> "$GITHUB_OUTPUT"
+                    echo "cache-valid=true" >> "$GITHUB_OUTPUT"
+                    echo "::notice::Cache hit — CID matches Kubo: $CACHED_CID"
+                  else
+                    echo "cache-valid=false" >> "$GITHUB_OUTPUT"
+                    echo "::warning::Cache CID ($CACHED_CID) does not match Kubo CID ($KUBO_CID) — re-uploading"
+                  fi
+
+            - name: Authorize Bulletin account
+              if: steps.cached.outputs.cache-valid != 'true'
+              run: |
+                  echo "::add-mask::$DOTNS_MNEMONIC"
+                  ADDRESS=$(dotns account address --mnemonic "$DOTNS_MNEMONIC")
+                  echo "Authorizing $ADDRESS..."
+
+                  OUTPUT=$(dotns bulletin authorize "$ADDRESS" --json --mnemonic "$DOTNS_MNEMONIC" 2>&1) || {
+                    if echo "$OUTPUT" | grep -q "AlreadyAuthorized"; then
+                      echo "::notice::Account already authorized"
+                    else
+                      echo "::error::Authorization failed: $OUTPUT"
+                      exit 1
+                    fi
+                  }
+
+            - name: Upload to Bulletin (sequential)
+              id: upload
+              if: steps.cached.outputs.cache-valid != 'true'
+              run: |
+                  echo "::add-mask::$DOTNS_MNEMONIC"
+
+                  # Upload WITHOUT --parallel for reliability
+                  for ATTEMPT in 1 2 3; do
+                    echo "Upload attempt $ATTEMPT/3"
+
+                    if RESULT=$(dotns bulletin upload ./build --json --mnemonic "$DOTNS_MNEMONIC" 2>&1); then
+                      CID=$(echo "$RESULT" | jq -r '.cid')
+
+                      if [[ -n "$CID" && "$CID" != "null" ]]; then
+                        echo "cid=$CID" >> "$GITHUB_OUTPUT"
+                        echo "::notice::Uploaded CID: $CID"
+                        break
+                      fi
+                    fi
+
+                    echo "::warning::Upload attempt $ATTEMPT failed"
+                    echo "$RESULT"
+                    [[ "$ATTEMPT" -lt 3 ]] && sleep 15
+                    [[ "$ATTEMPT" -eq 3 ]] && { echo "::error::Upload failed after 3 attempts"; exit 1; }
+                  done
+
+            - name: Verify CID match
+              if: steps.cached.outputs.cache-valid != 'true'
+              run: |
+                  KUBO_CID="${{ steps.kubo.outputs.cid }}"
+                  UPLOAD_CID="${{ steps.upload.outputs.cid }}"
+
+                  if [[ "$KUBO_CID" != "$UPLOAD_CID" ]]; then
+                    echo "::error::CID MISMATCH — Kubo: $KUBO_CID, Upload: $UPLOAD_CID"
+                    echo "The JS merkleization produced a different DAG than IPFS Kubo."
+                    echo "This likely means the upload will not resolve correctly."
+                    exit 1
+                  fi
+
+                  echo "::notice::CID verified — Kubo and upload match: $KUBO_CID"
+
+            - name: Save CID to cache
+              if: steps.cached.outputs.cache-valid != 'true' && steps.upload.outputs.cid != ''
+              run: |
+                  mkdir -p .deploy-cache
+                  echo "${{ steps.upload.outputs.cid }}" > .deploy-cache/cid
+
+            - name: Resolve CID
+              id: cid
+              run: |
+                  if [[ "${{ steps.cached.outputs.cache-valid }}" == "true" ]]; then
+                    CID="${{ steps.cached.outputs.cid }}"
+                  else
+                    CID="${{ steps.upload.outputs.cid }}"
+                  fi
+
+                  if [[ -z "$CID" ]]; then
+                    echo "::error::No CID available"
+                    exit 1
+                  fi
+
+                  echo "cid=$CID" >> "$GITHUB_OUTPUT"
+
+            - name: Resolve target domain
+              id: target
+              run: |
+                  MODE="${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'production' || 'preview' }}"
+
+                  if [[ "$MODE" == "production" ]]; then
+                    echo "domain=$BASENAME" >> "$GITHUB_OUTPUT"
+                    echo "fqdn=${BASENAME}.dot" >> "$GITHUB_OUTPUT"
+                    echo "mode=production" >> "$GITHUB_OUTPUT"
+                  else
+                    SUBNAME="pr${{ github.event.pull_request.number }}"
+                    echo "subname=$SUBNAME" >> "$GITHUB_OUTPUT"
+                    echo "domain=${SUBNAME}.${BASENAME}" >> "$GITHUB_OUTPUT"
+                    echo "fqdn=${SUBNAME}.${BASENAME}.dot" >> "$GITHUB_OUTPUT"
+                    echo "mode=preview" >> "$GITHUB_OUTPUT"
+                  fi
+
+            - name: Check base domain
+              run: |
+                  if RESULT=$(dotns lookup name "$BASENAME" --json 2>&1); then
+                    EXISTS=$(echo "$RESULT" | jq -r '.exists')
+                    if [[ "$EXISTS" == "true" ]]; then
+                      OWNER=$(echo "$RESULT" | jq -r '.owner')
+                      echo "::notice::Base domain ${BASENAME}.dot registered (owner: $OWNER)"
+                    else
+                      echo "Registering base domain..."
+                      echo "::add-mask::$DOTNS_MNEMONIC"
+                      dotns register domain --name "$BASENAME" --mnemonic "$DOTNS_MNEMONIC"
+                    fi
+                  fi
+
+            - name: Register subname
+              if: steps.target.outputs.mode == 'preview'
+              run: |
+                  echo "::add-mask::$DOTNS_MNEMONIC"
+                  SUBNAME="${{ steps.target.outputs.subname }}"
+                  DOMAIN="${SUBNAME}.${BASENAME}"
+
+                  if RESULT=$(dotns lookup name "$DOMAIN" --json 2>&1); then
+                    EXISTS=$(echo "$RESULT" | jq -r '.exists')
+                    if [[ "$EXISTS" == "true" ]]; then
+                      echo "::notice::Subname ${DOMAIN}.dot already exists"
+                      exit 0
+                    fi
+                  fi
+
+                  dotns register subname --name "$SUBNAME" --parent "$BASENAME" --mnemonic "$DOTNS_MNEMONIC"
+
+            - name: Set contenthash
+              run: |
+                  echo "::add-mask::$DOTNS_MNEMONIC"
+                  DOMAIN="${{ steps.target.outputs.domain }}"
+                  CID="${{ steps.cid.outputs.cid }}"
+
+                  for ATTEMPT in 1 2 3; do
+                    echo "Contenthash attempt $ATTEMPT/3"
+
+                    if dotns content set "$DOMAIN" "$CID" --mnemonic "$DOTNS_MNEMONIC" 2>&1; then
+                      echo "::notice::Contenthash set for $DOMAIN"
+                      exit 0
+                    fi
+
+                    echo "::warning::Contenthash attempt $ATTEMPT failed"
+                    [[ "$ATTEMPT" -lt 3 ]] && sleep 15
+                  done
+
+                  echo "::error::Failed to set contenthash after 3 attempts"
+                  exit 1
+
+            - name: Set outputs
+              id: final
+              run: |
+                  DOMAIN="${{ steps.target.outputs.domain }}"
+                  echo "cid=${{ steps.cid.outputs.cid }}" >> "$GITHUB_OUTPUT"
+                  echo "fqdn=${{ steps.target.outputs.fqdn }}" >> "$GITHUB_OUTPUT"
+                  echo "url=https://${DOMAIN}.paseo.li" >> "$GITHUB_OUTPUT"
+
+            - name: Summary
+              run: |
+                  CID="${{ steps.cid.outputs.cid }}"
+                  FQDN="${{ steps.target.outputs.fqdn }}"
+                  URL="${{ steps.final.outputs.url }}"
+                  CACHE_NOTE=""
+                  [[ "${{ steps.cached.outputs.cache-valid }}" == "true" ]] && CACHE_NOTE=" (cached)"
+
+                  cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+                  ## Deployment Complete
+
+                  | Property | Value |
+                  |----------|-------|
+                  | Domain | \`${FQDN}\` |
+                  | CID | \`${CID}\`${CACHE_NOTE} |
+                  | URL | [${URL}](${URL}) |
+                  | Kubo blocks | ${{ steps.kubo.outputs.block-count }} |
+                  EOF
 
     comment-success:
         needs: [build, deploy]
