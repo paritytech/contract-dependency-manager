@@ -72,7 +72,7 @@ jobs:
     deploy:
         needs: build
         name: Deploy
-        uses: paritytech/dotns-sdk/.github/workflows/deploy.yml@main
+        uses: paritytech/dotns-sdk/.github/workflows/deploy.yml@feat/deploy-use-car
         with:
             basename: contracts
             mode: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'production' || 'preview' }}
@@ -80,6 +80,7 @@ jobs:
             register-base: true
             skip-cache: ${{ inputs.skip-cache || false }}
             max-retries: 3
+            use-car: true
         secrets:
             dotns-mnemonic: ${{ secrets.MNEMONIC }}
 
