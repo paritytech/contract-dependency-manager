@@ -1,0 +1,132 @@
+{
+  "targets": {
+    "e3e86a66aadc74a1": {
+      "asset-hub": "wss://asset-hub-paseo-rpc.n.dwellir.com",
+      "bulletin": "https://paseo-ipfs.polkadot.io/ipfs",
+      "registry": "0xede6d5f092de34152f8952baa99a35363ed087c0"
+    }
+  },
+  "dependencies": {
+    "e3e86a66aadc74a1": {
+      "@example/instagram": "latest"
+    }
+  },
+  "contracts": {
+    "e3e86a66aadc74a1": {
+      "@example/instagram": {
+        "version": 0,
+        "address": "0x90A7b2DcdE1bB922d81b20869E0a48a7D7DA092A",
+        "abi": [
+          {
+            "type": "constructor",
+            "inputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "createPost",
+            "inputs": [
+              {
+                "name": "description",
+                "type": "string"
+              },
+              {
+                "name": "photo_cid",
+                "type": "string"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "uint64"
+              }
+            ],
+            "stateMutability": "view"
+          },
+          {
+            "type": "function",
+            "name": "getPostCount",
+            "inputs": [
+              {
+                "name": "user",
+                "type": "bytes20"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "uint64"
+              }
+            ],
+            "stateMutability": "view"
+          },
+          {
+            "type": "function",
+            "name": "getPost",
+            "inputs": [
+              {
+                "name": "user",
+                "type": "bytes20"
+              },
+              {
+                "name": "index",
+                "type": "uint64"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "tuple",
+                "components": [
+                  {
+                    "name": "description",
+                    "type": "string"
+                  },
+                  {
+                    "name": "photo_cid",
+                    "type": "string"
+                  },
+                  {
+                    "name": "timestamp",
+                    "type": "uint64"
+                  }
+                ]
+              }
+            ],
+            "stateMutability": "view"
+          },
+          {
+            "type": "function",
+            "name": "getUserCount",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "",
+                "type": "uint64"
+              }
+            ],
+            "stateMutability": "view"
+          },
+          {
+            "type": "function",
+            "name": "getUserAt",
+            "inputs": [
+              {
+                "name": "index",
+                "type": "uint64"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "bytes20"
+              }
+            ],
+            "stateMutability": "view"
+          }
+        ],
+        "metadataCid": "bafk2bzacebm65fmgb4flzblexv5cxzla62omm6tki244oqauljim7kuetj6m4"
+      }
+    }
+  }
+}

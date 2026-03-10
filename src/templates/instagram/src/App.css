@@ -1,0 +1,151 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #000; --surface: #111; --surface2: #1a1a1a;
+  --border: #222; --text: #f5f5f5; --text2: #888;
+  --accent: #e1306c; --accent-hover: #c92b5e;
+  --radius: 12px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg); color: var(--text);
+  min-height: 100dvh;
+}
+
+#root { max-width: 480px; margin: 0 auto; }
+
+/* -- Shell -- */
+header {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
+}
+header h1 { font-size: 20px; font-weight: 600; }
+
+.account-select {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer;
+  outline: none;
+}
+.account-select:focus { border-color: var(--accent); }
+
+/* -- Tabs -- */
+.tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+  position: sticky; top: 53px; z-index: 9; background: var(--bg);
+}
+.tabs button {
+  flex: 1; padding: 12px; background: none; border: none; color: var(--text2);
+  font-size: 14px; font-weight: 500; cursor: pointer; position: relative;
+}
+.tabs button.active { color: var(--text); }
+.tabs button.active::after {
+  content: ""; position: absolute; bottom: 0; left: 20%; right: 20%;
+  height: 2px; background: var(--accent); border-radius: 1px;
+}
+
+/* -- Post card -- */
+.post {
+  border-bottom: 1px solid var(--border); padding: 16px;
+}
+.post-header {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+}
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%; background: var(--surface2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  flex-shrink: 0;
+}
+.post-user { font-size: 14px; font-weight: 600; }
+.post-time { font-size: 12px; color: var(--text2); margin-left: auto; }
+.post-img {
+  width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius);
+  background: var(--surface); margin-bottom: 12px;
+}
+.post-desc { font-size: 14px; line-height: 1.5; }
+
+/* -- People list -- */
+.person {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.person .avatar { width: 44px; height: 44px; font-size: 16px; }
+.person-info { flex: 1; }
+.person-addr { font-size: 14px; font-weight: 500; }
+.person-posts { font-size: 12px; color: var(--text2); }
+.follow-btn {
+  padding: 6px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  cursor: pointer; border: none; transition: all 0.15s;
+}
+.follow-btn.following {
+  background: var(--surface2); color: var(--text2);
+}
+.follow-btn:not(.following) {
+  background: var(--accent); color: white;
+}
+.follow-btn:hover { opacity: 0.85; }
+
+/* -- Create post -- */
+.fab {
+  position: fixed; bottom: 24px; right: max(24px, calc(50% - 216px));
+  width: 52px; height: 52px; border-radius: 50%;
+  background: var(--accent); color: white; border: none;
+  font-size: 26px; cursor: pointer; box-shadow: 0 4px 20px rgba(225,48,108,.4);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.15s;
+}
+.fab:hover { transform: scale(1.08); }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 20;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.modal {
+  background: var(--surface); border-radius: var(--radius) var(--radius) 0 0;
+  width: 100%; max-width: 480px; padding: 20px;
+}
+.modal h2 { font-size: 18px; margin-bottom: 16px; }
+.modal input, .modal textarea {
+  width: 100%; background: var(--surface2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; font-size: 14px; margin-bottom: 12px;
+  font-family: inherit; resize: vertical; outline: none;
+}
+.modal input:focus, .modal textarea:focus { border-color: var(--accent); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.btn {
+  padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
+  cursor: pointer; border: none; transition: all 0.15s;
+}
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-ghost { background: none; color: var(--text2); }
+
+/* -- File input & preview -- */
+.file-input {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; padding: 24px; margin-bottom: 12px;
+  border: 2px dashed var(--border); border-radius: 8px;
+  color: var(--text2); font-size: 14px; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.file-input:hover { border-color: var(--accent); color: var(--text); }
+.preview {
+  width: 100%; max-height: 300px; object-fit: cover;
+  border-radius: 8px; margin-bottom: 12px;
+}
+.status { font-size: 13px; color: var(--text2); margin-bottom: 12px; }
+
+/* -- States -- */
+.empty {
+  text-align: center; padding: 48px 16px; color: var(--text2); font-size: 14px;
+  line-height: 1.6;
+}
+.spinner {
+  display: flex; justify-content: center; padding: 24px;
+  color: var(--text2); font-size: 13px;
+}
+.sentinel { height: 1px; }

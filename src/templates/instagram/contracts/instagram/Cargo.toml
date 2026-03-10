@@ -1,0 +1,20 @@
+[package]
+name = "instagram"
+version.workspace = true
+edition.workspace = true
+description = "Minimal on-chain Instagram — posts indexed by (user, index)"
+authors.workspace = true
+homepage.workspace = true
+
+[lib]
+path = "lib.rs"
+
+[[bin]]
+name = "instagram"
+path = "lib.rs"
+
+[dependencies]
+pvm_contract = { workspace = true }
+polkavm-derive = { workspace = true }
+parity-scale-codec = { workspace = true }
+picoalloc = { workspace = true }

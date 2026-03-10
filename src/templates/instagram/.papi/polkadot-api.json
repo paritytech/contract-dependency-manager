@@ -1,0 +1,12 @@
+{
+  "version": 0,
+  "descriptorPath": ".papi/descriptors",
+  "entries": {
+    "bulletin": {
+      "wsUrl": "wss://paseo-bulletin-rpc.polkadot.io",
+      "metadata": ".papi/metadata/bulletin.scale",
+      "genesis": "0x744960c32e3a3df5440e1ecd4d34096f1ce2230d7016a5ada8a765d5a622b4ea",
+      "codeHash": "0xce76768a4d9db3a9dbea8acdefeec037a1119dafdc98c62c30c90453ef3a2c75"
+    }
+  }
+}
