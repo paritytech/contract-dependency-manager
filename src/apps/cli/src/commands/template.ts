@@ -41,11 +41,16 @@ template.action(async (name: string | undefined, dir: string) => {
         console.log("Warning: Target directory is not empty. Files may be overwritten.\n");
     }
 
+    const BINARY_PREFIX = "base64:";
     let filesWritten = 0;
     for (const [filePath, content] of Object.entries(tmpl.files)) {
         const fullPath = resolve(targetDir, filePath);
         mkdirSync(dirname(fullPath), { recursive: true });
-        writeFileSync(fullPath, content);
+        if (content.startsWith(BINARY_PREFIX)) {
+            writeFileSync(fullPath, Buffer.from(content.slice(BINARY_PREFIX.length), "base64"));
+        } else {
+            writeFileSync(fullPath, content);
+        }
         console.log(`  ${filePath}`);
         filesWritten++;
     }

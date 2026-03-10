@@ -15,6 +15,12 @@ const TEMPLATES_DIR = join(PROJECT_ROOT, "src/templates");
 const OUT_FILE = join(CLI_ROOT, "src/generated/templates.ts");
 
 const IGNORE = new Set(["target", "node_modules", ".DS_Store", "Cargo.lock"]);
+const BINARY_EXTENSIONS = new Set([".scale", ".wasm", ".png", ".jpg", ".ico", ".bin"]);
+const BINARY_PREFIX = "base64:";
+
+function isBinaryFile(filePath: string): boolean {
+    return BINARY_EXTENSIONS.has(filePath.slice(filePath.lastIndexOf(".")));
+}
 
 function collectFiles(dir: string, base: string): Record<string, string> {
     const files: Record<string, string> = {};
@@ -25,7 +31,11 @@ function collectFiles(dir: string, base: string): Record<string, string> {
             Object.assign(files, collectFiles(fullPath, base));
         } else {
             const relPath = relative(base, fullPath);
-            files[relPath] = readFileSync(fullPath, "utf-8");
+            if (isBinaryFile(relPath)) {
+                files[relPath] = BINARY_PREFIX + readFileSync(fullPath).toString("base64");
+            } else {
+                files[relPath] = readFileSync(fullPath, "utf-8");
+            }
         }
     }
     return files;
