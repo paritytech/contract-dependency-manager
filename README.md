@@ -16,7 +16,7 @@ Browse published contracts at [contracts.paseo.li](https://contracts.paseo.li/#/
 ## Install
 
 ```bash
-curl -fsSL https://contracts.paseo.li/install | bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | bash
 ```
 
 This installs the `cdm` binary, the Rust nightly toolchain with `rust-src`, and `cargo-pvm-contract`.
