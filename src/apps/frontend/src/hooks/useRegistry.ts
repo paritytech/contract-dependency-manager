@@ -7,6 +7,9 @@ import { useInfiniteLoad } from "./useInfiniteLoad";
 
 const PAGE_SIZE = 10;
 
+// patch!
+const HIDDEN_CONTRACTS = ["@polkadot/disputes", "@polkadot/reputation"];
+
 function unwrapOption<T>(val: unknown): T | undefined {
     if (val && typeof val === "object" && "isSome" in val) {
         const opt = val as { isSome: boolean; value: T };
@@ -48,6 +51,8 @@ export function useRegistry() {
                 });
                 if (!nameResult.success) continue;
                 const name = nameResult.value.response;
+                // patch!
+                if (HIDDEN_CONTRACTS.includes(name)) continue;
 
                 const [versionResult, metadataResult, addressResult] = await Promise.all([
                     registry.query("getVersionCount", {
@@ -194,7 +199,8 @@ export function useRegistry() {
         error,
         hasMore,
         loadMore,
-        totalCount,
+        // patch!
+        totalCount: Math.max(0, totalCount - HIDDEN_CONTRACTS.length),
         network,
     };
 }
