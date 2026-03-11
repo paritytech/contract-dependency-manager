@@ -48,6 +48,10 @@ export default function App() {
   const wallet = useMemo<Wallet>(() => deriveWallet(ACCOUNTS[accountIdx].mnemonic), [accountIdx]);
   const me = ACCOUNTS[accountIdx].ethAddress;
 
+  useEffect(() => {
+    cdm.setDefaults({ origin: wallet.address, signer: wallet.signer });
+  }, [wallet]);
+
   const [tab, setTab] = useState<"posts" | "people">("posts");
 
   // --- Following (persisted per-account in localStorage) ---
@@ -88,7 +92,7 @@ export default function App() {
       </div>
 
       {tab === "posts"
-        ? <Feed following={following} nameOf={nameOf} wallet={wallet} />
+        ? <Feed following={following} nameOf={nameOf} />
         : <People me={me} following={following} toggleFollow={toggleFollow} nameOf={nameOf} />
       }
 
@@ -101,8 +105,8 @@ export default function App() {
 // Feed — breadth-first across followed users
 // ---------------------------------------------------------------------------
 
-function Feed({ following, nameOf, wallet }: {
-  following: string[]; nameOf: (a: string) => string; wallet: Wallet;
+function Feed({ following, nameOf }: {
+  following: string[]; nameOf: (a: string) => string;
 }) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
@@ -174,7 +178,7 @@ function Feed({ following, nameOf, wallet }: {
     } finally {
       if (gen === genRef.current) setLoading(false);
     }
-  }, [loading, hasMore, following, nameOf, wallet]);
+  }, [loading, hasMore, following, nameOf]);
 
   useEffect(() => { if (posts.length === 0 && hasMore && following.length > 0) loadMore(); }, [following.length]);
 
@@ -226,9 +230,11 @@ function People({ me, following, toggleFollow, nameOf }: {
   const [hasMore, setHasMore] = useState(true);
   const loadedRef = useRef(0);
   const totalRef = useRef(-1);
+  const busyRef = useRef(false);
 
   const loadMore = useCallback(async () => {
-    if (loading) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setLoading(true);
     try {
       if (totalRef.current === -1) {
@@ -244,7 +250,7 @@ function People({ me, following, toggleFollow, nameOf }: {
       for (let i = start; i < start + count; i++) {
         const uRes = await ig.getUserAt.query(BigInt(i));
         if (!uRes.success) continue;
-        const ethAddr = "0x" + [...uRes.value].map((b: number) => b.toString(16).padStart(2, "0")).join("");
+        const ethAddr = "0x" + [...uRes.value.asBytes()].map(b => b.toString(16).padStart(2, "0")).join("");
         const cRes = await ig.getPostCount.query(toBytes(ethAddr));
         batch.push({ ethAddress: ethAddr, postCount: cRes.success ? Number(cRes.value) : 0 });
       }
@@ -256,9 +262,10 @@ function People({ me, following, toggleFollow, nameOf }: {
       console.error("People load error:", err);
       setHasMore(false);
     } finally {
+      busyRef.current = false;
       setLoading(false);
     }
-  }, [loading]);
+  }, []);
 
   useEffect(() => { loadMore(); }, []);
 
@@ -332,10 +339,7 @@ function CreatePost({ wallet, onCreated }: { wallet: Wallet; onCreated: () => vo
         photoCid = await publishBlob(bytes, wallet.signer);
       }
       setStatus("Submitting post on-chain...");
-      await ig.createPost.tx(desc, photoCid, {
-        signer: wallet.signer,
-        origin: wallet.address,
-      });
+      await ig.createPost.tx(desc, photoCid);
       reset(); setOpen(false); onCreated();
     } catch (err) {
       console.error("Create post error:", err);
