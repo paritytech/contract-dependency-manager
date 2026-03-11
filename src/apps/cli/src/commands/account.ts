@@ -7,11 +7,13 @@ import {
 } from "@dotdm/env";
 import type { Account } from "@dotdm/utils/accounts";
 import { getAccount, saveAccount, accountFromMnemonic } from "@dotdm/utils/accounts";
+import supportsHyperlinks from "supports-hyperlinks";
 
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
-const link = (label: string, url: string) => `\x1b[4m\x1b]8;;${url}\x07${label}\x1b]8;;\x07\x1b[0m`;
+const link = (label: string, url: string) =>
+    supportsHyperlinks.stdout ? `\x1b[4m\x1b]8;;${url}\x07${label}\x1b]8;;\x07\x1b[0m` : url;
 
 function requireAccount(chainName: string): Account {
     const acc = getAccount(chainName);
@@ -57,8 +59,8 @@ export async function printBalances(chainName: string, acc: Account) {
 
     // Faucet links
     if (preset.faucets?.length) {
-        const links = preset.faucets.map((f) => link(f.label + " Faucet", f.url)).join("    ");
-        console.log(`\n  Top up your allowance:\n  ${links}`);
+        const links = preset.faucets.map((f) => `  ${link(f.label + " Faucet", f.url)}`).join("\n");
+        console.log(`\n  Top up your allowance:\n${links}`);
     }
 
     ahClient.destroy();

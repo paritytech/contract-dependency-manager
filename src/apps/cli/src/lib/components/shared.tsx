@@ -1,15 +1,19 @@
 import React from "react";
 import { Box, Text } from "ink";
+import supportsHyperlinks from "supports-hyperlinks";
 
 /** Terminal hyperlink using OSC 8 escape sequence */
 export function Link({ url, children }: { url: string; children: React.ReactNode }) {
-    return (
-        <Text>
-            {`\x1b]8;;${url}\x07`}
-            {children}
-            {`\x1b]8;;\x07`}
-        </Text>
-    );
+    if (supportsHyperlinks.stdout) {
+        return (
+            <Text>
+                {`\x1b]8;;${url}\x07`}
+                {children}
+                {`\x1b]8;;\x07`}
+            </Text>
+        );
+    }
+    return <Text>{url}</Text>;
 }
 
 export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
