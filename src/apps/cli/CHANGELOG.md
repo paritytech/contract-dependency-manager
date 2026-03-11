@@ -1,5 +1,11 @@
 # @dotdm/cli
 
+## 0.3.8
+
+### Patch Changes
+
+- eeb3dfe: Release CLI update
+
 ## 0.3.7
 
 ### Patch Changes
