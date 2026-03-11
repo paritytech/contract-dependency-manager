@@ -2,13 +2,13 @@ import { createClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws-provider";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
-import type { PolkadotClient, SS58String, PolkadotSigner, HexString } from "polkadot-api";
+import type { PolkadotClient, SS58String, HexString } from "polkadot-api";
 import type { InkSdk } from "@polkadot-api/sdk-ink";
 import type { CdmJson, CdmJsonContract } from "@dotdm/contracts";
 import { ALICE_SS58 } from "@dotdm/utils";
 import { prepareSigner } from "@dotdm/env";
 import { wrapContract } from "./wrap";
-import type { CdmContract, CdmContracts, CdmOptions } from "./types";
+import type { CdmContract, CdmContracts, CdmDefaults, CdmOptions } from "./types";
 
 export class Cdm {
     private cdmJson: CdmJson;
@@ -16,8 +16,7 @@ export class Cdm {
     private _client: PolkadotClient | null = null;
     private _inkSdk: InkSdk | null = null;
     private ownsClient: boolean = false;
-    private defaultOrigin?: SS58String;
-    private defaultSigner?: PolkadotSigner;
+    private defaults: CdmDefaults;
 
     constructor(cdmJson: CdmJson, options?: CdmOptions) {
         this.cdmJson = cdmJson;
@@ -36,8 +35,15 @@ export class Cdm {
             this.ownsClient = false;
         }
 
-        this.defaultOrigin = options?.defaultOrigin ?? (ALICE_SS58 as SS58String);
-        this.defaultSigner = options?.defaultSigner ?? prepareSigner("Alice");
+        this.defaults = {
+            origin: options?.defaultOrigin ?? (ALICE_SS58 as SS58String),
+            signer: options?.defaultSigner ?? prepareSigner("Alice"),
+        };
+    }
+
+    setDefaults(defaults: CdmDefaults): void {
+        if (defaults.origin !== undefined) this.defaults.origin = defaults.origin;
+        if (defaults.signer !== undefined) this.defaults.signer = defaults.signer;
     }
 
     get client(): PolkadotClient {
@@ -72,10 +78,9 @@ export class Cdm {
         const descriptor = { abi: data.abi };
         const papiContract = this.inkSdk.getContract(descriptor as any, data.address as HexString);
 
-        return wrapContract(papiContract, data.abi as any, {
-            origin: this.defaultOrigin,
-            signer: this.defaultSigner,
-        }) as CdmContract<CdmContracts[K]>;
+        return wrapContract(papiContract, data.abi as any, this.defaults) as CdmContract<
+            CdmContracts[K]
+        >;
     }
 
     getAddress(library: string): HexString {

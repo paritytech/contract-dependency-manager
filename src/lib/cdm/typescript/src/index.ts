@@ -7,6 +7,7 @@ export type {
     CdmContract,
     CdmContracts,
     CdmContractDef,
+    CdmDefaults,
     CdmOptions,
     QueryResult,
     TxOpts,

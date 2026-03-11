@@ -1,5 +1,5 @@
-import type { SS58String, PolkadotSigner } from "polkadot-api";
-import type { AbiEntry, QueryResult, TxOpts, TxResult } from "./types";
+import type { SS58String } from "polkadot-api";
+import type { AbiEntry, CdmDefaults, QueryResult, TxOpts, TxResult } from "./types";
 
 type PapiInkContract = any; // papi's InkSdk contract type
 
@@ -38,7 +38,7 @@ function extractOverrides<T>(
 export function wrapContract(
     papiContract: PapiInkContract,
     abi: AbiEntry[],
-    defaults: { origin?: SS58String; signer?: PolkadotSigner },
+    defaults: CdmDefaults,
 ): Record<
     string,
     {

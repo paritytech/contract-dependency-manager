@@ -43,6 +43,12 @@ export type CdmContract<C extends CdmContractDef> = {
     };
 };
 
+// Mutable defaults shared across all contract handles
+export interface CdmDefaults {
+    origin?: SS58String;
+    signer?: PolkadotSigner;
+}
+
 // Options for createCdm()
 export interface CdmOptions {
     cdmJsonPath?: string;
