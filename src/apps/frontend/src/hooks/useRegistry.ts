@@ -1,22 +1,15 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNetwork } from "../context/NetworkContext";
-import type { Package, AbiEntry } from "../data/types";
+import type { Package } from "../data/types";
 import { ALICE_SS58 } from "@dotdm/utils";
 import { connectIpfsGateway } from "@dotdm/env";
+import { queryContractByName, parseMetadata } from "../data/registry-queries";
 import { useInfiniteLoad } from "./useInfiniteLoad";
 
 const PAGE_SIZE = 10;
 
 // patch!
 const HIDDEN_CONTRACTS = ["@polkadot/disputes", "@polkadot/reputation"];
-
-function unwrapOption<T>(val: unknown): T | undefined {
-    if (val && typeof val === "object" && "isSome" in val) {
-        const opt = val as { isSome: boolean; value: T };
-        return opt.isSome ? opt.value : undefined;
-    }
-    return val as T;
-}
 
 export function useRegistry() {
     const {
@@ -54,37 +47,8 @@ export function useRegistry() {
                 // patch!
                 if (HIDDEN_CONTRACTS.includes(name)) continue;
 
-                const [versionResult, metadataResult, addressResult] = await Promise.all([
-                    registry.query("getVersionCount", {
-                        origin: ALICE_SS58,
-                        data: { contract_name: name },
-                    }),
-                    registry.query("getMetadataUri", {
-                        origin: ALICE_SS58,
-                        data: { contract_name: name },
-                    }),
-                    registry.query("getAddress", {
-                        origin: ALICE_SS58,
-                        data: { contract_name: name },
-                    }),
-                ]);
-
-                const versionCount = versionResult.success ? versionResult.value.response : 0;
-                const metadataUri = metadataResult.success
-                    ? unwrapOption<string>(metadataResult.value.response)
-                    : undefined;
-                const address = addressResult.success
-                    ? unwrapOption<string>(addressResult.value.response)
-                    : undefined;
-
-                packages.push({
-                    name,
-                    version: String(versionCount),
-                    weeklyCalls: 0,
-                    address,
-                    metadataUri,
-                    metadataLoaded: false,
-                });
+                const pkg = await queryContractByName(registry, name);
+                if (pkg) packages.push(pkg);
             }
             return packages;
         },
@@ -139,42 +103,7 @@ export function useRegistry() {
             ipfs.fetch(pkg.metadataUri!)
                 .then((r) => r.json())
                 .then((metadata: any) => {
-                    let author: string | undefined;
-                    if (Array.isArray(metadata.authors) && metadata.authors.length > 0) {
-                        author = metadata.authors.join(", ");
-                    }
-
-                    let lastPublished: string | undefined;
-                    if (metadata.published_at) {
-                        lastPublished = new Date(metadata.published_at).toLocaleDateString(
-                            "en-US",
-                            {
-                                year: "numeric",
-                                month: "short",
-                                day: "numeric",
-                            },
-                        );
-                    }
-
-                    let abi: AbiEntry[] | undefined;
-                    if (Array.isArray(metadata.abi)) {
-                        abi = metadata.abi;
-                    }
-
-                    setMetadataMap((prev) => ({
-                        ...prev,
-                        [pkg.name]: {
-                            description: metadata.description || undefined,
-                            readme: metadata.readme || undefined,
-                            homepage: metadata.homepage || undefined,
-                            repository: metadata.repository || undefined,
-                            author,
-                            lastPublished,
-                            publishedDate: lastPublished,
-                            abi,
-                            metadataLoaded: true,
-                        },
-                    }));
+                    setMetadataMap((prev) => ({ ...prev, [pkg.name]: parseMetadata(metadata) }));
                 })
                 .catch(() => {
                     setMetadataMap((prev) => ({

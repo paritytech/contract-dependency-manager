@@ -4,8 +4,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import Layout from "../components/Layout";
 import { CopyIcon, CheckIcon } from "../components/Icons";
-import { useNetwork } from "../context/NetworkContext";
-import { useRegistry } from "../hooks/useRegistry";
+import { usePackage } from "../hooks/usePackage";
 import type { AbiEntry, AbiParam } from "../data/types";
 import "./PackagePage.css";
 
@@ -196,12 +195,9 @@ export default function PackagePage() {
     const [copied, setCopied] = useState(false);
     const [addrCopied, setAddrCopied] = useState(false);
 
-    const { network, connecting, error: networkError } = useNetwork();
-    const { packages, loading, error: registryError } = useRegistry();
-    const error = networkError || registryError;
-    const pkg = packages.find((p) => p.name === name);
+    const { pkg, loading, notFound, error, network } = usePackage(name);
 
-    if (connecting || (loading && packages.length === 0)) {
+    if (loading) {
         return (
             <Layout>
                 <div className="package-not-found">
@@ -226,7 +222,7 @@ export default function PackagePage() {
         );
     }
 
-    if (!pkg) {
+    if (notFound || !pkg) {
         return (
             <Layout>
                 <div className="package-not-found">
