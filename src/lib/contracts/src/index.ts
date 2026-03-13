@@ -26,6 +26,7 @@ export {
     type AbiEntry,
     type Metadata,
     ContractDeployer,
+    computeDeploySalt,
 } from "./deployer";
 
 export { MetadataPublisher } from "./publisher";
@@ -38,7 +39,12 @@ export {
 
 export { computeCid } from "./cid";
 
-export { GAS_LIMIT, STORAGE_DEPOSIT_LIMIT, CONTRACTS_REGISTRY_CRATE } from "@dotdm/utils";
+export {
+    GAS_LIMIT,
+    STORAGE_DEPOSIT_LIMIT,
+    CONTRACTS_REGISTRY_CRATE,
+    REGISTRY_ADDRESS,
+} from "@dotdm/utils";
 
 export {
     getCdmRoot,

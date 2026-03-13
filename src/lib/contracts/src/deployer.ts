@@ -1,8 +1,19 @@
-import { PolkadotClient, TypedApi, Binary, Enum } from "polkadot-api";
+import { PolkadotClient, TypedApi, Binary, Enum, FixedSizeBinary } from "polkadot-api";
 import { AssetHub } from "@dotdm/descriptors";
 import { readFileSync } from "fs";
 import { prepareSigner } from "@dotdm/env";
 import { stringifyBigInt, ALICE_SS58, STORAGE_DEPOSIT_LIMIT } from "@dotdm/utils";
+import { blake2b } from "@noble/hashes/blake2.js";
+
+/**
+ * Compute a deterministic 32-byte CREATE2 salt from a CDM package name.
+ * Using CREATE2 ensures the same contract gets the same address on every chain
+ * (given the same deployer, salt, and bytecode).
+ */
+export function computeDeploySalt(cdmPackage: string): FixedSizeBinary<32> {
+    const hash = blake2b(new TextEncoder().encode(cdmPackage), { dkLen: 32 });
+    return FixedSizeBinary.fromBytes(hash) as FixedSizeBinary<32>;
+}
 
 export interface AbiParam {
     name: string;
@@ -48,11 +59,16 @@ export class ContractDeployer {
     /**
      * Deploy a PVM contract and return its address.
      * Uses a dry-run to estimate gas, then submits with the estimated values.
+     * When cdmPackage is provided, uses CREATE2 (deterministic address via salt).
      */
-    async deploy(pvmPath: string): Promise<{ address: string; txHash: string; blockHash: string }> {
+    async deploy(
+        pvmPath: string,
+        cdmPackage?: string,
+    ): Promise<{ address: string; txHash: string; blockHash: string }> {
         const bytecode = readFileSync(pvmPath);
         const code = Binary.fromBytes(bytecode);
         const data = Binary.fromBytes(new Uint8Array(0));
+        const salt = cdmPackage ? computeDeploySalt(cdmPackage) : undefined;
 
         // Dry-run to estimate gas requirements
         const dryRun = await this.api.apis.ReviveApi.instantiate(
@@ -62,7 +78,7 @@ export class ContractDeployer {
             undefined, // unlimited storage deposit for estimation
             Enum("Upload", code),
             data,
-            undefined, // salt
+            salt,
         );
 
         if (dryRun.result.success === false) {
@@ -89,7 +105,7 @@ export class ContractDeployer {
             storage_deposit_limit: storageDeposit,
             code,
             data,
-            salt: undefined,
+            salt,
         }).signAndSubmit(this.signer);
 
         const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
@@ -109,11 +125,13 @@ export class ContractDeployer {
     /**
      * Dry-run a contract deploy to estimate gas/storage, returning the
      * transaction descriptor (unsigned) and the bytecode for later batching.
+     * When cdmPackage is provided, uses CREATE2 (deterministic address via salt).
      */
-    async dryRunDeploy(pvmPath: string) {
+    async dryRunDeploy(pvmPath: string, cdmPackage?: string) {
         const bytecode = readFileSync(pvmPath);
         const code = Binary.fromBytes(bytecode);
         const data = Binary.fromBytes(new Uint8Array(0));
+        const salt = cdmPackage ? computeDeploySalt(cdmPackage) : undefined;
 
         const dryRun = await this.api.apis.ReviveApi.instantiate(
             ALICE_SS58,
@@ -122,7 +140,7 @@ export class ContractDeployer {
             undefined,
             Enum("Upload", code),
             data,
-            undefined,
+            salt,
         );
 
         if (dryRun.result.success === false) {
@@ -146,7 +164,7 @@ export class ContractDeployer {
                 storage_deposit_limit: storageDeposit,
                 code,
                 data,
-                salt: undefined,
+                salt,
             }),
             gasLimit,
             storageDeposit,
@@ -156,13 +174,15 @@ export class ContractDeployer {
     /**
      * Deploy multiple contracts in a single Utility.batch_all transaction.
      * Returns addresses in the same order as the input paths.
+     * When cdmPackages is provided, each contract uses CREATE2 with a salt derived from its package name.
      */
     async deployBatch(
         pvmPaths: string[],
+        cdmPackages?: (string | undefined)[],
     ): Promise<{ addresses: string[]; txHash: string; blockHash: string }> {
         if (pvmPaths.length === 0) return { addresses: [], txHash: "", blockHash: "" };
         if (pvmPaths.length === 1) {
-            const result = await this.deploy(pvmPaths[0]);
+            const result = await this.deploy(pvmPaths[0], cdmPackages?.[0]);
             return {
                 addresses: [result.address],
                 txHash: result.txHash,
@@ -170,7 +190,9 @@ export class ContractDeployer {
             };
         }
 
-        const prepared = await Promise.all(pvmPaths.map((p) => this.dryRunDeploy(p)));
+        const prepared = await Promise.all(
+            pvmPaths.map((p, i) => this.dryRunDeploy(p, cdmPackages?.[i])),
+        );
 
         const calls = await Promise.all(
             prepared.map(async (p) => {

@@ -1,5 +1,6 @@
 import { resolve } from "path";
 import { execFileSync, spawn } from "child_process";
+import { REGISTRY_ADDRESS } from "@dotdm/utils";
 
 export interface BuildResult {
     crateName: string;
@@ -18,15 +19,13 @@ export type BuildProgressCallback = (
 /**
  * Build a single contract using `cargo pvm-contract build`.
  */
-export function pvmContractBuild(rootDir: string, crateName: string, registryAddr?: string): void {
+export function pvmContractBuild(rootDir: string, crateName: string): void {
     const manifestPath = resolve(rootDir, "Cargo.toml");
     const args = ["pvm-contract", "build", "--manifest-path", manifestPath, "-p", crateName];
     const env: Record<string, string> = {
         ...(process.env as Record<string, string>),
+        CONTRACTS_REGISTRY_ADDR: REGISTRY_ADDRESS,
     };
-    if (registryAddr) {
-        env.CONTRACTS_REGISTRY_ADDR = registryAddr;
-    }
     execFileSync("cargo", args, { cwd: rootDir, stdio: "inherit", env });
 }
 
@@ -36,7 +35,6 @@ export function pvmContractBuild(rootDir: string, crateName: string, registryAdd
 export async function pvmContractBuildAsync(
     rootDir: string,
     crateName: string,
-    registryAddr?: string,
     onProgress?: BuildProgressCallback,
 ): Promise<BuildResult> {
     const manifestPath = resolve(rootDir, "Cargo.toml");
@@ -55,10 +53,8 @@ export async function pvmContractBuildAsync(
         ];
         const env: Record<string, string> = {
             ...(process.env as Record<string, string>),
+            CONTRACTS_REGISTRY_ADDR: REGISTRY_ADDRESS,
         };
-        if (registryAddr) {
-            env.CONTRACTS_REGISTRY_ADDR = registryAddr;
-        }
 
         const child = spawn("cargo", args, {
             cwd: rootDir,

@@ -11,7 +11,7 @@ import {
     ss58Address,
 } from "@dotdm/env";
 import { getAccount } from "@dotdm/utils/accounts";
-import { ALICE_SS58 } from "@dotdm/utils";
+import { ALICE_SS58, REGISTRY_ADDRESS } from "@dotdm/utils";
 import {
     ContractDeployer,
     MetadataPublisher,
@@ -25,10 +25,6 @@ const deploy = new Command("deploy")
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
     .option("--bulletin-url <url>", "WebSocket URL for Bulletin chain")
     .option("-n, --name <name>", "Chain preset name (polkadot, paseo, local, custom)")
-    .option(
-        "--registry-address <address>",
-        "Registry contract address (required unless --bootstrap)",
-    )
     .option("--suri <uri>", "Secret URI for signing")
     .option(
         "--bootstrap",
@@ -41,7 +37,6 @@ type DeployOptions = {
     bulletinUrl?: string;
     ipfsGatewayUrl?: string;
     name?: string;
-    registryAddress?: string;
     suri?: string;
     bootstrap: boolean;
 };
@@ -77,7 +72,6 @@ deploy.action(async (opts: DeployOptions) => {
         opts.assethubUrl = opts.assethubUrl ?? preset.assethubUrl;
         opts.bulletinUrl = opts.bulletinUrl ?? preset.bulletinUrl;
         opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? preset.ipfsGatewayUrl;
-        opts.registryAddress = opts.registryAddress ?? preset.registryAddress;
     }
 
     // Validate required URLs are present
@@ -96,29 +90,15 @@ deploy.action(async (opts: DeployOptions) => {
         return bootstrapDeploy(rootDir, opts);
     }
 
-    if (!opts.registryAddress) {
-        console.error("Error: --registry-address is required unless using --bootstrap");
-        console.error(
-            "  Set it to the deployed ContractRegistry address, or use --bootstrap for a fresh deploy",
-        );
-        console.error("\nUsage:");
-        console.error(
-            "  cdm deploy --assethub-url wss://... --bulletin-url wss://... --registry-address 0x...",
-        );
-        console.error("  cdm deploy --bootstrap --assethub-url wss://... --bulletin-url wss://...");
-        process.exit(1);
-    }
-
-    await deployWithRegistry(opts.registryAddress, rootDir, opts);
+    await deployWithRegistry(rootDir, opts);
 });
 
 /**
- * Build, deploy, and register all CDM contracts against a known registry.
+ * Build, deploy, and register all CDM contracts against the registry.
  * Uses the pipeline TUI for parallel builds and progress display.
  * Optionally accepts existing connections to reuse.
  */
 async function deployWithRegistry(
-    registryAddr: string,
     rootDir: string,
     opts: DeployOptions,
     existingConnections?: {
@@ -160,13 +140,12 @@ async function deployWithRegistry(
 
     const deployer = new ContractDeployer(signer, client, api);
     const publisher = new MetadataPublisher(signer, bulletinConn.api);
-    const registry = new RegistryManager(signer, origin, api, client, registryAddr);
+    const registry = new RegistryManager(signer, origin, api, client, REGISTRY_ADDRESS);
 
-    console.log(`\x1b[1mRegistry\x1b[0m   ${registryAddr}\n`);
+    console.log(`\x1b[1mRegistry\x1b[0m   ${REGISTRY_ADDRESS}\n`);
 
     const result = await runPipelineWithUI({
         rootDir,
-        registryAddr,
         services: { deployer, publisher, registry },
         assethubUrl: opts.assethubUrl,
         bulletinUrl: opts.bulletinUrl,
@@ -225,13 +204,14 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
         console.log("  Account already mapped\n");
     }
 
-    // Phase 1: Deploy ContractRegistry
+    // Phase 1: Deploy ContractRegistry (CREATE2 for deterministic address)
+    const CDM_REGISTRY_PACKAGE = "@cdm/registry";
     console.log("Deploying ContractRegistry...");
-    const { address: registryAddr } = await deployer.deploy(registryPvmPath);
+    const { address: registryAddr } = await deployer.deploy(registryPvmPath, CDM_REGISTRY_PACKAGE);
     console.log(`  ContractRegistry: ${registryAddr}\n`);
 
     // Phase 2+3: Build and deploy all CDM contracts
-    const addresses = await deployWithRegistry(registryAddr, rootDir, opts, {
+    const addresses = await deployWithRegistry(rootDir, opts, {
         signer,
         origin,
         client,
@@ -244,7 +224,6 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     writeFileSync(addrPath, JSON.stringify(addresses, null, 2));
 
     console.log(`\n=== Bootstrap Complete ===`);
-    console.log(`CONTRACTS_REGISTRY_ADDR=${registryAddr}`);
     console.log(`Addresses saved to ${addrPath}`);
 
     bulletinConn.client.destroy();

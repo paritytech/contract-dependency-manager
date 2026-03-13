@@ -8,6 +8,7 @@ import {
     connectIpfsGateway,
     getChainPreset,
     DEFAULT_NODE_URL,
+    REGISTRY_ADDRESS,
 } from "@dotdm/env";
 import { computeTargetHash, readCdmJson, writeCdmJson } from "@dotdm/contracts";
 import { spinner } from "../../lib/ui";
@@ -43,16 +44,11 @@ const install = new Command("install")
         'CDM libraries (e.g., "@polkadot/reputation" or "@polkadot/reputation:3"). Omit to install all from cdm.json.',
     )
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain", DEFAULT_NODE_URL)
-    .option(
-        "--registry-address <address>",
-        "Registry contract address (or set CONTRACTS_REGISTRY_ADDR env var)",
-    )
     .option("-n, --name <name>", "Chain preset name (polkadot, paseo, preview-net, local)")
     .option("--ipfs-gateway-url <url>", "IPFS gateway URL for fetching metadata");
 
 type InstallOptions = {
     assethubUrl: string;
-    registryAddress?: string;
     name?: string;
     ipfsGatewayUrl?: string;
 };
@@ -67,29 +63,17 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         const preset = getChainPreset(opts.name);
         opts.assethubUrl =
             opts.assethubUrl === DEFAULT_NODE_URL ? preset.assethubUrl : opts.assethubUrl;
-        opts.registryAddress = opts.registryAddress ?? preset.registryAddress;
         opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? preset.ipfsGatewayUrl;
     }
 
     // If still missing connection info, populate from cdm.json targets
-    if (!opts.registryAddress && !process.env.CONTRACTS_REGISTRY_ADDR) {
-        const targetEntries = Object.entries(cdmJson.targets);
-        if (targetEntries.length > 0) {
-            const [, target] = targetEntries[0];
-            if (opts.assethubUrl === DEFAULT_NODE_URL) {
-                opts.assethubUrl = target["asset-hub"];
-            }
-            opts.registryAddress = opts.registryAddress ?? target.registry;
-            opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? target.bulletin;
+    const targetEntries = Object.entries(cdmJson.targets);
+    if (targetEntries.length > 0) {
+        const [, target] = targetEntries[0];
+        if (opts.assethubUrl === DEFAULT_NODE_URL) {
+            opts.assethubUrl = target["asset-hub"];
         }
-    }
-
-    const registryAddr = opts.registryAddress ?? process.env.CONTRACTS_REGISTRY_ADDR;
-    if (!registryAddr) {
-        console.error(
-            "Error: Registry address required. Use --registry-address, --name for a preset, or set CONTRACTS_REGISTRY_ADDR",
-        );
-        process.exit(1);
+        opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? target.bulletin;
     }
 
     if (!opts.ipfsGatewayUrl) {
@@ -99,7 +83,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         process.exit(1);
     }
 
-    const targetHash = computeTargetHash(opts.assethubUrl, opts.ipfsGatewayUrl, registryAddr);
+    const targetHash = computeTargetHash(opts.assethubUrl, opts.ipfsGatewayUrl);
 
     // Connect to chain with spinner (matching deploy command style)
     const sp = spinner("AssetHub", opts.assethubUrl);
@@ -108,14 +92,13 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
     sp.succeed();
 
     const inkSdk = createInkSdk(client);
-    const registry = inkSdk.getContract(contracts.contractsRegistry, registryAddr);
+    const registry = inkSdk.getContract(contracts.contractsRegistry, REGISTRY_ADDRESS);
     const ipfs = connectIpfsGateway(opts.ipfsGatewayUrl);
 
     // Update cdm.json targets with resolved connection info
     cdmJson.targets[targetHash] = {
         "asset-hub": opts.assethubUrl,
         bulletin: opts.ipfsGatewayUrl,
-        registry: registryAddr,
     };
     if (!cdmJson.dependencies[targetHash]) {
         cdmJson.dependencies[targetHash] = {};
@@ -149,7 +132,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
     const projectType = detectProjectType(process.cwd());
 
     // Header (matching deploy command style)
-    console.log(`\x1b[1mRegistry\x1b[0m   ${registryAddr}`);
+    console.log(`\x1b[1mRegistry\x1b[0m   ${REGISTRY_ADDRESS}`);
     console.log(`\x1b[1mTarget\x1b[0m     ${targetHash}`);
     console.log(
         `\x1b[1mRust\x1b[0m ${projectType.hasRust ? "\x1b[32m✔\x1b[0m" : "\x1b[2m-\x1b[0m"}` +

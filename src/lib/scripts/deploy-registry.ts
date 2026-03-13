@@ -11,7 +11,7 @@ import { resolve } from "path";
 import { existsSync } from "fs";
 import { parseArgs } from "util";
 import { connectAssetHubWebSocket, prepareSigner, getChainPreset } from "@dotdm/env";
-import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@dotdm/contracts";
+import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, computeDeploySalt } from "@dotdm/contracts";
 
 const { values: opts } = parseArgs({
     args: process.argv.slice(2),
@@ -59,9 +59,10 @@ try {
     // already mapped
 }
 
-// Deploy
-console.log("Deploying ContractRegistry...");
-const { address } = await deployer.deploy(pvmPath);
+// Deploy with CREATE2 for deterministic address
+const CDM_REGISTRY_PACKAGE = "@cdm/registry";
+console.log(`Deploying ContractRegistry (CREATE2 salt: "${CDM_REGISTRY_PACKAGE}")...`);
+const { address } = await deployer.deploy(pvmPath, CDM_REGISTRY_PACKAGE);
 console.log(`\nCONTRACTS_REGISTRY_ADDR=${address}`);
 
 client.destroy();

@@ -54,7 +54,6 @@ export interface DeployServices {
 
 export interface PipelineOptions {
     rootDir: string;
-    registryAddr?: string;
     services?: DeployServices; // undefined = build-only mode
     contractFilter?: string[]; // optional filter to only process specific contracts
     onStatusChange?: (crateName: string, status: ContractStatus) => void;
@@ -129,7 +128,7 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
                         buildProgress: { compiled: processed, total, currentCrate },
                     });
                 };
-                return pvmContractBuildAsync(opts.rootDir, crate, opts.registryAddr, onProgress);
+                return pvmContractBuildAsync(opts.rootDir, crate, onProgress);
             }),
         );
 
@@ -219,8 +218,9 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
                 const pvmPaths = deployable.map((c) =>
                     resolve(opts.rootDir, `target/${c}.release.polkavm`),
                 );
+                const cdmPackages = deployable.map((c) => order.cdmPackageMap.get(c));
                 const [deployResult, publishResult] = await Promise.all([
-                    opts.services.deployer.deployBatch(pvmPaths),
+                    opts.services.deployer.deployBatch(pvmPaths, cdmPackages),
                     cdmCrates.length > 0
                         ? opts.services.publisher.publishBatch(metadataList)
                         : Promise.resolve(null),

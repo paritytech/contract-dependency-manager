@@ -4,11 +4,11 @@ import { getWsProvider } from "polkadot-api/ws-provider/web";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
 import { contracts } from "@dotdm/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
-import { KNOWN_CHAINS, type ChainPreset } from "@dotdm/env";
+import { KNOWN_CHAINS, REGISTRY_ADDRESS, type ChainPreset } from "@dotdm/env";
 
 const NETWORK_PRESETS: Record<string, ChainPreset> = {
     ...KNOWN_CHAINS,
-    custom: { assethubUrl: "", bulletinUrl: "", ipfsGatewayUrl: "", registryAddress: "" },
+    custom: { assethubUrl: "", bulletinUrl: "", ipfsGatewayUrl: "" },
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,11 +20,9 @@ interface NetworkContextType {
     assethubUrl: string;
     bulletinUrl: string;
     ipfsGatewayUrl: string;
-    registryAddress: string;
     setAssethubUrl: (url: string) => void;
     setBulletinUrl: (url: string) => void;
     setIpfsGatewayUrl: (url: string) => void;
-    setRegistryAddress: (addr: string) => void;
     registry: RegistryContract | null;
     connected: boolean;
     connecting: boolean;
@@ -44,9 +42,6 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     const [assethubUrl, setAssethubUrl] = useState(NETWORK_PRESETS["paseo"].assethubUrl);
     const [bulletinUrl, setBulletinUrl] = useState(NETWORK_PRESETS["paseo"].bulletinUrl);
     const [ipfsGatewayUrl, setIpfsGatewayUrl] = useState(NETWORK_PRESETS["paseo"].ipfsGatewayUrl);
-    const [registryAddress, setRegistryAddress] = useState(
-        NETWORK_PRESETS["paseo"].registryAddress ?? "",
-    );
     const [registry, setRegistry] = useState<RegistryContract | null>(null);
     const [connected, setConnected] = useState(false);
     const [connecting, setConnecting] = useState(false);
@@ -61,12 +56,11 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
             setAssethubUrl(preset.assethubUrl);
             setBulletinUrl(preset.bulletinUrl);
             setIpfsGatewayUrl(preset.ipfsGatewayUrl);
-            setRegistryAddress(preset.registryAddress ?? "");
         }
     }, []);
 
     useEffect(() => {
-        if (!assethubUrl || !registryAddress) {
+        if (!assethubUrl) {
             setRegistry(null);
             setConnected(false);
             setError(null);
@@ -118,7 +112,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
                 if (abort.signal.aborted) return;
 
                 const inkSdk = createInkSdk(client);
-                const reg = inkSdk.getContract(contracts.contractsRegistry, registryAddress);
+                const reg = inkSdk.getContract(contracts.contractsRegistry, REGISTRY_ADDRESS);
 
                 setRegistry(reg);
                 setConnected(true);
@@ -145,7 +139,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
                 clientRef.current = null;
             }
         };
-    }, [assethubUrl, registryAddress]);
+    }, [assethubUrl]);
 
     return (
         <NetworkContext.Provider
@@ -155,11 +149,9 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
                 assethubUrl,
                 bulletinUrl,
                 ipfsGatewayUrl,
-                registryAddress,
                 setAssethubUrl,
                 setBulletinUrl,
                 setIpfsGatewayUrl,
-                setRegistryAddress,
                 registry,
                 connected,
                 connecting,

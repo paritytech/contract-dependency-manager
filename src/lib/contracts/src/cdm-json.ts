@@ -5,7 +5,6 @@ import { resolve, dirname } from "path";
 export interface CdmJsonTarget {
     "asset-hub": string;
     bulletin: string;
-    registry: string;
 }
 
 export interface CdmJsonContract {
@@ -21,12 +20,8 @@ export interface CdmJson {
     contracts?: Record<string, Record<string, CdmJsonContract>>;
 }
 
-export function computeTargetHash(
-    assethubUrl: string,
-    ipfsGatewayUrl: string,
-    registryAddress: string,
-): string {
-    const input = `${assethubUrl}\n${ipfsGatewayUrl}\n${registryAddress}`;
+export function computeTargetHash(assethubUrl: string, ipfsGatewayUrl: string): string {
+    const input = `${assethubUrl}\n${ipfsGatewayUrl}`;
     const hash = blake2b(new TextEncoder().encode(input), { dkLen: 32 });
     return Buffer.from(hash.slice(0, 8)).toString("hex");
 }

@@ -4,5 +4,6 @@ export {
     STORAGE_DEPOSIT_LIMIT,
     CONTRACTS_REGISTRY_CRATE,
     DEFAULT_NODE_URL,
+    REGISTRY_ADDRESS,
 } from "./constants";
 export { stringifyBigInt } from "./utils";

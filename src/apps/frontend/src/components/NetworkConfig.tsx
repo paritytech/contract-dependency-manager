@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import "./NetworkConfig.css";
-import { useNetwork, NETWORK_PRESETS } from "../context/NetworkContext";
+import { useNetwork } from "../context/NetworkContext";
 
 const DISPLAY_NAMES: Record<string, string> = {
     "preview-net": "Preview Net",
@@ -18,10 +18,8 @@ export default function NetworkConfig() {
         setNetwork,
         assethubUrl,
         bulletinUrl,
-        registryAddress,
         setAssethubUrl,
         setBulletinUrl,
-        setRegistryAddress,
         connected,
         connecting,
     } = useNetwork();
@@ -45,8 +43,6 @@ export default function NetworkConfig() {
         setNetwork(key);
     };
 
-    const isPresetNetwork =
-        network in NETWORK_PRESETS && network !== "custom" && network !== "local";
     const showInputs = open && (network === "custom" || network === "local");
 
     return (
@@ -138,17 +134,6 @@ export default function NetworkConfig() {
                                     </div>
                                 </>
                             )}
-                            <div className="net-selector-field">
-                                <label className="net-selector-field-label">Registry Address</label>
-                                <input
-                                    className="net-selector-field-input"
-                                    type="text"
-                                    value={registryAddress}
-                                    onChange={(e) => setRegistryAddress(e.target.value)}
-                                    disabled={isPresetNetwork}
-                                    placeholder="0x..."
-                                />
-                            </div>
                         </div>
                     )}
                 </div>

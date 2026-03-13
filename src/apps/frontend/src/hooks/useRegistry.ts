@@ -8,9 +8,6 @@ import { useInfiniteLoad } from "./useInfiniteLoad";
 
 const PAGE_SIZE = 10;
 
-// patch!
-const HIDDEN_CONTRACTS = ["@polkadot/disputes", "@polkadot/reputation"];
-
 export function useRegistry() {
     const {
         registry,
@@ -44,8 +41,6 @@ export function useRegistry() {
                 });
                 if (!nameResult.success) continue;
                 const name = nameResult.value.response;
-                // patch!
-                if (HIDDEN_CONTRACTS.includes(name)) continue;
 
                 const pkg = await queryContractByName(registry, name);
                 if (pkg) packages.push(pkg);
@@ -128,8 +123,7 @@ export function useRegistry() {
         error,
         hasMore,
         loadMore,
-        // patch!
-        totalCount: Math.max(0, totalCount - HIDDEN_CONTRACTS.length),
+        totalCount,
         network,
     };
 }

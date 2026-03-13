@@ -34,8 +34,8 @@ describe("CLI commands", () => {
 
     test("cdm install --help shows options", () => {
         const output = execSync(`bun run ${CLI} install --help`).toString();
-        expect(output).toContain("--registry-address");
         expect(output).toContain("--assethub-url");
+        expect(output).toContain("--name");
     });
 
     test("cdm template scaffolds project", () => {

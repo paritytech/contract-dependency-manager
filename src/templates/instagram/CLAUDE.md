@@ -731,8 +731,7 @@ After installing, contracts are available via:
   "targets": {
     "<targetHash>": {
       "asset-hub": "wss://asset-hub-paseo-rpc.n.dwellir.com",
-      "bulletin": "https://paseo-ipfs.polkadot.io/ipfs",
-      "registry": "0xede6d5f092de34152f8952baa99a35363ed087c0"
+      "bulletin": "https://paseo-ipfs.polkadot.io/ipfs"
     }
   },
   "dependencies": {
@@ -751,7 +750,7 @@ After installing, contracts are available via:
 }
 ```
 
-Target hash = first 8 bytes of `blake2b(assethubUrl + "\n" + bulletinUrl + "\n" + registryAddress)`.
+Target hash = first 8 bytes of `blake2b(assethubUrl + "\n" + bulletinUrl)`.
 
 ## TypeScript Client (@dotdm/cdm)
 

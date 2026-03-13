@@ -7,7 +7,6 @@ export interface ChainPreset {
     assethubUrl: string;
     bulletinUrl: string;
     ipfsGatewayUrl: string;
-    registryAddress?: string;
     faucets?: ChainFaucet[];
 }
 
@@ -16,13 +15,11 @@ export const KNOWN_CHAINS: Record<string, ChainPreset> = {
         assethubUrl: "wss://polkadot-asset-hub-rpc.polkadot.io",
         bulletinUrl: "wss://polkadot-bulletin-rpc.polkadot.io",
         ipfsGatewayUrl: "https://polkadot-bulletin-rpc.polkadot.io/ipfs",
-        registryAddress: undefined, // TODO: set once deployed
     },
     paseo: {
         assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
         bulletinUrl: "wss://paseo-bulletin-rpc.polkadot.io",
         ipfsGatewayUrl: "https://paseo-ipfs.polkadot.io/ipfs",
-        registryAddress: "0xede6d5f092de34152f8952baa99a35363ed087c0",
         faucets: [
             { label: "Asset Hub", url: "https://faucet.polkadot.io/" },
             {
@@ -35,7 +32,6 @@ export const KNOWN_CHAINS: Record<string, ChainPreset> = {
         assethubUrl: "wss://previewnet.substrate.dev/asset-hub",
         bulletinUrl: "wss://previewnet.substrate.dev/bulletin",
         ipfsGatewayUrl: "https://previewnet.substrate.dev/ipfs/",
-        registryAddress: "0xcf5f4af8f99f361a620fffa8ed3a62742bd8876d",
     },
     local: {
         assethubUrl: "ws://127.0.0.1:10020",
