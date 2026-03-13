@@ -19,7 +19,8 @@ export default function HomePage() {
     } = useRegistry();
     const [copied, setCopied] = useState(false);
 
-    const installCmd = "curl -fsSL https://contracts.dot.li/install | bash";
+    const installCmd =
+        "curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | bash";
     const error = networkError || registryError;
 
     const handleCopy = () => {
