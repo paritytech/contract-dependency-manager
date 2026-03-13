@@ -19,7 +19,7 @@ export default function HomePage() {
     } = useRegistry();
     const [copied, setCopied] = useState(false);
 
-    const installCmd = "curl -fsSL https://contracts.paseo.li/install | bash";
+    const installCmd = "curl -fsSL https://contracts.dot.li/install | bash";
     const error = networkError || registryError;
 
     const handleCopy = () => {

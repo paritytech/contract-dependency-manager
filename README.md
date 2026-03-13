@@ -2,7 +2,7 @@
 
 A CLI tool for managing PVM smart contract dependencies on Polkadot. CDM automates contract deployment ordering, cross-contract address resolution, and TypeScript type generation.
 
-Browse published contracts at [contracts.paseo.li](https://contracts.paseo.li/#/).
+Browse published contracts at [contracts.dot.li](https://contracts.dot.li/#/).
 
 ## Table of Contents
 
