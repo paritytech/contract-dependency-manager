@@ -11,6 +11,7 @@ import supportsHyperlinks from "supports-hyperlinks";
 
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const link = (label: string, url: string) =>
     supportsHyperlinks.stdout ? `\x1b[4m\x1b]8;;${url}\x07${label}\x1b]8;;\x07\x1b[0m` : url;
@@ -50,9 +51,18 @@ export async function printBalances(chainName: string, acc: Account) {
     });
     if (auth) {
         const mb = (Number(auth.extent.bytes) / 1_000_000).toFixed(1);
-        console.log(
-            `  Bulletin    ${green(`${auth.extent.transactions} txns`)}  ${green(`${mb} MB`)}  ${dim(`expires block #${auth.expiration}`)}`,
-        );
+        const finalizedBlock = await blClient.getFinalizedBlock();
+        const currentBlockNumber = finalizedBlock.number;
+        const expired = currentBlockNumber >= auth.expiration;
+        if (expired) {
+            console.log(
+                `  Bulletin    ${red(`${auth.extent.transactions} txns`)}  ${red(`${mb} MB`)}  ${red(`expired at block #${auth.expiration}`)}`,
+            );
+        } else {
+            console.log(
+                `  Bulletin    ${green(`${auth.extent.transactions} txns`)}  ${green(`${mb} MB`)}  ${dim(`expires block #${auth.expiration}`)}`,
+            );
+        }
     } else {
         console.log(`  Bulletin    ${dim("no allowance")}`);
     }
