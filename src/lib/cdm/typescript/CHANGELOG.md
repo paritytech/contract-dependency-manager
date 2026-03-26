@@ -1,5 +1,15 @@
 # @dotdm/cdm
 
+## 0.5.2
+
+### Patch Changes
+
+- 6e9633a: Fix Node.js ESM compatibility by switching library builds from tsc to tsup. Compiled output now includes proper .js extensions on relative imports, making packages work in both bundler and Node.js ESM environments.
+- Updated dependencies [6e9633a]
+  - @dotdm/env@0.3.1
+  - @dotdm/utils@0.3.1
+  - @dotdm/contracts@0.3.1
+
 ## 0.5.1
 
 ### Patch Changes
