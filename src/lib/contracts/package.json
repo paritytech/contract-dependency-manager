@@ -15,7 +15,7 @@
         "access": "public"
     },
     "scripts": {
-        "build": "tsc -p tsconfig.json",
+        "build": "tsup src/index.ts --format esm --dts --clean",
         "clean": "rm -rf dist"
     },
     "dependencies": {
@@ -29,6 +29,7 @@
     },
     "devDependencies": {
         "@types/node": "catalog:",
+        "tsup": "catalog:",
         "typescript": "catalog:"
     }
 }
