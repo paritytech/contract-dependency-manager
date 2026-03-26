@@ -1,5 +1,11 @@
 # @dotdm/cdm
 
+## 0.5.1
+
+### Patch Changes
+
+- dc7f2f8: Add browser-specific entry point to avoid bundling Node.js-only dependencies (fs, path, child_process) in browser builds
+
 ## 0.5.0
 
 ### Minor Changes
