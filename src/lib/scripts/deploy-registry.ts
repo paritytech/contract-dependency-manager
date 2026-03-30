@@ -10,7 +10,7 @@
 import { resolve } from "path";
 import { existsSync } from "fs";
 import { parseArgs } from "util";
-import { connectAssetHubWebSocket, prepareSigner, getChainPreset } from "@dotdm/env";
+import { connectAssetHubWebSocket, prepareSigner, getChainPreset, ss58Address } from "@dotdm/env";
 import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, computeDeploySalt } from "@dotdm/contracts";
 
 const { values: opts } = parseArgs({
@@ -49,7 +49,7 @@ const { client, api } = connectAssetHubWebSocket(assethubUrl);
 await client.getChainSpecData();
 console.log("Connected.");
 
-const deployer = new ContractDeployer(signer, client, api);
+const deployer = new ContractDeployer(signer, ss58Address(signer.publicKey), client, api);
 
 // Map account (required on fresh chains, harmless if already mapped)
 try {

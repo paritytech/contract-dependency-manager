@@ -2,7 +2,7 @@ import { PolkadotClient, TypedApi, Binary, Enum, FixedSizeBinary } from "polkado
 import { AssetHub } from "@dotdm/descriptors";
 import { readFileSync } from "fs";
 import { prepareSigner } from "@dotdm/env";
-import { stringifyBigInt, ALICE_SS58, STORAGE_DEPOSIT_LIMIT } from "@dotdm/utils";
+import { stringifyBigInt, STORAGE_DEPOSIT_LIMIT } from "@dotdm/utils";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 /**
@@ -43,15 +43,18 @@ export interface Metadata {
 
 export class ContractDeployer {
     public signer: ReturnType<typeof prepareSigner>;
+    public origin: string;
     public api: TypedApi<AssetHub>;
     public client: PolkadotClient;
 
     constructor(
         signer: ReturnType<typeof prepareSigner>,
+        origin: string,
         client: PolkadotClient,
         api: TypedApi<AssetHub>,
     ) {
         this.signer = signer;
+        this.origin = origin;
         this.client = client;
         this.api = api;
     }
@@ -72,7 +75,7 @@ export class ContractDeployer {
 
         // Dry-run to estimate gas requirements
         const dryRun = await this.api.apis.ReviveApi.instantiate(
-            ALICE_SS58,
+            this.origin,
             0n,
             undefined, // unlimited gas for estimation
             undefined, // unlimited storage deposit for estimation
@@ -134,7 +137,7 @@ export class ContractDeployer {
         const salt = cdmPackage ? computeDeploySalt(cdmPackage) : undefined;
 
         const dryRun = await this.api.apis.ReviveApi.instantiate(
-            ALICE_SS58,
+            this.origin,
             0n,
             undefined,
             undefined,

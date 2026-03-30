@@ -138,7 +138,7 @@ async function deployWithRegistry(
     await bulletinConn.client.getChainSpecData();
     sp.succeed();
 
-    const deployer = new ContractDeployer(signer, client, api);
+    const deployer = new ContractDeployer(signer, origin, client, api);
     const publisher = new MetadataPublisher(signer, bulletinConn.api);
     const registry = new RegistryManager(signer, origin, api, client, REGISTRY_ADDRESS);
 
@@ -193,7 +193,7 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     await bulletinConn.client.getChainSpecData();
     sp2.succeed();
 
-    const deployer = new ContractDeployer(signer, client, api);
+    const deployer = new ContractDeployer(signer, origin, client, api);
 
     // Map account (required for Revive pallet on fresh chains)
     console.log("Mapping account...");
