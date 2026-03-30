@@ -1,5 +1,12 @@
 # @dotdm/cdm
 
+## 0.5.3
+
+### Patch Changes
+
+- Updated dependencies [bf1003a]
+  - @dotdm/contracts@0.3.2
+
 ## 0.5.2
 
 ### Patch Changes
