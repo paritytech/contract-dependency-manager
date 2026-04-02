@@ -8,16 +8,9 @@ on:
         branches:
             - main
     workflow_dispatch:
-        inputs:
-            skip-cache:
-                description: "Skip deployment cache and force redeploy"
-                type: boolean
-                default: false
 
 permissions:
     contents: read
-    statuses: write
-    id-token: write
     pull-requests: write
 
 concurrency:
@@ -71,17 +64,57 @@ jobs:
 
     deploy:
         needs: build
+        runs-on: ubuntu-latest
         name: Deploy
-        uses: paritytech/dotns-sdk/.github/workflows/deploy.yml@main
-        with:
-            basename: contracts
-            mode: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'production' || 'preview' }}
-            artifact-name: frontend-build
-            register-base: true
-            skip-cache: ${{ inputs.skip-cache || false }}
-            max-retries: 3
-        secrets:
-            dotns-mnemonic: ${{ secrets.MNEMONIC }}
+        outputs:
+            domain: ${{ steps.deploy.outputs.domain }}
+            cid: ${{ steps.deploy.outputs.cid }}
+            url: ${{ steps.domain.outputs.url }}
+        steps:
+            - name: Download build artifact
+              uses: actions/download-artifact@v4
+              with:
+                  name: frontend-build
+                  path: dist
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - name: Setup IPFS
+              uses: ipfs/download-ipfs-distribution-action@v1
+              with:
+                  name: kubo
+                  version: v0.33.0
+            - run: ipfs init
+
+            - name: Install bulletin-deploy
+              run: npm install -g bulletin-deploy
+
+            - name: Determine domain
+              id: domain
+              run: |
+                  if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+                    DOMAIN="contracts-pr-${{ github.event.pull_request.number }}.dot"
+                    echo "url=https://contracts-pr-${{ github.event.pull_request.number }}.dot.li" >> "$GITHUB_OUTPUT"
+                  else
+                    DOMAIN="contracts.dot"
+                    echo "url=https://contracts.dot.li" >> "$GITHUB_OUTPUT"
+                  fi
+                  echo "domain=$DOMAIN" >> "$GITHUB_OUTPUT"
+
+            - name: Deploy to Bulletin
+              id: deploy
+              uses: nick-fields/retry@v3
+              with:
+                  timeout_minutes: 15
+                  max_attempts: 3
+                  retry_wait_seconds: 30
+                  command: bulletin-deploy './dist' '${{ steps.domain.outputs.domain }}'
+              env:
+                  MNEMONIC: ${{ secrets.MNEMONIC }}
+                  NODE_OPTIONS: "--max-old-space-size=8192"
 
     comment-success:
         needs: [build, deploy]
@@ -105,7 +138,7 @@ jobs:
 
                       | Detail | Value |
                       |--------|-------|
-                      | **Domain** | `${{ needs.deploy.outputs.fqdn }}` |
+                      | **Domain** | `${{ needs.deploy.outputs.domain }}` |
                       | **CID** | `${{ needs.deploy.outputs.cid }}` |
                       | **Commit** | [`${{ github.event.pull_request.head.sha }}`](${{ github.event.pull_request.head.repo.html_url }}/commit/${{ github.event.pull_request.head.sha }}) |
                       | **Branch** | `${{ github.head_ref }}` |
