@@ -7,13 +7,77 @@ import { KNOWN_CHAINS, REGISTRY_ADDRESS, type ChainPreset } from "@dotdm/env";
 
 // Inlined — avoid importing @dotdm/contracts which bundles Node.js modules
 const REGISTRY_ABI = [
-    { type: "function", name: "getAddress", inputs: [{ name: "contract_name", type: "string" }], outputs: [{ name: "", type: "tuple", components: [{ name: "isSome", type: "bool" }, { name: "value", type: "address" }] }], stateMutability: "view" },
-    { type: "function", name: "getMetadataUri", inputs: [{ name: "contract_name", type: "string" }], outputs: [{ name: "", type: "tuple", components: [{ name: "isSome", type: "bool" }, { name: "value", type: "string" }] }], stateMutability: "view" },
-    { type: "function", name: "getVersionCount", inputs: [{ name: "contract_name", type: "string" }], outputs: [{ name: "", type: "uint32" }], stateMutability: "view" },
-    { type: "function", name: "getContractCount", inputs: [], outputs: [{ name: "", type: "uint32" }], stateMutability: "view" },
-    { type: "function", name: "getContractNameAt", inputs: [{ name: "index", type: "uint32" }], outputs: [{ name: "", type: "string" }], stateMutability: "view" },
-    { type: "function", name: "getOwner", inputs: [{ name: "contract_name", type: "string" }], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
-    { type: "function", name: "publishLatest", inputs: [{ name: "contract_name", type: "string" }, { name: "contract_address", type: "address" }, { name: "metadata_uri", type: "string" }], outputs: [], stateMutability: "nonpayable" },
+    {
+        type: "function",
+        name: "getAddress",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "address" },
+                ],
+            },
+        ],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getMetadataUri",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "string" },
+                ],
+            },
+        ],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getVersionCount",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [{ name: "", type: "uint32" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getContractCount",
+        inputs: [],
+        outputs: [{ name: "", type: "uint32" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getContractNameAt",
+        inputs: [{ name: "index", type: "uint32" }],
+        outputs: [{ name: "", type: "string" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getOwner",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [{ name: "", type: "address" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "publishLatest",
+        inputs: [
+            { name: "contract_name", type: "string" },
+            { name: "contract_address", type: "address" },
+            { name: "metadata_uri", type: "string" },
+        ],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
 ] as const;
 
 const NETWORK_PRESETS: Record<string, ChainPreset> = {

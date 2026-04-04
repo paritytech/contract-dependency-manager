@@ -2,7 +2,13 @@ export type { ChainPreset, ChainFaucet, KnownChainName } from "./known_chains";
 export { KNOWN_CHAINS, getChainPreset } from "./known_chains";
 export { DEFAULT_NODE_URL, REGISTRY_ADDRESS } from "@dotdm/utils";
 
-export type { AssetHub, Bulletin, AssetHubConnection, BulletinConnection, IpfsGateway } from "./connection";
+export type {
+    AssetHub,
+    Bulletin,
+    AssetHubConnection,
+    BulletinConnection,
+    IpfsGateway,
+} from "./connection";
 export {
     detectConnectionType,
     connectAssetHubWebSocket,

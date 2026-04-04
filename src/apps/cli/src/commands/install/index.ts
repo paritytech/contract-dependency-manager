@@ -9,7 +9,12 @@ import {
     DEFAULT_NODE_URL,
     REGISTRY_ADDRESS,
 } from "@dotdm/env";
-import { computeTargetHash, readCdmJson, writeCdmJson, getRegistryContract } from "@dotdm/contracts";
+import {
+    computeTargetHash,
+    readCdmJson,
+    writeCdmJson,
+    getRegistryContract,
+} from "@dotdm/contracts";
 import { spinner } from "../../lib/ui";
 import { runInstallWithUI } from "../../lib/install-pipeline";
 import type { InstallResult } from "../../lib/install-pipeline";
