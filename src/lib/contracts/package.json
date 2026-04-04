@@ -19,7 +19,6 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
-        "@dotdm/descriptors": "workspace:*",
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
         "@noble/hashes": "catalog:",

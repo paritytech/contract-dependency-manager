@@ -1,12 +1,13 @@
 import { PolkadotClient, TypedApi, SS58String } from "polkadot-api";
-import { AssetHub, contracts } from "@dotdm/descriptors";
+import type { AssetHub } from "@dotdm/env";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { prepareSigner } from "@dotdm/env";
 import { stringifyBigInt, GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "@dotdm/utils";
+import { REGISTRY_ABI } from "./registry-abi";
 
 export function getRegistryContract(client: PolkadotClient, addr: string) {
     const inkSdk = createInkSdk(client);
-    return inkSdk.getContract(contracts.contractsRegistry, addr);
+    return inkSdk.getContract({ abi: REGISTRY_ABI } as any, addr);
 }
 
 export type RegistryContract = ReturnType<typeof getRegistryContract>;

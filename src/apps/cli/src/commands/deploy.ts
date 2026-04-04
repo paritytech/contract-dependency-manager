@@ -104,14 +104,14 @@ async function deployWithRegistry(
     existingConnections?: {
         signer: ReturnType<typeof prepareSigner>;
         origin: string;
-        client: ReturnType<typeof connectAssetHubWebSocket>["client"];
-        api: ReturnType<typeof connectAssetHubWebSocket>["api"];
+        client: Awaited<ReturnType<typeof connectAssetHubWebSocket>>["client"];
+        api: Awaited<ReturnType<typeof connectAssetHubWebSocket>>["api"];
     },
 ): Promise<Record<string, string>> {
     let signer: ReturnType<typeof prepareSigner>;
     let origin: string;
-    let client: ReturnType<typeof connectAssetHubWebSocket>["client"];
-    let api: ReturnType<typeof connectAssetHubWebSocket>["api"];
+    let client: Awaited<ReturnType<typeof connectAssetHubWebSocket>>["client"];
+    let api: Awaited<ReturnType<typeof connectAssetHubWebSocket>>["api"];
     let ownsAssetHub: boolean;
 
     if (existingConnections) {
@@ -124,7 +124,7 @@ async function deployWithRegistry(
         ({ signer, origin } = resolveSigner(opts));
 
         const sp = spinner("AssetHub", opts.assethubUrl!);
-        const conn = connectAssetHubWebSocket(opts.assethubUrl!);
+        const conn = await connectAssetHubWebSocket(opts.assethubUrl!);
         client = conn.client;
         api = conn.api;
         await client.getChainSpecData();
@@ -134,7 +134,7 @@ async function deployWithRegistry(
 
     // Connect to bulletin
     const sp = spinner("Bulletin", opts.bulletinUrl!);
-    const bulletinConn = connectBulletinWebSocket(opts.bulletinUrl!);
+    const bulletinConn = await connectBulletinWebSocket(opts.bulletinUrl!);
     await bulletinConn.client.getChainSpecData();
     sp.succeed();
 
@@ -183,13 +183,13 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
 
     // Connect to Asset Hub
     const sp1 = spinner("AssetHub", opts.assethubUrl!);
-    const { client, api } = connectAssetHubWebSocket(opts.assethubUrl!);
+    const { client, api } = await connectAssetHubWebSocket(opts.assethubUrl!);
     await client.getChainSpecData();
     sp1.succeed();
 
     // Connect to Bulletin
     const sp2 = spinner("Bulletin", opts.bulletinUrl!);
-    const bulletinConn = connectBulletinWebSocket(opts.bulletinUrl!);
+    const bulletinConn = await connectBulletinWebSocket(opts.bulletinUrl!);
     await bulletinConn.client.getChainSpecData();
     sp2.succeed();
 
