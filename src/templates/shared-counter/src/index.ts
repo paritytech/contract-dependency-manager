@@ -1,13 +1,17 @@
-import { createCdm } from "@dotdm/cdm";
-import cdmJson from "../cdm.json";
+import { createClient } from "polkadot-api";
+import { getWsProvider } from "polkadot-api/ws-provider";
+import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
+import { createInkSdk } from "@polkadot-api/sdk-ink";
+import { ContractManager } from "@polkadot-apps/contracts";
 import { DEV_PHRASE } from "@polkadot-labs/hdkd-helpers";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import { getPolkadotSigner } from "polkadot-api/signer";
 import {
     entropyToMiniSecret,
     mnemonicToEntropy,
+    ss58Address,
 } from "@polkadot-labs/hdkd-helpers";
-import { FixedSizeBinary } from "polkadot-api";
+import cdmJson from "../cdm.json";
 
 // --- Setup signer (Alice) ---
 const entropy = mnemonicToEntropy(DEV_PHRASE);
@@ -19,16 +23,26 @@ const signer = getPolkadotSigner(
     "Sr25519",
     aliceKeyPair.sign,
 );
+const origin = ss58Address(aliceKeyPair.publicKey);
 
-// --- Create CDM instance ---
-const cdm = createCdm(cdmJson);
+// --- Connect to chain ---
+const targetHash = Object.keys(cdmJson.targets)[0] as keyof typeof cdmJson.targets;
+const target = cdmJson.targets[targetHash];
+const client = createClient(withPolkadotSdkCompat(getWsProvider(target["asset-hub"])));
+const inkSdk = createInkSdk(client);
+
+// --- Create contract manager ---
+const manager = new ContractManager(cdmJson as any, inkSdk, {
+    defaultSigner: signer,
+    defaultOrigin: origin,
+});
 
 // --- Get typed contract handles ---
 // TRY : running `cdm i -n preview-net @example/counter @example/counter-writer @example/counter-reader`
-//       and see that a cdm.json file willl appear & types will be resolved
-const counter = cdm.getContract("@example/counter");
-const counterWriter = cdm.getContract("@example/counter-writer");
-const counterReader = cdm.getContract("@example/counter-reader");
+//       and see that a cdm.json file will appear & types will be resolved
+const counter = manager.getContract("@example/counter");
+const counterWriter = manager.getContract("@example/counter-writer");
+const counterReader = manager.getContract("@example/counter-reader");
 
 // --- Query counter ---
 console.log("Querying counter.getCount...");
@@ -46,5 +60,5 @@ console.log("getCount result:", count2);
 console.log("readCount result:", readCount2);
 
 // --- Clean up ---
-cdm.destroy();
+client.destroy();
 console.log("\nDone!");

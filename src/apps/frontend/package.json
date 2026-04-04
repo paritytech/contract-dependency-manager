@@ -13,7 +13,6 @@
     "dependencies": {
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
-        "@dotdm/descriptors": "workspace:*",
         "@polkadot-api/sdk-ink": "catalog:",
         "dompurify": "catalog:",
         "marked": "catalog:",

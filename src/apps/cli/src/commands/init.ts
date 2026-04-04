@@ -35,8 +35,10 @@ async function setupPreviewNet(mnemonic: string): Promise<void> {
     const accountSigner = prepareSignerFromMnemonic(mnemonic);
 
     // Connect to both chains
-    const { client: ahClient, api: ahApi } = connectAssetHubWebSocket(previewPreset.assethubUrl);
-    const { client: blClient, api: blApi } = connectBulletinWebSocket(previewPreset.bulletinUrl);
+    const [{ client: ahClient, api: ahApi }, { client: blClient, api: blApi }] = await Promise.all([
+        connectAssetHubWebSocket(previewPreset.assethubUrl),
+        connectBulletinWebSocket(previewPreset.bulletinUrl),
+    ]);
     await Promise.all([ahClient.getChainSpecData(), blClient.getChainSpecData()]);
 
     // Fund (Asset Hub) and authorize (Bulletin) in parallel

@@ -1,5 +1,5 @@
 import { TypedApi, Binary } from "polkadot-api";
-import { Bulletin } from "@dotdm/descriptors";
+import type { Bulletin } from "@dotdm/env";
 import { CID } from "multiformats/cid";
 import { prepareSigner } from "@dotdm/env";
 import { stringifyBigInt } from "@dotdm/utils";

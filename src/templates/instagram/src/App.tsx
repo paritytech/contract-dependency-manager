@@ -1,7 +1,11 @@
 import {
   useState, useEffect, useMemo, useCallback, useRef, type ReactNode,
 } from "react";
-import { createCdm } from "@dotdm/cdm";
+import { createClient } from "polkadot-api";
+import { getWsProvider } from "polkadot-api/ws-provider";
+import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
+import { createInkSdk } from "@polkadot-api/sdk-ink";
+import { ContractManager } from "@polkadot-apps/contracts";
 import { FixedSizeBinary } from "polkadot-api";
 import {
   ACCOUNTS, deriveWallet, useIntersectionObserver, short, ago, publishBlob,
@@ -10,11 +14,16 @@ import {
 import cdmJson from "../cdm.json";
 
 // ---------------------------------------------------------------------------
-// CDM — one connection for the lifetime of the page
+// Contracts — one connection for the lifetime of the page
 // ---------------------------------------------------------------------------
 
-const cdm = createCdm(cdmJson);
-const ig  = cdm.getContract("@example/instagram");
+const targetHash = Object.keys(cdmJson.targets)[0] as keyof typeof cdmJson.targets;
+const target = cdmJson.targets[targetHash];
+const client = createClient(withPolkadotSdkCompat(getWsProvider(target["asset-hub"])));
+const inkSdk = createInkSdk(client, { atBest: true });
+
+const manager = new ContractManager(cdmJson as any, inkSdk);
+const ig = manager.getContract("@example/instagram");
 
 const toBytes = (hex: string) => FixedSizeBinary.fromHex(hex);
 
@@ -49,7 +58,7 @@ export default function App() {
   const me = ACCOUNTS[accountIdx].ethAddress;
 
   useEffect(() => {
-    cdm.setDefaults({ origin: wallet.address, signer: wallet.signer });
+    manager.setDefaults({ origin: wallet.address, signer: wallet.signer });
   }, [wallet]);
 
   const [tab, setTab] = useState<"posts" | "people">("posts");

@@ -1,7 +1,0 @@
-[package]
-name = "cdm"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-cdm-macros.workspace = true

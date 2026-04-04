@@ -1,7 +1,6 @@
 import { existsSync } from "fs";
 import { resolve } from "path";
 import { Command } from "commander";
-import { contracts } from "@dotdm/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import {
     connectAssetHubWebSocket,
@@ -10,7 +9,7 @@ import {
     DEFAULT_NODE_URL,
     REGISTRY_ADDRESS,
 } from "@dotdm/env";
-import { computeTargetHash, readCdmJson, writeCdmJson } from "@dotdm/contracts";
+import { computeTargetHash, readCdmJson, writeCdmJson, getRegistryContract } from "@dotdm/contracts";
 import { spinner } from "../../lib/ui";
 import { runInstallWithUI } from "../../lib/install-pipeline";
 import type { InstallResult } from "../../lib/install-pipeline";
@@ -87,12 +86,11 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
 
     // Connect to chain with spinner (matching deploy command style)
     const sp = spinner("AssetHub", opts.assethubUrl);
-    const { client } = connectAssetHubWebSocket(opts.assethubUrl);
+    const { client } = await connectAssetHubWebSocket(opts.assethubUrl);
     await client.getChainSpecData();
     sp.succeed();
 
-    const inkSdk = createInkSdk(client);
-    const registry = inkSdk.getContract(contracts.contractsRegistry, REGISTRY_ADDRESS);
+    const registry = getRegistryContract(client, REGISTRY_ADDRESS);
     const ipfs = connectIpfsGateway(opts.ipfsGatewayUrl);
 
     // Update cdm.json targets with resolved connection info

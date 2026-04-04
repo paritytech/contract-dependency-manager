@@ -19,7 +19,7 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
-        "@dotdm/descriptors": "workspace:*",
+        "@polkadot-apps/descriptors": "latest",
         "@dotdm/utils": "workspace:*",
         "@polkadot-labs/hdkd": "catalog:",
         "@polkadot-labs/hdkd-helpers": "catalog:",

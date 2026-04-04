@@ -8,7 +8,6 @@
     "lint": "turbo lint",
     "clean": "turbo clean",
     "test": "vitest run",
-    "postinstall": "cd src/lib/descriptors && papi",
     "format": "biome format --write .",
     "format:check": "biome format ."
   },

@@ -4,8 +4,6 @@ packages:
   - "src/lib/env"
   - "src/lib/contracts"
   - "src/lib/scripts"
-  - "src/lib/cdm/typescript"
-  - "src/lib/descriptors"
 
 catalog:
   polkadot-api: ^1.23.3
