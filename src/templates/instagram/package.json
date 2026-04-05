@@ -8,16 +8,13 @@
     "build:frontend": "tsc -b && vite build",
     "build:contracts": "cdm build",
     "deploy": "cdm deploy -n paseo",
-    "preview": "vite preview",
-    "postinstall": "papi"
+    "preview": "vite preview"
   },
   "dependencies": {
+    "@polkadot-apps/chain-client": "latest",
     "@polkadot-apps/contracts": "latest",
-    "@polkadot-api/sdk-ink": "^0.6.2",
-    "@polkadot-api/descriptors": "file:.papi/descriptors",
+    "@polkadot-apps/keys": "latest",
     "polkadot-api": "^1.23.3",
-    "@polkadot-labs/hdkd": "^0.0.26",
-    "@polkadot-labs/hdkd-helpers": "^0.0.27",
     "multiformats": "^13.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

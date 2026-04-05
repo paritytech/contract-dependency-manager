@@ -46,11 +46,6 @@ jobs:
             - if: steps.changesets.outputs.found == 'true'
               run: pnpm install
 
-            # papi's postinstall adds a "file:generated" dep — strip before publishing
-            - name: Clean descriptors for publish
-              if: steps.changesets.outputs.found == 'true'
-              run: node -e "const f='src/lib/descriptors/package.json';const p=JSON.parse(require('fs').readFileSync(f));delete p.dependencies;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
-
             # Version packages (consumes changesets, bumps versions)
             - name: Version packages
               if: steps.changesets.outputs.found == 'true'
@@ -64,7 +59,7 @@ jobs:
             # Build all publishable packages
             - name: Build packages
               if: steps.changesets.outputs.found == 'true'
-              run: pnpm -r --filter "@dotdm/descriptors" --filter "@dotdm/utils" --filter "@dotdm/env" --filter "@dotdm/contracts" --filter "@dotdm/cdm" build
+              run: pnpm -r --filter "@dotdm/utils" --filter "@dotdm/env" --filter "@dotdm/contracts" build
 
             # Commit version bumps
             - name: Commit version changes
