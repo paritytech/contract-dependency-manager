@@ -37,6 +37,8 @@ export {
     RegistryManager,
 } from "./registry";
 
+export { REGISTRY_ABI } from "./registry-abi";
+
 export { computeCid } from "./cid";
 
 export {

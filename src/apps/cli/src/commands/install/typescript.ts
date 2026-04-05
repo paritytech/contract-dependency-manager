@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { readCdmJson } from "@dotdm/contracts";
-import { generateContractTypes } from "@dotdm/cdm";
+import { generateContractTypes } from "@polkadot-apps/contracts/codegen";
 import type { InstallResult } from "./index";
 
 const CDM_INCLUDE = ".cdm/**/*";
@@ -10,7 +10,7 @@ const CDM_INCLUDE = ".cdm/**/*";
  * Ensures the project's tsconfig.json includes the `.cdm/` directory so that
  * TypeScript picks up the generated module augmentation in `.cdm/cdm.d.ts`.
  *
- * Without this, the `CdmContracts` interface stays empty and all contract
+ * Without this, the `Contracts` interface stays empty and all contract
  * names resolve to `never` in `getContract()` calls.
  *
  * - Creates a minimal tsconfig.json if one doesn't exist.
@@ -50,8 +50,8 @@ function ensureTsconfigInclude(): void {
  *
  * Reads the current target's dependencies from `cdm.json`, resolves each
  * contract's ABI from the local store, and generates `.cdm/cdm.d.ts` — a
- * module augmentation that extends the empty `CdmContracts` interface in
- * `@dotdm/cdm` with typed method signatures for each installed contract.
+ * module augmentation that extends the empty `Contracts` interface in
+ * `@polkadot-apps/contracts` with typed method signatures for each installed contract.
  *
  * Also patches tsconfig.json to include the `.cdm/` directory so the
  * augmentation is visible to the TypeScript compiler.

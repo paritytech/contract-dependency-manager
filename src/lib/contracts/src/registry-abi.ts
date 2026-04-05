@@ -1,0 +1,113 @@
+/** ABI for the on-chain ContractRegistry contract. */
+export const REGISTRY_ABI = [
+    { type: "constructor", inputs: [], stateMutability: "nonpayable" },
+    {
+        type: "function",
+        name: "publishLatest",
+        inputs: [
+            { name: "contract_name", type: "string" },
+            { name: "contract_address", type: "address" },
+            { name: "metadata_uri", type: "string" },
+        ],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "getAddress",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "address" },
+                ],
+            },
+        ],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getMetadataUri",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "string" },
+                ],
+            },
+        ],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getAddressAtVersion",
+        inputs: [
+            { name: "contract_name", type: "string" },
+            { name: "version", type: "uint32" },
+        ],
+        outputs: [
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "address" },
+                ],
+            },
+        ],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getMetadataUriAtVersion",
+        inputs: [
+            { name: "contract_name", type: "string" },
+            { name: "version", type: "uint32" },
+        ],
+        outputs: [
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "string" },
+                ],
+            },
+        ],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getContractNameAt",
+        inputs: [{ name: "index", type: "uint32" }],
+        outputs: [{ name: "", type: "string" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getOwner",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [{ name: "", type: "address" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getVersionCount",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [{ name: "", type: "uint32" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getContractCount",
+        inputs: [],
+        outputs: [{ name: "", type: "uint32" }],
+        stateMutability: "view",
+    },
+] as const;

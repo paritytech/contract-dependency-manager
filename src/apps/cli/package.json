@@ -15,9 +15,8 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
-        "@dotdm/cdm": "workspace:*",
+        "@polkadot-apps/contracts": "link:../../../../polkadot-apps/packages/contracts",
         "@dotdm/contracts": "workspace:*",
-        "@dotdm/descriptors": "workspace:*",
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
         "@polkadot-api/sdk-ink": "catalog:",

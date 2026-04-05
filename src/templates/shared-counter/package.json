@@ -6,9 +6,8 @@
         "start": "bun src/index.ts"
     },
     "dependencies": {
-        "@dotdm/cdm": "latest",
-        "polkadot-api": "^1.23.3",
-        "@polkadot-labs/hdkd": "^0.0.26",
-        "@polkadot-labs/hdkd-helpers": "^0.0.27"
+        "@polkadot-apps/chain-client": "latest",
+        "@polkadot-apps/contracts": "latest",
+        "@polkadot-apps/tx": "latest"
     }
 }

@@ -1,21 +1,14 @@
 import { useRef, useEffect } from "react";
-import { createClient, type PolkadotClient, Binary } from "polkadot-api";
-import { getWsProvider } from "polkadot-api/ws-provider/web";
-import { getPolkadotSigner } from "polkadot-api/signer";
-import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
-import {
-  entropyToMiniSecret,
-  mnemonicToEntropy,
-  ss58Encode,
-} from "@polkadot-labs/hdkd-helpers";
-import { bulletin } from "@polkadot-api/descriptors";
+import { getChainAPI } from "@polkadot-apps/chain-client";
+import { seedToAccount } from "@polkadot-apps/keys";
+import { Binary, type PolkadotSigner } from "polkadot-api";
 import { CID } from "multiformats/cid";
 
 // ---------------------------------------------------------------------------
 // Wallet
 // ---------------------------------------------------------------------------
 
-export type Signer = ReturnType<typeof getPolkadotSigner>;
+export type Signer = PolkadotSigner;
 
 export interface Wallet {
   signer: Signer;
@@ -23,14 +16,8 @@ export interface Wallet {
 }
 
 export function deriveWallet(mnemonic: string): Wallet {
-  const entropy = mnemonicToEntropy(mnemonic);
-  const miniSecret = entropyToMiniSecret(entropy);
-  const derive = sr25519CreateDerive(miniSecret);
-  const kp = derive("//0");
-  return {
-    signer: getPolkadotSigner(kp.publicKey, "Sr25519", kp.sign),
-    address: ss58Encode(kp.publicKey, 42),
-  };
+  const { signer, ss58Address } = seedToAccount(mnemonic, "//0");
+  return { signer, address: ss58Address };
 }
 
 // ---------------------------------------------------------------------------
@@ -78,21 +65,13 @@ export function useIntersectionObserver(
 // Bulletin (photo upload to Polkadot's decentralised storage)
 // ---------------------------------------------------------------------------
 
-const BULLETIN_URL = "wss://paseo-bulletin-rpc.polkadot.io";
-let _bulletinClient: PolkadotClient | null = null;
-
-function bulletinApi() {
-  if (!_bulletinClient) _bulletinClient = createClient(getWsProvider(BULLETIN_URL));
-  return _bulletinClient.getTypedApi(bulletin);
-}
-
 export async function publishBlob(bytes: Uint8Array, signer: Signer): Promise<string> {
-  const api = bulletinApi();
-  const result = await api.tx.TransactionStorage.store({
+  const { bulletin } = await getChainAPI("paseo");
+  const result = await bulletin.tx.TransactionStorage.store({
     data: Binary.fromBytes(bytes),
   }).signAndSubmit(signer);
 
-  const stored = api.event.TransactionStorage.Stored.filter(result.events);
+  const stored = bulletin.event.TransactionStorage.Stored.filter(result.events);
   if (!stored.length || !stored[0].cid) throw new Error("Upload failed");
   return CID.decode(stored[0].cid.asBytes()).toString();
 }

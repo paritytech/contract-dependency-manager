@@ -1,5 +1,5 @@
 import { PolkadotClient, TypedApi, Binary, Enum, FixedSizeBinary } from "polkadot-api";
-import { AssetHub } from "@dotdm/descriptors";
+import type { AssetHub } from "@dotdm/env";
 import { readFileSync } from "fs";
 import { prepareSigner } from "@dotdm/env";
 import { stringifyBigInt, STORAGE_DEPOSIT_LIMIT } from "@dotdm/utils";

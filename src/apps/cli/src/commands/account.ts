@@ -31,7 +31,7 @@ export async function printBalances(chainName: string, acc: Account) {
     console.log(`  Address     ${bold(acc.address)}`);
 
     // Asset Hub balance
-    const { client: ahClient, api: ahApi } = connectAssetHubWebSocket(preset.assethubUrl);
+    const { client: ahClient, api: ahApi } = await connectAssetHubWebSocket(preset.assethubUrl);
     const chainSpec = await ahClient.getChainSpecData();
     const rawSymbol = chainSpec.properties?.tokenSymbol;
     const rawDecimals = chainSpec.properties?.tokenDecimals;
@@ -43,7 +43,7 @@ export async function printBalances(chainName: string, acc: Account) {
     );
 
     // Bulletin allowances
-    const { client: blClient, api: blApi } = connectBulletinWebSocket(preset.bulletinUrl);
+    const { client: blClient, api: blApi } = await connectBulletinWebSocket(preset.bulletinUrl);
     await blClient.getChainSpecData();
     const auth = await blApi.query.TransactionStorage.Authorizations.getValue({
         type: "Account",
@@ -105,7 +105,7 @@ account
     .action(async (opts: { name: string }) => {
         const acc = requireAccount(opts.name);
         const preset = getChainPreset(opts.name);
-        const { client, api } = connectAssetHubWebSocket(preset.assethubUrl);
+        const { client, api } = await connectAssetHubWebSocket(preset.assethubUrl);
         await client.getChainSpecData();
         try {
             await api.tx.Revive.map_account().signAndSubmit(

@@ -38,7 +38,6 @@ compile-all: embed-templates
 
 build-registry:
 	cargo pvm-contract build --manifest-path $(CURDIR)/Cargo.toml -p contract-registry
-	cd src/lib/descriptors && pnpm exec papi sol add ../../../target/contract-registry.release.abi.json contractsRegistry
 
 deploy-registry: build-registry
 	bun run src/lib/scripts/deploy-registry.ts --name $(or $(CHAIN),local)
@@ -47,9 +46,6 @@ build-template:
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter_reader
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter_writer
-	cd src/lib/descriptors && pnpm exec papi sol add ../../../$(TEMPLATE_DIR)/target/counter.release.abi.json counter --skip-codegen
-	cd src/lib/descriptors && pnpm exec papi sol add ../../../$(TEMPLATE_DIR)/target/counter_reader.release.abi.json counterReader --skip-codegen
-	cd src/lib/descriptors && pnpm exec papi sol add ../../../$(TEMPLATE_DIR)/target/counter_writer.release.abi.json counterWriter
 
 test:
 	pnpm vitest run

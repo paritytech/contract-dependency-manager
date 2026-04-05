@@ -4,8 +4,13 @@ import { getSmProvider } from "polkadot-api/sm-provider";
 import { start } from "polkadot-api/smoldot";
 import { getWsProvider } from "polkadot-api/ws-provider";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
-import { assetHub, bulletin } from "@dotdm/descriptors";
-import type { AssetHub, Bulletin } from "@dotdm/descriptors";
+
+// Use @polkadot-apps/descriptors for chain metadata
+import type { paseo_asset_hub } from "@polkadot-apps/descriptors/paseo-asset-hub";
+import type { bulletin } from "@polkadot-apps/descriptors/bulletin";
+
+export type AssetHub = typeof paseo_asset_hub;
+export type Bulletin = typeof bulletin;
 
 export interface AssetHubConnection {
     client: PolkadotClient;
@@ -27,9 +32,12 @@ export function detectConnectionType(url: string): "websocket" | "smoldot" {
 /**
  * Connect to a chain via WebSocket.
  */
-export function connectAssetHubWebSocket(url: string): AssetHubConnection {
+export async function connectAssetHubWebSocket(url: string): Promise<AssetHubConnection> {
+    const { paseo_asset_hub: descriptor } = await import(
+        "@polkadot-apps/descriptors/paseo-asset-hub"
+    );
     const client = createClient(withPolkadotSdkCompat(getWsProvider(url)));
-    return { client, api: client.getTypedApi(assetHub) };
+    return { client, api: client.getTypedApi(descriptor) };
 }
 
 export interface BulletinConnection {
@@ -40,9 +48,10 @@ export interface BulletinConnection {
 /**
  * Connect to the Bulletin chain via WebSocket.
  */
-export function connectBulletinWebSocket(url: string): BulletinConnection {
+export async function connectBulletinWebSocket(url: string): Promise<BulletinConnection> {
+    const { bulletin: descriptor } = await import("@polkadot-apps/descriptors/bulletin");
     const client = createClient(withPolkadotSdkCompat(getWsProvider(url)));
-    return { client, api: client.getTypedApi(bulletin) };
+    return { client, api: client.getTypedApi(descriptor) };
 }
 
 /**
@@ -56,6 +65,9 @@ export async function connectSmoldot(
     relayChainspec: string,
 ): Promise<AssetHubConnection> {
     const smoldot = start();
+    const { paseo_asset_hub: descriptor } = await import(
+        "@polkadot-apps/descriptors/paseo-asset-hub"
+    );
 
     const { readFileSync } = await import("fs");
     const relaySpec = readFileSync(relayChainspec, "utf-8");
@@ -68,7 +80,7 @@ export async function connectSmoldot(
     });
 
     const client = createClient(getSmProvider(parachain));
-    return { client, api: client.getTypedApi(assetHub) };
+    return { client, api: client.getTypedApi(descriptor) };
 }
 
 export interface IpfsGateway {
