@@ -1,5 +1,11 @@
 # @dotdm/cli
 
+## 0.4.5
+
+### Patch Changes
+
+- 5713d52: Fix template CLAUDE.md to reference the `common` crate correctly as a git dependency from `contract-developer-tools` instead of a nonexistent local path. Remove duplicate CLAUDE.md from the instagram template (inherits from common/).
+
 ## 0.4.4
 
 ### Patch Changes
