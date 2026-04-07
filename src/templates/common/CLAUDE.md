@@ -383,6 +383,7 @@ members = ["contracts/*"]
 
 [workspace.dependencies]
 cdm = { git = "https://github.com/paritytech/contract-dependency-manager" }
+common = { git = "https://github.com/paritytech/contract-developer-tools", package = "common" }
 pvm_contract = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "charles/cdm-integration" }
 polkavm-derive = "0.31"
 parity-scale-codec = { version = "3.7", default-features = false, features = ["derive"] }
@@ -403,6 +404,8 @@ pvm_contract = { workspace = true }
 polkavm-derive = { workspace = true }
 parity-scale-codec = { workspace = true }
 picoalloc = { workspace = true }
+# Add for shared types (EntityId, ContextId, revert, etc.):
+common = { workspace = true }
 # Add if using cdm::import! for external contracts:
 cdm = { workspace = true }
 # Add for same-workspace cross-contract calls:
@@ -413,7 +416,14 @@ other_contract = { path = "../other_contract" }
 
 # Common Library (`common` crate)
 
-Shared types and utilities used across contracts. Add as a dependency: `common = { path = "../path/to/common" }` (or via workspace).
+Shared types and utilities used across contracts. Lives in the `contract-developer-tools` repo. Add as a workspace dependency:
+
+```toml
+# In [workspace.dependencies]
+common = { git = "https://github.com/paritytech/contract-developer-tools", package = "common" }
+```
+
+Then in each contract's Cargo.toml: `common = { workspace = true }`
 
 ## Core Types
 
