@@ -41,16 +41,6 @@ export interface Metadata {
     abi: AbiEntry[];
 }
 
-export type DeployCheckResult =
-    | {
-          status: "deploy";
-          tx: ReturnType<TypedApi<AssetHub>["tx"]["Revive"]["instantiate_with_code"]>;
-          gasLimit: { ref_time: bigint; proof_size: bigint };
-          storageDeposit: bigint;
-      }
-    | { status: "collision" }
-    | { status: "error"; message: string };
-
 export class ContractDeployer {
     public signer: ReturnType<typeof prepareSigner>;
     public origin: string;
@@ -185,87 +175,18 @@ export class ContractDeployer {
     }
 
     /**
-     * Perform a dry-run to check whether a CDM contract needs deploying.
-     * - "deploy": dry-run succeeded, returns pre-computed tx + gas.
-     * - "collision": dry-run failed with DuplicateContract (address already occupied).
-     * - "error": any other failure (file I/O, RPC, other pallet errors).
+     * Fetch the deployed bytecode at a given contract address.
+     * Returns null if no code exists or the query fails.
      */
-    async deployCheck(pvmPath: string, cdmPackage: string): Promise<DeployCheckResult> {
+    async getOnChainCode(address: string): Promise<Uint8Array | null> {
         try {
-            const result = await this.dryRunDeploy(pvmPath, cdmPackage);
-            return {
-                status: "deploy",
-                tx: result.tx,
-                gasLimit: result.gasLimit,
-                storageDeposit: result.storageDeposit,
-            };
-        } catch (err) {
-            // `DuplicateContract` means the address is already occupied
-            const msg = err instanceof Error ? err.message : String(err);
-            if (msg.includes("DuplicateContract")) {
-                return { status: "collision" };
-            }
-            return { status: "error", message: msg };
+            const addr = FixedSizeBinary.fromHex(address) as FixedSizeBinary<20>;
+            const code = await this.api.apis.ReviveApi.code(addr);
+            if (!code || code.asBytes().length === 0) return null;
+            return code.asBytes();
+        } catch {
+            return null;
         }
-    }
-
-    /**
-     * Deploy contracts using pre-computed dry-run results from deployCheck().
-     * Avoids redundant dry-runs for contracts already checked.
-     */
-    async deployBatchFromChecks(
-        checks: DeployCheckResult[],
-    ): Promise<{ addresses: string[]; txHash: string; blockHash: string }> {
-        const deployable = checks.filter(
-            (c): c is Extract<DeployCheckResult, { status: "deploy" }> => c.status === "deploy",
-        );
-        if (deployable.length === 0) return { addresses: [], txHash: "", blockHash: "" };
-
-        if (deployable.length === 1) {
-            const result = await deployable[0].tx.signAndSubmit(this.signer);
-            const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
-            if (failures.length > 0) {
-                throw new Error(`Deployment transaction failed: ${stringifyBigInt(failures[0])}`);
-            }
-            const instantiated = this.api.event.Revive.Instantiated.filter(result.events);
-            if (instantiated.length === 0) {
-                throw new Error("Contract instantiation failed - no Instantiated event");
-            }
-            return {
-                addresses: [instantiated[0].contract.asHex()],
-                txHash: result.txHash,
-                blockHash: result.block.hash,
-            };
-        }
-
-        const calls = await Promise.all(
-            deployable.map(async (d) => {
-                const call = d.tx.decodedCall;
-                return call instanceof Promise ? await call : call;
-            }),
-        );
-
-        const result = await this.api.tx.Utility.batch_all({
-            calls,
-        }).signAndSubmit(this.signer);
-
-        const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
-        if (failures.length > 0) {
-            throw new Error(`Batch deploy failed: ${stringifyBigInt(failures[0])}`);
-        }
-
-        const instantiated = this.api.event.Revive.Instantiated.filter(result.events);
-        if (instantiated.length !== deployable.length) {
-            throw new Error(
-                `Expected ${deployable.length} Instantiated events, got ${instantiated.length}`,
-            );
-        }
-
-        return {
-            addresses: instantiated.map((e) => e.contract.asHex()),
-            txHash: result.txHash,
-            blockHash: result.block.hash,
-        };
     }
 
     /**

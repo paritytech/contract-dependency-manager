@@ -12,7 +12,6 @@ import type {
     DeploymentOrderLayered,
     BuildProgressCallback,
     ContractDeployer,
-    DeployCheckResult,
     Metadata,
     AbiEntry,
     MetadataPublisher,
@@ -122,18 +121,27 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
             }
         }
 
-        // 2. BUILD PHASE - parallel within layer
-        const buildResults = await Promise.all(
-            runnable.map((crate) => {
-                updateStatus(statuses, crate, "building", opts.onStatusChange);
-                const onProgress: BuildProgressCallback = (processed, total, currentCrate) => {
-                    updateStatus(statuses, crate, "building", opts.onStatusChange, {
-                        buildProgress: { compiled: processed, total, currentCrate },
-                    });
-                };
-                return pvmContractBuildAsync(opts.rootDir, crate, onProgress);
-            }),
-        );
+        // 2. BUILD PHASE + REGISTRY PRE-FETCH (parallel)
+        // Pre-fetch registry addresses during build to hide network latency.
+        const cdmPackagesInLayer = runnable
+            .map((c) => order.cdmPackageMap.get(c))
+            .filter((p): p is string => !!p);
+        const [buildResults, registryAddresses] = await Promise.all([
+            Promise.all(
+                runnable.map((crate) => {
+                    updateStatus(statuses, crate, "building", opts.onStatusChange);
+                    const onProgress: BuildProgressCallback = (processed, total, currentCrate) => {
+                        updateStatus(statuses, crate, "building", opts.onStatusChange, {
+                            buildProgress: { compiled: processed, total, currentCrate },
+                        });
+                    };
+                    return pvmContractBuildAsync(opts.rootDir, crate, onProgress);
+                }),
+            ),
+            opts.services && cdmPackagesInLayer.length > 0
+                ? opts.services.registry.getAddressBatch(cdmPackagesInLayer)
+                : Promise.resolve(new Map<string, string | null>()),
+        ]);
 
         for (const result of buildResults) {
             if (result.success) {
@@ -171,57 +179,58 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
                 const cidMap: Record<string, string> = {};
                 const addrMap: Record<string, string> = {};
 
-                // 4a. CHECK PHASE — dry-run CDM contracts to detect cache hits
-                // Non-CDM contracts (no CREATE2) always deploy.
-                let toDeploy: string[] = [...nonCdmCrates];
-                const checkResultMap = new Map<string, DeployCheckResult>();
+                // 4a. CHECK PHASE — compare local bytecode against on-chain code.
+                // Signer-independent: caches hit even if a different account deployed.
+                // Non-CDM contracts (no registry entry possible) always deploy.
+                const toDeploy: string[] = [...nonCdmCrates];
 
                 if (cdmCrates.length > 0) {
-                    // Run deploy checks + registry pre-fetch in parallel.
-                    // The registry is needed to resolve the existing address when
-                    // a dry-run collision is detected (the pallet's DispatchError
-                    // does not include the colliding address).
-                    const [checkResults, registryAddresses] = await Promise.all([
-                        Promise.all(
-                            cdmCrates.map(async (crate) => {
-                                updateStatus(statuses, crate, "checking", opts.onStatusChange);
-                                const pvmPath = resolve(
-                                    opts.rootDir,
-                                    `target/${crate}.release.polkavm`,
-                                );
-                                const cdmPkg = order.cdmPackageMap.get(crate)!;
-                                const result = await opts.services!.deployer.deployCheck(
-                                    pvmPath,
-                                    cdmPkg,
-                                );
-                                return { crate, result };
-                            }),
-                        ),
-                        opts.services.registry.getAddressBatch(
-                            cdmCrates.map((c) => order.cdmPackageMap.get(c)!),
-                        ),
-                    ]);
-
-                    for (const { crate, result } of checkResults) {
-                        if (result.status === "collision") {
-                            // Dry-run failed (address occupied). Look up the existing
-                            // address from the registry for reporting purposes.
+                    // Registry addresses were pre-fetched during build
+                    const checkResults = await Promise.all(
+                        cdmCrates.map(async (crate) => {
+                            updateStatus(statuses, crate, "checking", opts.onStatusChange);
                             const cdmPkg = order.cdmPackageMap.get(crate)!;
                             const registryAddr = registryAddresses.get(cdmPkg);
-                            if (registryAddr) {
-                                addresses[crate] = registryAddr;
+
+                            if (!registryAddr) {
+                                // Not in registry — first deploy
+                                return { crate, cached: false as const };
                             }
-                            updateStatus(statuses, crate, "cached", opts.onStatusChange, {
-                                address: registryAddr ?? undefined,
+
+                            // Compare local bytecode with on-chain code
+                            const pvmPath = resolve(
+                                opts.rootDir,
+                                `target/${crate}.release.polkavm`,
+                            );
+                            const localCode = readFileSync(pvmPath);
+                            const onChainCode =
+                                await opts.services!.deployer.getOnChainCode(registryAddr);
+
+                            if (
+                                onChainCode &&
+                                localCode.length === onChainCode.length &&
+                                Buffer.from(localCode).equals(Buffer.from(onChainCode))
+                            ) {
+                                return {
+                                    crate,
+                                    cached: true as const,
+                                    address: registryAddr,
+                                };
+                            }
+
+                            // Different bytecode or couldn't fetch — needs deploy
+                            return { crate, cached: false as const };
+                        }),
+                    );
+
+                    for (const check of checkResults) {
+                        if (check.cached) {
+                            addresses[check.crate] = check.address;
+                            updateStatus(statuses, check.crate, "cached", opts.onStatusChange, {
+                                address: check.address,
                             });
-                        } else if (result.status === "deploy") {
-                            toDeploy.push(crate);
-                            checkResultMap.set(crate, result);
                         } else {
-                            failedCrates.add(crate);
-                            updateStatus(statuses, crate, "error", opts.onStatusChange, {
-                                error: result.message,
-                            });
+                            toDeploy.push(check.crate);
                         }
                     }
                 }
@@ -277,31 +286,13 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
                         });
                     }
 
-                    // Deploy using pre-computed dry-runs where available, fallback to deployBatch
-                    const hasPrecomputed = toDeploy.some((c) => checkResultMap.has(c));
-                    let deployResult: {
-                        addresses: string[];
-                        txHash: string;
-                        blockHash: string;
-                    };
-
-                    if (hasPrecomputed && toDeploy.every((c) => checkResultMap.has(c))) {
-                        // All contracts have pre-computed dry-runs — use them directly
-                        const checks = toDeploy.map((c) => checkResultMap.get(c)!);
-                        deployResult = await opts.services.deployer.deployBatchFromChecks(checks);
-                    } else {
-                        // Mix of checked and unchecked — fallback to deployBatch
-                        const pvmPaths = toDeploy.map((c) =>
-                            resolve(opts.rootDir, `target/${c}.release.polkavm`),
-                        );
-                        const cdmPackages = toDeploy.map((c) => order.cdmPackageMap.get(c));
-                        deployResult = await opts.services.deployer.deployBatch(
-                            pvmPaths,
-                            cdmPackages,
-                        );
-                    }
-
-                    const [publishResult] = await Promise.all([
+                    // Deploy (AssetHub) + Publish (Bulletin) in parallel
+                    const pvmPaths = toDeploy.map((c) =>
+                        resolve(opts.rootDir, `target/${c}.release.polkavm`),
+                    );
+                    const cdmPackages = toDeploy.map((c) => order.cdmPackageMap.get(c));
+                    const [deployResult, publishResult] = await Promise.all([
+                        opts.services.deployer.deployBatch(pvmPaths, cdmPackages),
                         cdmToDeploy.length > 0
                             ? opts.services.publisher.publishBatch(metadataList)
                             : Promise.resolve(null),
@@ -463,17 +454,7 @@ if (import.meta.vitest) {
                     txHash: "0xdeploy",
                     blockHash: "0xblock",
                 })),
-                deployCheck: vi.fn(async () => ({
-                    status: "deploy",
-                    tx: {},
-                    gasLimit: { ref_time: 0n, proof_size: 0n },
-                    storageDeposit: 0n,
-                })),
-                deployBatchFromChecks: vi.fn(async (checks: any[]) => ({
-                    addresses: checks.map((_: any, i: number) => `0xaddr${i}`),
-                    txHash: "0xdeploy",
-                    blockHash: "0xblock",
-                })),
+                getOnChainCode: vi.fn(async () => null),
             } as any,
             publisher: {
                 publishBatch: vi.fn(async (metaList: any[]) => ({
@@ -664,17 +645,17 @@ if (import.meta.vitest) {
             expect(services.registry.registerBatch).toHaveBeenCalledTimes(1);
         });
 
-        test("cache hit: unchanged CDM contract skips deploy/publish/register", async () => {
+        test("cache hit: on-chain bytecode matches local → skip deploy", async () => {
             (mockReadCdm as any).mockReturnValue("@test/cached-pkg");
 
             const services = makeServices();
-            // deployCheck returns "collision" (dry-run failed, address occupied)
-            (services.deployer.deployCheck as any).mockResolvedValue({
-                status: "collision",
-            });
-            // Registry returns the existing address for this package
+            // Registry has an address for this package
             (services.registry.getAddressBatch as any).mockResolvedValue(
                 new Map([["@test/cached-pkg", "0xexisting"]]),
+            );
+            // On-chain code matches what readFileSync returns (mocked as "[]")
+            (services.deployer.getOnChainCode as any).mockResolvedValue(
+                new TextEncoder().encode("[]"),
             );
 
             const order = makeOrder([["a"]], {}, { a: "@test/cached-pkg" });
@@ -688,34 +669,54 @@ if (import.meta.vitest) {
             expect(result.statuses.get("a")!.state).toBe("cached");
             expect(result.statuses.get("a")!.address).toBe("0xexisting");
             expect(result.addresses["a"]).toBe("0xexisting");
-            // Deploy, publish, register should NOT be called
             expect(services.deployer.deployBatch).not.toHaveBeenCalled();
-            expect(services.deployer.deployBatchFromChecks).not.toHaveBeenCalled();
             expect(services.publisher.publishBatch).not.toHaveBeenCalled();
             expect(services.registry.registerBatch).not.toHaveBeenCalled();
         });
 
-        test("deploy check error surfaces properly (not swallowed as cache hit)", async () => {
-            (mockReadCdm as any).mockReturnValue("@test/broken-pkg");
+        test("bytecode changed: on-chain code differs → deploy new version", async () => {
+            (mockReadCdm as any).mockReturnValue("@test/changed-pkg");
 
             const services = makeServices();
-            // deployCheck returns a real error (RPC failure, missing file, etc.)
-            (services.deployer.deployCheck as any).mockResolvedValue({
-                status: "error",
-                message: "Deploy dry-run RPC failed: connection refused",
-            });
+            (services.registry.getAddressBatch as any).mockResolvedValue(
+                new Map([["@test/changed-pkg", "0xold-addr"]]),
+            );
+            // On-chain code is different from local
+            (services.deployer.getOnChainCode as any).mockResolvedValue(
+                new TextEncoder().encode("old-bytecode"),
+            );
 
-            const order = makeOrder([["a"]], {}, { a: "@test/broken-pkg" });
+            const order = makeOrder([["a"]], {}, { a: "@test/changed-pkg" });
             const result = await executePipeline({
                 rootDir: "/fake",
                 order,
                 services,
             });
 
-            expect(result.success).toBe(false);
-            expect(result.statuses.get("a")!.state).toBe("error");
-            expect(result.statuses.get("a")!.error).toContain("connection refused");
-            expect(services.deployer.deployBatch).not.toHaveBeenCalled();
+            expect(result.success).toBe(true);
+            expect(result.statuses.get("a")!.state).toBe("done");
+            expect(services.deployer.deployBatch).toHaveBeenCalledTimes(1);
+        });
+
+        test("first deploy: not in registry → deploy", async () => {
+            (mockReadCdm as any).mockReturnValue("@test/new-pkg");
+
+            const services = makeServices();
+            // Registry returns nothing for this package
+            (services.registry.getAddressBatch as any).mockResolvedValue(new Map());
+
+            const order = makeOrder([["a"]], {}, { a: "@test/new-pkg" });
+            const result = await executePipeline({
+                rootDir: "/fake",
+                order,
+                services,
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.statuses.get("a")!.state).toBe("done");
+            expect(services.deployer.deployBatch).toHaveBeenCalledTimes(1);
+            // getOnChainCode should NOT be called (no address to check)
+            expect(services.deployer.getOnChainCode).not.toHaveBeenCalled();
         });
 
         test("mixed batch: cached contracts skipped, new ones deploy", async () => {
@@ -724,20 +725,12 @@ if (import.meta.vitest) {
             );
 
             const services = makeServices();
-            // "a" is collision (dry-run failed), "b" is new (dry-run succeeds)
-            (services.deployer.deployCheck as any).mockImplementation(
-                async (_path: string, pkg: string) => {
-                    if (pkg === "@test/a") return { status: "collision" };
-                    return {
-                        status: "deploy",
-                        tx: {},
-                        gasLimit: { ref_time: 0n, proof_size: 0n },
-                        storageDeposit: 0n,
-                    };
-                },
-            );
+            // "a" is in registry with matching code, "b" is not in registry
             (services.registry.getAddressBatch as any).mockResolvedValue(
                 new Map([["@test/a", "0xexisting-a"]]),
+            );
+            (services.deployer.getOnChainCode as any).mockResolvedValue(
+                new TextEncoder().encode("[]"),
             );
 
             const order = makeOrder([["a", "b"]], {}, { a: "@test/a", b: "@test/b" });
@@ -756,7 +749,6 @@ if (import.meta.vitest) {
 
         test("non-CDM contracts always deploy (no caching)", async () => {
             const services = makeServices();
-            // No cdmPackage → no caching
             const order = makeOrder([["a"]]);
             const result = await executePipeline({
                 rootDir: "/fake",
@@ -767,8 +759,7 @@ if (import.meta.vitest) {
             expect(result.success).toBe(true);
             expect(result.statuses.get("a")!.state).toBe("done");
             expect(result.addresses["a"]).toBe("0xaddr0");
-            // deployCheck should NOT be called for non-CDM
-            expect(services.deployer.deployCheck).not.toHaveBeenCalled();
+            expect(services.deployer.getOnChainCode).not.toHaveBeenCalled();
             expect(services.deployer.deployBatch).toHaveBeenCalledTimes(1);
         });
     });
