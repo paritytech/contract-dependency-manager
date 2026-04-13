@@ -41,6 +41,38 @@ export class RegistryManager {
         return this.registerBatch([{ cdmPackage, contractAddr, metadataUri }]);
     }
 
+    /**
+     * Query the registry for the currently registered address of a CDM package.
+     * Returns null if the package is not registered or the query fails.
+     */
+    async getAddress(cdmPackage: string): Promise<string | null> {
+        try {
+            const result = await this.registry.query("getAddress", {
+                origin: this.origin,
+                data: { contract_name: cdmPackage },
+            });
+            if (!result.success) return null;
+            const response = result.value.response;
+            if (response && typeof response === "object" && "value" in response) {
+                return response.value ?? null;
+            }
+            if (typeof response === "string") return response;
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Query the registry for addresses of multiple CDM packages in parallel.
+     */
+    async getAddressBatch(cdmPackages: string[]): Promise<Map<string, string | null>> {
+        const results = await Promise.all(
+            cdmPackages.map(async (pkg) => [pkg, await this.getAddress(pkg)] as const),
+        );
+        return new Map(results);
+    }
+
     async registerBatch(entries: RegisterEntry[]): Promise<{ txHash: string; blockHash: string }> {
         if (entries.length === 0) return { txHash: "", blockHash: "" };
 

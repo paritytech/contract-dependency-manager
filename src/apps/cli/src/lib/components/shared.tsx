@@ -62,6 +62,10 @@ export function Failed() {
     return <Text color="red">✖</Text>;
 }
 
+export function Cached() {
+    return <Text color="blue">~</Text>;
+}
+
 export function truncateAddress(addr: string): string {
     if (addr.length <= 14) return addr;
     return `${addr.slice(0, 6)}…${addr.slice(-4)}`;

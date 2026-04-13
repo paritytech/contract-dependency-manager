@@ -41,6 +41,16 @@ export interface Metadata {
     abi: AbiEntry[];
 }
 
+export type DeployCheckResult =
+    | {
+          status: "deploy";
+          tx: ReturnType<TypedApi<AssetHub>["tx"]["Revive"]["instantiate_with_code"]>;
+          gasLimit: { ref_time: bigint; proof_size: bigint };
+          storageDeposit: bigint;
+      }
+    | { status: "cached" }
+    | { status: "error"; message: string };
+
 export class ContractDeployer {
     public signer: ReturnType<typeof prepareSigner>;
     public origin: string;
@@ -171,6 +181,90 @@ export class ContractDeployer {
             }),
             gasLimit,
             storageDeposit,
+        };
+    }
+
+    /**
+     * Perform a dry-run to check whether a CDM contract needs deploying.
+     * - "deploy": dry-run succeeded, contract is new/changed, returns pre-computed tx + gas.
+     * - "cached": dry-run failed (address already occupied), contract is unchanged.
+     * - "error": dry-run failed for a non-collision reason.
+     *
+     * The caller should validate "cached" results against registry data to distinguish
+     * genuine address collisions from other failures.
+     */
+    async deployCheck(pvmPath: string, cdmPackage: string): Promise<DeployCheckResult> {
+        try {
+            const result = await this.dryRunDeploy(pvmPath, cdmPackage);
+            return {
+                status: "deploy",
+                tx: result.tx,
+                gasLimit: result.gasLimit,
+                storageDeposit: result.storageDeposit,
+            };
+        } catch {
+            // Dry-run failed — caller uses registry presence to distinguish
+            // "address collision" (cached) from genuine errors.
+            return { status: "cached" };
+        }
+    }
+
+    /**
+     * Deploy contracts using pre-computed dry-run results from deployCheck().
+     * Avoids redundant dry-runs for contracts already checked.
+     */
+    async deployBatchFromChecks(
+        checks: DeployCheckResult[],
+    ): Promise<{ addresses: string[]; txHash: string; blockHash: string }> {
+        const deployable = checks.filter(
+            (c): c is Extract<DeployCheckResult, { status: "deploy" }> => c.status === "deploy",
+        );
+        if (deployable.length === 0) return { addresses: [], txHash: "", blockHash: "" };
+
+        if (deployable.length === 1) {
+            const result = await deployable[0].tx.signAndSubmit(this.signer);
+            const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
+            if (failures.length > 0) {
+                throw new Error(`Deployment transaction failed: ${stringifyBigInt(failures[0])}`);
+            }
+            const instantiated = this.api.event.Revive.Instantiated.filter(result.events);
+            if (instantiated.length === 0) {
+                throw new Error("Contract instantiation failed - no Instantiated event");
+            }
+            return {
+                addresses: [instantiated[0].contract.asHex()],
+                txHash: result.txHash,
+                blockHash: result.block.hash,
+            };
+        }
+
+        const calls = await Promise.all(
+            deployable.map(async (d) => {
+                const call = d.tx.decodedCall;
+                return call instanceof Promise ? await call : call;
+            }),
+        );
+
+        const result = await this.api.tx.Utility.batch_all({
+            calls,
+        }).signAndSubmit(this.signer);
+
+        const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
+        if (failures.length > 0) {
+            throw new Error(`Batch deploy failed: ${stringifyBigInt(failures[0])}`);
+        }
+
+        const instantiated = this.api.event.Revive.Instantiated.filter(result.events);
+        if (instantiated.length !== deployable.length) {
+            throw new Error(
+                `Expected ${deployable.length} Instantiated events, got ${instantiated.length}`,
+            );
+        }
+
+        return {
+            addresses: instantiated.map((e) => e.contract.asHex()),
+            txHash: result.txHash,
+            blockHash: result.block.hash,
         };
     }
 

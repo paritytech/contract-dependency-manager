@@ -25,6 +25,7 @@ export {
     type AbiParam,
     type AbiEntry,
     type Metadata,
+    type DeployCheckResult,
     ContractDeployer,
     computeDeploySalt,
 } from "./deployer";

@@ -16,7 +16,9 @@
     "module": "./generated/dist/index.mjs",
     "browser": "./generated/dist/index.mjs",
     "sideEffects": false,
-    "files": ["generated/dist"],
+    "files": [
+        "generated/dist"
+    ],
     "publishConfig": {
         "access": "public"
     },
@@ -29,5 +31,8 @@
     },
     "devDependencies": {
         "polkadot-api": "catalog:"
+    },
+    "dependencies": {
+        "@polkadot-api/descriptors": "file:generated"
     }
 }

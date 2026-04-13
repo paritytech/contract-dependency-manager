@@ -12,6 +12,7 @@ import type {
     DeploymentOrderLayered,
     BuildProgressCallback,
     ContractDeployer,
+    DeployCheckResult,
     Metadata,
     AbiEntry,
     MetadataPublisher,
@@ -22,6 +23,8 @@ export type ContractState =
     | "waiting"
     | "building"
     | "built"
+    | "checking"
+    | "cached"
     | "deploying"
     | "registering"
     | "done"
@@ -164,138 +167,221 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
         if (opts.services && deployable.length > 0) {
             try {
                 const cdmCrates = deployable.filter((c) => order.cdmPackageMap.has(c));
-                const cdmSet = new Set(cdmCrates);
+                const nonCdmCrates = deployable.filter((c) => !order.cdmPackageMap.has(c));
                 const cidMap: Record<string, string> = {};
                 const addrMap: Record<string, string> = {};
 
-                // Prepare metadata and precompute CIDs for CDM crates
-                let metadataList: Metadata[] = [];
-                let precomputedCids: string[] = [];
+                // 4a. CHECK PHASE — dry-run CDM contracts to detect cache hits
+                // Non-CDM contracts (no CREATE2) always deploy.
+                let toDeploy: string[] = [...nonCdmCrates];
+                const checkResultMap = new Map<string, DeployCheckResult>();
+
                 if (cdmCrates.length > 0) {
-                    const publishedAt = new Date().toISOString();
-                    metadataList = cdmCrates.map((c) => {
-                        const contract = order.contractMap.get(c)!;
-                        const readmeContent = readReadmeContent(contract.readmePath);
-                        const repository =
-                            contract.repository ?? getGitRemoteUrl(opts.rootDir) ?? "";
-                        const abiPath = resolve(opts.rootDir, `target/${c}.release.abi.json`);
-                        let abi: AbiEntry[] = [];
-                        if (existsSync(abiPath)) {
-                            try {
-                                abi = JSON.parse(readFileSync(abiPath, "utf-8"));
-                            } catch {}
-                        }
-                        return {
-                            publish_block: 0,
-                            published_at: publishedAt,
-                            description: contract.description ?? "",
-                            readme: readmeContent,
-                            authors: contract.authors,
-                            homepage: contract.homepage ?? "",
-                            repository,
-                            abi,
-                        };
-                    });
-                    precomputedCids = metadataList.map((m) =>
-                        computeCid(new TextEncoder().encode(JSON.stringify(m))),
-                    );
-                    for (let i = 0; i < cdmCrates.length; i++) {
-                        cidMap[cdmCrates[i]] = precomputedCids[i];
-                    }
-                }
+                    // Run deploy checks + registry pre-fetch in parallel
+                    const [checkResults, registryAddresses] = await Promise.all([
+                        Promise.all(
+                            cdmCrates.map(async (crate) => {
+                                updateStatus(statuses, crate, "checking", opts.onStatusChange);
+                                const pvmPath = resolve(
+                                    opts.rootDir,
+                                    `target/${crate}.release.polkavm`,
+                                );
+                                const cdmPkg = order.cdmPackageMap.get(crate)!;
+                                const result = await opts.services!.deployer.deployCheck(
+                                    pvmPath,
+                                    cdmPkg,
+                                );
+                                return { crate, result };
+                            }),
+                        ),
+                        opts.services.registry.getAddressBatch(
+                            cdmCrates.map((c) => order.cdmPackageMap.get(c)!),
+                        ),
+                    ]);
 
-                // Mark deploying (+ publishing for CDM crates)
-                for (const crate of deployable) {
-                    updateStatus(statuses, crate, "deploying", opts.onStatusChange, {
-                        deployInProgress: true,
-                        ...(cdmSet.has(crate)
-                            ? { publishInProgress: true, cid: cidMap[crate] }
-                            : {}),
-                    });
-                }
+                    for (const { crate, result } of checkResults) {
+                        const cdmPkg = order.cdmPackageMap.get(crate)!;
+                        const registryAddr = registryAddresses.get(cdmPkg);
 
-                // Deploy (AssetHub) + Publish (Bulletin) in parallel
-                const pvmPaths = deployable.map((c) =>
-                    resolve(opts.rootDir, `target/${c}.release.polkavm`),
-                );
-                const cdmPackages = deployable.map((c) => order.cdmPackageMap.get(c));
-                const [deployResult, publishResult] = await Promise.all([
-                    opts.services.deployer.deployBatch(pvmPaths, cdmPackages),
-                    cdmCrates.length > 0
-                        ? opts.services.publisher.publishBatch(metadataList)
-                        : Promise.resolve(null),
-                ]);
-
-                // Process deploy results
-                const {
-                    addresses: batchAddrs,
-                    txHash: deployTxHash,
-                    blockHash: deployBlockHash,
-                } = deployResult;
-                for (let i = 0; i < deployable.length; i++) {
-                    addrMap[deployable[i]] = batchAddrs[i];
-                    addresses[deployable[i]] = batchAddrs[i];
-                }
-
-                // Verify published CIDs
-                let publishTxHash = "";
-                let publishBlockHash = "";
-                if (publishResult) {
-                    for (let i = 0; i < precomputedCids.length; i++) {
-                        if (publishResult.cids[i] !== precomputedCids[i]) {
-                            throw new Error(
-                                `CID mismatch for ${cdmCrates[i]}: expected ${precomputedCids[i]}, got ${publishResult.cids[i]}`,
-                            );
+                        if (result.status === "cached" && registryAddr) {
+                            // Dry-run failed + registry has address = unchanged contract
+                            addresses[crate] = registryAddr;
+                            updateStatus(statuses, crate, "cached", opts.onStatusChange, {
+                                address: registryAddr,
+                            });
+                        } else if (result.status === "cached" && !registryAddr) {
+                            // Dry-run failed + not in registry = genuine error
+                            failedCrates.add(crate);
+                            updateStatus(statuses, crate, "error", opts.onStatusChange, {
+                                error: "Deploy dry-run failed and contract not found in registry",
+                            });
+                        } else if (result.status === "deploy") {
+                            toDeploy.push(crate);
+                            checkResultMap.set(crate, result);
+                        } else {
+                            failedCrates.add(crate);
+                            updateStatus(statuses, crate, "error", opts.onStatusChange, {
+                                error:
+                                    result.status === "error"
+                                        ? result.message
+                                        : "Deploy check failed",
+                            });
                         }
                     }
-                    publishTxHash = publishResult.txHash;
-                    publishBlockHash = publishResult.blockHash;
                 }
 
-                // Transition: CDM crates → registering, non-CDM → done
-                for (const crate of deployable) {
-                    if (cdmSet.has(crate)) {
-                        updateStatus(statuses, crate, "registering", opts.onStatusChange, {
-                            deployInProgress: false,
-                            publishInProgress: false,
-                            registerInProgress: true,
-                            address: addrMap[crate],
-                            deployTxHash,
-                            deployBlockHash,
-                            publishTxHash,
-                            publishBlockHash,
+                // 4b. DEPLOY + PUBLISH only non-cached contracts
+                const cdmToDeploy = toDeploy.filter((c) => order.cdmPackageMap.has(c));
+                const cdmToDeploySet = new Set(cdmToDeploy);
+
+                if (toDeploy.length > 0) {
+                    // Prepare metadata and precompute CIDs for CDM crates being deployed
+                    let metadataList: Metadata[] = [];
+                    let precomputedCids: string[] = [];
+                    if (cdmToDeploy.length > 0) {
+                        const publishedAt = new Date().toISOString();
+                        metadataList = cdmToDeploy.map((c) => {
+                            const contract = order.contractMap.get(c)!;
+                            const readmeContent = readReadmeContent(contract.readmePath);
+                            const repository =
+                                contract.repository ?? getGitRemoteUrl(opts.rootDir) ?? "";
+                            const abiPath = resolve(opts.rootDir, `target/${c}.release.abi.json`);
+                            let abi: AbiEntry[] = [];
+                            if (existsSync(abiPath)) {
+                                try {
+                                    abi = JSON.parse(readFileSync(abiPath, "utf-8"));
+                                } catch {}
+                            }
+                            return {
+                                publish_block: 0,
+                                published_at: publishedAt,
+                                description: contract.description ?? "",
+                                readme: readmeContent,
+                                authors: contract.authors,
+                                homepage: contract.homepage ?? "",
+                                repository,
+                                abi,
+                            };
                         });
+                        precomputedCids = metadataList.map((m) =>
+                            computeCid(new TextEncoder().encode(JSON.stringify(m))),
+                        );
+                        for (let i = 0; i < cdmToDeploy.length; i++) {
+                            cidMap[cdmToDeploy[i]] = precomputedCids[i];
+                        }
+                    }
+
+                    // Mark deploying (+ publishing for CDM crates)
+                    for (const crate of toDeploy) {
+                        updateStatus(statuses, crate, "deploying", opts.onStatusChange, {
+                            deployInProgress: true,
+                            ...(cdmToDeploySet.has(crate)
+                                ? { publishInProgress: true, cid: cidMap[crate] }
+                                : {}),
+                        });
+                    }
+
+                    // Deploy using pre-computed dry-runs where available, fallback to deployBatch
+                    const hasPrecomputed = toDeploy.some((c) => checkResultMap.has(c));
+                    let deployResult: {
+                        addresses: string[];
+                        txHash: string;
+                        blockHash: string;
+                    };
+
+                    if (hasPrecomputed && toDeploy.every((c) => checkResultMap.has(c))) {
+                        // All contracts have pre-computed dry-runs — use them directly
+                        const checks = toDeploy.map((c) => checkResultMap.get(c)!);
+                        deployResult = await opts.services.deployer.deployBatchFromChecks(checks);
                     } else {
-                        updateStatus(statuses, crate, "done", opts.onStatusChange, {
-                            deployInProgress: false,
-                            address: addrMap[crate],
-                            deployTxHash,
-                            deployBlockHash,
-                        });
+                        // Mix of checked and unchecked — fallback to deployBatch
+                        const pvmPaths = toDeploy.map((c) =>
+                            resolve(opts.rootDir, `target/${c}.release.polkavm`),
+                        );
+                        const cdmPackages = toDeploy.map((c) => order.cdmPackageMap.get(c));
+                        deployResult = await opts.services.deployer.deployBatch(
+                            pvmPaths,
+                            cdmPackages,
+                        );
                     }
-                }
 
-                // 5. REGISTER PHASE (needs address from deploy + CID from publish)
-                if (cdmCrates.length > 0) {
-                    const registerEntries = cdmCrates.map((c) => ({
-                        cdmPackage: order.cdmPackageMap.get(c)!,
-                        contractAddr: addrMap[c],
-                        metadataUri: cidMap[c],
-                    }));
-                    const { txHash: registerTxHash, blockHash: registerBlockHash } =
-                        await opts.services.registry.registerBatch(registerEntries);
+                    const [publishResult] = await Promise.all([
+                        cdmToDeploy.length > 0
+                            ? opts.services.publisher.publishBatch(metadataList)
+                            : Promise.resolve(null),
+                    ]);
 
-                    for (const crate of cdmCrates) {
-                        updateStatus(statuses, crate, "done", opts.onStatusChange, {
-                            registerInProgress: false,
-                            registerTxHash,
-                            registerBlockHash,
-                        });
+                    // Process deploy results
+                    const {
+                        addresses: batchAddrs,
+                        txHash: deployTxHash,
+                        blockHash: deployBlockHash,
+                    } = deployResult;
+                    for (let i = 0; i < toDeploy.length; i++) {
+                        addrMap[toDeploy[i]] = batchAddrs[i];
+                        addresses[toDeploy[i]] = batchAddrs[i];
+                    }
+
+                    // Verify published CIDs
+                    let publishTxHash = "";
+                    let publishBlockHash = "";
+                    if (publishResult) {
+                        for (let i = 0; i < precomputedCids.length; i++) {
+                            if (publishResult.cids[i] !== precomputedCids[i]) {
+                                throw new Error(
+                                    `CID mismatch for ${cdmToDeploy[i]}: expected ${precomputedCids[i]}, got ${publishResult.cids[i]}`,
+                                );
+                            }
+                        }
+                        publishTxHash = publishResult.txHash;
+                        publishBlockHash = publishResult.blockHash;
+                    }
+
+                    // Transition: CDM crates → registering, non-CDM → done
+                    for (const crate of toDeploy) {
+                        if (cdmToDeploySet.has(crate)) {
+                            updateStatus(statuses, crate, "registering", opts.onStatusChange, {
+                                deployInProgress: false,
+                                publishInProgress: false,
+                                registerInProgress: true,
+                                address: addrMap[crate],
+                                deployTxHash,
+                                deployBlockHash,
+                                publishTxHash,
+                                publishBlockHash,
+                            });
+                        } else {
+                            updateStatus(statuses, crate, "done", opts.onStatusChange, {
+                                deployInProgress: false,
+                                address: addrMap[crate],
+                                deployTxHash,
+                                deployBlockHash,
+                            });
+                        }
+                    }
+
+                    // 5. REGISTER PHASE (needs address from deploy + CID from publish)
+                    if (cdmToDeploy.length > 0) {
+                        const registerEntries = cdmToDeploy.map((c) => ({
+                            cdmPackage: order.cdmPackageMap.get(c)!,
+                            contractAddr: addrMap[c],
+                            metadataUri: cidMap[c],
+                        }));
+                        const { txHash: registerTxHash, blockHash: registerBlockHash } =
+                            await opts.services.registry.registerBatch(registerEntries);
+
+                        for (const crate of cdmToDeploy) {
+                            updateStatus(statuses, crate, "done", opts.onStatusChange, {
+                                registerInProgress: false,
+                                registerTxHash,
+                                registerBlockHash,
+                            });
+                        }
                     }
                 }
             } catch (err) {
                 for (const crate of deployable) {
-                    if (!failedCrates.has(crate)) {
+                    if (!failedCrates.has(crate) && statuses.get(crate)?.state !== "cached") {
                         failedCrates.add(crate);
                         updateStatus(statuses, crate, "error", opts.onStatusChange, {
                             deployInProgress: false,
@@ -381,6 +467,17 @@ if (import.meta.vitest) {
                     txHash: "0xdeploy",
                     blockHash: "0xblock",
                 })),
+                deployCheck: vi.fn(async () => ({
+                    status: "deploy",
+                    tx: {},
+                    gasLimit: { ref_time: 0n, proof_size: 0n },
+                    storageDeposit: 0n,
+                })),
+                deployBatchFromChecks: vi.fn(async (checks: any[]) => ({
+                    addresses: checks.map((_: any, i: number) => `0xaddr${i}`),
+                    txHash: "0xdeploy",
+                    blockHash: "0xblock",
+                })),
             } as any,
             publisher: {
                 publishBatch: vi.fn(async (metaList: any[]) => ({
@@ -395,6 +492,7 @@ if (import.meta.vitest) {
                     txHash: "0xreg",
                     blockHash: "0xrblock",
                 })),
+                getAddressBatch: vi.fn(async () => new Map()),
             } as any,
         };
     }
@@ -529,7 +627,14 @@ if (import.meta.vitest) {
                 onStatusChange: (_crate, status) => states.push(status.state),
             });
 
-            expect(states).toEqual(["building", "built", "deploying", "registering", "done"]);
+            expect(states).toEqual([
+                "building",
+                "built",
+                "checking",
+                "deploying",
+                "registering",
+                "done",
+            ]);
         });
 
         test("empty pipeline succeeds immediately", async () => {
@@ -559,9 +664,111 @@ if (import.meta.vitest) {
             expect(result.success).toBe(true);
             expect(result.statuses.get("solo")!.state).toBe("done");
             expect(result.addresses["solo"]).toBe("0xaddr0");
-            expect(services.deployer.deployBatch).toHaveBeenCalledTimes(1);
             expect(services.publisher.publishBatch).toHaveBeenCalledTimes(1);
             expect(services.registry.registerBatch).toHaveBeenCalledTimes(1);
+        });
+
+        test("cache hit: unchanged CDM contract skips deploy/publish/register", async () => {
+            (mockReadCdm as any).mockReturnValue("@test/cached-pkg");
+
+            const services = makeServices();
+            // deployCheck returns "cached" (dry-run failed)
+            (services.deployer.deployCheck as any).mockResolvedValue({ status: "cached" });
+            // registry has an address for this package
+            (services.registry.getAddressBatch as any).mockResolvedValue(
+                new Map([["@test/cached-pkg", "0xexisting"]]),
+            );
+
+            const order = makeOrder([["a"]], {}, { a: "@test/cached-pkg" });
+            const result = await executePipeline({
+                rootDir: "/fake",
+                order,
+                services,
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.statuses.get("a")!.state).toBe("cached");
+            expect(result.statuses.get("a")!.address).toBe("0xexisting");
+            expect(result.addresses["a"]).toBe("0xexisting");
+            // Deploy, publish, register should NOT be called
+            expect(services.deployer.deployBatch).not.toHaveBeenCalled();
+            expect(services.deployer.deployBatchFromChecks).not.toHaveBeenCalled();
+            expect(services.publisher.publishBatch).not.toHaveBeenCalled();
+            expect(services.registry.registerBatch).not.toHaveBeenCalled();
+        });
+
+        test("cache miss: dry-run fails but not in registry → error", async () => {
+            (mockReadCdm as any).mockReturnValue("@test/new-pkg");
+
+            const services = makeServices();
+            (services.deployer.deployCheck as any).mockResolvedValue({ status: "cached" });
+            // Registry has NO entry for this package
+            (services.registry.getAddressBatch as any).mockResolvedValue(new Map());
+
+            const order = makeOrder([["a"]], {}, { a: "@test/new-pkg" });
+            const result = await executePipeline({
+                rootDir: "/fake",
+                order,
+                services,
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.statuses.get("a")!.state).toBe("error");
+            expect(result.statuses.get("a")!.error).toContain("not found in registry");
+        });
+
+        test("mixed batch: cached contracts skipped, new ones deploy", async () => {
+            (mockReadCdm as any).mockImplementation(
+                (_root: string, crate: string) => `@test/${crate}`,
+            );
+
+            const services = makeServices();
+            // "a" is cached (dry-run fails), "b" is new (dry-run succeeds)
+            (services.deployer.deployCheck as any).mockImplementation(
+                async (_path: string, pkg: string) => {
+                    if (pkg === "@test/a") return { status: "cached" };
+                    return {
+                        status: "deploy",
+                        tx: {},
+                        gasLimit: { ref_time: 0n, proof_size: 0n },
+                        storageDeposit: 0n,
+                    };
+                },
+            );
+            (services.registry.getAddressBatch as any).mockResolvedValue(
+                new Map([["@test/a", "0xexisting-a"]]),
+            );
+
+            const order = makeOrder([["a", "b"]], {}, { a: "@test/a", b: "@test/b" });
+            const result = await executePipeline({
+                rootDir: "/fake",
+                order,
+                services,
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.statuses.get("a")!.state).toBe("cached");
+            expect(result.statuses.get("a")!.address).toBe("0xexisting-a");
+            expect(result.statuses.get("b")!.state).toBe("done");
+            expect(result.addresses["a"]).toBe("0xexisting-a");
+        });
+
+        test("non-CDM contracts always deploy (no caching)", async () => {
+            const services = makeServices();
+            // No cdmPackage → no caching
+            const order = makeOrder([["a"]]);
+            const result = await executePipeline({
+                rootDir: "/fake",
+                order,
+                services,
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.statuses.get("a")!.state).toBe("done");
+            expect(result.addresses["a"]).toBe("0xaddr0");
+            // deployCheck should NOT be called for non-CDM
+            expect(services.deployer.deployCheck).not.toHaveBeenCalled();
+            expect(services.deployer.deployBatch).toHaveBeenCalledTimes(1);
         });
     });
 }

@@ -10,6 +10,7 @@ import {
     Idle,
     Done,
     Failed,
+    Cached,
     truncateAddress,
     shortHash,
     pjsExplorerUrl,
@@ -91,9 +92,37 @@ function ContractRow({
         );
     }
 
+    // Cached state — show cache indicator across all deploy columns
+    if (state === "cached") {
+        return (
+            <Box>
+                <Cell width={COL_CONTRACT}>
+                    <Text bold wrap="truncate">
+                        {name}
+                    </Text>
+                </Cell>
+                <Cell width={COL_BUILD}>{buildCell}</Cell>
+                <Cell width={COL_PHASE}>
+                    <Cached />
+                </Cell>
+                <Cell width={COL_PHASE}>
+                    <Cached />
+                </Cell>
+                <Cell width={COL_PHASE}>
+                    <Cached />
+                </Cell>
+                <Cell width={COL_ADDR}>
+                    {s?.address ? <Text dimColor>{truncateAddress(s.address)}</Text> : <Idle />}
+                </Cell>
+            </Box>
+        );
+    }
+
     // Deploy column — use deployInProgress flag for spinner
     let deployCell: React.ReactNode;
-    if (s?.deployInProgress) {
+    if (state === "checking") {
+        deployCell = <Spinner tick={tick} />;
+    } else if (s?.deployInProgress) {
         deployCell = <Spinner tick={tick} />;
     } else if (state === "error" && errorPhase(s!) === "deploy") {
         deployCell = <Failed />;
