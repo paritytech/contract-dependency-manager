@@ -48,7 +48,7 @@ export type DeployCheckResult =
           gasLimit: { ref_time: bigint; proof_size: bigint };
           storageDeposit: bigint;
       }
-    | { status: "cached" }
+    | { status: "collision" }
     | { status: "error"; message: string };
 
 export class ContractDeployer {
@@ -186,12 +186,9 @@ export class ContractDeployer {
 
     /**
      * Perform a dry-run to check whether a CDM contract needs deploying.
-     * - "deploy": dry-run succeeded, contract is new/changed, returns pre-computed tx + gas.
-     * - "cached": dry-run failed (address already occupied), contract is unchanged.
-     * - "error": dry-run failed for a non-collision reason.
-     *
-     * The caller should validate "cached" results against registry data to distinguish
-     * genuine address collisions from other failures.
+     * - "deploy": dry-run succeeded, returns pre-computed tx + gas.
+     * - "collision": dry-run failed with DuplicateContract (address already occupied).
+     * - "error": any other failure (file I/O, RPC, other pallet errors).
      */
     async deployCheck(pvmPath: string, cdmPackage: string): Promise<DeployCheckResult> {
         try {
@@ -202,10 +199,13 @@ export class ContractDeployer {
                 gasLimit: result.gasLimit,
                 storageDeposit: result.storageDeposit,
             };
-        } catch {
-            // Dry-run failed — caller uses registry presence to distinguish
-            // "address collision" (cached) from genuine errors.
-            return { status: "cached" };
+        } catch (err) {
+            // `DuplicateContract` means the address is already occupied
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes("DuplicateContract")) {
+                return { status: "collision" };
+            }
+            return { status: "error", message: msg };
         }
     }
 

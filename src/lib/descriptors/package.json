@@ -16,9 +16,7 @@
     "module": "./generated/dist/index.mjs",
     "browser": "./generated/dist/index.mjs",
     "sideEffects": false,
-    "files": [
-        "generated/dist"
-    ],
+    "files": ["generated/dist"],
     "publishConfig": {
         "access": "public"
     },

@@ -177,7 +177,10 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
                 const checkResultMap = new Map<string, DeployCheckResult>();
 
                 if (cdmCrates.length > 0) {
-                    // Run deploy checks + registry pre-fetch in parallel
+                    // Run deploy checks + registry pre-fetch in parallel.
+                    // The registry is needed to resolve the existing address when
+                    // a dry-run collision is detected (the pallet's DispatchError
+                    // does not include the colliding address).
                     const [checkResults, registryAddresses] = await Promise.all([
                         Promise.all(
                             cdmCrates.map(async (crate) => {
@@ -200,20 +203,16 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
                     ]);
 
                     for (const { crate, result } of checkResults) {
-                        const cdmPkg = order.cdmPackageMap.get(crate)!;
-                        const registryAddr = registryAddresses.get(cdmPkg);
-
-                        if (result.status === "cached" && registryAddr) {
-                            // Dry-run failed + registry has address = unchanged contract
-                            addresses[crate] = registryAddr;
+                        if (result.status === "collision") {
+                            // Dry-run failed (address occupied). Look up the existing
+                            // address from the registry for reporting purposes.
+                            const cdmPkg = order.cdmPackageMap.get(crate)!;
+                            const registryAddr = registryAddresses.get(cdmPkg);
+                            if (registryAddr) {
+                                addresses[crate] = registryAddr;
+                            }
                             updateStatus(statuses, crate, "cached", opts.onStatusChange, {
-                                address: registryAddr,
-                            });
-                        } else if (result.status === "cached" && !registryAddr) {
-                            // Dry-run failed + not in registry = genuine error
-                            failedCrates.add(crate);
-                            updateStatus(statuses, crate, "error", opts.onStatusChange, {
-                                error: "Deploy dry-run failed and contract not found in registry",
+                                address: registryAddr ?? undefined,
                             });
                         } else if (result.status === "deploy") {
                             toDeploy.push(crate);
@@ -221,10 +220,7 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
                         } else {
                             failedCrates.add(crate);
                             updateStatus(statuses, crate, "error", opts.onStatusChange, {
-                                error:
-                                    result.status === "error"
-                                        ? result.message
-                                        : "Deploy check failed",
+                                error: result.message,
                             });
                         }
                     }
@@ -672,9 +668,11 @@ if (import.meta.vitest) {
             (mockReadCdm as any).mockReturnValue("@test/cached-pkg");
 
             const services = makeServices();
-            // deployCheck returns "cached" (dry-run failed)
-            (services.deployer.deployCheck as any).mockResolvedValue({ status: "cached" });
-            // registry has an address for this package
+            // deployCheck returns "collision" (dry-run failed, address occupied)
+            (services.deployer.deployCheck as any).mockResolvedValue({
+                status: "collision",
+            });
+            // Registry returns the existing address for this package
             (services.registry.getAddressBatch as any).mockResolvedValue(
                 new Map([["@test/cached-pkg", "0xexisting"]]),
             );
@@ -697,15 +695,17 @@ if (import.meta.vitest) {
             expect(services.registry.registerBatch).not.toHaveBeenCalled();
         });
 
-        test("cache miss: dry-run fails but not in registry → error", async () => {
-            (mockReadCdm as any).mockReturnValue("@test/new-pkg");
+        test("deploy check error surfaces properly (not swallowed as cache hit)", async () => {
+            (mockReadCdm as any).mockReturnValue("@test/broken-pkg");
 
             const services = makeServices();
-            (services.deployer.deployCheck as any).mockResolvedValue({ status: "cached" });
-            // Registry has NO entry for this package
-            (services.registry.getAddressBatch as any).mockResolvedValue(new Map());
+            // deployCheck returns a real error (RPC failure, missing file, etc.)
+            (services.deployer.deployCheck as any).mockResolvedValue({
+                status: "error",
+                message: "Deploy dry-run RPC failed: connection refused",
+            });
 
-            const order = makeOrder([["a"]], {}, { a: "@test/new-pkg" });
+            const order = makeOrder([["a"]], {}, { a: "@test/broken-pkg" });
             const result = await executePipeline({
                 rootDir: "/fake",
                 order,
@@ -714,7 +714,8 @@ if (import.meta.vitest) {
 
             expect(result.success).toBe(false);
             expect(result.statuses.get("a")!.state).toBe("error");
-            expect(result.statuses.get("a")!.error).toContain("not found in registry");
+            expect(result.statuses.get("a")!.error).toContain("connection refused");
+            expect(services.deployer.deployBatch).not.toHaveBeenCalled();
         });
 
         test("mixed batch: cached contracts skipped, new ones deploy", async () => {
@@ -723,10 +724,10 @@ if (import.meta.vitest) {
             );
 
             const services = makeServices();
-            // "a" is cached (dry-run fails), "b" is new (dry-run succeeds)
+            // "a" is collision (dry-run failed), "b" is new (dry-run succeeds)
             (services.deployer.deployCheck as any).mockImplementation(
                 async (_path: string, pkg: string) => {
-                    if (pkg === "@test/a") return { status: "cached" };
+                    if (pkg === "@test/a") return { status: "collision" };
                     return {
                         status: "deploy",
                         tx: {},
