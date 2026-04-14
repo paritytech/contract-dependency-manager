@@ -1,5 +1,11 @@
 # @dotdm/cli
 
+## 0.5.1
+
+### Patch Changes
+
+- 217de84: Trigger CI release for CLI binary
+
 ## 0.5.0
 
 ### Minor Changes
