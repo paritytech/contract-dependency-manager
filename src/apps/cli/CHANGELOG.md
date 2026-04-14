@@ -1,5 +1,23 @@
 # @dotdm/cli
 
+## 0.5.0
+
+### Minor Changes
+
+- 842d557: feat: smart deploy caching — skip unchanged contracts
+
+  Contracts that are already deployed on-chain with identical bytecode are now skipped during `cdm deploy`. After building, the pipeline compares local `.polkavm` bytecode against on-chain pristine code (via `AccountInfoOf` + `PristineCode` storage). Matching bytecode shows as cached (`~`) in the deploy table. This is signer-independent — cache hits work regardless of which account originally deployed.
+
+  Also fixes the `@dotdm/descriptors` package failing in CI by removing the unused `file:generated` dependency.
+
+### Patch Changes
+
+- Updated dependencies [842d557]
+  - @dotdm/contracts@0.4.0
+  - @dotdm/descriptors@0.1.9
+  - @dotdm/cdm@0.5.4
+  - @dotdm/env@0.3.2
+
 ## 0.4.5
 
 ### Patch Changes

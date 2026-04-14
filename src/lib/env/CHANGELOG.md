@@ -1,5 +1,12 @@
 # @dotdm/env
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [842d557]
+  - @dotdm/descriptors@0.1.9
+
 ## 0.3.1
 
 ### Patch Changes
