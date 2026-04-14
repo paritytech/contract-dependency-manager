@@ -124,7 +124,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         }
         toInstall = Object.entries(deps).map(([lib, ver]) => ({
             library: lib,
-            requestedVersion: ver,
+            requestedVersion: ver === "latest" ? ("latest" as const) : Number(ver),
         }));
     }
 

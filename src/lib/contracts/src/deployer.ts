@@ -175,15 +175,20 @@ export class ContractDeployer {
     }
 
     /**
-     * Fetch the deployed bytecode at a given contract address.
-     * Returns null if no code exists or the query fails.
+     * Fetch the original uploaded bytecode for the contract at the given address.
+     * Uses ContractInfoOf → PristineCode to get the exact bytes that were deployed,
+     * avoiding any runtime transformation the pallet applies to stored code.
+     * Returns null if no contract exists or the query fails.
      */
     async getOnChainCode(address: string): Promise<Uint8Array | null> {
         try {
             const addr = FixedSizeBinary.fromHex(address) as FixedSizeBinary<20>;
-            const code = await this.api.apis.ReviveApi.code(addr);
-            if (!code || code.asBytes().length === 0) return null;
-            return code.asBytes();
+            const info = await this.api.query.Revive.AccountInfoOf.getValue(addr);
+            if (!info || info.account_type.type !== "Contract") return null;
+            const codeHash = info.account_type.value.code_hash;
+            const pristine = await this.api.query.Revive.PristineCode.getValue(codeHash);
+            if (!pristine) return null;
+            return pristine.asBytes();
         } catch {
             return null;
         }

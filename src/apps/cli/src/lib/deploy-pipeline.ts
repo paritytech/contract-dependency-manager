@@ -122,11 +122,13 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
         }
 
         // 2. BUILD PHASE + REGISTRY PRE-FETCH (parallel)
-        // Pre-fetch registry addresses during build to hide network latency.
-        const cdmPackagesInLayer = runnable
+        // Pre-fetch registry addresses for any package names already known (from a
+        // previous build). On fresh clones cdmPackageMap is empty, so nothing is
+        // fetched here — gaps are filled after build when package names are discovered.
+        const knownCdmPackages = runnable
             .map((c) => order.cdmPackageMap.get(c))
             .filter((p): p is string => !!p);
-        const [buildResults, registryAddresses] = await Promise.all([
+        const [buildResults, prefetchedAddresses] = await Promise.all([
             Promise.all(
                 runnable.map((crate) => {
                     updateStatus(statuses, crate, "building", opts.onStatusChange);
@@ -138,8 +140,8 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
                     return pvmContractBuildAsync(opts.rootDir, crate, onProgress);
                 }),
             ),
-            opts.services && cdmPackagesInLayer.length > 0
-                ? opts.services.registry.getAddressBatch(cdmPackagesInLayer)
+            opts.services && knownCdmPackages.length > 0
+                ? opts.services.registry.getAddressBatch(knownCdmPackages)
                 : Promise.resolve(new Map<string, string | null>()),
         ]);
 
@@ -185,7 +187,16 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
                 const toDeploy: string[] = [...nonCdmCrates];
 
                 if (cdmCrates.length > 0) {
-                    // Registry addresses were pre-fetched during build
+                    // Use pre-fetched addresses where package names match, fetch the rest
+                    const missingPkgs = cdmCrates
+                        .map((c) => order.cdmPackageMap.get(c)!)
+                        .filter((pkg) => !prefetchedAddresses.has(pkg));
+                    const freshAddresses =
+                        missingPkgs.length > 0
+                            ? await opts.services.registry.getAddressBatch(missingPkgs)
+                            : new Map<string, string | null>();
+                    const registryAddresses = new Map([...prefetchedAddresses, ...freshAddresses]);
+
                     const checkResults = await Promise.all(
                         cdmCrates.map(async (crate) => {
                             updateStatus(statuses, crate, "checking", opts.onStatusChange);
@@ -193,11 +204,10 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
                             const registryAddr = registryAddresses.get(cdmPkg);
 
                             if (!registryAddr) {
-                                // Not in registry — first deploy
                                 return { crate, cached: false as const };
                             }
 
-                            // Compare local bytecode with on-chain code
+                            // Compare local bytecode with on-chain pristine code
                             const pvmPath = resolve(
                                 opts.rootDir,
                                 `target/${crate}.release.polkavm`,
@@ -218,7 +228,6 @@ export async function executePipeline(opts: PipelineOptions): Promise<PipelineRe
                                 };
                             }
 
-                            // Different bytecode or couldn't fetch — needs deploy
                             return { crate, cached: false as const };
                         }),
                     );
