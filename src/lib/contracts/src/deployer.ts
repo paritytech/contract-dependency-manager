@@ -175,6 +175,26 @@ export class ContractDeployer {
     }
 
     /**
+     * Fetch the original uploaded bytecode for the contract at the given address.
+     * Uses ContractInfoOf → PristineCode to get the exact bytes that were deployed,
+     * avoiding any runtime transformation the pallet applies to stored code.
+     * Returns null if no contract exists or the query fails.
+     */
+    async getOnChainCode(address: string): Promise<Uint8Array | null> {
+        try {
+            const addr = FixedSizeBinary.fromHex(address) as FixedSizeBinary<20>;
+            const info = await this.api.query.Revive.AccountInfoOf.getValue(addr);
+            if (!info || info.account_type.type !== "Contract") return null;
+            const codeHash = info.account_type.value.code_hash;
+            const pristine = await this.api.query.Revive.PristineCode.getValue(codeHash);
+            if (!pristine) return null;
+            return pristine.asBytes();
+        } catch {
+            return null;
+        }
+    }
+
+    /**
      * Deploy multiple contracts in a single Utility.batch_all transaction.
      * Returns addresses in the same order as the input paths.
      * When cdmPackages is provided, each contract uses CREATE2 with a salt derived from its package name.
