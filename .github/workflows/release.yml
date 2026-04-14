@@ -35,6 +35,8 @@ jobs:
 
             - if: steps.changesets.outputs.found == 'true'
               uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: "1.2.x"
             - if: steps.changesets.outputs.found == 'true'
               uses: pnpm/action-setup@v4
             - if: steps.changesets.outputs.found == 'true'
