@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { readCdmJson } from "@dotdm/contracts";
-import { generateContractTypes } from "@dotdm/cdm";
+import { generateContractTypes, generateContractsAugmentation } from "@dotdm/cdm";
 import type { InstallResult } from "./index";
 
 const CDM_INCLUDE = ".cdm/**/*";
@@ -71,11 +71,10 @@ export async function postInstallTypeScript(result: InstallResult): Promise<void
 
     if (contracts.length === 0) return;
 
-    // Generate .cdm/cdm.d.ts with module augmentation
-    const types = generateContractTypes(contracts);
     const cdmDir = resolve(process.cwd(), ".cdm");
     mkdirSync(cdmDir, { recursive: true });
-    writeFileSync(resolve(cdmDir, "cdm.d.ts"), types);
+    writeFileSync(resolve(cdmDir, "cdm.d.ts"), generateContractTypes(contracts));
+    writeFileSync(resolve(cdmDir, "contracts.d.ts"), generateContractsAugmentation(contracts));
 
     // Ensure tsconfig.json includes .cdm/ for module augmentation
     ensureTsconfigInclude();
