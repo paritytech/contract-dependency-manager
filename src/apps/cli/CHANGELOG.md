@@ -1,5 +1,11 @@
 # @dotdm/cli
 
+## 0.5.2
+
+### Patch Changes
+
+- 03c4d9c: generate .cdm/contracts.d.ts for @polkadot-apps/contracts, while keeping .cdm/cdm.d.ts for backward compatibility
+
 ## 0.5.1
 
 ### Patch Changes
