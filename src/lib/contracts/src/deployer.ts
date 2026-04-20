@@ -1,5 +1,5 @@
 import { PolkadotClient, TypedApi, Binary, Enum, FixedSizeBinary } from "polkadot-api";
-import { AssetHub } from "@dotdm/descriptors";
+import { paseo_asset_hub } from "@polkadot-apps/descriptors/paseo-asset-hub";
 import { readFileSync } from "fs";
 import { prepareSigner } from "@dotdm/env";
 import { stringifyBigInt, STORAGE_DEPOSIT_LIMIT, GAS_LIMIT } from "@dotdm/utils";
@@ -8,7 +8,6 @@ import {
     submitAndWatch,
     batchSubmitAndWatch,
     applyWeightBuffer,
-    type BatchApi,
     type SubmittableTransaction,
 } from "@polkadot-apps/tx";
 import type { Contract, ContractDef } from "@polkadot-apps/contracts";
@@ -64,7 +63,7 @@ export const INSTANTIATE_WITH_CODE_STATIC_WEIGHT: WeightLike = {
 export interface DeployPlan {
     budget: WeightLike;
     prepared: Array<{
-        tx: ReturnType<TypedApi<AssetHub>["tx"]["Revive"]["instantiate_with_code"]>;
+        tx: ReturnType<TypedApi<typeof paseo_asset_hub>["tx"]["Revive"]["instantiate_with_code"]>;
         /** Execution-only weight limit passed to the extrinsic. */
         gasLimit: WeightLike;
         /**
@@ -161,14 +160,14 @@ export interface Metadata {
 export class ContractDeployer {
     public signer: ReturnType<typeof prepareSigner>;
     public origin: string;
-    public api: TypedApi<AssetHub>;
+    public api: TypedApi<typeof paseo_asset_hub>;
     public client: PolkadotClient;
 
     constructor(
         signer: ReturnType<typeof prepareSigner>,
         origin: string,
         client: PolkadotClient,
-        api: TypedApi<AssetHub>,
+        api: TypedApi<typeof paseo_asset_hub>,
     ) {
         this.signer = signer;
         this.origin = origin;
@@ -413,7 +412,7 @@ export class ContractDeployer {
                 try {
                     result = await batchSubmitAndWatch(
                         idxs.map((i) => prepared[i].tx),
-                        this.api as unknown as BatchApi,
+                        this.api,
                         this.signer,
                         { mode: "batch_all", waitFor: "best-block" },
                     );
@@ -553,12 +552,10 @@ export class ContractDeployer {
 
             let result: Awaited<ReturnType<typeof batchSubmitAndWatch>>;
             try {
-                result = await batchSubmitAndWatch(
-                    chunkCalls,
-                    this.api as unknown as BatchApi,
-                    this.signer,
-                    { mode: "batch_all", waitFor: "best-block" },
-                );
+                result = await batchSubmitAndWatch(chunkCalls, this.api, this.signer, {
+                    mode: "batch_all",
+                    waitFor: "best-block",
+                });
             } catch (err) {
                 const orig = err instanceof Error ? err.message : String(err);
                 throw new Error(`${label} ${orig}`, { cause: err });

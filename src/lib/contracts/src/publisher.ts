@@ -1,7 +1,7 @@
 import { TypedApi } from "polkadot-api";
-import { Bulletin } from "@dotdm/descriptors";
+import { bulletin } from "@polkadot-apps/descriptors/bulletin";
 import { prepareSigner } from "@dotdm/env";
-import { upload, batchUpload, type BulletinApi } from "@polkadot-apps/bulletin";
+import { upload, batchUpload } from "@polkadot-apps/bulletin";
 import type { Metadata } from "./deployer";
 
 /**
@@ -23,21 +23,11 @@ import type { Metadata } from "./deployer";
  */
 export class MetadataPublisher {
     public signer: ReturnType<typeof prepareSigner>;
-    public bulletinApi: TypedApi<Bulletin>;
+    public bulletinApi: TypedApi<typeof bulletin>;
 
-    constructor(signer: ReturnType<typeof prepareSigner>, api: TypedApi<Bulletin>) {
+    constructor(signer: ReturnType<typeof prepareSigner>, api: TypedApi<typeof bulletin>) {
         this.signer = signer;
         this.bulletinApi = api;
-    }
-
-    /**
-     * `@dotdm/descriptors` Bulletin and `@polkadot-apps/descriptors` bulletin
-     * are generated from the same chain metadata and structurally equivalent
-     * at runtime, but their TS types don't unify. Cast through unknown until
-     * papi exposes a way to adopt external descriptors structurally.
-     */
-    private get apiForBulletin(): BulletinApi {
-        return this.bulletinApi as unknown as BulletinApi;
     }
 
     async publish(
@@ -47,7 +37,7 @@ export class MetadataPublisher {
 
         let result: Awaited<ReturnType<typeof upload>>;
         try {
-            result = await upload(this.apiForBulletin, data, this.signer, {
+            result = await upload(this.bulletinApi, data, this.signer, {
                 waitFor: "best-block",
             });
         } catch (err) {
@@ -89,7 +79,7 @@ export class MetadataPublisher {
         const N = items.length;
         let results: Awaited<ReturnType<typeof batchUpload>>;
         try {
-            results = await batchUpload(this.apiForBulletin, items, this.signer, {
+            results = await batchUpload(this.bulletinApi, items, this.signer, {
                 waitFor: "best-block",
             });
         } catch (err) {

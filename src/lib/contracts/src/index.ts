@@ -37,6 +37,8 @@ export { MetadataPublisher } from "./publisher";
 
 export { computeCid } from "./cid";
 
+export { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
+
 export {
     GAS_LIMIT,
     STORAGE_DEPOSIT_LIMIT,

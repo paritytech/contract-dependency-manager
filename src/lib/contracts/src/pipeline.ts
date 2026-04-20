@@ -1,19 +1,16 @@
 import { resolve } from "path";
 import { existsSync, readFileSync } from "fs";
-import type { PolkadotSigner, SS58String, HexString, TypedApi } from "polkadot-api";
+import type { PolkadotSigner, SS58String, HexString } from "polkadot-api";
 import { Binary, Enum } from "polkadot-api";
 import type { ChainClient } from "@polkadot-apps/chain-client";
-import type { AssetHub, Bulletin } from "@dotdm/descriptors";
-import {
-    assetHub as assetHubDescriptor,
-    bulletin as bulletinDescriptor,
-    contracts as cdmContracts,
-} from "@dotdm/descriptors";
+import { paseo_asset_hub } from "@polkadot-apps/descriptors/paseo-asset-hub";
+import { bulletin } from "@polkadot-apps/descriptors/bulletin";
 import {
     createContractFromClient,
     type Contract,
     type ContractDef,
 } from "@polkadot-apps/contracts";
+import { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
 
 import {
     type ContractInfo,
@@ -27,8 +24,6 @@ import { pvmContractBuildAsync, type BuildProgressCallback } from "./builder";
 import { computeCid } from "./cid";
 import { ContractDeployer, computeDeploySalt, type AbiEntry, type Metadata } from "./deployer";
 import { MetadataPublisher } from "./publisher";
-
-const registryAbi = (cdmContracts.contractsRegistry as unknown as { abi: AbiEntry[] }).abi;
 
 async function queryRegistryAddresses(
     contract: Contract<ContractDef>,
@@ -51,14 +46,16 @@ async function queryRegistryAddresses(
 
 /**
  * `deployContracts` expects a `ChainClient` that provides both `assetHub` and
- * `bulletin` keys. We deliberately use `unknown` for the value types here —
- * the descriptor types from `@dotdm/descriptors` and any caller's descriptors
- * are structurally compatible at runtime, and the pipeline only touches
- * documented surface area (tx, query, event, apis).
+ * `bulletin` keys, typed against `@polkadot-apps/descriptors` so callers
+ * (e.g., playground-cli's `getChainAPI("paseo")`) can pass their own clients
+ * in without any cast. We pin AssetHub to `paseo_asset_hub` because it's
+ * the primary test target; the relevant pallet surface (Revive, Utility,
+ * System constants) matches Polkadot/Kusama AssetHub at runtime, so passing
+ * a client bound to any of those descriptors works structurally.
  */
 export type PipelineChainClient = ChainClient<{
-    assetHub: typeof assetHubDescriptor;
-    bulletin: typeof bulletinDescriptor;
+    assetHub: typeof paseo_asset_hub;
+    bulletin: typeof bulletin;
 }>;
 
 // ---------- shared types ----------
@@ -438,14 +435,10 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         }
 
         // ---- 2. wire service classes (implementation details) ----
-        // `ContractDeployer`/`MetadataPublisher` declare their `signer`
-        // parameter as `ReturnType<typeof prepareSigner>`, which is
-        // `PolkadotSigner` at runtime — the cast is shape-preserving.
-        type Signer = ConstructorParameters<typeof ContractDeployer>[0];
-        const signer = opts.signer as unknown as Signer;
-        const assetHubApi = opts.client.assetHub as unknown as TypedApi<AssetHub>;
+        const signer = opts.signer;
+        const assetHubApi = opts.client.assetHub;
         const assetHubClient = opts.client.raw.assetHub;
-        const bulletinApi = opts.client.bulletin as unknown as TypedApi<Bulletin>;
+        const bulletinApi = opts.client.bulletin;
 
         const deployer = new ContractDeployer(signer, opts.origin, assetHubClient, assetHubApi);
         const publisher = new MetadataPublisher(signer, bulletinApi);
@@ -457,7 +450,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         const registryContract = await createContractFromClient(
             assetHubClient,
             opts.registryAddress,
-            registryAbi,
+            CONTRACTS_REGISTRY_ABI,
             { defaultSigner: signer, defaultOrigin: opts.origin },
         );
 

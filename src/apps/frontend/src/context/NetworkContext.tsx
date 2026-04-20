@@ -1,18 +1,22 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
-import { createClient, type PolkadotClient } from "polkadot-api";
+import { createClient, type HexString, type PolkadotClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws-provider/web";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
-import { contracts } from "@dotdm/descriptors";
-import { createInkSdk } from "@polkadot-api/sdk-ink";
+import {
+    createContractFromClient,
+    type Contract,
+    type ContractDef,
+} from "@polkadot-apps/contracts";
+import { CONTRACTS_REGISTRY_ABI } from "@dotdm/contracts/abi";
 import { KNOWN_CHAINS, REGISTRY_ADDRESS, type ChainPreset } from "@dotdm/env";
+import { ALICE_SS58 } from "@dotdm/utils";
 
 const NETWORK_PRESETS: Record<string, ChainPreset> = {
     ...KNOWN_CHAINS,
     custom: { assethubUrl: "", bulletinUrl: "", ipfsGatewayUrl: "" },
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type RegistryContract = any;
+export type RegistryContract = Contract<ContractDef>;
 
 interface NetworkContextType {
     network: string;
@@ -111,8 +115,14 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
 
                 if (abort.signal.aborted) return;
 
-                const inkSdk = createInkSdk(client);
-                const reg = inkSdk.getContract(contracts.contractsRegistry, REGISTRY_ADDRESS);
+                const reg = await createContractFromClient(
+                    client,
+                    REGISTRY_ADDRESS as HexString,
+                    CONTRACTS_REGISTRY_ABI,
+                    { defaultOrigin: ALICE_SS58 },
+                );
+
+                if (abort.signal.aborted) return;
 
                 setRegistry(reg);
                 setConnected(true);

@@ -1,36 +1,38 @@
 import type { PolkadotClient, TypedApi } from "polkadot-api";
 import { createChainClient, type ChainClient } from "@polkadot-apps/chain-client";
-import { assetHub, bulletin } from "@dotdm/descriptors";
-import type { AssetHub, Bulletin } from "@dotdm/descriptors";
+import { paseo_asset_hub } from "@polkadot-apps/descriptors/paseo-asset-hub";
+import { bulletin } from "@polkadot-apps/descriptors/bulletin";
 import { getChainPreset } from "./known_chains";
 
 /**
  * Shape of a CDM chain client — both Asset Hub and Bulletin connected
  * under one `ChainClient` managed by `@polkadot-apps/chain-client`.
  *
- * Uses CDM's own `@dotdm/descriptors` for the chain descriptors so that
- * the resulting `TypedApi` types line up with the `ContractDeployer`,
- * `MetadataPublisher`, and `RegistryManager` constructors in
- * `@dotdm/contracts` (no casts required).
+ * Uses `@polkadot-apps/descriptors` for the chain descriptors so the
+ * resulting `TypedApi` types line up natively with `ContractDeployer`,
+ * `MetadataPublisher`, and the @polkadot-apps batch/bulletin helpers
+ * (no casts required). We pin AssetHub to the Paseo flavor — it's the
+ * primary test target, and the pallet surface matches Polkadot/Kusama
+ * AssetHub at the queries/txs we use.
  */
 export type CdmChainClient = ChainClient<{
-    assetHub: typeof assetHub;
+    assetHub: typeof paseo_asset_hub;
     bulletin: typeof bulletin;
 }>;
 
 /** Asset-Hub-only variant for callers that don't need Bulletin (e.g., `install`). */
 export type CdmAssetHubClient = ChainClient<{
-    assetHub: typeof assetHub;
+    assetHub: typeof paseo_asset_hub;
 }>;
 
 export interface AssetHubConnection {
     client: PolkadotClient;
-    api: TypedApi<AssetHub>;
+    api: TypedApi<typeof paseo_asset_hub>;
 }
 
 export interface BulletinConnection {
     client: PolkadotClient;
-    api: TypedApi<Bulletin>;
+    api: TypedApi<typeof bulletin>;
 }
 
 export interface CdmChainEndpoints {
@@ -61,7 +63,7 @@ export async function createCdmChainClient(
             : arg;
 
     return createChainClient({
-        chains: { assetHub, bulletin },
+        chains: { assetHub: paseo_asset_hub, bulletin },
         rpcs: {
             assetHub: [endpoints.assethubUrl],
             bulletin: [endpoints.bulletinUrl],
@@ -75,7 +77,7 @@ export async function createCdmChainClient(
  */
 export async function createCdmAssetHubClient(assethubUrl: string): Promise<CdmAssetHubClient> {
     return createChainClient({
-        chains: { assetHub },
+        chains: { assetHub: paseo_asset_hub },
         rpcs: { assetHub: [assethubUrl] },
     });
 }
