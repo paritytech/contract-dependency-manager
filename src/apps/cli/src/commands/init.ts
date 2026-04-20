@@ -2,8 +2,7 @@ import { Command } from "commander";
 import { Enum } from "polkadot-api";
 import {
     KNOWN_CHAINS,
-    connectAssetHubWebSocket,
-    connectBulletinWebSocket,
+    createCdmChainClient,
     prepareSigner,
     prepareSignerFromMnemonic,
     getChainPreset,
@@ -34,10 +33,17 @@ async function setupPreviewNet(mnemonic: string): Promise<void> {
     const aliceSigner = prepareSigner("Alice");
     const accountSigner = prepareSignerFromMnemonic(mnemonic);
 
-    // Connect to both chains
-    const { client: ahClient, api: ahApi } = connectAssetHubWebSocket(previewPreset.assethubUrl);
-    const { client: blClient, api: blApi } = connectBulletinWebSocket(previewPreset.bulletinUrl);
-    await Promise.all([ahClient.getChainSpecData(), blClient.getChainSpecData()]);
+    // Connect to both chains under one ChainClient
+    const chainClient = await createCdmChainClient({
+        assethubUrl: previewPreset.assethubUrl,
+        bulletinUrl: previewPreset.bulletinUrl,
+    });
+    const ahApi = chainClient.assetHub;
+    const blApi = chainClient.bulletin;
+    await Promise.all([
+        chainClient.raw.assetHub.getChainSpecData(),
+        chainClient.raw.bulletin.getChainSpecData(),
+    ]);
 
     // Fund (Asset Hub) and authorize (Bulletin) in parallel
     const fundPromise = ahApi.tx.Balances.transfer_keep_alive({
@@ -63,8 +69,7 @@ async function setupPreviewNet(mnemonic: string): Promise<void> {
         // already mapped
     }
 
-    ahClient.destroy();
-    blClient.destroy();
+    chainClient.destroy();
 }
 
 const init = new Command("init")

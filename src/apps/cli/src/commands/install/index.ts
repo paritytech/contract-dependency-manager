@@ -4,7 +4,7 @@ import { Command } from "commander";
 import { contracts } from "@dotdm/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import {
-    connectAssetHubWebSocket,
+    createCdmAssetHubClient,
     connectIpfsGateway,
     getChainPreset,
     DEFAULT_NODE_URL,
@@ -87,11 +87,11 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
 
     // Connect to chain with spinner (matching deploy command style)
     const sp = spinner("AssetHub", opts.assethubUrl);
-    const { client } = connectAssetHubWebSocket(opts.assethubUrl);
-    await client.getChainSpecData();
+    const chainClient = await createCdmAssetHubClient(opts.assethubUrl);
+    await chainClient.raw.assetHub.getChainSpecData();
     sp.succeed();
 
-    const inkSdk = createInkSdk(client);
+    const inkSdk = createInkSdk(chainClient.raw.assetHub);
     const registry = inkSdk.getContract(contracts.contractsRegistry, REGISTRY_ADDRESS);
     const ipfs = connectIpfsGateway(opts.ipfsGatewayUrl);
 
@@ -119,7 +119,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
             console.error(
                 "Error: No library specified and no dependencies found in cdm.json for this target.",
             );
-            client.destroy();
+            chainClient.destroy();
             process.exit(1);
         }
         toInstall = Object.entries(deps).map(([lib, ver]) => ({
@@ -177,7 +177,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         }
     }
 
-    client.destroy();
+    chainClient.destroy();
 
     if (!success) {
         process.exit(1);

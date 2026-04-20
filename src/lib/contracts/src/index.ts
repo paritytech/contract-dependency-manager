@@ -62,3 +62,15 @@ export {
     readCdmJson,
     writeCdmJson,
 } from "./cdm-json";
+
+export {
+    buildContracts,
+    deployContracts,
+    type BuildContractsOptions,
+    type BuildEvent,
+    type BuildSummary,
+    type DeployContractsOptions,
+    type DeployEvent,
+    type DeploySummary,
+    type PipelineChainClient,
+} from "./pipeline";

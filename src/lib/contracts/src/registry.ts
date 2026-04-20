@@ -1,8 +1,19 @@
-import { PolkadotClient, TypedApi, SS58String } from "polkadot-api";
-import { AssetHub, contracts } from "@dotdm/descriptors";
+import type { HexString, PolkadotClient, SS58String, TypedApi } from "polkadot-api";
+import type { AssetHub } from "@dotdm/descriptors";
+import { contracts } from "@dotdm/descriptors";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
-import { prepareSigner } from "@dotdm/env";
-import { stringifyBigInt, GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "@dotdm/utils";
+import { createContract, type AbiEntry, type Contract } from "@polkadot-apps/contracts";
+import { batchSubmitAndWatch, type BatchApi } from "@polkadot-apps/tx";
+import type { prepareSigner } from "@dotdm/env";
+import { GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "@dotdm/utils";
+
+/**
+ * Runtime shape of `contracts.contractsRegistry` from `@dotdm/descriptors` —
+ * InkDescriptors carries the raw ABI on `.abi`. Read it once so both the
+ * `@polkadot-apps/contracts` `Contract` handle (for reads) and the
+ * `@polkadot-api/sdk-ink` path (for batching writes) share one source of truth.
+ */
+const registryAbi = (contracts.contractsRegistry as unknown as { abi: AbiEntry[] }).abi;
 
 export function getRegistryContract(client: PolkadotClient, addr: string) {
     const inkSdk = createInkSdk(client);
@@ -12,12 +23,29 @@ export function getRegistryContract(client: PolkadotClient, addr: string) {
 export type RegistryContract = ReturnType<typeof getRegistryContract>;
 type RegisterEntry = { cdmPackage: string; contractAddr: string; metadataUri: string };
 
+/**
+ * Thin wrapper around `@polkadot-apps/contracts` for the on-chain
+ * `ContractRegistry`, plus `@polkadot-apps/tx` `batchSubmitAndWatch` for
+ * multi-register batches.
+ *
+ * Kept as a class with the original surface so downstream callers
+ * (deploy-pipeline.ts) don't need to change in this migration step.
+ * Later steps will collapse this into free functions.
+ *
+ * Gap flagged for `@polkadot-apps/contracts`: the `Contract.method.tx()` API
+ * submits immediately and does not expose a way to obtain the underlying
+ * decoded call for batching. For `registerBatch` we therefore drop down to
+ * `@polkadot-api/sdk-ink` (`registry.send(...)`) to build the ink txs and
+ * pass them to `batchSubmitAndWatch` — matching the previous implementation
+ * semantically (atomic `Utility.batch_all` on AssetHub).
+ */
 export class RegistryManager {
     public signer: ReturnType<typeof prepareSigner>;
     public origin: SS58String;
     public api: TypedApi<AssetHub>;
     public client: PolkadotClient;
     public registry: RegistryContract;
+    private contract: Contract<any>;
 
     constructor(
         signer: ReturnType<typeof prepareSigner>,
@@ -30,7 +58,14 @@ export class RegistryManager {
         this.origin = origin;
         this.api = api;
         this.client = client;
+        // sdk-ink path retained for `registerBatch` (see gap note above).
         this.registry = getRegistryContract(client, registryAddress);
+        // Shared sdk-ink instance for the `@polkadot-apps/contracts` Contract.
+        const inkSdk = createInkSdk(client);
+        this.contract = createContract(inkSdk, registryAddress as HexString, registryAbi, {
+            defaultSigner: signer,
+            defaultOrigin: origin,
+        });
     }
 
     async register(
@@ -47,12 +82,9 @@ export class RegistryManager {
      */
     async getAddress(cdmPackage: string): Promise<string | null> {
         try {
-            const result = await this.registry.query("getAddress", {
-                origin: this.origin,
-                data: { contract_name: cdmPackage },
-            });
+            const result = await this.contract.getAddress.query(cdmPackage);
             if (!result.success) return null;
-            const response = result.value.response;
+            const response = result.value as { isSome?: boolean; value?: string } | string | null;
             if (response && typeof response === "object" && "value" in response) {
                 return response.value ?? null;
             }
@@ -89,7 +121,7 @@ export class RegistryManager {
             storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
         };
 
-        // Dry-run all entries in parallel with submission
+        // Dry-run all entries in parallel with submission for early owner-check feedback.
         const dryRun = Promise.all(
             mapped.map((m) =>
                 this.registry.query("publishLatest", { origin: this.origin, data: m.data }).then(
@@ -106,27 +138,20 @@ export class RegistryManager {
             ),
         );
 
-        // Submit: single call or batch_all
-        let submit: Promise<any>;
-        if (mapped.length === 1) {
-            submit = this.registry
-                .send("publishLatest", { data: mapped[0].data, ...sendOpts })
-                .signAndSubmit(this.signer);
-        } else {
-            const txs = mapped.map((m) =>
-                this.registry.send("publishLatest", { data: m.data, ...sendOpts }),
-            );
-            const calls = await Promise.all(
-                txs.map(async (tx) => {
-                    const call = tx.decodedCall;
-                    return call instanceof Promise ? await call : call;
-                }),
-            );
-            submit = this.api.tx.Utility.batch_all({ calls }).signAndSubmit(this.signer);
-        }
+        // Build ink txs (AsyncTransactions) and batch via `@polkadot-apps/tx`.
+        // `batchSubmitAndWatch` resolves each call's `.waited` and wraps in
+        // `Utility.batch_all` by default.
+        const inkTxs = mapped.map((m) =>
+            this.registry.send("publishLatest", { data: m.data, ...sendOpts }),
+        );
 
-        // Race: dry-run failure exits early with better error
-        const result = await new Promise<any>((resolve, reject) => {
+        const submit = batchSubmitAndWatch(inkTxs, this.api as unknown as BatchApi, this.signer, {
+            mode: "batch_all",
+            waitFor: "best-block",
+        });
+
+        // Race: dry-run failure exits early with a better error message.
+        const result = await new Promise<Awaited<typeof submit>>((resolve, reject) => {
             dryRun.catch(reject);
             submit.then(resolve, async (err) => {
                 try {
@@ -138,12 +163,15 @@ export class RegistryManager {
             });
         });
 
-        const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
-        if (failures.length > 0) {
+        if (!result.ok) {
+            // Surface the dry-run error if it was the root cause, else the
+            // dispatch error from the batch.
             await dryRun.catch((e) => {
                 throw e;
             });
-            throw new Error(`Register failed: ${stringifyBigInt(failures[0])}`);
+            throw new Error(
+                `Register failed: ${JSON.stringify(result.dispatchError ?? "unknown dispatch error")}`,
+            );
         }
 
         return { txHash: result.txHash, blockHash: result.block.hash };

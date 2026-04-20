@@ -10,8 +10,8 @@
 import { resolve } from "path";
 import { existsSync } from "fs";
 import { parseArgs } from "util";
-import { connectAssetHubWebSocket, prepareSigner, getChainPreset, ss58Address } from "@dotdm/env";
-import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, computeDeploySalt } from "@dotdm/contracts";
+import { createCdmAssetHubClient, prepareSigner, getChainPreset, ss58Address } from "@dotdm/env";
+import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@dotdm/contracts";
 
 const { values: opts } = parseArgs({
     args: process.argv.slice(2),
@@ -45,15 +45,20 @@ if (!existsSync(pvmPath)) {
 console.log(`Connecting to ${assethubUrl}...`);
 const signerName = opts.suri?.startsWith("//") ? opts.suri.slice(2) : undefined;
 const signer = prepareSigner(signerName ?? "Alice");
-const { client, api } = connectAssetHubWebSocket(assethubUrl);
-await client.getChainSpecData();
+const chainClient = await createCdmAssetHubClient(assethubUrl);
+await chainClient.raw.assetHub.getChainSpecData();
 console.log("Connected.");
 
-const deployer = new ContractDeployer(signer, ss58Address(signer.publicKey), client, api);
+const deployer = new ContractDeployer(
+    signer,
+    ss58Address(signer.publicKey),
+    chainClient.raw.assetHub,
+    chainClient.assetHub,
+);
 
 // Map account (required on fresh chains, harmless if already mapped)
 try {
-    await api.tx.Revive.map_account().signAndSubmit(signer);
+    await chainClient.assetHub.tx.Revive.map_account().signAndSubmit(signer);
     console.log("Account mapped.");
 } catch {
     // already mapped
@@ -65,4 +70,4 @@ console.log(`Deploying ContractRegistry (CREATE2 salt: "${CDM_REGISTRY_PACKAGE}"
 const { address } = await deployer.deploy(pvmPath, CDM_REGISTRY_PACKAGE);
 console.log(`\nCONTRACTS_REGISTRY_ADDR=${address}`);
 
-client.destroy();
+chainClient.destroy();

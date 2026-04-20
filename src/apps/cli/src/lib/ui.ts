@@ -1,8 +1,15 @@
 import React from "react";
 import { render } from "ink";
-import { detectDeploymentOrderLayered } from "@dotdm/contracts";
-import { executePipeline } from "./deploy-pipeline";
-import type { PipelineOptions, PipelineResult, ContractStatus } from "./deploy-pipeline";
+import {
+    buildContracts,
+    deployContracts,
+    detectDeploymentOrderLayered,
+    type BuildContractsOptions,
+    type DeployContractsOptions,
+    type BuildSummary,
+    type DeploySummary,
+} from "@dotdm/contracts";
+import { PipelineStatusAdapter, type ContractStatus, type PipelineResult } from "./deploy-pipeline";
 import { DeployTable } from "./components/DeployTable";
 import { SPINNER_FRAMES } from "./components/shared";
 
@@ -36,67 +43,151 @@ export function formatDuration(ms: number): string {
     return `${(ms / 1000).toFixed(1)}s`;
 }
 
-export interface UIOptions extends PipelineOptions {
+export interface BuildUIOptions extends Omit<BuildContractsOptions, "onEvent"> {}
+
+export interface DeployUIOptions extends Omit<DeployContractsOptions, "onEvent"> {
     assethubUrl?: string;
     bulletinUrl?: string;
     ipfsGatewayUrl?: string;
 }
 
-export async function runPipelineWithUI(opts: UIOptions): Promise<PipelineResult> {
-    const order = opts.order ?? detectDeploymentOrderLayered(opts.rootDir);
+interface RenderArgs {
+    statuses: Map<string, ContractStatus>;
+    displayNames: Map<string, string>;
+    crates: string[];
+    buildOnly: boolean;
+    assethubUrl?: string;
+    bulletinUrl?: string;
+    ipfsGatewayUrl?: string;
+}
 
-    // Apply same filter as pipeline does
+function makeUI(args: RenderArgs) {
+    return render(
+        React.createElement(DeployTable, {
+            statuses: args.statuses,
+            displayNames: args.displayNames,
+            crates: args.crates,
+            buildOnly: args.buildOnly,
+            assethubUrl: args.assethubUrl,
+            bulletinUrl: args.bulletinUrl,
+            ipfsGatewayUrl: args.ipfsGatewayUrl,
+        }),
+    );
+}
+
+/**
+ * Detect crates + layers eagerly so the Ink table has a fixed set of rows
+ * before the library pipeline starts emitting events. The library's own
+ * `detect` event fires again once `buildContracts`/`deployContracts` runs —
+ * it's a no-op on the adapter side because statuses for these crates have
+ * already been seeded. The detection result is discarded here (the library
+ * re-runs its own detection internally).
+ */
+function precomputeDisplay(rootDir: string, contracts: string[] | undefined) {
+    const order = detectDeploymentOrderLayered(rootDir);
     let layers = order.layers;
-    if (opts.contractFilter && opts.contractFilter.length > 0) {
-        const filterSet = new Set(opts.contractFilter);
+    if (contracts && contracts.length > 0) {
+        const filterSet = new Set(contracts);
         layers = layers
-            .map((layer) => layer.filter((crate) => filterSet.has(crate)))
-            .filter((layer) => layer.length > 0);
+            .map((layer) => layer.filter((c) => filterSet.has(c)))
+            .filter((l) => l.length > 0);
     }
-
     const crates = layers.flat();
-    const buildOnly = !opts.services;
-
-    // Display names
     const displayNames = new Map<string, string>();
     for (const crate of crates) {
         displayNames.set(crate, order.cdmPackageMap.get(crate) ?? crate);
     }
+    return { crates, displayNames };
+}
 
-    // Mutable status map — pipeline writes, component reads
-    const statuses = new Map<string, ContractStatus>();
-    const startTimes = new Map<string, number>();
+/**
+ * Run `buildContracts()` and render progress into the Ink `DeployTable`.
+ *
+ * The table layout is populated lazily from the `detect` event — crates, layers,
+ * and CDM package names are all supplied by the library, not derived up-front
+ * in the CLI.
+ */
+export async function runBuildWithUI(opts: BuildUIOptions): Promise<{
+    summary: BuildSummary;
+    result: PipelineResult;
+}> {
+    const { crates, displayNames } = precomputeDisplay(opts.rootDir, opts.contracts);
 
-    const onStatusChange = (crateName: string, status: ContractStatus) => {
-        statuses.set(crateName, status);
-        if (!startTimes.has(crateName)) {
-            startTimes.set(crateName, Date.now());
-        }
+    const adapter = new PipelineStatusAdapter({
+        onCdmPackageDetected: (crate, pkg) => displayNames.set(crate, pkg),
+    });
+
+    const app = makeUI({
+        statuses: adapter.statuses,
+        displayNames,
+        crates,
+        buildOnly: true,
+    });
+
+    let summary: BuildSummary;
+    try {
+        summary = await buildContracts({ ...opts, onEvent: adapter.handleBuildEvent });
+    } finally {
+        await new Promise((r) => setTimeout(r, 200));
+        app.unmount();
+    }
+
+    const success = summary.contracts.every((c) => !c.error);
+    return {
+        summary,
+        result: {
+            addresses: {},
+            statuses: adapter.statuses,
+            success,
+        },
     };
+}
 
-    const onCdmPackageDetected = (crateName: string, cdmPackage: string) => {
-        displayNames.set(crateName, cdmPackage);
+/**
+ * Run `deployContracts()` and render progress into the Ink `DeployTable`.
+ *
+ * Same event-adapter pattern as `runBuildWithUI`, plus the chain URLs so the
+ * table can render tx/CID/block hyperlinks.
+ */
+export async function runDeployWithUI(opts: DeployUIOptions): Promise<{
+    summary: DeploySummary;
+    result: PipelineResult;
+}> {
+    const { crates, displayNames } = precomputeDisplay(opts.rootDir, opts.contracts);
+
+    const adapter = new PipelineStatusAdapter({
+        onCdmPackageDetected: (crate, pkg) => displayNames.set(crate, pkg),
+    });
+
+    const app = makeUI({
+        statuses: adapter.statuses,
+        displayNames,
+        crates,
+        buildOnly: false,
+        assethubUrl: opts.assethubUrl,
+        bulletinUrl: opts.bulletinUrl,
+        ipfsGatewayUrl: opts.ipfsGatewayUrl,
+    });
+
+    let summary: DeploySummary;
+    try {
+        summary = await deployContracts({ ...opts, onEvent: adapter.handleDeployEvent });
+    } finally {
+        await new Promise((r) => setTimeout(r, 200));
+        app.unmount();
+    }
+
+    const addresses: Record<string, string> = {};
+    for (const c of summary.contracts) {
+        if (c.address) addresses[c.crate] = c.address;
+    }
+    const success = summary.contracts.every((c) => c.status !== "error");
+    return {
+        summary,
+        result: {
+            addresses,
+            statuses: adapter.statuses,
+            success,
+        },
     };
-
-    // Render ink UI
-    const app = render(
-        React.createElement(DeployTable, {
-            statuses,
-            displayNames,
-            crates,
-            buildOnly,
-            assethubUrl: opts.assethubUrl,
-            bulletinUrl: opts.bulletinUrl,
-            ipfsGatewayUrl: opts.ipfsGatewayUrl,
-        }),
-    );
-
-    // Run pipeline — pass order so it doesn't re-detect
-    const result = await executePipeline({ ...opts, order, onStatusChange, onCdmPackageDetected });
-
-    // Brief delay for final render
-    await new Promise((r) => setTimeout(r, 200));
-    app.unmount();
-
-    return result;
 }

@@ -2,8 +2,16 @@ import { PolkadotClient, TypedApi, Binary, Enum, FixedSizeBinary } from "polkado
 import { AssetHub } from "@dotdm/descriptors";
 import { readFileSync } from "fs";
 import { prepareSigner } from "@dotdm/env";
-import { stringifyBigInt, STORAGE_DEPOSIT_LIMIT } from "@dotdm/utils";
+import { stringifyBigInt, STORAGE_DEPOSIT_LIMIT, GAS_LIMIT } from "@dotdm/utils";
 import { blake2b } from "@noble/hashes/blake2.js";
+import {
+    submitAndWatch,
+    batchSubmitAndWatch,
+    applyWeightBuffer,
+    type BatchApi,
+    type SubmittableTransaction,
+} from "@polkadot-apps/tx";
+import type { RegistryContract } from "./registry";
 
 /**
  * Compute a deterministic 32-byte CREATE2 salt from a CDM package name.
@@ -41,6 +49,21 @@ export interface Metadata {
     abi: AbiEntry[];
 }
 
+/**
+ * Thin wrapper around `Revive.instantiate_with_code` that uses
+ * `@polkadot-apps/tx` for submission lifecycle management (retries/timeouts,
+ * best-block vs. finalized gating, onStatus hooks) and `applyWeightBuffer` for
+ * weight scaling.
+ *
+ * Kept as a class with the original surface so downstream callers
+ * (deploy-pipeline.ts) don't need to change in this migration step.
+ * Later steps will collapse the orchestration into free functions.
+ *
+ * `dryRunDeploy` still uses `ReviveApi.instantiate` directly — that runtime
+ * API is the correct primitive for weight/storage estimation of a raw code
+ * upload (`extractTransaction` from `@polkadot-apps/tx` targets ink-SDK-shaped
+ * dry-run results, which is a different path).
+ */
 export class ContractDeployer {
     public signer: ReturnType<typeof prepareSigner>;
     public origin: string;
@@ -68,55 +91,21 @@ export class ContractDeployer {
         pvmPath: string,
         cdmPackage?: string,
     ): Promise<{ address: string; txHash: string; blockHash: string }> {
-        const bytecode = readFileSync(pvmPath);
-        const code = Binary.fromBytes(bytecode);
-        const data = Binary.fromBytes(new Uint8Array(0));
-        const salt = cdmPackage ? computeDeploySalt(cdmPackage) : undefined;
+        const { tx } = await this.dryRunDeploy(pvmPath, cdmPackage);
 
-        // Dry-run to estimate gas requirements
-        const dryRun = await this.api.apis.ReviveApi.instantiate(
-            this.origin,
-            0n,
-            undefined, // unlimited gas for estimation
-            undefined, // unlimited storage deposit for estimation
-            Enum("Upload", code),
-            data,
-            salt,
-        );
+        const result = await submitAndWatch(tx as unknown as SubmittableTransaction, this.signer, {
+            waitFor: "best-block",
+        });
 
-        if (dryRun.result.success === false) {
+        if (!result.ok) {
             throw new Error(
-                `Contract instantiation dry-run failed: ${stringifyBigInt(dryRun.result)}`,
+                `Deployment transaction failed: ${stringifyBigInt(result.dispatchError ?? "unknown dispatch error")}`,
             );
         }
 
-        // Use weight_required from dry-run with 20% headroom
-        const gasLimit = {
-            ref_time: (dryRun.weight_required.ref_time * 120n) / 100n,
-            proof_size: (dryRun.weight_required.proof_size * 120n) / 100n,
-        };
-
-        // Derive storage deposit from dry-run
-        let storageDeposit = STORAGE_DEPOSIT_LIMIT;
-        if (dryRun.storage_deposit.type === "Charge") {
-            storageDeposit = (dryRun.storage_deposit.value * 120n) / 100n;
-        }
-
-        const result = await this.api.tx.Revive.instantiate_with_code({
-            value: 0n,
-            weight_limit: gasLimit,
-            storage_deposit_limit: storageDeposit,
-            code,
-            data,
-            salt,
-        }).signAndSubmit(this.signer);
-
-        const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
-        if (failures.length > 0) {
-            throw new Error(`Deployment transaction failed: ${stringifyBigInt(failures[0])}`);
-        }
-
-        const instantiated = this.api.event.Revive.Instantiated.filter(result.events);
+        const instantiated = this.api.event.Revive.Instantiated.filter(
+            result.events as Parameters<typeof this.api.event.Revive.Instantiated.filter>[0],
+        );
         if (instantiated.length === 0) {
             throw new Error("Contract instantiation failed - no Instantiated event");
         }
@@ -150,10 +139,9 @@ export class ContractDeployer {
             throw new Error(`Dry-run failed: ${stringifyBigInt(dryRun.result)}`);
         }
 
-        const gasLimit = {
-            ref_time: (dryRun.weight_required.ref_time * 120n) / 100n,
-            proof_size: (dryRun.weight_required.proof_size * 120n) / 100n,
-        };
+        // 20% headroom — matches the pre-migration behavior (`applyWeightBuffer`
+        // defaults to 25% so pass `percent: 20` to preserve exact semantics).
+        const gasLimit = applyWeightBuffer(dryRun.weight_required, { percent: 20 });
 
         let storageDeposit = STORAGE_DEPOSIT_LIMIT;
         if (dryRun.storage_deposit.type === "Charge") {
@@ -217,23 +205,22 @@ export class ContractDeployer {
             pvmPaths.map((p, i) => this.dryRunDeploy(p, cdmPackages?.[i])),
         );
 
-        const calls = await Promise.all(
-            prepared.map(async (p) => {
-                const call = p.tx.decodedCall;
-                return call instanceof Promise ? await call : call;
-            }),
+        const result = await batchSubmitAndWatch(
+            prepared.map((p) => p.tx),
+            this.api as unknown as BatchApi,
+            this.signer,
+            { mode: "batch_all", waitFor: "best-block" },
         );
 
-        const result = await this.api.tx.Utility.batch_all({
-            calls,
-        }).signAndSubmit(this.signer);
-
-        const failures = this.api.event.System.ExtrinsicFailed.filter(result.events);
-        if (failures.length > 0) {
-            throw new Error(`Batch deploy failed: ${stringifyBigInt(failures[0])}`);
+        if (!result.ok) {
+            throw new Error(
+                `Batch deploy failed: ${stringifyBigInt(result.dispatchError ?? "unknown dispatch error")}`,
+            );
         }
 
-        const instantiated = this.api.event.Revive.Instantiated.filter(result.events);
+        const instantiated = this.api.event.Revive.Instantiated.filter(
+            result.events as Parameters<typeof this.api.event.Revive.Instantiated.filter>[0],
+        );
         if (instantiated.length !== pvmPaths.length) {
             throw new Error(
                 `Expected ${pvmPaths.length} Instantiated events, got ${instantiated.length}`,
@@ -241,6 +228,138 @@ export class ContractDeployer {
         }
 
         const addresses = instantiated.map((e) => e.contract.asHex());
+        return {
+            addresses,
+            txHash: result.txHash,
+            blockHash: result.block.hash,
+        };
+    }
+
+    /**
+     * Deploy N contracts AND register each in the on-chain `ContractRegistry`
+     * in a single `Utility.batch_all` on AssetHub.
+     *
+     * CREATE2 lets us precompute contract addresses from `(deployer, salt, code)`
+     * before the extrinsic lands, so the register calls can be built ahead of
+     * time even though the deploys haven't executed yet.
+     *
+     * Metadata is assumed to be address-independent (CDM metadata depends only
+     * on the compiled artifact: ABI + readme + package info), so the caller is
+     * expected to have published metadata to Bulletin first and pass the
+     * resulting CIDs in `metadataUris`. That ordering constraint stays in the
+     * caller (deploy-pipeline) for this migration step.
+     *
+     * Atomicity: `batch_all` reverts the whole batch on any single failure, so
+     * a register revert (e.g., ownership check) will also unwind the deploy.
+     *
+     * @param pvmPaths - filesystem paths to compiled `.polkavm` bytecode, one per contract.
+     * @param cdmPackages - CDM package name per contract — required because both CREATE2
+     *   salt derivation and `registry.publishLatest.contract_name` need it.
+     * @param registry - An sdk-ink `Contract` handle obtained from `getRegistryContract(...)`
+     *   (see `registry.ts`). Used to build the `publishLatest(...)` ink txs that get batched
+     *   alongside the deploys.
+     * @param metadataUris - CIDs from a prior Bulletin publish, one per contract (same order
+     *   as `pvmPaths` / `cdmPackages`). Pass `""` for crates without metadata.
+     * @returns Deployed addresses (in input order), plus the single batch tx hash / block hash.
+     */
+    async deployAndRegisterBatch(
+        pvmPaths: string[],
+        cdmPackages: string[],
+        registry: RegistryContract,
+        metadataUris: string[],
+    ): Promise<{ addresses: string[]; txHash: string; blockHash: string }> {
+        if (pvmPaths.length === 0) return { addresses: [], txHash: "", blockHash: "" };
+        if (pvmPaths.length !== cdmPackages.length || pvmPaths.length !== metadataUris.length) {
+            throw new Error(
+                `deployAndRegisterBatch: length mismatch — pvmPaths=${pvmPaths.length}, cdmPackages=${cdmPackages.length}, metadataUris=${metadataUris.length}`,
+            );
+        }
+
+        // 1. Dry-run each deploy to get weight/storage and the unsigned tx,
+        //    plus read the precomputed CREATE2 contract address so we can pass
+        //    it to `registry.publishLatest(...)`.
+        const prepared = await Promise.all(
+            pvmPaths.map(async (p, i) => {
+                const pkg = cdmPackages[i];
+                const { tx } = await this.dryRunDeploy(p, pkg);
+                const bytecode = readFileSync(p);
+                const code = Binary.fromBytes(bytecode);
+                const salt = computeDeploySalt(pkg);
+                // Use ReviveApi.instantiate a second time but capture the
+                // precomputed `addr` from the dry-run result. We already have
+                // `tx`, but not the address; ReviveApi.instantiate returns
+                // `.addr` on success which is exactly the CREATE2 address
+                // without consuming any weight.
+                const addrResult = await this.api.apis.ReviveApi.instantiate(
+                    this.origin,
+                    0n,
+                    undefined,
+                    undefined,
+                    Enum("Upload", code),
+                    Binary.fromBytes(new Uint8Array(0)),
+                    salt,
+                );
+                if (addrResult.result.success === false) {
+                    throw new Error(
+                        `Precompute address dry-run failed for ${pkg}: ${stringifyBigInt(addrResult.result)}`,
+                    );
+                }
+                return { tx, address: addrResult.result.value.addr.asHex() };
+            }),
+        );
+
+        // 2. Build the ink `publishLatest` txs for each contract using the
+        //    precomputed CREATE2 address + the caller-supplied metadata CID.
+        const sendOpts = {
+            gasLimit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
+            storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
+        };
+        const registerTxs = cdmPackages.map((pkg, i) =>
+            registry.send("publishLatest", {
+                data: {
+                    contract_name: pkg,
+                    contract_address: prepared[i].address,
+                    metadata_uri: metadataUris[i],
+                },
+                ...sendOpts,
+            }),
+        );
+
+        // 3. Submit N deploys + N registers in one atomic batch_all.
+        //    `batchSubmitAndWatch` resolves ink AsyncTransaction wrappers for us.
+        const result = await batchSubmitAndWatch(
+            [...prepared.map((p) => p.tx), ...registerTxs],
+            this.api as unknown as BatchApi,
+            this.signer,
+            { mode: "batch_all", waitFor: "best-block" },
+        );
+
+        if (!result.ok) {
+            throw new Error(
+                `Batch deploy+register failed: ${stringifyBigInt(result.dispatchError ?? "unknown dispatch error")}`,
+            );
+        }
+
+        // 4. Verify on-chain Instantiated events match our precomputed
+        //    addresses (sanity check — CREATE2 is deterministic, so a mismatch
+        //    indicates a bug or a chain version skew).
+        const instantiated = this.api.event.Revive.Instantiated.filter(
+            result.events as Parameters<typeof this.api.event.Revive.Instantiated.filter>[0],
+        );
+        if (instantiated.length !== pvmPaths.length) {
+            throw new Error(
+                `Expected ${pvmPaths.length} Instantiated events, got ${instantiated.length}`,
+            );
+        }
+        const addresses = instantiated.map((e) => e.contract.asHex());
+        for (let i = 0; i < addresses.length; i++) {
+            if (addresses[i].toLowerCase() !== prepared[i].address.toLowerCase()) {
+                throw new Error(
+                    `Address mismatch for ${cdmPackages[i]}: precomputed ${prepared[i].address}, on-chain ${addresses[i]}`,
+                );
+            }
+        }
+
         return {
             addresses,
             txHash: result.txHash,
