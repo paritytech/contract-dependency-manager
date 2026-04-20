@@ -25,19 +25,19 @@ export {
     type AbiParam,
     type AbiEntry,
     type Metadata,
+    type WeightLike,
+    type DeployPlan,
     ContractDeployer,
     computeDeploySalt,
+    chunkByWeight,
+    INSTANTIATE_WITH_CODE_STATIC_WEIGHT,
 } from "./deployer";
 
 export { MetadataPublisher } from "./publisher";
 
-export {
-    getRegistryContract,
-    type RegistryContract,
-    RegistryManager,
-} from "./registry";
-
 export { computeCid } from "./cid";
+
+export { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
 
 export {
     GAS_LIMIT,
@@ -62,3 +62,15 @@ export {
     readCdmJson,
     writeCdmJson,
 } from "./cdm-json";
+
+export {
+    buildContracts,
+    deployContracts,
+    type BuildContractsOptions,
+    type BuildEvent,
+    type BuildSummary,
+    type DeployContractsOptions,
+    type DeployEvent,
+    type DeploySummary,
+    type PipelineChainClient,
+} from "./pipeline";

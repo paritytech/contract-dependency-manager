@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { resolve } from "path";
-import { runPipelineWithUI } from "../lib/ui";
+import { runBuildWithUI } from "../lib/ui";
 
 const build = new Command("build")
     .description("Build all contracts")
@@ -16,9 +16,9 @@ build.action(async (opts: BuildOptions) => {
     const rootDir = resolve(opts.root);
     console.log(`Root: ${rootDir}\n`);
 
-    const result = await runPipelineWithUI({
+    const { result } = await runBuildWithUI({
         rootDir,
-        contractFilter: opts.contracts,
+        contracts: opts.contracts,
     });
 
     if (!result.success) {

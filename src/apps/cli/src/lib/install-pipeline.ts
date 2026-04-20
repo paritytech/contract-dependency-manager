@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink";
+import type { Contract, ContractDef } from "@polkadot-apps/contracts";
 import { type AbiEntry, saveContract } from "@dotdm/contracts";
-import { ALICE_SS58 } from "@dotdm/utils";
 import { InstallTable } from "./components/InstallTable";
 
 export type InstallState = "waiting" | "querying" | "fetching" | "done" | "error";
@@ -26,9 +26,11 @@ export interface InstallResult {
     metadataCid: string;
 }
 
+export type RegistryContract = Contract<ContractDef>;
+
 export interface InstallRunnerOptions {
     libraries: { library: string; requestedVersion: number | "latest" }[];
-    registry: any;
+    registry: RegistryContract;
     ipfs: any;
     targetHash: string;
     ipfsGatewayUrl?: string;
@@ -49,10 +51,18 @@ function updateStatus(
     statuses.set(library, { ...current, state, ...extra });
 }
 
+function unwrapOption<T>(val: unknown): T | undefined {
+    if (val && typeof val === "object" && "isSome" in val) {
+        const opt = val as { isSome: boolean; value: T };
+        return opt.isSome ? opt.value : undefined;
+    }
+    return val as T | undefined;
+}
+
 async function installOneWithStatus(
     library: string,
     requestedVersion: number | "latest",
-    registry: any,
+    registry: RegistryContract,
     ipfs: any,
     targetHash: string,
     statuses: Map<string, InstallStatus>,
@@ -67,27 +77,21 @@ async function installOneWithStatus(
     if (requestedVersion === "latest") {
         let versionResult;
         try {
-            versionResult = await registry.query("getVersionCount", {
-                origin: ALICE_SS58,
-                data: { contract_name: library },
-            });
+            versionResult = await registry.getVersionCount.query(library);
         } catch (err) {
             if (isRegistryQueryError(err)) {
                 throw new Error(`Contract "${library}" not found in registry`);
             }
             throw err;
         }
-        if (!versionResult.success || versionResult.value.response === 0) {
+        if (!versionResult.success || versionResult.value === 0) {
             throw new Error(`Contract "${library}" not found in registry`);
         }
-        version = versionResult.value.response - 1;
+        version = (versionResult.value as number) - 1;
 
         let metaResult;
         try {
-            metaResult = await registry.query("getMetadataUri", {
-                origin: ALICE_SS58,
-                data: { contract_name: library },
-            });
+            metaResult = await registry.getMetadataUri.query(library);
         } catch (err) {
             if (isRegistryQueryError(err)) {
                 throw new Error(`Failed to fetch metadata for "${library}" from registry`);
@@ -97,45 +101,27 @@ async function installOneWithStatus(
         if (!metaResult.success) {
             throw new Error(`Failed to query metadata URI for "${library}"`);
         }
-        const metaResponse = metaResult.value.response;
-        metadataCid =
-            typeof metaResponse === "string"
-                ? metaResponse
-                : metaResponse?.isSome
-                  ? metaResponse.value
-                  : "";
+        metadataCid = unwrapOption<string>(metaResult.value) ?? "";
         if (!metadataCid) {
             throw new Error(`No metadata URI found for "${library}"`);
         }
 
         let addrResult;
         try {
-            addrResult = await registry.query("getAddress", {
-                origin: ALICE_SS58,
-                data: { contract_name: library },
-            });
+            addrResult = await registry.getAddress.query(library);
         } catch (err) {
             if (isRegistryQueryError(err)) {
                 throw new Error(`Failed to fetch address for "${library}" from registry`);
             }
             throw err;
         }
-        const addrResponse = addrResult.success ? addrResult.value.response : null;
-        contractAddress =
-            typeof addrResponse === "string"
-                ? addrResponse
-                : addrResponse?.isSome
-                  ? addrResponse.value
-                  : "";
+        contractAddress = addrResult.success ? (unwrapOption<string>(addrResult.value) ?? "") : "";
     } else {
         version = requestedVersion;
 
         let metaResult;
         try {
-            metaResult = await registry.query("getMetadataUriAtVersion", {
-                origin: ALICE_SS58,
-                data: { contract_name: library, version: requestedVersion },
-            });
+            metaResult = await registry.getMetadataUriAtVersion.query(library, requestedVersion);
         } catch (err) {
             if (isRegistryQueryError(err)) {
                 throw new Error(
@@ -149,23 +135,14 @@ async function installOneWithStatus(
                 `Failed to query metadata URI for "${library}" version ${requestedVersion}`,
             );
         }
-        const metaResponse = metaResult.value.response;
-        metadataCid =
-            typeof metaResponse === "string"
-                ? metaResponse
-                : metaResponse?.isSome
-                  ? metaResponse.value
-                  : "";
+        metadataCid = unwrapOption<string>(metaResult.value) ?? "";
         if (!metadataCid) {
             throw new Error(`Version ${requestedVersion} of "${library}" not found in registry`);
         }
 
         let addrResult;
         try {
-            addrResult = await registry.query("getAddressAtVersion", {
-                origin: ALICE_SS58,
-                data: { contract_name: library, version: requestedVersion },
-            });
+            addrResult = await registry.getAddressAtVersion.query(library, requestedVersion);
         } catch (err) {
             if (isRegistryQueryError(err)) {
                 throw new Error(
@@ -174,13 +151,7 @@ async function installOneWithStatus(
             }
             throw err;
         }
-        const addrResponse = addrResult.success ? addrResult.value.response : null;
-        contractAddress =
-            typeof addrResponse === "string"
-                ? addrResponse
-                : addrResponse?.isSome
-                  ? addrResponse.value
-                  : "";
+        contractAddress = addrResult.success ? (unwrapOption<string>(addrResult.value) ?? "") : "";
     }
 
     updateStatus(statuses, library, "fetching", {

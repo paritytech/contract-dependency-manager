@@ -1,5 +1,5 @@
 import type { Package, AbiEntry } from "./types";
-import { ALICE_SS58 } from "@dotdm/utils";
+import type { RegistryContract } from "../context/NetworkContext";
 
 export function unwrapOption<T>(val: unknown): T | undefined {
     if (val && typeof val === "object" && "isSome" in val) {
@@ -9,26 +9,26 @@ export function unwrapOption<T>(val: unknown): T | undefined {
     return val as T;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function queryContractByName(registry: any, name: string): Promise<Package | null> {
+export async function queryContractByName(
+    registry: RegistryContract,
+    name: string,
+): Promise<Package | null> {
     const [versionResult, metadataResult, addressResult] = await Promise.all([
-        registry.query("getVersionCount", { origin: ALICE_SS58, data: { contract_name: name } }),
-        registry.query("getMetadataUri", { origin: ALICE_SS58, data: { contract_name: name } }),
-        registry.query("getAddress", { origin: ALICE_SS58, data: { contract_name: name } }),
+        registry.getVersionCount.query(name),
+        registry.getMetadataUri.query(name),
+        registry.getAddress.query(name),
     ]);
 
-    const versionCount = versionResult.success ? versionResult.value.response : 0;
+    const versionCount = versionResult.success ? (versionResult.value as number) : 0;
     if (versionCount === 0) return null;
 
     return {
         name,
         version: String(versionCount),
         weeklyCalls: 0,
-        address: addressResult.success
-            ? unwrapOption<string>(addressResult.value.response)
-            : undefined,
+        address: addressResult.success ? unwrapOption<string>(addressResult.value) : undefined,
         metadataUri: metadataResult.success
-            ? unwrapOption<string>(metadataResult.value.response)
+            ? unwrapOption<string>(metadataResult.value)
             : undefined,
         metadataLoaded: false,
     };

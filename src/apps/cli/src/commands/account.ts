@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import {
-    connectAssetHubWebSocket,
-    connectBulletinWebSocket,
+    createCdmChainClient,
+    createCdmAssetHubClient,
     getChainPreset,
     prepareSignerFromMnemonic,
 } from "@dotdm/env";
@@ -30,8 +30,17 @@ export async function printBalances(chainName: string, acc: Account) {
 
     console.log(`  Address     ${bold(acc.address)}`);
 
+    // Connect both chains under one ChainClient
+    const chainClient = await createCdmChainClient({
+        assethubUrl: preset.assethubUrl,
+        bulletinUrl: preset.bulletinUrl,
+    });
+    const ahClient = chainClient.raw.assetHub;
+    const ahApi = chainClient.assetHub;
+    const blClient = chainClient.raw.bulletin;
+    const blApi = chainClient.bulletin;
+
     // Asset Hub balance
-    const { client: ahClient, api: ahApi } = connectAssetHubWebSocket(preset.assethubUrl);
     const chainSpec = await ahClient.getChainSpecData();
     const rawSymbol = chainSpec.properties?.tokenSymbol;
     const rawDecimals = chainSpec.properties?.tokenDecimals;
@@ -43,7 +52,6 @@ export async function printBalances(chainName: string, acc: Account) {
     );
 
     // Bulletin allowances
-    const { client: blClient, api: blApi } = connectBulletinWebSocket(preset.bulletinUrl);
     await blClient.getChainSpecData();
     const auth = await blApi.query.TransactionStorage.Authorizations.getValue({
         type: "Account",
@@ -73,8 +81,7 @@ export async function printBalances(chainName: string, acc: Account) {
         console.log(`\n  Top up your allowance:\n${links}`);
     }
 
-    ahClient.destroy();
-    blClient.destroy();
+    chainClient.destroy();
 }
 
 const account = new Command("account").description("Manage CDM accounts");
@@ -105,17 +112,17 @@ account
     .action(async (opts: { name: string }) => {
         const acc = requireAccount(opts.name);
         const preset = getChainPreset(opts.name);
-        const { client, api } = connectAssetHubWebSocket(preset.assethubUrl);
-        await client.getChainSpecData();
+        const chainClient = await createCdmAssetHubClient(preset.assethubUrl);
+        await chainClient.raw.assetHub.getChainSpecData();
         try {
-            await api.tx.Revive.map_account().signAndSubmit(
+            await chainClient.assetHub.tx.Revive.map_account().signAndSubmit(
                 prepareSignerFromMnemonic(acc.mnemonic),
             );
             console.log("Account mapped.");
         } catch {
             console.log("Account already mapped.");
         }
-        client.destroy();
+        chainClient.destroy();
     });
 
 export const accountCommand = account;

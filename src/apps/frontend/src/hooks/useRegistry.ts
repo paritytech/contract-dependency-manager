@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNetwork } from "../context/NetworkContext";
 import type { Package } from "../data/types";
-import { ALICE_SS58 } from "@dotdm/utils";
 import { connectIpfsGateway } from "@dotdm/env";
 import { queryContractByName, parseMetadata } from "../data/registry-queries";
 import { useInfiniteLoad } from "./useInfiniteLoad";
@@ -21,12 +20,9 @@ export function useRegistry() {
     // Phase 1: Paginated on-chain data via useInfiniteLoad
     const fetchCount = useCallback(async () => {
         if (!registry) throw new Error("Registry not connected");
-        const result = await registry.query("getContractCount", {
-            origin: ALICE_SS58,
-            data: {},
-        });
+        const result = await registry.getContractCount.query();
         if (!result.success) throw new Error("Failed to query contract count");
-        return result.value.response;
+        return result.value as number;
     }, [registry]);
 
     const fetchPage = useCallback(
@@ -35,12 +31,9 @@ export function useRegistry() {
 
             const packages: Package[] = [];
             for (let i = start; i < start + count; i++) {
-                const nameResult = await registry.query("getContractNameAt", {
-                    origin: ALICE_SS58,
-                    data: { index: i },
-                });
+                const nameResult = await registry.getContractNameAt.query(i);
                 if (!nameResult.success) continue;
-                const name = nameResult.value.response;
+                const name = nameResult.value as string;
 
                 const pkg = await queryContractByName(registry, name);
                 if (pkg) packages.push(pkg);

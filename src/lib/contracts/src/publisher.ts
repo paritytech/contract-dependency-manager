@@ -1,15 +1,31 @@
-import { TypedApi, Binary } from "polkadot-api";
-import { Bulletin } from "@dotdm/descriptors";
-import { CID } from "multiformats/cid";
+import { TypedApi } from "polkadot-api";
+import { bulletin } from "@polkadot-apps/descriptors/bulletin";
 import { prepareSigner } from "@dotdm/env";
-import { stringifyBigInt } from "@dotdm/utils";
+import { upload, batchUpload } from "@polkadot-apps/bulletin";
 import type { Metadata } from "./deployer";
 
+/**
+ * Thin wrapper around `@polkadot-apps/bulletin` `upload` / `batchUpload`.
+ *
+ * Kept as a class with the original surface so downstream callers
+ * (deploy-pipeline.ts) don't need to change in this migration step.
+ * Later steps will collapse this into free functions inside
+ * `deployContracts()` and the class can be removed.
+ *
+ * Behavioral shift vs. the previous implementation:
+ * - `publishBatch` is sequential (N txs, N signatures) rather than a single
+ *   `Utility.batch_all`. This matches Bulletin's nonce-ordering requirement.
+ * - The returned `txHash` for batches is the hash of the LAST item's tx (the
+ *   old API returned a single tx hash for the whole batch). The
+ *   `@polkadot-apps/bulletin` `UploadResult` does not expose a txHash, so
+ *   we fall back to `blockHash` where needed and `blockNumber` is not
+ *   available (returned as 0).
+ */
 export class MetadataPublisher {
     public signer: ReturnType<typeof prepareSigner>;
-    public bulletinApi: TypedApi<Bulletin>;
+    public bulletinApi: TypedApi<typeof bulletin>;
 
-    constructor(signer: ReturnType<typeof prepareSigner>, api: TypedApi<Bulletin>) {
+    constructor(signer: ReturnType<typeof prepareSigner>, api: TypedApi<typeof bulletin>) {
         this.signer = signer;
         this.bulletinApi = api;
     }
@@ -17,93 +33,84 @@ export class MetadataPublisher {
     async publish(
         metadata: Metadata,
     ): Promise<{ cid: string; blockNumber: number; txHash: string; blockHash: string }> {
-        const jsonString = JSON.stringify(metadata);
-        const data = Binary.fromText(jsonString);
+        const data = new TextEncoder().encode(JSON.stringify(metadata));
 
-        const result = await this.bulletinApi.tx.TransactionStorage.store({
-            data,
-        }).signAndSubmit(this.signer);
-
-        const storedEvents = this.bulletinApi.event.TransactionStorage.Stored.filter(result.events);
-        if (storedEvents.length === 0) {
-            throw new Error("Metadata publishing failed - no Stored event found");
+        let result: Awaited<ReturnType<typeof upload>>;
+        try {
+            result = await upload(this.bulletinApi, data, this.signer, {
+                waitFor: "best-block",
+            });
+        } catch (err) {
+            const orig = err instanceof Error ? err.message : String(err);
+            throw new Error(`[Bulletin publish] ${orig}`, { cause: err });
         }
 
-        const { cid: cidBytes } = storedEvents[0];
-        if (!cidBytes) {
-            throw new Error("Metadata publishing failed - no CID in Stored event");
+        if (result.kind !== "transaction") {
+            throw new Error(
+                `[Bulletin publish] Expected transaction upload (standalone CLI), got kind="${result.kind}"`,
+            );
         }
 
-        // cidBytes is a Binary (Vec<u8> from the chain) containing serialized CIDv1
-        const cid = CID.decode(cidBytes.asBytes());
         return {
-            cid: cid.toString(),
-            blockNumber: result.block.number,
-            txHash: result.txHash,
-            blockHash: result.block.hash,
+            cid: result.cid,
+            // @polkadot-apps/bulletin does not expose blockNumber or txHash;
+            // callers only use these for display.
+            blockNumber: 0,
+            txHash: "",
+            blockHash: result.blockHash,
         };
     }
 
     /**
-     * Publish metadata for multiple contracts in a single Utility.batch_all transaction.
+     * Publish metadata for multiple contracts. Submits sequentially — one tx
+     * per item — as required by Bulletin's nonce ordering.
      */
     async publishBatch(
         metadataList: Metadata[],
     ): Promise<{ cids: string[]; blockNumber: number; txHash: string; blockHash: string }> {
         if (metadataList.length === 0)
             return { cids: [], blockNumber: 0, txHash: "", blockHash: "" };
-        if (metadataList.length === 1) {
-            const result = await this.publish(metadataList[0]);
-            return {
-                cids: [result.cid],
-                blockNumber: result.blockNumber,
-                txHash: result.txHash,
-                blockHash: result.blockHash,
-            };
+
+        const items = metadataList.map((metadata, idx) => ({
+            data: new TextEncoder().encode(JSON.stringify(metadata)),
+            label: `metadata-${idx}`,
+        }));
+
+        const N = items.length;
+        let results: Awaited<ReturnType<typeof batchUpload>>;
+        try {
+            results = await batchUpload(this.bulletinApi, items, this.signer, {
+                waitFor: "best-block",
+            });
+        } catch (err) {
+            const orig = err instanceof Error ? err.message : String(err);
+            throw new Error(`[Bulletin publish batch of ${N}] ${orig}`, { cause: err });
         }
 
-        const txs = metadataList.map((metadata) => {
-            const jsonString = JSON.stringify(metadata);
-            const data = Binary.fromText(jsonString);
-            return this.bulletinApi.tx.TransactionStorage.store({ data });
-        });
-
-        const calls = await Promise.all(
-            txs.map(async (tx) => {
-                const call = tx.decodedCall;
-                return call instanceof Promise ? await call : call;
-            }),
-        );
-
-        const result = await this.bulletinApi.tx.Utility.batch_all({
-            calls,
-        }).signAndSubmit(this.signer);
-
-        const failures = this.bulletinApi.event.System.ExtrinsicFailed.filter(result.events);
-        if (failures.length > 0) {
-            throw new Error(`Batch metadata publish failed: ${stringifyBigInt(failures[0])}`);
-        }
-
-        const storedEvents = this.bulletinApi.event.TransactionStorage.Stored.filter(result.events);
-        if (storedEvents.length !== metadataList.length) {
-            throw new Error(
-                `Expected ${metadataList.length} Stored events, got ${storedEvents.length}`,
-            );
-        }
-
-        const cids = storedEvents.map((event) => {
-            const { cid: cidBytes } = event;
-            if (!cidBytes) {
-                throw new Error("Metadata publishing failed - no CID in Stored event");
+        const cids: string[] = [];
+        let lastBlockHash = "";
+        for (let i = 0; i < results.length; i++) {
+            const r = results[i];
+            const itemLabel = `[Bulletin publish item ${i + 1}/${N}]`;
+            if (!r.success) {
+                throw new Error(
+                    `${itemLabel} Batch metadata publish failed (${r.label}): ${r.error}`,
+                );
             }
-            return CID.decode(cidBytes.asBytes()).toString();
-        });
+            cids.push(r.cid);
+            if (r.kind !== "transaction") {
+                throw new Error(
+                    `${itemLabel} Expected transaction upload (standalone CLI), got kind="${r.kind}"`,
+                );
+            }
+            lastBlockHash = r.blockHash;
+        }
 
         return {
             cids,
-            blockNumber: result.block.number,
-            txHash: result.txHash,
-            blockHash: result.block.hash,
+            blockNumber: 0,
+            txHash: "",
+            blockHash: lastBlockHash,
         };
     }
 }

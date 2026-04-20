@@ -2,23 +2,19 @@ import { Command } from "commander";
 import { resolve } from "path";
 import { existsSync, writeFileSync } from "fs";
 import {
-    connectAssetHubWebSocket,
-    connectBulletinWebSocket,
+    createCdmChainClient,
     prepareSigner,
     prepareSignerFromSuri,
     prepareSignerFromMnemonic,
     getChainPreset,
     ss58Address,
+    type CdmChainClient,
 } from "@dotdm/env";
 import { getAccount } from "@dotdm/utils/accounts";
 import { ALICE_SS58, REGISTRY_ADDRESS } from "@dotdm/utils";
-import {
-    ContractDeployer,
-    MetadataPublisher,
-    RegistryManager,
-    CONTRACTS_REGISTRY_CRATE,
-} from "@dotdm/contracts";
-import { runPipelineWithUI, spinner } from "../lib/ui";
+import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@dotdm/contracts";
+import type { HexString } from "polkadot-api";
+import { runDeployWithUI, spinner } from "../lib/ui";
 
 const deploy = new Command("deploy")
     .description("Deploy and register contracts")
@@ -96,65 +92,60 @@ deploy.action(async (opts: DeployOptions) => {
 /**
  * Build, deploy, and register all CDM contracts against the registry.
  * Uses the pipeline TUI for parallel builds and progress display.
- * Optionally accepts existing connections to reuse.
+ * Optionally accepts an existing `CdmChainClient` to reuse.
  */
 async function deployWithRegistry(
     rootDir: string,
     opts: DeployOptions,
-    existingConnections?: {
+    existingConnection?: {
         signer: ReturnType<typeof prepareSigner>;
         origin: string;
-        client: ReturnType<typeof connectAssetHubWebSocket>["client"];
-        api: ReturnType<typeof connectAssetHubWebSocket>["api"];
+        chainClient: CdmChainClient;
     },
 ): Promise<Record<string, string>> {
     let signer: ReturnType<typeof prepareSigner>;
     let origin: string;
-    let client: ReturnType<typeof connectAssetHubWebSocket>["client"];
-    let api: ReturnType<typeof connectAssetHubWebSocket>["api"];
-    let ownsAssetHub: boolean;
+    let chainClient: CdmChainClient;
+    let ownsChainClient: boolean;
 
-    if (existingConnections) {
-        signer = existingConnections.signer;
-        origin = existingConnections.origin;
-        client = existingConnections.client;
-        api = existingConnections.api;
-        ownsAssetHub = false;
+    if (existingConnection) {
+        signer = existingConnection.signer;
+        origin = existingConnection.origin;
+        chainClient = existingConnection.chainClient;
+        ownsChainClient = false;
     } else {
         ({ signer, origin } = resolveSigner(opts));
 
-        const sp = spinner("AssetHub", opts.assethubUrl!);
-        const conn = connectAssetHubWebSocket(opts.assethubUrl!);
-        client = conn.client;
-        api = conn.api;
-        await client.getChainSpecData();
-        sp.succeed();
-        ownsAssetHub = true;
+        const spAH = spinner("AssetHub", opts.assethubUrl!);
+        const spBL = spinner("Bulletin", opts.bulletinUrl!);
+        chainClient = await createCdmChainClient({
+            assethubUrl: opts.assethubUrl!,
+            bulletinUrl: opts.bulletinUrl!,
+        });
+        await Promise.all([
+            chainClient.raw.assetHub.getChainSpecData(),
+            chainClient.raw.bulletin.getChainSpecData(),
+        ]);
+        spAH.succeed();
+        spBL.succeed();
+        ownsChainClient = true;
     }
-
-    // Connect to bulletin
-    const sp = spinner("Bulletin", opts.bulletinUrl!);
-    const bulletinConn = connectBulletinWebSocket(opts.bulletinUrl!);
-    await bulletinConn.client.getChainSpecData();
-    sp.succeed();
-
-    const deployer = new ContractDeployer(signer, origin, client, api);
-    const publisher = new MetadataPublisher(signer, bulletinConn.api);
-    const registry = new RegistryManager(signer, origin, api, client, REGISTRY_ADDRESS);
 
     console.log(`\x1b[1mRegistry\x1b[0m   ${REGISTRY_ADDRESS}\n`);
 
-    const result = await runPipelineWithUI({
+    const { result } = await runDeployWithUI({
         rootDir,
-        services: { deployer, publisher, registry },
+        client: chainClient,
+        signer,
+        origin,
+        registryAddress: REGISTRY_ADDRESS as HexString,
         assethubUrl: opts.assethubUrl,
         bulletinUrl: opts.bulletinUrl,
         ipfsGatewayUrl: opts.ipfsGatewayUrl,
     });
 
-    bulletinConn.client.destroy();
-    if (ownsAssetHub) {
-        client.destroy();
+    if (ownsChainClient) {
+        chainClient.destroy();
     }
 
     if (!result.success) {
@@ -178,27 +169,32 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
         process.exit(1);
     }
 
-    // Prepare signer
     const { signer, origin } = resolveSigner(opts);
 
-    // Connect to Asset Hub
-    const sp1 = spinner("AssetHub", opts.assethubUrl!);
-    const { client, api } = connectAssetHubWebSocket(opts.assethubUrl!);
-    await client.getChainSpecData();
-    sp1.succeed();
+    const spAH = spinner("AssetHub", opts.assethubUrl!);
+    const spBL = spinner("Bulletin", opts.bulletinUrl!);
+    const chainClient = await createCdmChainClient({
+        assethubUrl: opts.assethubUrl!,
+        bulletinUrl: opts.bulletinUrl!,
+    });
+    await Promise.all([
+        chainClient.raw.assetHub.getChainSpecData(),
+        chainClient.raw.bulletin.getChainSpecData(),
+    ]);
+    spAH.succeed();
+    spBL.succeed();
 
-    // Connect to Bulletin
-    const sp2 = spinner("Bulletin", opts.bulletinUrl!);
-    const bulletinConn = connectBulletinWebSocket(opts.bulletinUrl!);
-    await bulletinConn.client.getChainSpecData();
-    sp2.succeed();
-
-    const deployer = new ContractDeployer(signer, origin, client, api);
+    const deployer = new ContractDeployer(
+        signer,
+        origin,
+        chainClient.raw.assetHub,
+        chainClient.assetHub,
+    );
 
     // Map account (required for Revive pallet on fresh chains)
     console.log("Mapping account...");
     try {
-        await api.tx.Revive.map_account().signAndSubmit(signer);
+        await chainClient.assetHub.tx.Revive.map_account().signAndSubmit(signer);
         console.log("  Account mapped\n");
     } catch {
         console.log("  Account already mapped\n");
@@ -210,12 +206,11 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     const { address: registryAddr } = await deployer.deploy(registryPvmPath, CDM_REGISTRY_PACKAGE);
     console.log(`  ContractRegistry: ${registryAddr}\n`);
 
-    // Phase 2+3: Build and deploy all CDM contracts
+    // Phase 2+3: Build and deploy all CDM contracts (reuses the existing chain client)
     const addresses = await deployWithRegistry(rootDir, opts, {
         signer,
         origin,
-        client,
-        api,
+        chainClient,
     });
 
     // Save all addresses (registry + CDM contracts)
@@ -226,8 +221,7 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     console.log(`\n=== Bootstrap Complete ===`);
     console.log(`Addresses saved to ${addrPath}`);
 
-    bulletinConn.client.destroy();
-    client.destroy();
+    chainClient.destroy();
 }
 
 export const deployCommand = deploy;

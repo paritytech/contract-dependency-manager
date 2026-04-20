@@ -11,10 +11,10 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
+        "@dotdm/contracts": "workspace:*",
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
-        "@dotdm/descriptors": "workspace:*",
-        "@polkadot-api/sdk-ink": "catalog:",
+        "@polkadot-apps/contracts": "catalog:",
         "dompurify": "catalog:",
         "marked": "catalog:",
         "polkadot-api": "catalog:",

@@ -305,10 +305,7 @@ export function toposortLayers(graph: Map<string, string[]>): string[][] {
         throw new Error(`Circular dependency detected involving: ${remaining.join(", ")}`);
     }
 
-    // TEMPORARY PATCH: Force sequential deployment (one contract per layer) to work
-    // around bulletin chain issues with parallel submissions. Remove this once the
-    // bulletin nonce/parallel submission issue is resolved.
-    return layers.flatMap((layer) => layer.map((contract) => [contract]));
+    return layers;
 }
 
 /**
@@ -438,12 +435,7 @@ if (import.meta.vitest) {
     });
 
     describe("toposortLayers", () => {
-        // NOTE: Some tests are skipped because of the TEMPORARY sequential patch
-        // at line 298-301 that forces one contract per layer. These tests document
-        // the intended parallel-layer behavior and should be unskipped when the
-        // patch is removed.
-
-        test.skip("diamond graph", () => {
+        test("diamond graph", () => {
             const graph = new Map([
                 ["A", []],
                 ["B", []],
@@ -463,7 +455,7 @@ if (import.meta.vitest) {
             expect(result).toEqual([["A"], ["B"], ["C"]]);
         });
 
-        test.skip("all independent", () => {
+        test("all independent", () => {
             const graph = new Map([
                 ["A", []],
                 ["B", []],
@@ -485,7 +477,7 @@ if (import.meta.vitest) {
             expect(result).toEqual([]);
         });
 
-        test.skip("complex DAG", () => {
+        test("complex DAG", () => {
             const graph = new Map([
                 ["A", []],
                 ["B", []],
@@ -498,7 +490,7 @@ if (import.meta.vitest) {
             expect(result).toEqual([["A", "B", "C"], ["D", "E"], ["F"]]);
         });
 
-        test.skip("wide fan-out", () => {
+        test("wide fan-out", () => {
             const graph = new Map([
                 ["A", []],
                 ["B", ["A"]],
@@ -510,7 +502,7 @@ if (import.meta.vitest) {
             expect(result).toEqual([["A"], ["B", "C", "D", "E"]]);
         });
 
-        test.skip("wide fan-in", () => {
+        test("wide fan-in", () => {
             const graph = new Map([
                 ["A", []],
                 ["B", []],
@@ -555,7 +547,7 @@ if (import.meta.vitest) {
             }
         });
 
-        test.skip("deep chain with branches", () => {
+        test("deep chain with branches", () => {
             const graph = new Map([
                 ["A", []],
                 ["B", ["A"]],

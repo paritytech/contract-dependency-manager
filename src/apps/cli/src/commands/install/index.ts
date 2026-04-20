@@ -1,16 +1,22 @@
 import { existsSync } from "fs";
 import { resolve } from "path";
 import { Command } from "commander";
-import { contracts } from "@dotdm/descriptors";
-import { createInkSdk } from "@polkadot-api/sdk-ink";
+import type { HexString } from "polkadot-api";
+import { createContractFromClient } from "@polkadot-apps/contracts";
 import {
-    connectAssetHubWebSocket,
+    createCdmAssetHubClient,
     connectIpfsGateway,
     getChainPreset,
     DEFAULT_NODE_URL,
     REGISTRY_ADDRESS,
 } from "@dotdm/env";
-import { computeTargetHash, readCdmJson, writeCdmJson } from "@dotdm/contracts";
+import {
+    CONTRACTS_REGISTRY_ABI,
+    computeTargetHash,
+    readCdmJson,
+    writeCdmJson,
+} from "@dotdm/contracts";
+import { ALICE_SS58 } from "@dotdm/utils";
 import { spinner } from "../../lib/ui";
 import { runInstallWithUI } from "../../lib/install-pipeline";
 import type { InstallResult } from "../../lib/install-pipeline";
@@ -87,12 +93,16 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
 
     // Connect to chain with spinner (matching deploy command style)
     const sp = spinner("AssetHub", opts.assethubUrl);
-    const { client } = connectAssetHubWebSocket(opts.assethubUrl);
-    await client.getChainSpecData();
+    const chainClient = await createCdmAssetHubClient(opts.assethubUrl);
+    await chainClient.raw.assetHub.getChainSpecData();
     sp.succeed();
 
-    const inkSdk = createInkSdk(client);
-    const registry = inkSdk.getContract(contracts.contractsRegistry, REGISTRY_ADDRESS);
+    const registry = await createContractFromClient(
+        chainClient.raw.assetHub,
+        REGISTRY_ADDRESS as HexString,
+        CONTRACTS_REGISTRY_ABI,
+        { defaultOrigin: ALICE_SS58 },
+    );
     const ipfs = connectIpfsGateway(opts.ipfsGatewayUrl);
 
     // Update cdm.json targets with resolved connection info
@@ -119,7 +129,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
             console.error(
                 "Error: No library specified and no dependencies found in cdm.json for this target.",
             );
-            client.destroy();
+            chainClient.destroy();
             process.exit(1);
         }
         toInstall = Object.entries(deps).map(([lib, ver]) => ({
@@ -177,7 +187,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         }
     }
 
-    client.destroy();
+    chainClient.destroy();
 
     if (!success) {
         process.exit(1);

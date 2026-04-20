@@ -17,10 +17,9 @@
     "dependencies": {
         "@dotdm/cdm": "workspace:*",
         "@dotdm/contracts": "workspace:*",
-        "@dotdm/descriptors": "workspace:*",
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
-        "@polkadot-api/sdk-ink": "catalog:",
+        "@polkadot-apps/contracts": "catalog:",
         "commander": "catalog:",
         "ink": "catalog:",
         "polkadot-api": "catalog:",
@@ -29,7 +28,6 @@
         "supports-hyperlinks": "catalog:"
     },
     "devDependencies": {
-        "@polkadot-api/cli": "catalog:",
         "@types/bun": "catalog:",
         "@types/react": "catalog:",
         "typescript": "catalog:"
