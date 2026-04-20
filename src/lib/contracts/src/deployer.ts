@@ -23,23 +23,62 @@ export function computeDeploySalt(cdmPackage: string): FixedSizeBinary<32> {
     return FixedSizeBinary.fromBytes(hash) as FixedSizeBinary<32>;
 }
 
-/**
- * Fallback per-extrinsic weight budget used when the runtime doesn't expose
- * `System.BlockWeights().per_class.normal.max_extrinsic` (or it's `undefined`).
- * Ballparked against Paseo AssetHub normal-extrinsic limits; deliberately
- * conservative.
- */
-export const FALLBACK_MAX_EXTRINSIC_WEIGHT = {
-    ref_time: 1_500_000_000_000n,
-    proof_size: 3_500_000n,
-} as const;
-
-/** Safety factor applied to the chosen per-extrinsic budget before chunking. */
-export const WEIGHT_BUDGET_SAFETY_FACTOR = 85n; // percent, i.e. 0.85
-
 export interface WeightLike {
     ref_time: bigint;
     proof_size: bigint;
+}
+
+/**
+ * Static per-call weight that the `Revive.instantiate_with_code` dispatchable
+ * declares in addition to whatever execution weight its inner constructor
+ * uses. The dispatchable's declared weight function includes the code upload,
+ * PolkaVM validation, and account creation costs — all roughly constant per
+ * call — on top of the `weight_limit` argument we pass. The dry-run's
+ * `weight_required` reports ONLY the execution component, so the chunker
+ * would wildly under-predict the real extrinsic weight without this constant
+ * folded in (observed ratio ≈ 700× on a typical 50KB contract).
+ *
+ * Values are empirically calibrated against Paseo AssetHub runtime v2001000
+ * where `System.BlockWeights.per_class.normal.max_extrinsic.ref_time` =
+ * 1.6×10¹² and a 4-call `batch_all` rejects but a 3-call batch accepts.
+ * Setting ref_time ≈ budget/3 gives the chunker floor(1.6/0.53) = 3
+ * contracts per chunk, matching observed behavior.
+ *
+ * Re-verify after AssetHub runtime upgrades. If a deploy hits
+ * ExhaustsResources for ≤3 contracts, this constant is likely stale.
+ */
+export const INSTANTIATE_WITH_CODE_STATIC_WEIGHT: WeightLike = {
+    ref_time: 530_000_000_000n,
+    proof_size: 1_000_000n,
+};
+
+/**
+ * Output of {@link ContractDeployer.planDeploy}. Exposes everything the
+ * pipeline needs to emit a `deploy-plan` diagnostic event BEFORE submission,
+ * and everything `deployBatch` / `deployAndRegisterBatch` need to skip
+ * re-running the dry-run when the plan is passed back in.
+ *
+ * `prepared[i].tx` is the fully-formed (unsigned) `Revive.instantiate_with_code`
+ * call with the gas / storage limits already applied.
+ */
+export interface DeployPlan {
+    budget: WeightLike;
+    prepared: Array<{
+        tx: ReturnType<TypedApi<AssetHub>["tx"]["Revive"]["instantiate_with_code"]>;
+        /** Execution-only weight limit passed to the extrinsic. */
+        gasLimit: WeightLike;
+        /**
+         * Full declared weight the dispatchable will assert at submission —
+         * `gasLimit + INSTANTIATE_WITH_CODE_STATIC_WEIGHT`. This is what
+         * block validation checks against `max_extrinsic` and what the
+         * chunker sums against the budget.
+         */
+        extrinsicWeight: WeightLike;
+        storageDeposit: bigint;
+        address: string;
+    }>;
+    /** Index groups into `prepared` — each inner array is one on-chain chunk. */
+    chunks: number[][];
 }
 
 /**
@@ -59,8 +98,11 @@ export function chunkByWeight(weights: ReadonlyArray<WeightLike>, budget: Weight
         const w = weights[i];
         const nextRef = curRef + w.ref_time;
         const nextProof = curProof + w.proof_size;
-        const fits = nextRef <= budget.ref_time && nextProof <= budget.proof_size;
-        if (current.length === 0 || fits) {
+        const fitsWeight = nextRef <= budget.ref_time && nextProof <= budget.proof_size;
+        // An empty `current` always takes the item (guarantees forward
+        // progress; oversized singletons become their own chunk and fail
+        // with a clearer on-chain error).
+        if (current.length === 0 || fitsWeight) {
             current.push(i);
             curRef = nextRef;
             curProof = nextProof;
@@ -145,13 +187,19 @@ export class ContractDeployer {
     ): Promise<{ address: string; txHash: string; blockHash: string }> {
         const { tx } = await this.dryRunDeploy(pvmPath, cdmPackage);
 
-        const result = await submitAndWatch(tx as unknown as SubmittableTransaction, this.signer, {
-            waitFor: "best-block",
-        });
+        let result: Awaited<ReturnType<typeof submitAndWatch>>;
+        try {
+            result = await submitAndWatch(tx as unknown as SubmittableTransaction, this.signer, {
+                waitFor: "best-block",
+            });
+        } catch (err) {
+            const orig = err instanceof Error ? err.message : String(err);
+            throw new Error(`[AssetHub deploy] ${orig}`, { cause: err });
+        }
 
         if (!result.ok) {
             throw new Error(
-                `Deployment transaction failed: ${stringifyBigInt(result.dispatchError ?? "unknown dispatch error")}`,
+                `[AssetHub deploy] Deployment transaction failed: ${stringifyBigInt(result.dispatchError ?? "unknown dispatch error")}`,
             );
         }
 
@@ -159,7 +207,9 @@ export class ContractDeployer {
             result.events as Parameters<typeof this.api.event.Revive.Instantiated.filter>[0],
         );
         if (instantiated.length === 0) {
-            throw new Error("Contract instantiation failed - no Instantiated event");
+            throw new Error(
+                "[AssetHub deploy] Contract instantiation failed - no Instantiated event",
+            );
         }
 
         const address = instantiated[0].contract.asHex();
@@ -209,6 +259,16 @@ export class ContractDeployer {
 
         const address = dryRun.result.value.addr.asHex();
 
+        // The dispatchable's declared weight at submission time ≈
+        // dry-run execution weight + pallet-declared static weight. This is
+        // what block validation checks against `max_extrinsic`. See the
+        // INSTANTIATE_WITH_CODE_STATIC_WEIGHT doc for why the static term
+        // has to be added by hand.
+        const extrinsicWeight: WeightLike = {
+            ref_time: gasLimit.ref_time + INSTANTIATE_WITH_CODE_STATIC_WEIGHT.ref_time,
+            proof_size: gasLimit.proof_size + INSTANTIATE_WITH_CODE_STATIC_WEIGHT.proof_size,
+        };
+
         return {
             tx: this.api.tx.Revive.instantiate_with_code({
                 value: 0n,
@@ -221,6 +281,7 @@ export class ContractDeployer {
             gasLimit,
             storageDeposit,
             address,
+            extrinsicWeight,
         };
     }
 
@@ -246,30 +307,53 @@ export class ContractDeployer {
 
     /**
      * Resolve the per-extrinsic weight budget used for weight-aware chunking.
-     * Queries `System.BlockWeights().per_class.normal.max_extrinsic` on the
-     * runtime, falling back to `FALLBACK_MAX_EXTRINSIC_WEIGHT` if the runtime
-     * doesn't expose it (or returns `undefined`). A 0.85 safety factor is
-     * applied so we don't nudge the real extrinsic limit.
+     * Reads `System.BlockWeights().per_class.normal.max_extrinsic` from the
+     * runtime and returns it verbatim — no safety factor. The per-item
+     * weight fed into the chunker already includes the dispatchable's
+     * declared static overhead (see `INSTANTIATE_WITH_CODE_STATIC_WEIGHT`),
+     * so the budget and the accumulated weight use the same scale.
      */
     private async resolveChunkBudget(): Promise<WeightLike> {
-        let base: WeightLike = FALLBACK_MAX_EXTRINSIC_WEIGHT;
-        try {
-            const weights = await this.api.constants.System.BlockWeights();
-            const maxExtrinsic = weights?.per_class?.normal?.max_extrinsic;
-            if (
-                maxExtrinsic &&
-                typeof maxExtrinsic.ref_time === "bigint" &&
-                typeof maxExtrinsic.proof_size === "bigint"
-            ) {
-                base = { ref_time: maxExtrinsic.ref_time, proof_size: maxExtrinsic.proof_size };
-            }
-        } catch {
-            // fall through to hardcoded budget
+        const weights = await this.api.constants.System.BlockWeights();
+        const maxExtrinsic = weights?.per_class?.normal?.max_extrinsic;
+        if (
+            !maxExtrinsic ||
+            typeof maxExtrinsic.ref_time !== "bigint" ||
+            typeof maxExtrinsic.proof_size !== "bigint"
+        ) {
+            throw new Error(
+                "Runtime does not expose System.BlockWeights.per_class.normal.max_extrinsic — " +
+                    "cannot determine chunk budget.",
+            );
         }
-        return {
-            ref_time: (base.ref_time * WEIGHT_BUDGET_SAFETY_FACTOR) / 100n,
-            proof_size: (base.proof_size * WEIGHT_BUDGET_SAFETY_FACTOR) / 100n,
-        };
+        return { ref_time: maxExtrinsic.ref_time, proof_size: maxExtrinsic.proof_size };
+    }
+
+    /**
+     * Pre-compute the dry-run + chunking decisions for a set of contracts
+     * WITHOUT submitting anything on-chain. Returns the budget used, per-item
+     * weights / addresses / storage deposits, the unsigned txs (so callers can
+     * pass the plan back into `deployBatch` / `deployAndRegisterBatch` to
+     * avoid re-doing the dry-run), and the chunk index groups.
+     *
+     * Callers that need to inspect the plan (e.g. the pipeline's
+     * `deploy-plan` diagnostic event) should call this, inspect the returned
+     * fields, then forward the plan to `deployBatch` / `deployAndRegisterBatch`
+     * via the optional `plan` arg so the dry-run work isn't duplicated.
+     */
+    async planDeploy(
+        pvmPaths: string[],
+        cdmPackages?: (string | undefined)[],
+    ): Promise<DeployPlan> {
+        const prepared = await Promise.all(
+            pvmPaths.map((p, i) => this.dryRunDeploy(p, cdmPackages?.[i])),
+        );
+        const budget = await this.resolveChunkBudget();
+        const chunks = chunkByWeight(
+            prepared.map((p) => p.extrinsicWeight),
+            budget,
+        );
+        return { budget, prepared, chunks };
     }
 
     /**
@@ -298,27 +382,22 @@ export class ContractDeployer {
             chunkIndex: number;
             totalChunks: number;
         }) => void,
+        opts?: { plan?: DeployPlan },
     ): Promise<{ addresses: string[]; chunkCount: number }> {
         if (pvmPaths.length === 0) return { addresses: [], chunkCount: 0 };
 
         // 1. Dry-run all contracts up front so we have weights + CREATE2-style
-        //    addresses for the chunker.
-        const prepared = await Promise.all(
-            pvmPaths.map((p, i) => this.dryRunDeploy(p, cdmPackages?.[i])),
-        );
-
-        // 2. Chunk by cumulative declared weight.
-        const budget = await this.resolveChunkBudget();
-        const chunks = chunkByWeight(
-            prepared.map((p) => p.gasLimit),
-            budget,
-        );
+        //    addresses for the chunker — unless a precomputed plan was passed in.
+        // 2. Chunk by cumulative declared weight (already done inside the plan).
+        const plan = opts?.plan ?? (await this.planDeploy(pvmPaths, cdmPackages));
+        const { prepared, chunks } = plan;
 
         const addresses: string[] = new Array(pvmPaths.length);
 
         // 3. Submit each chunk sequentially.
         for (let ci = 0; ci < chunks.length; ci++) {
             const idxs = chunks[ci];
+            const label = `[AssetHub deploy chunk ${ci + 1}/${chunks.length}]`;
 
             // Fast path: a single-item chunk via the non-batch path — matches
             // the pre-chunking one-contract behavior so a user deploying one
@@ -330,15 +409,21 @@ export class ContractDeployer {
                 addresses[i] = r.address;
                 chunkResult = { txHash: r.txHash, blockHash: r.blockHash, addrs: [r.address] };
             } else {
-                const result = await batchSubmitAndWatch(
-                    idxs.map((i) => prepared[i].tx),
-                    this.api as unknown as BatchApi,
-                    this.signer,
-                    { mode: "batch_all", waitFor: "best-block" },
-                );
+                let result: Awaited<ReturnType<typeof batchSubmitAndWatch>>;
+                try {
+                    result = await batchSubmitAndWatch(
+                        idxs.map((i) => prepared[i].tx),
+                        this.api as unknown as BatchApi,
+                        this.signer,
+                        { mode: "batch_all", waitFor: "best-block" },
+                    );
+                } catch (err) {
+                    const orig = err instanceof Error ? err.message : String(err);
+                    throw new Error(`${label} ${orig}`, { cause: err });
+                }
                 if (!result.ok) {
                     throw new Error(
-                        `Batch deploy failed (chunk ${ci + 1}/${chunks.length}): ${stringifyBigInt(result.dispatchError ?? "unknown dispatch error")}`,
+                        `${label} Batch deploy failed: ${stringifyBigInt(result.dispatchError ?? "unknown dispatch error")}`,
                     );
                 }
                 const instantiated = this.api.event.Revive.Instantiated.filter(
@@ -348,7 +433,7 @@ export class ContractDeployer {
                 );
                 if (instantiated.length !== idxs.length) {
                     throw new Error(
-                        `Expected ${idxs.length} Instantiated events in chunk ${ci + 1}, got ${instantiated.length}`,
+                        `${label} Expected ${idxs.length} Instantiated events, got ${instantiated.length}`,
                     );
                 }
                 const chunkAddrs = instantiated.map((e) => e.contract.asHex());
@@ -431,6 +516,7 @@ export class ContractDeployer {
             chunkIndex: number;
             totalChunks: number;
         }) => void,
+        opts?: { plan?: DeployPlan },
     ): Promise<{ addresses: string[]; chunkCount: number }> {
         if (pvmPaths.length === 0) return { addresses: [], chunkCount: 0 };
         if (pvmPaths.length !== cdmPackages.length || pvmPaths.length !== metadataUris.length) {
@@ -439,12 +525,9 @@ export class ContractDeployer {
             );
         }
 
-        // 1. Dry-run each deploy to get weight/storage, the unsigned tx, and
-        //    the precomputed CREATE2 address — all in one ReviveApi.instantiate
-        //    round-trip per contract (was two, prior to this change).
-        const prepared = await Promise.all(
-            pvmPaths.map((p, i) => this.dryRunDeploy(p, cdmPackages[i])),
-        );
+        // 1. Dry-run + chunk (or reuse a caller-supplied plan).
+        const plan = opts?.plan ?? (await this.planDeploy(pvmPaths, cdmPackages));
+        const { prepared, chunks } = plan;
 
         // 2. Build the `publishLatest` BatchableCalls via `.prepare(...)` using
         //    the precomputed CREATE2 address + the caller-supplied metadata CID.
@@ -456,34 +539,33 @@ export class ContractDeployer {
             registry.publishLatest.prepare(pkg, prepared[i].address, metadataUris[i], prepareOpts),
         );
 
-        // 3. Chunk by cumulative deploy weight. Register-call weight is
-        //    ignored (see method doc-comment for why).
-        const budget = await this.resolveChunkBudget();
-        const chunks = chunkByWeight(
-            prepared.map((p) => p.gasLimit),
-            budget,
-        );
-
         const addresses: string[] = new Array(pvmPaths.length);
 
-        // 4. Submit each chunk sequentially as an atomic batch_all of
+        // 3. Submit each chunk sequentially as an atomic batch_all of
         //    (chunk's deploys) + (chunk's registers).
         for (let ci = 0; ci < chunks.length; ci++) {
             const idxs = chunks[ci];
+            const label = `[AssetHub deploy+register chunk ${ci + 1}/${chunks.length}]`;
             const chunkCalls = [
                 ...idxs.map((i) => prepared[i].tx),
                 ...idxs.map((i) => registerCalls[i]),
             ];
 
-            const result = await batchSubmitAndWatch(
-                chunkCalls,
-                this.api as unknown as BatchApi,
-                this.signer,
-                { mode: "batch_all", waitFor: "best-block" },
-            );
+            let result: Awaited<ReturnType<typeof batchSubmitAndWatch>>;
+            try {
+                result = await batchSubmitAndWatch(
+                    chunkCalls,
+                    this.api as unknown as BatchApi,
+                    this.signer,
+                    { mode: "batch_all", waitFor: "best-block" },
+                );
+            } catch (err) {
+                const orig = err instanceof Error ? err.message : String(err);
+                throw new Error(`${label} ${orig}`, { cause: err });
+            }
             if (!result.ok) {
                 throw new Error(
-                    `Batch deploy+register failed (chunk ${ci + 1}/${chunks.length}): ${stringifyBigInt(result.dispatchError ?? "unknown dispatch error")}`,
+                    `${label} Batch deploy+register failed: ${stringifyBigInt(result.dispatchError ?? "unknown dispatch error")}`,
                 );
             }
 
@@ -495,7 +577,7 @@ export class ContractDeployer {
             );
             if (instantiated.length !== idxs.length) {
                 throw new Error(
-                    `Expected ${idxs.length} Instantiated events in chunk ${ci + 1}, got ${instantiated.length}`,
+                    `${label} Expected ${idxs.length} Instantiated events, got ${instantiated.length}`,
                 );
             }
             const chunkAddrs = instantiated.map((e) => e.contract.asHex());
@@ -503,7 +585,7 @@ export class ContractDeployer {
                 const expected = prepared[idxs[j]].address;
                 if (chunkAddrs[j].toLowerCase() !== expected.toLowerCase()) {
                     throw new Error(
-                        `Address mismatch for ${cdmPackages[idxs[j]]}: precomputed ${expected}, on-chain ${chunkAddrs[j]}`,
+                        `${label} Address mismatch for ${cdmPackages[idxs[j]]}: precomputed ${expected}, on-chain ${chunkAddrs[j]}`,
                     );
                 }
                 addresses[idxs[j]] = chunkAddrs[j];
@@ -556,6 +638,17 @@ if (import.meta.vitest) {
             const big: WeightLike = { ref_time: 1200n, proof_size: 100n };
             const small: WeightLike = { ref_time: 100n, proof_size: 100n };
             expect(chunkByWeight([small, big, small], budget)).toEqual([[0], [1], [2]]);
+        });
+
+        test("packs as many as the budget allows", () => {
+            // Budget is effectively unlimited — chunker should pack everything
+            // into a single chunk in input order.
+            const small: WeightLike = { ref_time: 1n, proof_size: 1n };
+            const hugeBudget: WeightLike = {
+                ref_time: 1_000_000_000_000n,
+                proof_size: 1_000_000_000_000n,
+            };
+            expect(chunkByWeight([small, small, small, small], hugeBudget)).toEqual([[0, 1, 2, 3]]);
         });
     });
 }

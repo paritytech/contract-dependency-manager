@@ -24,16 +24,24 @@ export function Spinner({ tick }: { tick: number }) {
 
 export const BAR_WIDTH = 12;
 
-export function ProgressBar({ compiled, total }: { compiled: number; total: number }) {
+export function ProgressBar({
+    compiled,
+    total,
+    sizeBytes,
+}: {
+    compiled: number;
+    total: number;
+    /** If provided, render the formatted size instead of the `compiled/total`
+     * fraction. Used after build completion to surface the .polkavm size. */
+    sizeBytes?: number;
+}) {
     const filled = total > 0 ? Math.round((compiled / total) * BAR_WIDTH) : 0;
+    const tail = sizeBytes && sizeBytes > 0 ? formatBytes(sizeBytes) : `${compiled}/${total}`;
     return (
         <Text>
             <Text color="green">{"█".repeat(filled)}</Text>
             <Text dimColor>{"░".repeat(BAR_WIDTH - filled)}</Text>
-            <Text>
-                {" "}
-                {compiled}/{total}
-            </Text>
+            <Text> {tail}</Text>
         </Text>
     );
 }
@@ -64,6 +72,18 @@ export function Failed() {
 
 export function Cached() {
     return <Text color="blue">~</Text>;
+}
+
+/**
+ * Format a byte count as a compact, base-10 size string.
+ * Chosen to be short enough to sit inside a 20-char build column.
+ * Examples: `512B`, `12.3KB`, `1.4MB`.
+ */
+export function formatBytes(bytes: number | undefined | null): string {
+    if (!bytes || bytes <= 0) return "";
+    if (bytes < 1000) return `${bytes}B`;
+    if (bytes < 1_000_000) return `${(bytes / 1000).toFixed(1)}KB`;
+    return `${(bytes / 1_000_000).toFixed(1)}MB`;
 }
 
 export function truncateAddress(addr: string): string {

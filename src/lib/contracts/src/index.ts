@@ -26,11 +26,11 @@ export {
     type AbiEntry,
     type Metadata,
     type WeightLike,
+    type DeployPlan,
     ContractDeployer,
     computeDeploySalt,
     chunkByWeight,
-    FALLBACK_MAX_EXTRINSIC_WEIGHT,
-    WEIGHT_BUDGET_SAFETY_FACTOR,
+    INSTANTIATE_WITH_CODE_STATIC_WEIGHT,
 } from "./deployer";
 
 export { MetadataPublisher } from "./publisher";

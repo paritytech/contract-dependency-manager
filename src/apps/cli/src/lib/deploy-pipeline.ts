@@ -40,9 +40,30 @@ export interface ContractStatus {
     registerBlockHash?: string;
     durationMs?: number;
     buildProgress?: { compiled: number; total: number; currentCrate: string };
+    /** Bytecode size in bytes (populated from `build-done` event). */
+    bytecodeSize?: number;
     deployInProgress?: boolean;
     publishInProgress?: boolean;
     registerInProgress?: boolean;
+}
+
+/**
+ * Current "phase" signal emitted by the library to describe dead time between
+ * build and per-row deploy spinners. Mirrors the `DeployEvent.phase` variant
+ * shape; the adapter stores the latest phase on itself and invokes
+ * `onPhaseChange` so the Ink UI can render a spinner above the table.
+ */
+export interface PhaseInfo {
+    name:
+        | "connecting-registry"
+        | "checking-cache"
+        | "precomputing-addresses"
+        | "preparing-metadata"
+        | "deploying"
+        | "publishing"
+        | "done";
+    description: string;
+    layer?: number;
 }
 
 export interface AdapterOptions {
@@ -50,6 +71,8 @@ export interface AdapterOptions {
     onStatusChange?: (crateName: string, status: ContractStatus) => void;
     /** Called when a build reveals a crate's CDM package name. */
     onCdmPackageDetected?: (crateName: string, cdmPackage: string) => void;
+    /** Called when the library emits a `phase` event. */
+    onPhaseChange?: (phase: PhaseInfo | null) => void;
 }
 
 /**
@@ -64,6 +87,8 @@ export class PipelineStatusAdapter {
     layers: string[][] = [];
     contracts: ContractInfo[] = [];
     cdmPackageMap = new Map<string, string>();
+    /** Most recent `phase` event (null until first phase event fires). */
+    phase: PhaseInfo | null = null;
 
     constructor(private opts: AdapterOptions = {}) {}
 
@@ -105,7 +130,10 @@ export class PipelineStatusAdapter {
                 });
                 return;
             case "build-done":
-                this.update(e.crate, "built", { durationMs: e.durationMs });
+                this.update(e.crate, "built", {
+                    durationMs: e.durationMs,
+                    bytecodeSize: e.bytecodeSize,
+                });
                 return;
             case "build-error":
                 this.update(e.crate, "error", { error: e.error });
@@ -138,6 +166,20 @@ export class PipelineStatusAdapter {
             case "check-needs-deploy":
                 // Address precomputed — no state change yet, deploy-register
                 // will follow.
+                return;
+            case "deploy-plan":
+                // Diagnostic-only — no per-crate state change. The CLI's
+                // `runDeployWithUI` logs the event to stderr so the user can
+                // see the real budget vs per-contract weights on their next
+                // run. Nothing to mutate here.
+                return;
+            case "phase":
+                this.phase = {
+                    name: e.name,
+                    description: e.description,
+                    layer: e.layer,
+                };
+                this.opts.onPhaseChange?.(this.phase);
                 return;
             case "sign-request":
                 // Not forwarded to UI for now — `deploy-register-start` /
@@ -205,18 +247,6 @@ export class PipelineStatusAdapter {
                         registerInProgress: false,
                     });
                 }
-                return;
-            case "publish-error":
-                for (const crate of e.crates) {
-                    this.update(crate, "error", {
-                        error: e.error,
-                        publishInProgress: false,
-                    });
-                }
-                return;
-            case "tx-status":
-                // Currently unused by the Ink UI — reserved for a future,
-                // finer-grained spinner. Safe to ignore.
                 return;
             case "pipeline-done":
             case "pipeline-error":

@@ -117,9 +117,63 @@ export type DeployEvent =
     | { type: "check-cached"; crate: string; address: HexString }
     | { type: "check-needs-deploy"; crate: string; address: HexString }
     | {
+          /**
+           * Coarse "what's happening right now" signal for the dead time
+           * between build-done and the first per-row deploy spinner. Fires
+           * synchronously — consumers (CLI TUI, playground) can use the
+           * `description` to drive a top-of-screen spinner. No pipeline code
+           * awaits anything on this event.
+           *
+           * `name` values:
+           *  - `connecting-registry`    — creating the ContractRegistry handle
+           *  - `checking-cache`          — querying on-chain addresses + code
+           *  - `precomputing-addresses`  — dry-run planDeploy for CREATE2 addrs
+           *  - `preparing-metadata`      — assembling ABI/readme/etc for publish
+           *  - `deploying`               — about to emit `deploy-register-start`
+           *  - `publishing`              — about to emit `publish-start`
+           *  - `done`                    — pipeline complete (paired with pipeline-done)
+           */
+          type: "phase";
+          name:
+              | "connecting-registry"
+              | "checking-cache"
+              | "precomputing-addresses"
+              | "preparing-metadata"
+              | "deploying"
+              | "publishing"
+              | "done";
+          description: string;
+          layer?: number;
+      }
+    | {
           type: "sign-request";
           phase: "deploy-register" | "publish";
           crates: string[];
+      }
+    | {
+          /**
+           * Diagnostic, one-shot per layer, emitted AFTER the dry-run +
+           * chunking decisions are finalized but BEFORE the first chunk is
+           * submitted. Informational only — the pipeline does NOT wait for a
+           * response; it continues to submission immediately after emitting.
+           *
+           * `extrinsicWeight` is what the chunker actually sums against
+           * `budget` (= dry-run gasLimit + pallet-declared static per-call
+           * weight). `gasLimit` is the execution-only cap passed to the
+           * dispatchable. Keeping both exposed makes it easy to see why
+           * the chunker landed on a given split.
+           */
+          type: "deploy-plan";
+          layer: number; // 0-based layer index
+          crates: string[]; // layer's deployable crates (input order)
+          budget: { ref_time: bigint; proof_size: bigint };
+          perContract: Array<{
+              crate: string;
+              gasLimit: { ref_time: bigint; proof_size: bigint };
+              extrinsicWeight: { ref_time: bigint; proof_size: bigint };
+              storageDeposit: bigint;
+          }>;
+          chunks: string[][]; // resulting chunks of crate names
       }
     | { type: "deploy-register-start"; crates: string[] }
     | {
@@ -136,13 +190,6 @@ export type DeployEvent =
           cids: Record<string, string>;
           txHash: string;
           durationMs: number;
-      }
-    | { type: "publish-error"; crates: string[]; error: string }
-    | {
-          type: "tx-status";
-          phase: "deploy-register" | "publish";
-          crates: string[];
-          status: "signing" | "broadcasting" | "in-block" | "finalized";
       }
     | { type: "pipeline-done"; summary: DeploySummary }
     | { type: "pipeline-error"; error: string };
@@ -402,6 +449,11 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
 
         const deployer = new ContractDeployer(signer, opts.origin, assetHubClient, assetHubApi);
         const publisher = new MetadataPublisher(signer, bulletinApi);
+        emit({
+            type: "phase",
+            name: "connecting-registry",
+            description: "Initializing registry contract handle",
+        });
         const registryContract = await createContractFromClient(
             assetHubClient,
             opts.registryAddress,
@@ -413,7 +465,8 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         const failedCrates = new Set(build.failed);
         const addresses: Record<string, HexString> = {};
 
-        for (const layer of detected.layers) {
+        for (let layerIndex = 0; layerIndex < detected.layers.length; layerIndex++) {
+            const layer = detected.layers[layerIndex];
             const layerDeployable = layer.filter((c) => !failedCrates.has(c));
             if (layerDeployable.length === 0) continue;
 
@@ -425,6 +478,12 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 const toDeploy: string[] = [...nonCdmCrates];
 
                 if (cdmCrates.length > 0) {
+                    emit({
+                        type: "phase",
+                        name: "checking-cache",
+                        description: `Checking layer ${layerIndex + 1} for already-deployed contracts`,
+                        layer: layerIndex,
+                    });
                     const pkgs = cdmCrates.map((c) => order.cdmPackageMap.get(c)!);
                     const registryAddrs = await queryRegistryAddresses(registryContract, pkgs);
 
@@ -484,6 +543,12 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 const metadataList: Metadata[] = [];
 
                 if (cdmToDeploy.length > 0) {
+                    emit({
+                        type: "phase",
+                        name: "preparing-metadata",
+                        description: `Assembling metadata for ${cdmToDeploy.length} contract${cdmToDeploy.length === 1 ? "" : "s"}`,
+                        layer: layerIndex,
+                    });
                     const publishedAt = new Date().toISOString();
                     for (const crate of cdmToDeploy) {
                         const contract = order.contractMap.get(crate)!;
@@ -519,6 +584,14 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 // need it eagerly for the event before signing. Use a dry-run
                 // to fetch CREATE2 addresses for CDM crates; non-CDM have no
                 // salt so their precompute is skipped.
+                if (cdmToDeploy.length > 0) {
+                    emit({
+                        type: "phase",
+                        name: "precomputing-addresses",
+                        description: `Dry-running ${cdmToDeploy.length} contract deploy${cdmToDeploy.length === 1 ? "" : "s"} for layer ${layerIndex + 1}`,
+                        layer: layerIndex,
+                    });
+                }
                 for (const crate of cdmToDeploy) {
                     try {
                         const pvmPath = resolve(opts.rootDir, `target/${crate}.release.polkavm`);
@@ -558,8 +631,20 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     emit({ type: "sign-request", phase: "publish", crates: cdmToDeploy });
                 }
 
+                emit({
+                    type: "phase",
+                    name: "deploying",
+                    description: "Submitting deploy+register batch",
+                    layer: layerIndex,
+                });
                 emit({ type: "deploy-register-start", crates: toDeploy });
                 if (cdmToDeploy.length > 0) {
+                    emit({
+                        type: "phase",
+                        name: "publishing",
+                        description: "Submitting metadata publish",
+                        layer: layerIndex,
+                    });
                     emit({ type: "publish-start", crates: cdmToDeploy });
                 }
 
@@ -584,6 +669,78 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 const nonCdmPvmPaths = nonCdmToDeploy.map((c) =>
                     resolve(opts.rootDir, `target/${c}.release.polkavm`),
                 );
+
+                // Plan BEFORE submission so we can emit a diagnostic
+                // `deploy-plan` event carrying the real budget, per-contract
+                // weights, and final chunk layout. Reuses the plan inside the
+                // batch call (no duplicate dry-run). We build a single merged
+                // plan view over the concatenation [cdm..., nonCdm...] for the
+                // event, even though the actual submission splits CDM vs
+                // non-CDM. The per-contract entries are labeled by crate so
+                // downstream consumers can reconstruct whichever view they need.
+                const cdmPlan =
+                    cdmToDeploy.length > 0 ? await deployer.planDeploy(cdmPvmPaths, cdmPkgs) : null;
+                const nonCdmPlan =
+                    nonCdmToDeploy.length > 0 ? await deployer.planDeploy(nonCdmPvmPaths) : null;
+
+                const planBudget = cdmPlan?.budget ?? nonCdmPlan?.budget;
+                if (planBudget) {
+                    const perContract: Array<{
+                        crate: string;
+                        gasLimit: { ref_time: bigint; proof_size: bigint };
+                        extrinsicWeight: { ref_time: bigint; proof_size: bigint };
+                        storageDeposit: bigint;
+                    }> = [];
+                    const cdmChunks: string[][] =
+                        cdmPlan?.chunks.map((idxs) => idxs.map((i) => cdmToDeploy[i])) ?? [];
+                    const nonCdmChunks: string[][] =
+                        nonCdmPlan?.chunks.map((idxs) => idxs.map((i) => nonCdmToDeploy[i])) ?? [];
+                    if (cdmPlan) {
+                        for (let i = 0; i < cdmToDeploy.length; i++) {
+                            const p = cdmPlan.prepared[i];
+                            perContract.push({
+                                crate: cdmToDeploy[i],
+                                gasLimit: {
+                                    ref_time: p.gasLimit.ref_time,
+                                    proof_size: p.gasLimit.proof_size,
+                                },
+                                extrinsicWeight: {
+                                    ref_time: p.extrinsicWeight.ref_time,
+                                    proof_size: p.extrinsicWeight.proof_size,
+                                },
+                                storageDeposit: p.storageDeposit,
+                            });
+                        }
+                    }
+                    if (nonCdmPlan) {
+                        for (let i = 0; i < nonCdmToDeploy.length; i++) {
+                            const p = nonCdmPlan.prepared[i];
+                            perContract.push({
+                                crate: nonCdmToDeploy[i],
+                                gasLimit: {
+                                    ref_time: p.gasLimit.ref_time,
+                                    proof_size: p.gasLimit.proof_size,
+                                },
+                                extrinsicWeight: {
+                                    ref_time: p.extrinsicWeight.ref_time,
+                                    proof_size: p.extrinsicWeight.proof_size,
+                                },
+                                storageDeposit: p.storageDeposit,
+                            });
+                        }
+                    }
+                    emit({
+                        type: "deploy-plan",
+                        layer: layerIndex,
+                        crates: toDeploy,
+                        budget: {
+                            ref_time: planBudget.ref_time,
+                            proof_size: planBudget.proof_size,
+                        },
+                        perContract,
+                        chunks: [...cdmChunks, ...nonCdmChunks],
+                    });
+                }
 
                 const [cdmDeployRes, nonCdmDeployRes, publishRes] = await Promise.all([
                     cdmToDeploy.length > 0
@@ -614,31 +771,37 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                                       durationMs: Date.now() - deployT0,
                                   });
                               },
+                              cdmPlan ? { plan: cdmPlan } : undefined,
                           )
                         : Promise.resolve(null),
                     nonCdmToDeploy.length > 0
-                        ? deployer.deployBatch(nonCdmPvmPaths, undefined, (chunk) => {
-                              // The callback fires in chunk order; the i-th
-                              // chunk covers indices [cursor, cursor+len).
-                              // chunk.crates contains cdmPackages (`undefined`
-                              // here since non-CDM), so resolve crate names
-                              // through the outer cursor.
-                              const addrs: Record<string, HexString> = {};
-                              const start = nonCdmCursor;
-                              for (let i = 0; i < chunk.addresses.length; i++) {
-                                  const crate = nonCdmToDeploy[start + i];
-                                  addrs[crate] = chunk.addresses[i] as HexString;
-                                  addresses[crate] = chunk.addresses[i] as HexString;
-                              }
-                              nonCdmCursor += chunk.addresses.length;
-                              emit({
-                                  type: "deploy-register-done",
-                                  addresses: addrs,
-                                  txHash: chunk.txHash,
-                                  blockHash: chunk.blockHash,
-                                  durationMs: Date.now() - deployT0,
-                              });
-                          })
+                        ? deployer.deployBatch(
+                              nonCdmPvmPaths,
+                              undefined,
+                              (chunk) => {
+                                  // The callback fires in chunk order; the i-th
+                                  // chunk covers indices [cursor, cursor+len).
+                                  // chunk.crates contains cdmPackages (`undefined`
+                                  // here since non-CDM), so resolve crate names
+                                  // through the outer cursor.
+                                  const addrs: Record<string, HexString> = {};
+                                  const start = nonCdmCursor;
+                                  for (let i = 0; i < chunk.addresses.length; i++) {
+                                      const crate = nonCdmToDeploy[start + i];
+                                      addrs[crate] = chunk.addresses[i] as HexString;
+                                      addresses[crate] = chunk.addresses[i] as HexString;
+                                  }
+                                  nonCdmCursor += chunk.addresses.length;
+                                  emit({
+                                      type: "deploy-register-done",
+                                      addresses: addrs,
+                                      txHash: chunk.txHash,
+                                      blockHash: chunk.blockHash,
+                                      durationMs: Date.now() - deployT0,
+                                  });
+                              },
+                              nonCdmPlan ? { plan: nonCdmPlan } : undefined,
+                          )
                         : Promise.resolve(null),
                     cdmToDeploy.length > 0
                         ? publisher.publishBatch(metadataList).then((r) => {
@@ -656,22 +819,11 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                         : Promise.resolve(null),
                 ]);
 
-                // `cdmDeployRes` / `nonCdmDeployRes` now only carry
-                // `{ addresses, chunkCount }`; per-chunk tx hashes + done events
-                // were emitted above. We already wrote each crate's address into
-                // the outer `addresses` record inside the onChunk callbacks, so
-                // nothing to do here beyond sanity-checking that the aggregated
-                // result addresses line up.
-                if (cdmDeployRes) {
-                    for (let i = 0; i < cdmToDeploy.length; i++) {
-                        addresses[cdmToDeploy[i]] = cdmDeployRes.addresses[i] as HexString;
-                    }
-                }
-                if (nonCdmDeployRes) {
-                    for (let i = 0; i < nonCdmToDeploy.length; i++) {
-                        addresses[nonCdmToDeploy[i]] = nonCdmDeployRes.addresses[i] as HexString;
-                    }
-                }
+                // Addresses are written into `addresses` inside the onChunk
+                // callbacks above; the aggregate results are just for the
+                // return shape, not for mutating state again here.
+                void cdmDeployRes;
+                void nonCdmDeployRes;
 
                 if (publishRes) {
                     const cidsOut: Record<string, string> = {};
@@ -728,6 +880,11 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
             }),
             totalDurationMs: Date.now() - t0,
         };
+        emit({
+            type: "phase",
+            name: "done",
+            description: "Pipeline complete",
+        });
         emit({ type: "pipeline-done", summary });
         return summary;
     } catch (err) {

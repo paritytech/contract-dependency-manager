@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
-import type { ContractStatus } from "../deploy-pipeline";
+import type { ContractStatus, PhaseInfo } from "../deploy-pipeline";
 import {
     Link,
     Spinner,
@@ -71,9 +71,13 @@ function ContractRow({
         buildCell = <EmptyBar />;
     } else {
         // built/deploying/deployed/publishing/registering/done — show completed bar
+        // plus the compiled bytecode size (base-10 kB/MB) if the library
+        // populated `bytecodeSize` on the status.
         const bp = s?.buildProgress;
         if (bp) {
-            buildCell = <ProgressBar compiled={bp.total} total={bp.total} />;
+            buildCell = (
+                <ProgressBar compiled={bp.total} total={bp.total} sizeBytes={s?.bytecodeSize} />
+            );
         } else {
             buildCell = <Done />;
         }

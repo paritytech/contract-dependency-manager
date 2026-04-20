@@ -8,6 +8,7 @@ import {
     type DeployContractsOptions,
     type BuildSummary,
     type DeploySummary,
+    type DeployEvent,
 } from "@dotdm/contracts";
 import { PipelineStatusAdapter, type ContractStatus, type PipelineResult } from "./deploy-pipeline";
 import { DeployTable } from "./components/DeployTable";
@@ -132,7 +133,7 @@ export async function runBuildWithUI(opts: BuildUIOptions): Promise<{
         app.unmount();
     }
 
-    const success = summary.contracts.every((c) => !c.error);
+    const success = summary.contracts.every((c: { error?: string }) => !c.error);
     return {
         summary,
         result: {
@@ -171,7 +172,10 @@ export async function runDeployWithUI(opts: DeployUIOptions): Promise<{
 
     let summary: DeploySummary;
     try {
-        summary = await deployContracts({ ...opts, onEvent: adapter.handleDeployEvent });
+        summary = await deployContracts({
+            ...opts,
+            onEvent: (e: DeployEvent) => adapter.handleDeployEvent(e),
+        });
     } finally {
         await new Promise((r) => setTimeout(r, 200));
         app.unmount();
@@ -181,7 +185,7 @@ export async function runDeployWithUI(opts: DeployUIOptions): Promise<{
     for (const c of summary.contracts) {
         if (c.address) addresses[c.crate] = c.address;
     }
-    const success = summary.contracts.every((c) => c.status !== "error");
+    const success = summary.contracts.every((c: { status: string }) => c.status !== "error");
     return {
         summary,
         result: {

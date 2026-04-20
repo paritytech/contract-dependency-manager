@@ -32,9 +32,9 @@ export class MetadataPublisher {
 
     /**
      * `@dotdm/descriptors` Bulletin and `@polkadot-apps/descriptors` bulletin
-     * are generated from the same chain metadata and are structurally
-     * equivalent at runtime, but their TS types don't unify. Cast through
-     * unknown — will be unnecessary once we move to `@polkadot-apps/chain-client`.
+     * are generated from the same chain metadata and structurally equivalent
+     * at runtime, but their TS types don't unify. Cast through unknown until
+     * papi exposes a way to adopt external descriptors structurally.
      */
     private get apiForBulletin(): BulletinApi {
         return this.bulletinApi as unknown as BulletinApi;
@@ -45,13 +45,19 @@ export class MetadataPublisher {
     ): Promise<{ cid: string; blockNumber: number; txHash: string; blockHash: string }> {
         const data = new TextEncoder().encode(JSON.stringify(metadata));
 
-        const result = await upload(this.apiForBulletin, data, this.signer, {
-            waitFor: "best-block",
-        });
+        let result: Awaited<ReturnType<typeof upload>>;
+        try {
+            result = await upload(this.apiForBulletin, data, this.signer, {
+                waitFor: "best-block",
+            });
+        } catch (err) {
+            const orig = err instanceof Error ? err.message : String(err);
+            throw new Error(`[Bulletin publish] ${orig}`, { cause: err });
+        }
 
         if (result.kind !== "transaction") {
             throw new Error(
-                `Expected transaction upload (standalone CLI), got kind="${result.kind}"`,
+                `[Bulletin publish] Expected transaction upload (standalone CLI), got kind="${result.kind}"`,
             );
         }
 
@@ -80,20 +86,31 @@ export class MetadataPublisher {
             label: `metadata-${idx}`,
         }));
 
-        const results = await batchUpload(this.apiForBulletin, items, this.signer, {
-            waitFor: "best-block",
-        });
+        const N = items.length;
+        let results: Awaited<ReturnType<typeof batchUpload>>;
+        try {
+            results = await batchUpload(this.apiForBulletin, items, this.signer, {
+                waitFor: "best-block",
+            });
+        } catch (err) {
+            const orig = err instanceof Error ? err.message : String(err);
+            throw new Error(`[Bulletin publish batch of ${N}] ${orig}`, { cause: err });
+        }
 
         const cids: string[] = [];
         let lastBlockHash = "";
-        for (const r of results) {
+        for (let i = 0; i < results.length; i++) {
+            const r = results[i];
+            const itemLabel = `[Bulletin publish item ${i + 1}/${N}]`;
             if (!r.success) {
-                throw new Error(`Batch metadata publish failed (${r.label}): ${r.error}`);
+                throw new Error(
+                    `${itemLabel} Batch metadata publish failed (${r.label}): ${r.error}`,
+                );
             }
             cids.push(r.cid);
             if (r.kind !== "transaction") {
                 throw new Error(
-                    `Expected transaction upload (standalone CLI), got kind="${r.kind}"`,
+                    `${itemLabel} Expected transaction upload (standalone CLI), got kind="${r.kind}"`,
                 );
             }
             lastBlockHash = r.blockHash;
