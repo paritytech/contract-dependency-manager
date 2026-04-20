@@ -4,7 +4,16 @@ import type { PolkadotSigner, SS58String, HexString, TypedApi } from "polkadot-a
 import { Binary, Enum } from "polkadot-api";
 import type { ChainClient } from "@polkadot-apps/chain-client";
 import type { AssetHub, Bulletin } from "@dotdm/descriptors";
-import { assetHub as assetHubDescriptor, bulletin as bulletinDescriptor } from "@dotdm/descriptors";
+import {
+    assetHub as assetHubDescriptor,
+    bulletin as bulletinDescriptor,
+    contracts as cdmContracts,
+} from "@dotdm/descriptors";
+import {
+    createContractFromClient,
+    type Contract,
+    type ContractDef,
+} from "@polkadot-apps/contracts";
 
 import {
     type ContractInfo,
@@ -18,7 +27,27 @@ import { pvmContractBuildAsync, type BuildProgressCallback } from "./builder";
 import { computeCid } from "./cid";
 import { ContractDeployer, computeDeploySalt, type AbiEntry, type Metadata } from "./deployer";
 import { MetadataPublisher } from "./publisher";
-import { RegistryManager, getRegistryContract } from "./registry";
+
+const registryAbi = (cdmContracts.contractsRegistry as unknown as { abi: AbiEntry[] }).abi;
+
+async function queryRegistryAddresses(
+    contract: Contract<ContractDef>,
+    pkgs: string[],
+): Promise<Map<string, string | null>> {
+    const entries = await Promise.all(
+        pkgs.map(async (pkg): Promise<readonly [string, string | null]> => {
+            try {
+                const r = await contract.getAddress.query(pkg);
+                if (!r.success) return [pkg, null];
+                const v = r.value as { value?: string } | string | null | undefined;
+                return [pkg, typeof v === "string" ? v : (v?.value ?? null)];
+            } catch {
+                return [pkg, null];
+            }
+        }),
+    );
+    return new Map(entries);
+}
 
 /**
  * `deployContracts` expects a `ChainClient` that provides both `assetHub` and
@@ -362,9 +391,9 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         }
 
         // ---- 2. wire service classes (implementation details) ----
-        // `ContractDeployer`/`MetadataPublisher`/`RegistryManager` declare
-        // their `signer` parameter as `ReturnType<typeof prepareSigner>`, which
-        // is `PolkadotSigner` at runtime — the cast is shape-preserving.
+        // `ContractDeployer`/`MetadataPublisher` declare their `signer`
+        // parameter as `ReturnType<typeof prepareSigner>`, which is
+        // `PolkadotSigner` at runtime — the cast is shape-preserving.
         type Signer = ConstructorParameters<typeof ContractDeployer>[0];
         const signer = opts.signer as unknown as Signer;
         const assetHubApi = opts.client.assetHub as unknown as TypedApi<AssetHub>;
@@ -373,14 +402,12 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
 
         const deployer = new ContractDeployer(signer, opts.origin, assetHubClient, assetHubApi);
         const publisher = new MetadataPublisher(signer, bulletinApi);
-        const registry = new RegistryManager(
-            signer,
-            opts.origin,
-            assetHubApi,
+        const registryContract = await createContractFromClient(
             assetHubClient,
             opts.registryAddress,
+            registryAbi,
+            { defaultSigner: signer, defaultOrigin: opts.origin },
         );
-        const registryContract = getRegistryContract(assetHubClient, opts.registryAddress);
 
         // ---- 3. per-layer deploy loop ----
         const failedCrates = new Set(build.failed);
@@ -399,7 +426,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
 
                 if (cdmCrates.length > 0) {
                     const pkgs = cdmCrates.map((c) => order.cdmPackageMap.get(c)!);
-                    const registryAddrs = await registry.getAddressBatch(pkgs);
+                    const registryAddrs = await queryRegistryAddresses(registryContract, pkgs);
 
                     const checks = await Promise.all(
                         cdmCrates.map(async (crate) => {

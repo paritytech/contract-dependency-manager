@@ -23,7 +23,6 @@
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
         "@noble/hashes": "catalog:",
-        "@polkadot-api/sdk-ink": "catalog:",
         "@polkadot-apps/bulletin": "catalog:",
         "@polkadot-apps/chain-client": "catalog:",
         "@polkadot-apps/contracts": "catalog:",

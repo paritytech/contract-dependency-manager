@@ -11,7 +11,7 @@ import {
     type BatchApi,
     type SubmittableTransaction,
 } from "@polkadot-apps/tx";
-import type { RegistryContract } from "./registry";
+import type { Contract, ContractDef } from "@polkadot-apps/contracts";
 
 /**
  * Compute a deterministic 32-byte CREATE2 salt from a CDM package name.
@@ -255,9 +255,9 @@ export class ContractDeployer {
      * @param pvmPaths - filesystem paths to compiled `.polkavm` bytecode, one per contract.
      * @param cdmPackages - CDM package name per contract — required because both CREATE2
      *   salt derivation and `registry.publishLatest.contract_name` need it.
-     * @param registry - An sdk-ink `Contract` handle obtained from `getRegistryContract(...)`
-     *   (see `registry.ts`). Used to build the `publishLatest(...)` ink txs that get batched
-     *   alongside the deploys.
+     * @param registry - A `@polkadot-apps/contracts` `Contract` handle for the on-chain
+     *   `ContractRegistry` (from `RegistryManager.contract`). Used to `.prepare(...)` the
+     *   `publishLatest(...)` calls that get batched alongside the deploys.
      * @param metadataUris - CIDs from a prior Bulletin publish, one per contract (same order
      *   as `pvmPaths` / `cdmPackages`). Pass `""` for crates without metadata.
      * @returns Deployed addresses (in input order), plus the single batch tx hash / block hash.
@@ -265,7 +265,7 @@ export class ContractDeployer {
     async deployAndRegisterBatch(
         pvmPaths: string[],
         cdmPackages: string[],
-        registry: RegistryContract,
+        registry: Contract<ContractDef>,
         metadataUris: string[],
     ): Promise<{ addresses: string[]; txHash: string; blockHash: string }> {
         if (pvmPaths.length === 0) return { addresses: [], txHash: "", blockHash: "" };
@@ -308,27 +308,20 @@ export class ContractDeployer {
             }),
         );
 
-        // 2. Build the ink `publishLatest` txs for each contract using the
-        //    precomputed CREATE2 address + the caller-supplied metadata CID.
-        const sendOpts = {
+        // 2. Build the `publishLatest` BatchableCalls via `.prepare(...)` using
+        //    the precomputed CREATE2 address + the caller-supplied metadata CID.
+        const prepareOpts = {
             gasLimit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
             storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
         };
-        const registerTxs = cdmPackages.map((pkg, i) =>
-            registry.send("publishLatest", {
-                data: {
-                    contract_name: pkg,
-                    contract_address: prepared[i].address,
-                    metadata_uri: metadataUris[i],
-                },
-                ...sendOpts,
-            }),
+        const registerCalls = cdmPackages.map((pkg, i) =>
+            registry.publishLatest.prepare(pkg, prepared[i].address, metadataUris[i], prepareOpts),
         );
 
         // 3. Submit N deploys + N registers in one atomic batch_all.
-        //    `batchSubmitAndWatch` resolves ink AsyncTransaction wrappers for us.
+        //    `batchSubmitAndWatch` resolves each call's `.waited` for us.
         const result = await batchSubmitAndWatch(
-            [...prepared.map((p) => p.tx), ...registerTxs],
+            [...prepared.map((p) => p.tx), ...registerCalls],
             this.api as unknown as BatchApi,
             this.signer,
             { mode: "batch_all", waitFor: "best-block" },

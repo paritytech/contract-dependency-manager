@@ -31,12 +31,6 @@ export {
 
 export { MetadataPublisher } from "./publisher";
 
-export {
-    getRegistryContract,
-    type RegistryContract,
-    RegistryManager,
-} from "./registry";
-
 export { computeCid } from "./cid";
 
 export {
