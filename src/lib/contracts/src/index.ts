@@ -25,8 +25,12 @@ export {
     type AbiParam,
     type AbiEntry,
     type Metadata,
+    type WeightLike,
     ContractDeployer,
     computeDeploySalt,
+    chunkByWeight,
+    FALLBACK_MAX_EXTRINSIC_WEIGHT,
+    WEIGHT_BUDGET_SAFETY_FACTOR,
 } from "./deployer";
 
 export { MetadataPublisher } from "./publisher";

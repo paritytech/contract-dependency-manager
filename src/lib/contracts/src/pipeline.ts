@@ -565,14 +565,17 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
 
                 const deployT0 = Date.now();
                 const publishT0 = Date.now();
+                let cdmCursor = 0;
+                let nonCdmCursor = 0;
 
-                // Non-CDM crates skip register. If ANY CDM crate in the layer
-                // is deploying, batch them all via deployAndRegisterBatch and
-                // pass "" metadataUri for the non-CDM ones — but the registry
-                // call only happens for CDM crates, so split:
+                // Non-CDM crates skip register. We split:
                 // - pure deploy (utility.batch_all) for non-CDM
                 // - deploy+register (utility.batch_all) for CDM
-                // Run both + publish in parallel.
+                // Both paths now chunk by weight, emitting one
+                // `deploy-register-done` per chunk via the onChunk callback.
+                // `durationMs` on each done event is measured from the layer's
+                // deploy start (deployT0) — not per-chunk — so the UI sees a
+                // monotonically growing duration as chunks land.
                 const cdmPvmPaths = cdmToDeploy.map((c) =>
                     resolve(opts.rootDir, `target/${c}.release.polkavm`),
                 );
@@ -589,10 +592,53 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                               cdmPkgs,
                               registryContract,
                               cdmMetadataUris,
+                              (chunk) => {
+                                  // Callback fires in chunk order; the i-th
+                                  // chunk covers cdmToDeploy[cdmCursor..+len].
+                                  // chunk.crates holds the cdmPackage names
+                                  // (informational); we resolve crate names
+                                  // through the cursor.
+                                  const addrs: Record<string, HexString> = {};
+                                  const start = cdmCursor;
+                                  for (let i = 0; i < chunk.addresses.length; i++) {
+                                      const crate = cdmToDeploy[start + i];
+                                      addrs[crate] = chunk.addresses[i] as HexString;
+                                      addresses[crate] = chunk.addresses[i] as HexString;
+                                  }
+                                  cdmCursor += chunk.addresses.length;
+                                  emit({
+                                      type: "deploy-register-done",
+                                      addresses: addrs,
+                                      txHash: chunk.txHash,
+                                      blockHash: chunk.blockHash,
+                                      durationMs: Date.now() - deployT0,
+                                  });
+                              },
                           )
                         : Promise.resolve(null),
                     nonCdmToDeploy.length > 0
-                        ? deployer.deployBatch(nonCdmPvmPaths)
+                        ? deployer.deployBatch(nonCdmPvmPaths, undefined, (chunk) => {
+                              // The callback fires in chunk order; the i-th
+                              // chunk covers indices [cursor, cursor+len).
+                              // chunk.crates contains cdmPackages (`undefined`
+                              // here since non-CDM), so resolve crate names
+                              // through the outer cursor.
+                              const addrs: Record<string, HexString> = {};
+                              const start = nonCdmCursor;
+                              for (let i = 0; i < chunk.addresses.length; i++) {
+                                  const crate = nonCdmToDeploy[start + i];
+                                  addrs[crate] = chunk.addresses[i] as HexString;
+                                  addresses[crate] = chunk.addresses[i] as HexString;
+                              }
+                              nonCdmCursor += chunk.addresses.length;
+                              emit({
+                                  type: "deploy-register-done",
+                                  addresses: addrs,
+                                  txHash: chunk.txHash,
+                                  blockHash: chunk.blockHash,
+                                  durationMs: Date.now() - deployT0,
+                              });
+                          })
                         : Promise.resolve(null),
                     cdmToDeploy.length > 0
                         ? publisher.publishBatch(metadataList).then((r) => {
@@ -610,38 +656,22 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                         : Promise.resolve(null),
                 ]);
 
-                // Apply deploy-register results
-                const deployAddrs: Record<string, HexString> = {};
-                let deployTxHash = "";
-                let deployBlockHash = "";
+                // `cdmDeployRes` / `nonCdmDeployRes` now only carry
+                // `{ addresses, chunkCount }`; per-chunk tx hashes + done events
+                // were emitted above. We already wrote each crate's address into
+                // the outer `addresses` record inside the onChunk callbacks, so
+                // nothing to do here beyond sanity-checking that the aggregated
+                // result addresses line up.
                 if (cdmDeployRes) {
                     for (let i = 0; i < cdmToDeploy.length; i++) {
-                        deployAddrs[cdmToDeploy[i]] = cdmDeployRes.addresses[i] as HexString;
                         addresses[cdmToDeploy[i]] = cdmDeployRes.addresses[i] as HexString;
                     }
-                    deployTxHash = cdmDeployRes.txHash;
-                    deployBlockHash = cdmDeployRes.blockHash;
                 }
                 if (nonCdmDeployRes) {
                     for (let i = 0; i < nonCdmToDeploy.length; i++) {
-                        deployAddrs[nonCdmToDeploy[i]] = nonCdmDeployRes.addresses[i] as HexString;
                         addresses[nonCdmToDeploy[i]] = nonCdmDeployRes.addresses[i] as HexString;
                     }
-                    // Prefer cdmDeployRes tx/block hash for the "combined" event;
-                    // if there's only non-CDM, fall back to that.
-                    if (!deployTxHash) {
-                        deployTxHash = nonCdmDeployRes.txHash;
-                        deployBlockHash = nonCdmDeployRes.blockHash;
-                    }
                 }
-
-                emit({
-                    type: "deploy-register-done",
-                    addresses: deployAddrs,
-                    txHash: deployTxHash,
-                    blockHash: deployBlockHash,
-                    durationMs: Date.now() - deployT0,
-                });
 
                 if (publishRes) {
                     const cidsOut: Record<string, string> = {};

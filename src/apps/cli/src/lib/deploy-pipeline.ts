@@ -158,6 +158,11 @@ export class PipelineStatusAdapter {
                 }
                 return;
             case "deploy-register-done": {
+                // Multiple done events can fire per layer when the deployer
+                // weight-chunks a layer into >1 batches — each event only
+                // carries the crates in THAT chunk. We only mutate crates
+                // named in `e.addresses`; others stay in "deploying" until
+                // their chunk lands.
                 for (const crate of Object.keys(e.addresses)) {
                     const addr = e.addresses[crate];
                     if (!addr) continue;
