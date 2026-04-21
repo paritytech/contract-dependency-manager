@@ -232,7 +232,6 @@ export class ContractDeployer {
         const code = Binary.fromBytes(bytecode);
         const data = Binary.fromBytes(new Uint8Array(0));
         const salt = cdmPackage ? computeDeploySalt(cdmPackage) : undefined;
-
         const dryRun = await this.api.apis.ReviveApi.instantiate(
             this.origin,
             0n,
@@ -241,6 +240,7 @@ export class ContractDeployer {
             Enum("Upload", code),
             data,
             salt,
+            { at: "best" },
         );
 
         if (dryRun.result.success === false) {

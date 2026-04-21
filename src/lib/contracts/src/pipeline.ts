@@ -599,6 +599,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                             Enum("Upload", code),
                             Binary.fromBytes(new Uint8Array(0)),
                             salt,
+                            { at: "best" },
                         );
                         if (result.result.success) {
                             const addr = result.result.value.addr.asHex() as HexString;
