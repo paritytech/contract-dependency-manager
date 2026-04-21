@@ -1,5 +1,13 @@
 # @dotdm/cli
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [8adb0a9]
+  - @dotdm/contracts@1.0.1
+  - @dotdm/cdm@0.5.6
+
 ## 0.6.0
 
 ### Minor Changes
