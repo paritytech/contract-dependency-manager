@@ -33,4 +33,9 @@ program.addCommand(templateCommand);
 program.addCommand(initCommand);
 program.addCommand(accountCommand);
 
-program.parse();
+// bun --compile quirk: when run with no user args, argv[2] is set to the
+// program name (the argv[0] used to invoke the binary), which commander then
+// treats as an unknown subcommand.
+let args = process.argv.slice(2);
+if (args.length === 1 && args[0] === program.name()) args = [];
+program.parse(args, { from: "user" });
