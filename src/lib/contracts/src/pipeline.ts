@@ -64,6 +64,8 @@ export interface BuildContractsOptions {
     rootDir: string;
     /** Crate-name filter; default: all detected */
     contracts?: string[];
+    /** Cargo feature flags to pass to the build */
+    features?: string;
     onEvent?: (e: BuildEvent) => void;
 }
 
@@ -90,6 +92,8 @@ export interface BuildSummary {
 export interface DeployContractsOptions {
     rootDir: string;
     contracts?: string[];
+    /** Cargo feature flags to pass to the build */
+    features?: string;
 
     // Injected infra — REQUIRED, do not create connections internally
     client: PipelineChainClient;
@@ -250,6 +254,7 @@ async function runBuildPhase(
     order: DeploymentOrderLayered,
     layers: string[][],
     emit: BuildEmitter,
+    features?: string,
 ): Promise<BuildPhaseResult> {
     const failed = new Set<string>();
     const successful: string[] = [];
@@ -278,7 +283,7 @@ async function runBuildPhase(
                 const onProgress: BuildProgressCallback = (compiled, total) => {
                     emit({ type: "build-progress", crate, compiled, total });
                 };
-                return pvmContractBuildAsync(rootDir, crate, onProgress);
+                return pvmContractBuildAsync(rootDir, crate, onProgress, features);
             }),
         );
 
@@ -350,7 +355,7 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
             .filter((c): c is ContractInfo => !!c);
         emit({ type: "detect", contracts, layers });
 
-        const build = await runBuildPhase(opts.rootDir, order, layers, emit as BuildEmitter);
+        const build = await runBuildPhase(opts.rootDir, order, layers, emit as BuildEmitter, opts.features);
 
         const summary: BuildSummary = {
             contracts: crates.map((crate) => {
@@ -423,6 +428,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
             order,
             detected.layers,
             emit as BuildEmitter,
+            opts.features,
         );
 
         for (const crate of build.failed) {
@@ -1033,6 +1039,28 @@ if (import.meta.vitest) {
             (mockDetect as any).mockReturnValue(makeOrder([["a", "b", "c"]]));
             const summary = await buildContracts({ rootDir: "/fake", contracts: ["b"] });
             expect(summary.contracts.map((c) => c.crate)).toEqual(["b"]);
+        });
+
+        test("features option is forwarded to pvmContractBuildAsync", async () => {
+            (mockDetect as any).mockReturnValue(makeOrder([["a"]]));
+            await buildContracts({ rootDir: "/fake", features: "my-feature" });
+            expect(mockBuild).toHaveBeenCalledWith(
+                "/fake",
+                "a",
+                expect.any(Function),
+                "my-feature",
+            );
+        });
+
+        test("features is undefined when not provided", async () => {
+            (mockDetect as any).mockReturnValue(makeOrder([["a"]]));
+            await buildContracts({ rootDir: "/fake" });
+            expect(mockBuild).toHaveBeenCalledWith(
+                "/fake",
+                "a",
+                expect.any(Function),
+                undefined,
+            );
         });
     });
 }

@@ -22,6 +22,7 @@ const deploy = new Command("deploy")
     .option("--bulletin-url <url>", "WebSocket URL for Bulletin chain")
     .option("-n, --name <name>", "Chain preset name (polkadot, paseo, local, custom)")
     .option("--suri <uri>", "Secret URI for signing")
+    .option("--features <features>", "Cargo feature flags to pass to the build")
     .option(
         "--bootstrap",
         "Full bootstrap: deploy ContractRegistry first, then all CDM contracts",
@@ -34,6 +35,7 @@ type DeployOptions = {
     ipfsGatewayUrl?: string;
     name?: string;
     suri?: string;
+    features?: string;
     bootstrap: boolean;
 };
 
@@ -139,6 +141,7 @@ async function deployWithRegistry(
         signer,
         origin,
         registryAddress: REGISTRY_ADDRESS as HexString,
+        features: opts.features,
         assethubUrl: opts.assethubUrl,
         bulletinUrl: opts.bulletinUrl,
         ipfsGatewayUrl: opts.ipfsGatewayUrl,
