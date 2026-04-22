@@ -355,7 +355,13 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
             .filter((c): c is ContractInfo => !!c);
         emit({ type: "detect", contracts, layers });
 
-        const build = await runBuildPhase(opts.rootDir, order, layers, emit as BuildEmitter, opts.features);
+        const build = await runBuildPhase(
+            opts.rootDir,
+            order,
+            layers,
+            emit as BuildEmitter,
+            opts.features,
+        );
 
         const summary: BuildSummary = {
             contracts: crates.map((crate) => {
@@ -1055,12 +1061,7 @@ if (import.meta.vitest) {
         test("features is undefined when not provided", async () => {
             (mockDetect as any).mockReturnValue(makeOrder([["a"]]));
             await buildContracts({ rootDir: "/fake" });
-            expect(mockBuild).toHaveBeenCalledWith(
-                "/fake",
-                "a",
-                expect.any(Function),
-                undefined,
-            );
+            expect(mockBuild).toHaveBeenCalledWith("/fake", "a", expect.any(Function), undefined);
         });
     });
 }
