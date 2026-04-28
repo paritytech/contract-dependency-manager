@@ -12,7 +12,7 @@ import {
 } from "@dotdm/env";
 import { getAccount } from "@dotdm/utils/accounts";
 import { ALICE_SS58, REGISTRY_ADDRESS } from "@dotdm/utils";
-import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@dotdm/contracts";
+import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, resolveFeatures } from "@dotdm/contracts";
 import type { HexString } from "polkadot-api";
 import { runDeployWithUI, spinner } from "../lib/ui";
 
@@ -83,6 +83,7 @@ deploy.action(async (opts: DeployOptions) => {
     }
 
     const rootDir = process.cwd();
+    opts.features = resolveFeatures(opts.features, rootDir);
 
     if (opts.bootstrap) {
         return bootstrapDeploy(rootDir, opts);

@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { resolve } from "path";
+import { resolveFeatures } from "@dotdm/contracts";
 import { runBuildWithUI } from "../lib/ui";
 
 const build = new Command("build")
@@ -18,10 +19,12 @@ build.action(async (opts: BuildOptions) => {
     const rootDir = resolve(opts.root);
     console.log(`Root: ${rootDir}\n`);
 
+    const features = resolveFeatures(opts.features, rootDir);
+
     const { result } = await runBuildWithUI({
         rootDir,
         contracts: opts.contracts,
-        features: opts.features,
+        features,
     });
 
     if (!result.success) {
