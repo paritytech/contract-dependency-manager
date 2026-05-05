@@ -19,9 +19,12 @@ export type BuildProgressCallback = (
 /**
  * Build a single contract using `cargo pvm-contract build`.
  */
-export function pvmContractBuild(rootDir: string, crateName: string): void {
+export function pvmContractBuild(rootDir: string, crateName: string, features?: string): void {
     const manifestPath = resolve(rootDir, "Cargo.toml");
     const args = ["pvm-contract", "build", "--manifest-path", manifestPath, "-p", crateName];
+    if (features) {
+        args.push("--features", features);
+    }
     const env: Record<string, string> = {
         ...(process.env as Record<string, string>),
         CONTRACTS_REGISTRY_ADDR: REGISTRY_ADDRESS,
@@ -36,6 +39,7 @@ export async function pvmContractBuildAsync(
     rootDir: string,
     crateName: string,
     onProgress?: BuildProgressCallback,
+    features?: string,
 ): Promise<BuildResult> {
     const manifestPath = resolve(rootDir, "Cargo.toml");
 
@@ -51,6 +55,9 @@ export async function pvmContractBuildAsync(
             "--message-format",
             "json,json-diagnostic-rendered-ansi",
         ];
+        if (features) {
+            args.push("--features", features);
+        }
         const env: Record<string, string> = {
             ...(process.env as Record<string, string>),
             CONTRACTS_REGISTRY_ADDR: REGISTRY_ADDRESS,

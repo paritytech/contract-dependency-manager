@@ -23,13 +23,14 @@ describe("CLI commands", () => {
         const output = execSync(`bun run ${CLI} build --help`).toString();
         expect(output).toContain("--contracts");
         expect(output).toContain("--root");
+        expect(output).toContain("--features");
     });
 
     test("cdm deploy --help shows options", () => {
         const output = execSync(`bun run ${CLI} deploy --help`).toString();
         expect(output).toContain("--suri");
         expect(output).toContain("--bootstrap");
-        expect(output).toContain("--bootstrap");
+        expect(output).toContain("--features");
     });
 
     test("cdm install --help shows options", () => {

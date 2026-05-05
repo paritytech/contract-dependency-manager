@@ -63,6 +63,8 @@ export {
     writeCdmJson,
 } from "./cdm-json";
 
+export { type CdmLocalJson, readCdmLocalJson, resolveFeatures } from "./cdm-local-json";
+
 export {
     buildContracts,
     deployContracts,

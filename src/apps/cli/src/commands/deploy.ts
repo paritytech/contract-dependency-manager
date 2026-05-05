@@ -12,7 +12,7 @@ import {
 } from "@dotdm/env";
 import { getAccount } from "@dotdm/utils/accounts";
 import { ALICE_SS58, REGISTRY_ADDRESS } from "@dotdm/utils";
-import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@dotdm/contracts";
+import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, resolveFeatures } from "@dotdm/contracts";
 import type { HexString } from "polkadot-api";
 import { runDeployWithUI, spinner } from "../lib/ui";
 
@@ -22,6 +22,7 @@ const deploy = new Command("deploy")
     .option("--bulletin-url <url>", "WebSocket URL for Bulletin chain")
     .option("-n, --name <name>", "Chain preset name (polkadot, paseo, local, custom)")
     .option("--suri <uri>", "Secret URI for signing")
+    .option("--features <features>", "Cargo feature flags to pass to the build")
     .option(
         "--bootstrap",
         "Full bootstrap: deploy ContractRegistry first, then all CDM contracts",
@@ -34,6 +35,7 @@ type DeployOptions = {
     ipfsGatewayUrl?: string;
     name?: string;
     suri?: string;
+    features?: string;
     bootstrap: boolean;
 };
 
@@ -81,6 +83,7 @@ deploy.action(async (opts: DeployOptions) => {
     }
 
     const rootDir = process.cwd();
+    opts.features = resolveFeatures(opts.features, rootDir);
 
     if (opts.bootstrap) {
         return bootstrapDeploy(rootDir, opts);
@@ -139,6 +142,7 @@ async function deployWithRegistry(
         signer,
         origin,
         registryAddress: REGISTRY_ADDRESS as HexString,
+        features: opts.features,
         assethubUrl: opts.assethubUrl,
         bulletinUrl: opts.bulletinUrl,
         ipfsGatewayUrl: opts.ipfsGatewayUrl,
