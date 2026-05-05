@@ -1,5 +1,17 @@
 # @dotdm/cli
 
+## 0.7.0
+
+### Minor Changes
+
+- 11c598b: Support passing `--features` to `cdm build` and `cdm deploy` (forwarded to `cargo pvm-contract build`), useful for compile-time switches such as choosing a contract name via a `dev` feature. Defaults can be set in a gitignored `cdm.local.json` so each developer can keep their own feature set without polluting the repo.
+
+### Patch Changes
+
+- Updated dependencies [11c598b]
+  - @dotdm/contracts@1.1.0
+  - @dotdm/cdm@0.5.7
+
 ## 0.6.1
 
 ### Patch Changes
