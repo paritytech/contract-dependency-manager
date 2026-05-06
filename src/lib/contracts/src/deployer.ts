@@ -13,12 +13,27 @@ import {
 import type { Contract, ContractDef } from "@polkadot-apps/contracts";
 
 /**
- * Compute a deterministic 32-byte CREATE2 salt from a CDM package name.
- * Using CREATE2 ensures the same contract gets the same address on every chain
- * (given the same deployer, salt, and bytecode).
+ * Registry version index used to make CREATE2 salts unique across publishes
+ * of the same CDM package.
  */
-export function computeDeploySalt(cdmPackage: string): FixedSizeBinary<32> {
-    const hash = blake2b(new TextEncoder().encode(cdmPackage), { dkLen: 32 });
+export type DeploySaltVersion = number | bigint;
+
+/**
+ * Compute a deterministic 32-byte CREATE2 salt from a CDM package name and,
+ * when known, the registry version index that this deployment will publish.
+ *
+ * With no version this preserves the original package-only salt, which keeps
+ * existing callers such as the universal ContractRegistry deployment stable.
+ * CDM package deployments should pass the next registry version index so each
+ * publish derives a fresh address even if the deployer and bytecode repeat.
+ */
+export function computeDeploySalt(
+    cdmPackage: string,
+    version?: DeploySaltVersion,
+): FixedSizeBinary<32> {
+    const material =
+        version === undefined ? cdmPackage : JSON.stringify([cdmPackage, version.toString()]);
+    const hash = blake2b(new TextEncoder().encode(material), { dkLen: 32 });
     return FixedSizeBinary.fromBytes(hash) as FixedSizeBinary<32>;
 }
 
@@ -183,8 +198,9 @@ export class ContractDeployer {
     async deploy(
         pvmPath: string,
         cdmPackage?: string,
+        saltVersion?: DeploySaltVersion,
     ): Promise<{ address: string; txHash: string; blockHash: string }> {
-        const { tx } = await this.dryRunDeploy(pvmPath, cdmPackage);
+        const { tx } = await this.dryRunDeploy(pvmPath, cdmPackage, saltVersion);
 
         let result: Awaited<ReturnType<typeof submitAndWatch>>;
         try {
@@ -227,11 +243,11 @@ export class ContractDeployer {
      * `ReviveApi.instantiate` round-trip that `deployAndRegisterBatch` used
      * to perform purely to recover the CREATE2 address.
      */
-    async dryRunDeploy(pvmPath: string, cdmPackage?: string) {
+    async dryRunDeploy(pvmPath: string, cdmPackage?: string, saltVersion?: DeploySaltVersion) {
         const bytecode = readFileSync(pvmPath);
         const code = Binary.fromBytes(bytecode);
         const data = Binary.fromBytes(new Uint8Array(0));
-        const salt = cdmPackage ? computeDeploySalt(cdmPackage) : undefined;
+        const salt = cdmPackage ? computeDeploySalt(cdmPackage, saltVersion) : undefined;
         const dryRun = await this.api.apis.ReviveApi.instantiate(
             this.origin,
             0n,
@@ -343,9 +359,10 @@ export class ContractDeployer {
     async planDeploy(
         pvmPaths: string[],
         cdmPackages?: (string | undefined)[],
+        saltVersions?: (DeploySaltVersion | undefined)[],
     ): Promise<DeployPlan> {
         const prepared = await Promise.all(
-            pvmPaths.map((p, i) => this.dryRunDeploy(p, cdmPackages?.[i])),
+            pvmPaths.map((p, i) => this.dryRunDeploy(p, cdmPackages?.[i], saltVersions?.[i])),
         );
         const budget = await this.resolveChunkBudget();
         const chunks = chunkByWeight(
@@ -381,14 +398,15 @@ export class ContractDeployer {
             chunkIndex: number;
             totalChunks: number;
         }) => void,
-        opts?: { plan?: DeployPlan },
+        opts?: { plan?: DeployPlan; saltVersions?: (DeploySaltVersion | undefined)[] },
     ): Promise<{ addresses: string[]; chunkCount: number }> {
         if (pvmPaths.length === 0) return { addresses: [], chunkCount: 0 };
 
         // 1. Dry-run all contracts up front so we have weights + CREATE2-style
         //    addresses for the chunker — unless a precomputed plan was passed in.
         // 2. Chunk by cumulative declared weight (already done inside the plan).
-        const plan = opts?.plan ?? (await this.planDeploy(pvmPaths, cdmPackages));
+        const plan =
+            opts?.plan ?? (await this.planDeploy(pvmPaths, cdmPackages, opts?.saltVersions));
         const { prepared, chunks } = plan;
 
         const addresses: string[] = new Array(pvmPaths.length);
@@ -404,7 +422,7 @@ export class ContractDeployer {
             let chunkResult: { txHash: string; blockHash: string; addrs: string[] };
             if (idxs.length === 1) {
                 const i = idxs[0];
-                const r = await this.deploy(pvmPaths[i], cdmPackages?.[i]);
+                const r = await this.deploy(pvmPaths[i], cdmPackages?.[i], opts?.saltVersions?.[i]);
                 addresses[i] = r.address;
                 chunkResult = { txHash: r.txHash, blockHash: r.blockHash, addrs: [r.address] };
             } else {
@@ -515,7 +533,7 @@ export class ContractDeployer {
             chunkIndex: number;
             totalChunks: number;
         }) => void,
-        opts?: { plan?: DeployPlan },
+        opts?: { plan?: DeployPlan; saltVersions?: DeploySaltVersion[] },
     ): Promise<{ addresses: string[]; chunkCount: number }> {
         if (pvmPaths.length === 0) return { addresses: [], chunkCount: 0 };
         if (pvmPaths.length !== cdmPackages.length || pvmPaths.length !== metadataUris.length) {
@@ -525,7 +543,8 @@ export class ContractDeployer {
         }
 
         // 1. Dry-run + chunk (or reuse a caller-supplied plan).
-        const plan = opts?.plan ?? (await this.planDeploy(pvmPaths, cdmPackages));
+        const plan =
+            opts?.plan ?? (await this.planDeploy(pvmPaths, cdmPackages, opts?.saltVersions));
         const { prepared, chunks } = plan;
 
         // 2. Build the `publishLatest` BatchableCalls via `.prepare(...)` using
@@ -606,6 +625,24 @@ export class ContractDeployer {
 
 if (import.meta.vitest) {
     const { describe, test, expect } = import.meta.vitest;
+
+    describe("computeDeploySalt", () => {
+        test("preserves package-only salt when version is omitted", () => {
+            expect(computeDeploySalt("@cdm/example").asHex()).toBe(
+                computeDeploySalt("@cdm/example", undefined).asHex(),
+            );
+        });
+
+        test("includes registry version when provided", () => {
+            const unversioned = computeDeploySalt("@cdm/example").asHex();
+            const version0 = computeDeploySalt("@cdm/example", 0).asHex();
+            const version1 = computeDeploySalt("@cdm/example", 1).asHex();
+
+            expect(version0).not.toBe(unversioned);
+            expect(version1).not.toBe(version0);
+            expect(computeDeploySalt("@cdm/example", 1n).asHex()).toBe(version1);
+        });
+    });
 
     describe("chunkByWeight", () => {
         const budget: WeightLike = { ref_time: 1000n, proof_size: 1000n };

@@ -56,7 +56,7 @@ export interface ContractStatus {
 export interface PhaseInfo {
     name:
         | "connecting-registry"
-        | "checking-cache"
+        | "checking-versions"
         | "precomputing-addresses"
         | "preparing-metadata"
         | "deploying"

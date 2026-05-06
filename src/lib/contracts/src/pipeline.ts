@@ -22,23 +22,28 @@ import {
 } from "./detection";
 import { pvmContractBuildAsync, type BuildProgressCallback } from "./builder";
 import { computeCid } from "./cid";
-import { ContractDeployer, computeDeploySalt, type AbiEntry, type Metadata } from "./deployer";
+import {
+    ContractDeployer,
+    computeDeploySalt,
+    type AbiEntry,
+    type DeploySaltVersion,
+    type Metadata,
+} from "./deployer";
 import { MetadataPublisher } from "./publisher";
 
-async function queryRegistryAddresses(
+async function queryRegistryVersionCounts(
     contract: Contract<ContractDef>,
     pkgs: string[],
-): Promise<Map<string, string | null>> {
+): Promise<Map<string, number>> {
     const entries = await Promise.all(
-        pkgs.map(async (pkg): Promise<readonly [string, string | null]> => {
-            try {
-                const r = await contract.getAddress.query(pkg);
-                if (!r.success) return [pkg, null];
-                const v = r.value as { value?: string } | string | null | undefined;
-                return [pkg, typeof v === "string" ? v : (v?.value ?? null)];
-            } catch {
-                return [pkg, null];
+        pkgs.map(async (pkg): Promise<readonly [string, number]> => {
+            const versionResult = await contract.getVersionCount.query(pkg);
+
+            if (!versionResult.success || typeof versionResult.value !== "number") {
+                throw new Error(`Failed to query registry version count for "${pkg}"`);
             }
+
+            return [pkg, versionResult.value];
         }),
     );
     return new Map(entries);
@@ -127,7 +132,7 @@ export type DeployEvent =
            *
            * `name` values:
            *  - `connecting-registry`    — creating the ContractRegistry handle
-           *  - `checking-cache`          — querying on-chain addresses + code
+           *  - `checking-versions`       — querying registry version counts
            *  - `precomputing-addresses`  — dry-run planDeploy for CREATE2 addrs
            *  - `preparing-metadata`      — assembling ABI/readme/etc for publish
            *  - `deploying`               — about to emit `deploy-register-start`
@@ -137,7 +142,7 @@ export type DeployEvent =
           type: "phase";
           name:
               | "connecting-registry"
-              | "checking-cache"
+              | "checking-versions"
               | "precomputing-addresses"
               | "preparing-metadata"
               | "deploying"
@@ -388,8 +393,9 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
 /**
  * Full pipeline: build contracts, then for each layer of dependencies
  *
- *  1. Cache-check — compare local bytecode to what's currently on-chain for
- *     each CDM-annotated crate, and skip if identical.
+ *  1. Query the next registry version index for each CDM-annotated crate.
+ *     That version is included in its CREATE2 salt so repeated publishes get
+ *     fresh addresses instead of colliding with previous deployments.
  *  2. Publish metadata to Bulletin (1 tx per CDM crate) AND
  *  3. Deploy + register on AssetHub in one `Utility.batch_all`
  *
@@ -469,6 +475,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         // ---- 3. per-layer deploy loop ----
         const failedCrates = new Set(build.failed);
         const addresses: Record<string, HexString> = {};
+        const nextVersionByCrate = new Map<string, DeploySaltVersion>();
 
         for (let layerIndex = 0; layerIndex < detected.layers.length; layerIndex++) {
             const layer = detected.layers[layerIndex];
@@ -476,66 +483,29 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
             if (layerDeployable.length === 0) continue;
 
             try {
-                // 3a. cache check
+                // 3a. Resolve registry version counts for versioned CREATE2 salts.
                 const cdmCrates = layerDeployable.filter((c) => order.cdmPackageMap.has(c));
                 const nonCdmCrates = layerDeployable.filter((c) => !order.cdmPackageMap.has(c));
 
-                const toDeploy: string[] = [...nonCdmCrates];
+                const toDeploy: string[] = [...nonCdmCrates, ...cdmCrates];
 
                 if (cdmCrates.length > 0) {
                     emit({
                         type: "phase",
-                        name: "checking-cache",
-                        description: `Checking layer ${layerIndex + 1} for already-deployed contracts`,
+                        name: "checking-versions",
+                        description: `Checking layer ${layerIndex + 1} registry versions`,
                         layer: layerIndex,
                     });
                     const pkgs = cdmCrates.map((c) => order.cdmPackageMap.get(c)!);
-                    const registryAddrs = await queryRegistryAddresses(registryContract, pkgs);
+                    const versionCounts = await queryRegistryVersionCounts(registryContract, pkgs);
 
-                    const checks = await Promise.all(
-                        cdmCrates.map(async (crate) => {
-                            const pkg = order.cdmPackageMap.get(crate)!;
-                            const regAddr = registryAddrs.get(pkg);
-                            if (!regAddr) return { crate, cached: false as const };
-
-                            const pvmPath = resolve(
-                                opts.rootDir,
-                                `target/${crate}.release.polkavm`,
-                            );
-                            const localCode = readFileSync(pvmPath);
-                            const onChainCode = await deployer.getOnChainCode(regAddr);
-
-                            if (
-                                onChainCode &&
-                                localCode.length === onChainCode.length &&
-                                Buffer.from(localCode).equals(Buffer.from(onChainCode))
-                            ) {
-                                return {
-                                    crate,
-                                    cached: true as const,
-                                    address: regAddr as HexString,
-                                };
-                            }
-                            return { crate, cached: false as const };
-                        }),
-                    );
-
-                    for (const ch of checks) {
-                        if (ch.cached) {
-                            addresses[ch.crate] = ch.address;
-                            status.set(ch.crate, {
-                                status: "cached",
-                                address: ch.address,
-                                cdmPackage: order.cdmPackageMap.get(ch.crate),
-                            });
-                            emit({
-                                type: "check-cached",
-                                crate: ch.crate,
-                                address: ch.address,
-                            });
-                        } else {
-                            toDeploy.push(ch.crate);
+                    for (const crate of cdmCrates) {
+                        const pkg = order.cdmPackageMap.get(crate)!;
+                        const versionCount = versionCounts.get(pkg);
+                        if (versionCount === undefined) {
+                            throw new Error(`Failed to query registry version count for "${pkg}"`);
                         }
+                        nextVersionByCrate.set(crate, versionCount);
                     }
                 }
 
@@ -601,8 +571,12 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     try {
                         const pvmPath = resolve(opts.rootDir, `target/${crate}.release.polkavm`);
                         const pkg = order.cdmPackageMap.get(crate)!;
+                        const version = nextVersionByCrate.get(crate);
+                        if (version === undefined) {
+                            throw new Error(`Missing registry version count for "${pkg}"`);
+                        }
                         const code = Binary.fromBytes(readFileSync(pvmPath));
-                        const salt = computeDeploySalt(pkg);
+                        const salt = computeDeploySalt(pkg, version);
                         const result = await assetHubApi.apis.ReviveApi.instantiate(
                             opts.origin,
                             0n,
@@ -671,6 +645,13 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     resolve(opts.rootDir, `target/${c}.release.polkavm`),
                 );
                 const cdmPkgs = cdmToDeploy.map((c) => order.cdmPackageMap.get(c)!);
+                const cdmSaltVersions = cdmToDeploy.map((crate, i) => {
+                    const version = nextVersionByCrate.get(crate);
+                    if (version === undefined) {
+                        throw new Error(`Missing registry version count for "${cdmPkgs[i]}"`);
+                    }
+                    return version;
+                });
                 const cdmMetadataUris = cdmToDeploy.map((c) => cidMap[c]);
                 const nonCdmPvmPaths = nonCdmToDeploy.map((c) =>
                     resolve(opts.rootDir, `target/${c}.release.polkavm`),
@@ -685,7 +666,9 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 // non-CDM. The per-contract entries are labeled by crate so
                 // downstream consumers can reconstruct whichever view they need.
                 const cdmPlan =
-                    cdmToDeploy.length > 0 ? await deployer.planDeploy(cdmPvmPaths, cdmPkgs) : null;
+                    cdmToDeploy.length > 0
+                        ? await deployer.planDeploy(cdmPvmPaths, cdmPkgs, cdmSaltVersions)
+                        : null;
                 const nonCdmPlan =
                     nonCdmToDeploy.length > 0 ? await deployer.planDeploy(nonCdmPvmPaths) : null;
 
@@ -777,7 +760,9 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                                       durationMs: Date.now() - deployT0,
                                   });
                               },
-                              cdmPlan ? { plan: cdmPlan } : undefined,
+                              cdmPlan
+                                  ? { plan: cdmPlan, saltVersions: cdmSaltVersions }
+                                  : undefined,
                           )
                         : Promise.resolve(null),
                     nonCdmToDeploy.length > 0
