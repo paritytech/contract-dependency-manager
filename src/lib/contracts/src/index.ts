@@ -27,6 +27,7 @@ export {
     type Metadata,
     type WeightLike,
     type DeployPlan,
+    type DeploySaltVersion,
     ContractDeployer,
     computeDeploySalt,
     chunkByWeight,
