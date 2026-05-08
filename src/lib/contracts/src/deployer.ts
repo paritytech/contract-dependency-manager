@@ -1,12 +1,4 @@
-import {
-    Binary,
-    Enum,
-    type HexString,
-    type PolkadotClient,
-    type SizedHex,
-    type TypedApi,
-} from "polkadot-api";
-import { createInkSdk } from "@polkadot-api/sdk-ink";
+import { Binary, Enum, type PolkadotClient, type SizedHex, type TypedApi } from "polkadot-api";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { readFileSync } from "fs";
 import { prepareSigner } from "@dotdm/env";
@@ -18,6 +10,7 @@ import {
     applyWeightBuffer,
     type SubmittableTransaction,
 } from "@parity/product-sdk-tx";
+import type { Contract, ContractDef } from "@parity/product-sdk-contracts";
 
 /**
  * Registry version index used to make CREATE2 salts unique across publishes
@@ -512,9 +505,9 @@ export class ContractDeployer {
      * @param pvmPaths - filesystem paths to compiled `.polkavm` bytecode, one per contract.
      * @param cdmPackages - CDM package name per contract — required because both CREATE2
      *   salt derivation and `registry.publishLatest.contract_name` need it.
-     * @param registryAddress - Address of the on-chain `ContractRegistry`.
-     * @param registryAbi - ABI used to build `publishLatest(...)` calls that get batched
-     *   alongside the deploys.
+     * @param registry - A product-sdk-contracts `Contract` handle for the on-chain
+     *   `ContractRegistry`. Used to `.prepare(...)` the `publishLatest(...)`
+     *   calls that get batched alongside the deploys.
      * @param metadataUris - CIDs from a prior Bulletin publish, one per contract (same order
      *   as `pvmPaths` / `cdmPackages`). Pass `""` for crates without metadata.
      * @param onChunk - Called synchronously after each chunk's submission
@@ -526,8 +519,7 @@ export class ContractDeployer {
     async deployAndRegisterBatch(
         pvmPaths: string[],
         cdmPackages: string[],
-        registryAddress: HexString,
-        registryAbi: AbiEntry[],
+        registry: Contract<ContractDef>,
         metadataUris: string[],
         onChunk?: (result: {
             crates: string[];
@@ -551,24 +543,14 @@ export class ContractDeployer {
             opts?.plan ?? (await this.planDeploy(pvmPaths, cdmPackages, opts?.saltVersions));
         const { prepared, chunks } = plan;
 
-        // 2. Build the `publishLatest` AsyncTransactions using the raw ink SDK.
-        //    product-sdk-contracts no longer exposes `.prepare()`, but
-        //    product-sdk-tx still accepts ink AsyncTransactions in batches.
+        // 2. Build the `publishLatest` BatchableCalls via product-sdk
+        //    `.prepare(...)` using the precomputed CREATE2 address + CID.
         const prepareOpts = {
             gasLimit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
             storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
         };
-        const registry = createInkSdk(this.client, { atBest: true }).getContract(
-            { abi: registryAbi } as any,
-            registryAddress,
-        );
         const registerCalls = cdmPackages.map((pkg, i) =>
-            registry.send("publishLatest", {
-                data: {
-                    contract_name: pkg,
-                    contract_address: prepared[i].address,
-                    metadata_uri: metadataUris[i],
-                },
+            registry.publishLatest.prepare(pkg, prepared[i].address, metadataUris[i], {
                 origin: this.origin,
                 ...prepareOpts,
             }),

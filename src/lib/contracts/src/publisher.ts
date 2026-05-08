@@ -54,7 +54,7 @@ export class MetadataPublisher {
 
         let result: Awaited<ReturnType<StoreBuilder["send"]>>;
         try {
-            result = await this.bulletin.store(data).withManifest(false).send();
+            result = await this.bulletin.store(data).send();
         } catch (err) {
             const orig = err instanceof Error ? err.message : String(err);
             throw new Error(`[Bulletin publish] ${orig}`, { cause: err });
@@ -97,7 +97,7 @@ export class MetadataPublisher {
 
             let result: Awaited<ReturnType<StoreBuilder["send"]>>;
             try {
-                result = await this.bulletin.store(item.data).withManifest(false).send();
+                result = await this.bulletin.store(item.data).send();
             } catch (err) {
                 const orig = err instanceof Error ? err.message : String(err);
                 throw new Error(`${itemLabel} Metadata publish failed (${item.label}): ${orig}`, {

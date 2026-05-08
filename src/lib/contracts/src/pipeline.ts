@@ -19,7 +19,7 @@ import {
     readReadmeContent,
 } from "./detection";
 import { pvmContractBuildAsync, type BuildProgressCallback } from "./builder";
-import { computeCid } from "./cid";
+import { computeBulletinStoreCid } from "./cid";
 import {
     ContractDeployer,
     computeDeploySalt,
@@ -546,7 +546,9 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                             abi,
                         };
                         metadataList.push(meta);
-                        cidMap[crate] = computeCid(new TextEncoder().encode(JSON.stringify(meta)));
+                        cidMap[crate] = await computeBulletinStoreCid(
+                            new TextEncoder().encode(JSON.stringify(meta)),
+                        );
                     }
                 }
 
@@ -732,8 +734,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                         ? deployer.deployAndRegisterBatch(
                               cdmPvmPaths,
                               cdmPkgs,
-                              opts.registryAddress,
-                              CONTRACTS_REGISTRY_ABI,
+                              registryContract,
                               cdmMetadataUris,
                               (chunk) => {
                                   // Callback fires in chunk order; the i-th
@@ -911,7 +912,9 @@ if (import.meta.vitest) {
         };
     });
 
-    vi.mock("./cid", () => ({ computeCid: vi.fn(() => "fakeCid123") }));
+    vi.mock("./cid", () => ({
+        computeBulletinStoreCid: vi.fn(async () => "fakeCid123"),
+    }));
 
     vi.mock("fs", () => ({
         existsSync: vi.fn(() => true),

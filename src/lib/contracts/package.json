@@ -30,7 +30,6 @@
         "@parity/product-sdk-contracts": "catalog:",
         "@parity/product-sdk-descriptors": "catalog:",
         "@parity/product-sdk-tx": "catalog:",
-        "@polkadot-api/sdk-ink": "catalog:",
         "multiformats": "catalog:",
         "polkadot-api": "catalog:"
     },
