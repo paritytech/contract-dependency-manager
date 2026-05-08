@@ -2,7 +2,7 @@ import {
   useState, useEffect, useMemo, useCallback, useRef, type ReactNode,
 } from "react";
 import { createCdm } from "@dotdm/cdm";
-import { FixedSizeBinary } from "polkadot-api";
+import type { HexString } from "polkadot-api";
 import {
   ACCOUNTS, deriveWallet, useIntersectionObserver, short, ago, publishBlob,
   type Wallet,
@@ -16,7 +16,7 @@ import cdmJson from "../cdm.json";
 const cdm = createCdm(cdmJson);
 const ig  = cdm.getContract("@example/instagram");
 
-const toBytes = (hex: string) => FixedSizeBinary.fromHex(hex);
+const toBytes = (hex: string) => hex as HexString;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -250,7 +250,7 @@ function People({ me, following, toggleFollow, nameOf }: {
       for (let i = start; i < start + count; i++) {
         const uRes = await ig.getUserAt.query(BigInt(i));
         if (!uRes.success) continue;
-        const ethAddr = "0x" + [...uRes.value.asBytes()].map(b => b.toString(16).padStart(2, "0")).join("");
+        const ethAddr = uRes.value as string;
         const cRes = await ig.getPostCount.query(toBytes(ethAddr));
         batch.push({ ethAddress: ethAddr, postCount: cRes.success ? Number(cRes.value) : 0 });
       }

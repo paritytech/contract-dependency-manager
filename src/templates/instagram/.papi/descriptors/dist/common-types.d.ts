@@ -1,10 +1,10 @@
-import { Enum, GetEnum, FixedSizeBinary, Binary, SS58String, ResultPayload, FixedSizeArray, TxCallData } from "polkadot-api";
+import { Enum, GetEnum, SizedHex, SS58String, ResultPayload, FixedSizeArray, TxCallData } from "polkadot-api";
 type AnonymousEnum<T extends {}> = T & {
     __anonymous: true;
 };
 type MyTuple<T> = [T, ...T[]];
 type SeparateUndefined<T> = undefined extends T ? undefined | Exclude<T, undefined> : T;
-type Anonymize<T> = SeparateUndefined<T extends FixedSizeBinary<infer L> ? number extends L ? Binary : FixedSizeBinary<L> : T extends string | number | bigint | boolean | void | undefined | null | symbol | Uint8Array | Enum<any> ? T : T extends AnonymousEnum<infer V> ? Enum<V> : T extends MyTuple<any> ? {
+type Anonymize<T> = SeparateUndefined<T extends string | number | bigint | boolean | void | undefined | null | symbol | Uint8Array | Enum<any> ? T : T extends AnonymousEnum<infer V> ? Enum<V> : T extends MyTuple<any> ? {
     [K in keyof T]: T[K];
 } : T extends [] ? [] : T extends FixedSizeArray<infer L, infer T> ? number extends L ? Array<T> : FixedSizeArray<L, T> : {
     [K in keyof T & string]: T[K];
@@ -36,11 +36,11 @@ export type DigestItem = Enum<{
     "PreRuntime": Anonymize<I82jm9g7pufuel>;
     "Consensus": Anonymize<I82jm9g7pufuel>;
     "Seal": Anonymize<I82jm9g7pufuel>;
-    "Other": Binary;
+    "Other": Uint8Array;
     "RuntimeEnvironmentUpdated": undefined;
 }>;
 export declare const DigestItem: GetEnum<DigestItem>;
-export type I82jm9g7pufuel = [FixedSizeBinary<4>, Binary];
+export type I82jm9g7pufuel = [SizedHex<4>, Uint8Array];
 export type Ic1qn45u9b9hhu = Array<{
     "phase": Phase;
     "event": Anonymize<I1rke1a43hqelf>;
@@ -717,14 +717,14 @@ export type Icbccs0ug47ilf = {
 };
 export type I855j4i3kr8ko1 = {
     "sender": SS58String;
-    "hash": FixedSizeBinary<32>;
+    "hash": SizedHex<32>;
 };
 export type Ibgl04rn6nbfm6 = {
-    "code_hash": FixedSizeBinary<32>;
+    "code_hash": SizedHex<32>;
     "check_version": boolean;
 };
 export type I67n6mbhp91nlg = {
-    "code_hash": FixedSizeBinary<32>;
+    "code_hash": SizedHex<32>;
     "error": Anonymize<Id3cclc8rha27v>;
 };
 export type Icbsekf57miplo = AnonymousEnum<{
@@ -761,12 +761,12 @@ export type Iafscmv8tjf0ou = {
 };
 export type I100l07kaehdlp = {
     "weight_used": Anonymize<I4q39t5hn830vp>;
-    "dmq_head": FixedSizeBinary<32>;
+    "dmq_head": SizedHex<32>;
 };
 export type I6gnbnvip5vvdi = {
     "message_hash"?: Anonymize<I4s6vifaf8k998>;
 };
-export type I4s6vifaf8k998 = (FixedSizeBinary<32>) | undefined;
+export type I4s6vifaf8k998 = (SizedHex<32>) | undefined;
 export type Iaouq041baf2nh = AnonymousEnum<{
     /**
      * Batch of dispatches did not complete fully. Index of first failing dispatch given, as
@@ -1072,7 +1072,7 @@ export type XcmV5Junction = Enum<{
     "Parachain": number;
     "AccountId32": {
         "network"?: Anonymize<I97pd2rst02a7r>;
-        "id": FixedSizeBinary<32>;
+        "id": SizedHex<32>;
     };
     "AccountIndex64": {
         "network"?: Anonymize<I97pd2rst02a7r>;
@@ -1080,7 +1080,7 @@ export type XcmV5Junction = Enum<{
     };
     "AccountKey20": {
         "network"?: Anonymize<I97pd2rst02a7r>;
-        "key": FixedSizeBinary<20>;
+        "key": SizedHex<20>;
     };
     "PalletInstance": number;
     "GeneralIndex": bigint;
@@ -1092,7 +1092,7 @@ export type XcmV5Junction = Enum<{
 export declare const XcmV5Junction: GetEnum<XcmV5Junction>;
 export type I97pd2rst02a7r = (XcmV5NetworkId) | undefined;
 export type XcmV5NetworkId = Enum<{
-    "ByGenesis": FixedSizeBinary<32>;
+    "ByGenesis": SizedHex<32>;
     "ByFork": Anonymize<I15vf5oinmcgps>;
     "Polkadot": undefined;
     "Kusama": undefined;
@@ -1104,14 +1104,14 @@ export type XcmV5NetworkId = Enum<{
 export declare const XcmV5NetworkId: GetEnum<XcmV5NetworkId>;
 export type I15vf5oinmcgps = {
     "block_number": bigint;
-    "block_hash": FixedSizeBinary<32>;
+    "block_hash": SizedHex<32>;
 };
 export type I623eo8t3jrbeo = {
     "chain_id": bigint;
 };
 export type I15lht6t53odo4 = {
     "length": number;
-    "data": FixedSizeBinary<32>;
+    "data": SizedHex<32>;
 };
 export type I518fbtnclg1oc = {
     "id": XcmV3JunctionBodyId;
@@ -1119,7 +1119,7 @@ export type I518fbtnclg1oc = {
 };
 export type XcmV3JunctionBodyId = Enum<{
     "Unit": undefined;
-    "Moniker": FixedSizeBinary<4>;
+    "Moniker": SizedHex<4>;
     "Index": number;
     "Executive": undefined;
     "Technical": undefined;
@@ -1188,13 +1188,13 @@ export type I6a9k53vnitigf = AnonymousEnum<{
 }>;
 export type I395h9meqpi2hf = {
     "index": number;
-    "content_hash": FixedSizeBinary<32>;
+    "content_hash": SizedHex<32>;
     "cid"?: Anonymize<Iabpgqcjikia83>;
 };
-export type Iabpgqcjikia83 = (Binary) | undefined;
+export type Iabpgqcjikia83 = (Uint8Array) | undefined;
 export type I66jdpl6lile9j = {
     "index": number;
-    "content_hash": FixedSizeBinary<32>;
+    "content_hash": SizedHex<32>;
 };
 export type I2i8iea6e4ne1j = {
     "who": SS58String;
@@ -1202,11 +1202,11 @@ export type I2i8iea6e4ne1j = {
     "bytes": bigint;
 };
 export type I4jotama61aldv = {
-    "content_hash": FixedSizeBinary<32>;
+    "content_hash": SizedHex<32>;
     "max_size": bigint;
 };
 export type I3rfugj0vt1ug5 = {
-    "content_hash": FixedSizeBinary<32>;
+    "content_hash": SizedHex<32>;
 };
 export type I4srakrmf0fspo = AnonymousEnum<{
     /**
@@ -1306,7 +1306,7 @@ export type Idsqc7mhp6nnle = AnonymousEnum<{
     "XcmpMessageSent": Anonymize<I137t1cld92pod>;
 }>;
 export type I137t1cld92pod = {
-    "message_hash": FixedSizeBinary<32>;
+    "message_hash": SizedHex<32>;
 };
 export type If95hivmqmkiku = AnonymousEnum<{
     /**
@@ -1523,7 +1523,7 @@ export type If8u5kl4h8070m = {
     "origin": Anonymize<If9iqq7i64mur8>;
     "destination": Anonymize<If9iqq7i64mur8>;
     "message": Anonymize<Ict03eedr8de9s>;
-    "message_id": FixedSizeBinary<32>;
+    "message_id": SizedHex<32>;
 };
 export type Ict03eedr8de9s = Array<XcmV5Instruction>;
 export type XcmV5Instruction = Enum<{
@@ -1548,7 +1548,7 @@ export type XcmV5Instruction = Enum<{
     "Transact": {
         "origin_kind": XcmV2OriginKind;
         "fallback_max_weight"?: Anonymize<Iasb8k6ash5mjn>;
-        "call": Binary;
+        "call": Uint8Array;
     };
     "HrmpNewChannelOpenRequest": Anonymize<I5uhhrjqfuo4e5>;
     "HrmpChannelAccepted": Anonymize<Ifij4jam0o7sub>;
@@ -1605,7 +1605,7 @@ export type XcmV5Instruction = Enum<{
     "ExpectError"?: Anonymize<I3l6ejee750fv1>;
     "ExpectTransactStatus": XcmV3MaybeErrorCode;
     "QueryPallet": {
-        "module_name": Binary;
+        "module_name": Uint8Array;
         "response_info": Anonymize<I6vsmh07hrp1rc>;
     };
     "ExpectPallet": Anonymize<Id7mf37dkpgfjs>;
@@ -1634,7 +1634,7 @@ export type XcmV5Instruction = Enum<{
         "locker": Anonymize<If9iqq7i64mur8>;
     };
     "SetFeesMode": Anonymize<I4nae9rsql8fa7>;
-    "SetTopic": FixedSizeBinary<32>;
+    "SetTopic": SizedHex<32>;
     "ClearTopic": undefined;
     "AliasOrigin": Anonymize<If9iqq7i64mur8>;
     "UnpaidExecution": {
@@ -1677,10 +1677,10 @@ export declare const XcmV3MultiassetFungibility: GetEnum<XcmV3MultiassetFungibil
 export type XcmV3MultiassetAssetInstance = Enum<{
     "Undefined": undefined;
     "Index": bigint;
-    "Array4": FixedSizeBinary<4>;
-    "Array8": FixedSizeBinary<8>;
-    "Array16": FixedSizeBinary<16>;
-    "Array32": FixedSizeBinary<32>;
+    "Array4": SizedHex<4>;
+    "Array8": SizedHex<8>;
+    "Array16": SizedHex<16>;
+    "Array32": SizedHex<32>;
 }>;
 export declare const XcmV3MultiassetAssetInstance: GetEnum<XcmV3MultiassetAssetInstance>;
 export type I7vucpgm2c6959 = AnonymousEnum<{
@@ -1694,16 +1694,16 @@ export type I7vucpgm2c6959 = AnonymousEnum<{
 export type I3l6ejee750fv1 = ([number, Anonymize<Id56rgs0bdb7gl>]) | undefined;
 export type I599u7h20b52at = Array<{
     "index": number;
-    "name": Binary;
-    "module_name": Binary;
+    "name": Uint8Array;
+    "module_name": Uint8Array;
     "major": number;
     "minor": number;
     "patch": number;
 }>;
 export type XcmV3MaybeErrorCode = Enum<{
     "Success": undefined;
-    "Error": Binary;
-    "TruncatedError": Binary;
+    "Error": Uint8Array;
+    "TruncatedError": Uint8Array;
 }>;
 export declare const XcmV3MaybeErrorCode: GetEnum<XcmV3MaybeErrorCode>;
 export type I4pai6qnfk426l = (Anonymize<If9iqq7i64mur8>) | undefined;
@@ -1768,8 +1768,8 @@ export type Ieprdqqu7ildvr = {
 };
 export type Id7mf37dkpgfjs = {
     "index": number;
-    "name": Binary;
-    "module_name": Binary;
+    "name": Uint8Array;
+    "module_name": Uint8Array;
     "crate_major": number;
     "min_crate_minor": number;
 };
@@ -1793,12 +1793,12 @@ export type Ibmuil6p3vl83l = {
         "MissingArgument": undefined;
         "Fees": undefined;
     }>;
-    "message_id": FixedSizeBinary<32>;
+    "message_id": SizedHex<32>;
 };
 export type I7lul91g50ae87 = {
     "origin": Anonymize<If9iqq7i64mur8>;
     "error": Anonymize<Id56rgs0bdb7gl>;
-    "message_id": FixedSizeBinary<32>;
+    "message_id": SizedHex<32>;
 };
 export type Icl7nl1rfeog3i = {
     "origin": Anonymize<If9iqq7i64mur8>;
@@ -1829,7 +1829,7 @@ export type I30pg328m00nr3 = {
     "query_id": bigint;
 };
 export type Icmrn7bogp28cs = {
-    "hash": FixedSizeBinary<32>;
+    "hash": SizedHex<32>;
     "origin": Anonymize<If9iqq7i64mur8>;
     "assets": XcmVersionedAssets;
 };
@@ -1846,7 +1846,7 @@ export type Idcm24504c8bkk = {
 };
 export type XcmV3MultiassetAssetId = Enum<{
     "Concrete": Anonymize<I4c0s5cioidn76>;
-    "Abstract": FixedSizeBinary<32>;
+    "Abstract": SizedHex<32>;
 }>;
 export declare const XcmV3MultiassetAssetId: GetEnum<XcmV3MultiassetAssetId>;
 export type I4c0s5cioidn76 = {
@@ -1869,7 +1869,7 @@ export type XcmV3Junction = Enum<{
     "Parachain": number;
     "AccountId32": {
         "network"?: Anonymize<Idcq3vns9tgp5p>;
-        "id": FixedSizeBinary<32>;
+        "id": SizedHex<32>;
     };
     "AccountIndex64": {
         "network"?: Anonymize<Idcq3vns9tgp5p>;
@@ -1877,7 +1877,7 @@ export type XcmV3Junction = Enum<{
     };
     "AccountKey20": {
         "network"?: Anonymize<Idcq3vns9tgp5p>;
-        "key": FixedSizeBinary<20>;
+        "key": SizedHex<20>;
     };
     "PalletInstance": number;
     "GeneralIndex": bigint;
@@ -1889,7 +1889,7 @@ export type XcmV3Junction = Enum<{
 export declare const XcmV3Junction: GetEnum<XcmV3Junction>;
 export type Idcq3vns9tgp5p = (XcmV3JunctionNetworkId) | undefined;
 export type XcmV3JunctionNetworkId = Enum<{
-    "ByGenesis": FixedSizeBinary<32>;
+    "ByGenesis": SizedHex<32>;
     "ByFork": Anonymize<I15vf5oinmcgps>;
     "Polkadot": undefined;
     "Kusama": undefined;
@@ -1911,7 +1911,7 @@ export type I7m9b5plj4h5ot = {
     "destination": Anonymize<If9iqq7i64mur8>;
     "result": number;
     "cost": Anonymize<I4npjalvhmfuj>;
-    "message_id": FixedSizeBinary<32>;
+    "message_id": SizedHex<32>;
 };
 export type I9kt8c221c83ln = {
     "location": Anonymize<If9iqq7i64mur8>;
@@ -1941,7 +1941,7 @@ export type Idh09k0l2pmdcg = {
 export type I7uoiphbm0tj4r = {
     "destination": Anonymize<If9iqq7i64mur8>;
     "cost": Anonymize<I4npjalvhmfuj>;
-    "message_id": FixedSizeBinary<32>;
+    "message_id": SizedHex<32>;
 };
 export type I512p1n7qt24l8 = {
     "paying": Anonymize<If9iqq7i64mur8>;
@@ -1968,19 +1968,19 @@ export type I5uv57c3fffoi9 = AnonymousEnum<{
      * Downward message is invalid XCM.
      * \[ id \]
      */
-    "InvalidFormat": FixedSizeBinary<32>;
+    "InvalidFormat": SizedHex<32>;
     /**
      * Downward message is unsupported version of XCM.
      * \[ id \]
      */
-    "UnsupportedVersion": FixedSizeBinary<32>;
+    "UnsupportedVersion": SizedHex<32>;
     /**
      * Downward message executed with the given outcome.
      * \[ id, outcome \]
      */
     "ExecutedDownward": Anonymize<Ibslgga81p36aa>;
 }>;
-export type Ibslgga81p36aa = [FixedSizeBinary<32>, Anonymize<Ieqhmksji3pmv5>];
+export type Ibslgga81p36aa = [SizedHex<32>, Anonymize<Ieqhmksji3pmv5>];
 export type I2kosejppk3jon = AnonymousEnum<{
     /**
      * Message discarded due to an error in the `MessageProcessor` (usually a format error).
@@ -2003,7 +2003,7 @@ export type I1rvj4ubaplho0 = {
     /**
      * The `blake2_256` hash of the message.
      */
-    "id": FixedSizeBinary<32>;
+    "id": SizedHex<32>;
     /**
      * The queue of the message.
      */
@@ -2032,7 +2032,7 @@ export type Ia3uu7lqcc1q1i = {
     /**
      * The `blake2_256` hash of the message.
      */
-    "id": FixedSizeBinary<32>;
+    "id": SizedHex<32>;
     /**
      * The queue of the message.
      */
@@ -2055,7 +2055,7 @@ export type I7crucfnonitkn = {
     /**
      * The `blake2_256` hash of the message.
      */
-    "id": FixedSizeBinary<32>;
+    "id": SizedHex<32>;
     /**
      * The queue of the message.
      */
@@ -2113,7 +2113,7 @@ export type I5rtkmhm2dng4u = {
      */
     "new": SS58String;
 };
-export type Ic5m5lp1oioo8r = Array<FixedSizeBinary<32>>;
+export type Ic5m5lp1oioo8r = Array<SizedHex<32>>;
 export type I95g6i7ilua7lq = Array<FixedSizeArray<2, number>>;
 export type Ieniouoqkq4icf = {
     "spec_version": number;
@@ -2145,9 +2145,9 @@ export type I8jgj1nhcr2dg8 = {
 };
 export type I4arjljr6dpflb = (number) | undefined;
 export type Ifn6q3equiq9qi = {
-    "parent_head": Binary;
+    "parent_head": Uint8Array;
     "relay_parent_number": number;
-    "relay_parent_storage_root": FixedSizeBinary<32>;
+    "relay_parent_storage_root": SizedHex<32>;
     "max_pov_size": number;
 };
 export type Ia3sb0vgvovhtg = (UpgradeRestriction) | undefined;
@@ -2155,9 +2155,9 @@ export type UpgradeRestriction = Enum<{
     "Present": undefined;
 }>;
 export declare const UpgradeRestriction: GetEnum<UpgradeRestriction>;
-export type Itom7fk49o0c9 = Array<Binary>;
+export type Itom7fk49o0c9 = Array<Uint8Array>;
 export type I4i91h98n3cv1b = {
-    "dmq_mqc_head": FixedSizeBinary<32>;
+    "dmq_mqc_head": SizedHex<32>;
     "relay_dispatch_queue_remaining_capacity": {
         "remaining_count": number;
         "remaining_size": number;
@@ -2194,17 +2194,17 @@ export type I4iumukclgj8ej = {
         "allowed_ancestry_len": number;
     };
 };
-export type Iqnbvitf7a7l3 = Array<[number, FixedSizeBinary<32>]>;
+export type Iqnbvitf7a7l3 = Array<[number, SizedHex<32>]>;
 export type I48i407regf59r = {
     "sent_at": number;
     "reverse_idx": number;
 };
 export type I6r5cbv8ttrb09 = Array<{
     "recipient": number;
-    "data": Binary;
+    "data": Uint8Array;
 }>;
 export type I8ds64oj6581v0 = Array<{
-    "id": FixedSizeBinary<8>;
+    "id": SizedHex<8>;
     "amount": bigint;
     "reasons": BalancesTypesReasons;
 }>;
@@ -2215,7 +2215,7 @@ export type BalancesTypesReasons = Enum<{
 }>;
 export declare const BalancesTypesReasons: GetEnum<BalancesTypesReasons>;
 export type Ia7pdug7cdsg8g = Array<{
-    "id": FixedSizeBinary<8>;
+    "id": SizedHex<8>;
     "amount": bigint;
 }>;
 export type Iafsev9pf8ur2h = Array<{
@@ -2237,11 +2237,11 @@ export type I52552vmt51a1m = {
 };
 export type Icd998p53cb80u = AnonymousEnum<{
     "Account": SS58String;
-    "Preimage": FixedSizeBinary<32>;
+    "Preimage": SizedHex<32>;
 }>;
 export type Ianratlvp36bb8 = Array<{
-    "chunk_root": FixedSizeBinary<32>;
-    "content_hash": FixedSizeBinary<32>;
+    "chunk_root": SizedHex<32>;
+    "content_hash": SizedHex<32>;
     "hashing": Anonymize<Ifmrgam3blcf8>;
     "cid_codec": bigint;
     "size": number;
@@ -2256,7 +2256,7 @@ export type Ifi4da1gej1fri = Array<{
     "who": SS58String;
     "deposit": bigint;
 }>;
-export type Ifvgo9568rpmqc = Array<[SS58String, FixedSizeBinary<32>]>;
+export type Ifvgo9568rpmqc = Array<[SS58String, SizedHex<32>]>;
 export type I6cs1itejju2vv = [bigint, number];
 export type Icgljjb6j82uhn = Array<number>;
 export type Ib77b0fp1a6mjr = Array<{
@@ -2279,7 +2279,7 @@ export type I5qfubnuvrnqn6 = AnonymousEnum<{
     "Pending": {
         "responder": XcmVersionedLocation;
         "maybe_match_querier"?: (XcmVersionedLocation) | undefined;
-        "maybe_notify"?: (FixedSizeBinary<2>) | undefined;
+        "maybe_notify"?: (SizedHex<2>) | undefined;
         "timeout": number;
     };
     "VersionNotifier": {
@@ -2406,7 +2406,7 @@ export type I53esa2ms463bk = {
     "first_index": number;
     "first": number;
     "last": number;
-    "heap": Binary;
+    "heap": Uint8Array;
 };
 export type Ib4jhb8tt3uung = [Anonymize<Iejeo53sea6n4q>, number];
 export type In7a38730s6qs = {
@@ -2448,7 +2448,7 @@ export type I4fo08joqmcqnm = {
     "authoring_version": number;
     "spec_version": number;
     "impl_version": number;
-    "apis": Array<[FixedSizeBinary<8>, number]>;
+    "apis": Array<[SizedHex<8>, number]>;
     "transaction_version": number;
     "system_version": number;
 };
@@ -2525,26 +2525,26 @@ export type Iekve0i6djpd9f = AnonymousEnum<{
     "apply_authorized_upgrade": Anonymize<I6pjjpfvhvcfru>;
 }>;
 export type I8ofcg5rbj0g2c = {
-    "remark": Binary;
+    "remark": Uint8Array;
 };
 export type I4adgbll7gku4i = {
     "pages": bigint;
 };
 export type I6pjjpfvhvcfru = {
-    "code": Binary;
+    "code": Uint8Array;
 };
 export type I9pj91mj79qekl = {
-    "items": Array<FixedSizeArray<2, Binary>>;
+    "items": Array<FixedSizeArray<2, Uint8Array>>;
 };
 export type I39uah9nss64h9 = {
     "keys": Anonymize<Itom7fk49o0c9>;
 };
 export type Ik64dknsq7k08 = {
-    "prefix": Binary;
+    "prefix": Uint8Array;
     "subkeys": number;
 };
 export type Ib51vk42m1po4n = {
-    "code_hash": FixedSizeBinary<32>;
+    "code_hash": SizedHex<32>;
 };
 export type I3u72uvpuo4qrt = AnonymousEnum<{
     /**
@@ -2572,32 +2572,32 @@ export type Ial23jn8hp0aen = {
         "downward_messages": {
             "full_messages": Array<{
                 "sent_at": number;
-                "msg": Binary;
+                "msg": Uint8Array;
             }>;
             "hashed_messages": Array<Anonymize<Icqnh9ino03itn>>;
         };
         "horizontal_messages": {
             "full_messages": Array<[number, {
                 "sent_at": number;
-                "data": Binary;
+                "data": Uint8Array;
             }]>;
             "hashed_messages": Array<[number, Anonymize<Icqnh9ino03itn>]>;
         };
     };
 };
 export type Ic952bubvq4k7d = {
-    "parent_hash": FixedSizeBinary<32>;
+    "parent_hash": SizedHex<32>;
     "number": number;
-    "state_root": FixedSizeBinary<32>;
-    "extrinsics_root": FixedSizeBinary<32>;
+    "state_root": SizedHex<32>;
+    "extrinsics_root": SizedHex<32>;
     "digest": Anonymize<I4mddgoa69c0a2>;
 };
 export type Icqnh9ino03itn = {
     "sent_at": number;
-    "msg_hash": FixedSizeBinary<32>;
+    "msg_hash": SizedHex<32>;
 };
 export type Ifpj261e8s63m3 = {
-    "message": Binary;
+    "message": Uint8Array;
 };
 export type I7d75gqfg6jh9c = AnonymousEnum<{
     /**
@@ -2860,9 +2860,9 @@ export type I4ktuaksf5i1gk = {
 export type MultiAddress = Enum<{
     "Id": SS58String;
     "Index": undefined;
-    "Raw": Binary;
-    "Address32": FixedSizeBinary<32>;
-    "Address20": FixedSizeBinary<20>;
+    "Raw": Uint8Array;
+    "Address32": SizedHex<32>;
+    "Address20": SizedHex<20>;
 }>;
 export declare const MultiAddress: GetEnum<MultiAddress>;
 export type I9bqtpv2ii35mp = {
@@ -3039,14 +3039,14 @@ export type I29pvdqcplt85e = AnonymousEnum<{
     "refresh_preimage_authorization": Anonymize<I3rfugj0vt1ug5>;
 }>;
 export type Itrlf5b2o2l8q = {
-    "data": Binary;
+    "data": Uint8Array;
 };
 export type Icegg8a2cqf1gu = {
     "cid": {
         "codec": bigint;
         "hashing": Anonymize<Ifmrgam3blcf8>;
     };
-    "data": Binary;
+    "data": Uint8Array;
 };
 export type I4vj3ndsquheo1 = {
     "block": number;
@@ -3054,7 +3054,7 @@ export type I4vj3ndsquheo1 = {
 };
 export type I7h5kud22qmfsg = {
     "proof": {
-        "chunk": Binary;
+        "chunk": Uint8Array;
         "proof": Anonymize<Itom7fk49o0c9>;
     };
 };
@@ -3187,8 +3187,8 @@ export type I77dda7hps0u37 = AnonymousEnum<{
     "purge_keys": undefined;
 }>;
 export type I81vt5eq60l4b6 = {
-    "keys": FixedSizeBinary<32>;
-    "proof": Binary;
+    "keys": SizedHex<32>;
+    "proof": Uint8Array;
 };
 export type Ib7tahn20bvsep = AnonymousEnum<{
     /**
@@ -3627,7 +3627,7 @@ export type XcmV3Instruction = Enum<{
         "locker": Anonymize<I4c0s5cioidn76>;
     };
     "SetFeesMode": Anonymize<I4nae9rsql8fa7>;
-    "SetTopic": FixedSizeBinary<32>;
+    "SetTopic": SizedHex<32>;
     "ClearTopic": undefined;
     "AliasOrigin": Anonymize<I4c0s5cioidn76>;
     "UnpaidExecution": Anonymize<I40d50jeai33oq>;
@@ -3637,7 +3637,7 @@ export type Ia9cgf4r40b26h = (Anonymize<I4c0s5cioidn76>) | undefined;
 export type I92p6l5cs3fr50 = {
     "origin_kind": XcmV2OriginKind;
     "require_weight_at_most": Anonymize<I4q39t5hn830vp>;
-    "call": Binary;
+    "call": Uint8Array;
 };
 export type I4r3v6e91d1qbs = {
     "destination": Anonymize<I4c0s5cioidn76>;
@@ -3664,7 +3664,7 @@ export type XcmV3MultiassetWildMultiAsset = Enum<{
 }>;
 export declare const XcmV3MultiassetWildMultiAsset: GetEnum<XcmV3MultiassetWildMultiAsset>;
 export type Iba5bdbapp16oo = {
-    "module_name": Binary;
+    "module_name": Uint8Array;
     "response_info": Anonymize<I4r3v6e91d1qbs>;
 };
 export type I40d50jeai33oq = {
@@ -3773,7 +3773,7 @@ export type XcmV4Instruction = Enum<{
         "locker": Anonymize<I4c0s5cioidn76>;
     };
     "SetFeesMode": Anonymize<I4nae9rsql8fa7>;
-    "SetTopic": FixedSizeBinary<32>;
+    "SetTopic": SizedHex<32>;
     "ClearTopic": undefined;
     "AliasOrigin": Anonymize<I4c0s5cioidn76>;
     "UnpaidExecution": Anonymize<I40d50jeai33oq>;
@@ -3961,7 +3961,7 @@ export type TransactionValidityUnknownTransaction = Enum<{
     "Custom": number;
 }>;
 export declare const TransactionValidityUnknownTransaction: GetEnum<TransactionValidityUnknownTransaction>;
-export type If7uv525tdvv7a = Array<[FixedSizeBinary<8>, Binary]>;
+export type If7uv525tdvv7a = Array<[SizedHex<8>, Uint8Array]>;
 export type I2an1fs2eiebjp = {
     "okay": boolean;
     "fatal_error": boolean;
@@ -3981,10 +3981,10 @@ export type I9ask1o4tfvcvs = ResultPayload<{
     "propagate": boolean;
 }, Anonymize<I5nrjkj9qumobs>>;
 export type I4ph3d1eepnmr1 = {
-    "keys": Binary;
-    "proof": Binary;
+    "keys": Uint8Array;
+    "proof": Uint8Array;
 };
-export type Icerf8h8pdu8ss = (Array<[Binary, FixedSizeBinary<4>]>) | undefined;
+export type Icerf8h8pdu8ss = (Array<[Uint8Array, SizedHex<4>]>) | undefined;
 export type I6spmpef2c7svf = {
     "weight": Anonymize<I4q39t5hn830vp>;
     "class": DispatchClass;
@@ -4075,7 +4075,7 @@ export type Ic1d4u2opv3fst = {
     "new_validation_code"?: Anonymize<Iabpgqcjikia83>;
     "processed_downward_messages": number;
     "hrmp_watermark": number;
-    "head_data": Binary;
+    "head_data": Uint8Array;
 };
 export type Ie9sr1iqcg3cgm = ResultPayload<undefined, string>;
 export type I1mqgk2tmnn9i2 = (string) | undefined;

@@ -1,6 +1,5 @@
 import { createClient } from "polkadot-api";
-import { getWsProvider } from "polkadot-api/ws-provider";
-import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
+import { getWsProvider } from "polkadot-api/ws";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import type { PolkadotClient, SS58String, HexString } from "polkadot-api";
 import type { InkSdk } from "@polkadot-api/sdk-ink";
@@ -50,7 +49,7 @@ export class Cdm {
         if (!this._client) {
             const target = this.cdmJson.targets[this.targetHash];
             if (!target) throw new Error(`Target ${this.targetHash} not found in cdm.json`);
-            this._client = createClient(withPolkadotSdkCompat(getWsProvider(target["asset-hub"])));
+            this._client = createClient(getWsProvider(target["asset-hub"]));
             this.ownsClient = true;
         }
         return this._client;

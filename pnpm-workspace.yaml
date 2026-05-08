@@ -7,15 +7,14 @@ packages:
   - "src/lib/cdm/typescript"
 
 catalog:
-  polkadot-api: ^1.23.3
-  "@polkadot-api/sdk-ink": ^0.6.2
-  "@polkadot-apps/bulletin": ^0.6.9
-  "@polkadot-apps/chain-client": ^2.0.4
-  "@polkadot-apps/contracts": ^0.4.0
-  "@polkadot-apps/descriptors": ^1.0.1
-  "@polkadot-apps/tx": ^0.3.5
-  "@polkadot-api/smoldot": ^0.3.15
-  "@polkadot-api/cli": ^0.18.1
+  polkadot-api: ^2.1.2
+  "@polkadot-api/sdk-ink": ^0.7.0
+  "@parity/product-sdk-bulletin": ^0.2.0
+  "@parity/product-sdk-contracts": ^0.2.0
+  "@parity/product-sdk-descriptors": ^0.2.0
+  "@parity/product-sdk-tx": ^0.2.0
+  "@polkadot-api/smoldot": ^0.4.2
+  "@polkadot-api/cli": ^0.21.1
   "@polkadot-labs/hdkd": ^0.0.26
   "@polkadot-labs/hdkd-helpers": ^0.0.27
   "@polkadot/util-crypto": ^14.0.1

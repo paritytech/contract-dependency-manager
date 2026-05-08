@@ -20,8 +20,7 @@
     },
     "dependencies": {
         "@dotdm/utils": "workspace:*",
-        "@polkadot-apps/chain-client": "catalog:",
-        "@polkadot-apps/descriptors": "catalog:",
+        "@parity/product-sdk-descriptors": "catalog:",
         "@polkadot-labs/hdkd": "catalog:",
         "@polkadot-labs/hdkd-helpers": "catalog:",
         "polkadot-api": "catalog:",

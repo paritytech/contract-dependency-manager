@@ -855,7 +855,7 @@ declare module "@dotdm/cdm" {
 }
 ```
 
-**ABI -> TypeScript type mapping:** `uint8/16/32` -> `number`, `uint64+` -> `bigint`, `address` -> `HexString`, `string` -> `string`, `bool` -> `boolean`, `bytes` -> `Binary`, `bytesN` -> `FixedSizeBinary<N>`, `tuple` -> `{ field: type }`.
+**ABI -> TypeScript type mapping:** `uint8/16/32` -> `number`, `uint64+` -> `bigint`, `address` -> `HexString`, `string` -> `string`, `bool` -> `boolean`, `bytes` -> `Uint8Array`, `bytesN` -> `SizedHex<N>`, `tuple` -> `{ field: type }`.
 
 ### Dependencies
 
@@ -863,7 +863,7 @@ declare module "@dotdm/cdm" {
 {
   "dependencies": {
     "@dotdm/cdm": "latest",
-    "polkadot-api": "^1.23.3",
+    "polkadot-api": "^2.1.2",
     "@polkadot-labs/hdkd": "^0.0.26",
     "@polkadot-labs/hdkd-helpers": "^0.0.27"
   }

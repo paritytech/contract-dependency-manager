@@ -1,6 +1,6 @@
 import { useRef, useEffect } from "react";
-import { createClient, type PolkadotClient, Binary } from "polkadot-api";
-import { getWsProvider } from "polkadot-api/ws-provider/web";
+import { createClient, type PolkadotClient } from "polkadot-api";
+import { getWsProvider } from "polkadot-api/ws";
 import { getPolkadotSigner } from "polkadot-api/signer";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
 import {
@@ -89,12 +89,12 @@ function bulletinApi() {
 export async function publishBlob(bytes: Uint8Array, signer: Signer): Promise<string> {
   const api = bulletinApi();
   const result = await api.tx.TransactionStorage.store({
-    data: Binary.fromBytes(bytes),
+    data: bytes,
   }).signAndSubmit(signer);
 
   const stored = api.event.TransactionStorage.Stored.filter(result.events);
   if (!stored.length || !stored[0].cid) throw new Error("Upload failed");
-  return CID.decode(stored[0].cid.asBytes()).toString();
+  return CID.decode(stored[0].cid).toString();
 }
 
 // ---------------------------------------------------------------------------

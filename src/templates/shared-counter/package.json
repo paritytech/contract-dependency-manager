@@ -7,7 +7,7 @@
     },
     "dependencies": {
         "@dotdm/cdm": "latest",
-        "polkadot-api": "^1.23.3",
+        "polkadot-api": "^2.1.2",
         "@polkadot-labs/hdkd": "^0.0.26",
         "@polkadot-labs/hdkd-helpers": "^0.0.27"
     }
