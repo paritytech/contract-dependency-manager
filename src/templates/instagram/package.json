@@ -12,11 +12,11 @@
     "postinstall": "papi"
   },
   "dependencies": {
-    "@parity/product-sdk-bulletin": "latest",
-    "@parity/product-sdk-chain-client": "latest",
-    "@parity/product-sdk-contracts": "latest",
-    "@parity/product-sdk-signer": "latest",
-    "@parity/product-sdk-tx": "latest",
+    "@parity/product-sdk-bulletin": "^0.2.1",
+    "@parity/product-sdk-chain-client": "^0.2.1",
+    "@parity/product-sdk-contracts": "^0.2.1",
+    "@parity/product-sdk-signer": "^0.2.1",
+    "@parity/product-sdk-tx": "^0.2.0",
     "@polkadot-api/descriptors": "file:.papi/descriptors",
     "@polkadot-api/sdk-ink": "^0.7.0",
     "polkadot-api": "^2.1.2",
