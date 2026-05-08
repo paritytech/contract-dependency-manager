@@ -12,12 +12,14 @@
     "postinstall": "papi"
   },
   "dependencies": {
-    "@dotdm/cdm": "latest",
+    "@parity/product-sdk-bulletin": "latest",
+    "@parity/product-sdk-chain-client": "latest",
+    "@parity/product-sdk-contracts": "latest",
+    "@parity/product-sdk-signer": "latest",
+    "@parity/product-sdk-tx": "latest",
     "@polkadot-api/descriptors": "file:.papi/descriptors",
+    "@polkadot-api/sdk-ink": "^0.7.0",
     "polkadot-api": "^2.1.2",
-    "@polkadot-labs/hdkd": "^0.0.26",
-    "@polkadot-labs/hdkd-helpers": "^0.0.27",
-    "multiformats": "^13.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
