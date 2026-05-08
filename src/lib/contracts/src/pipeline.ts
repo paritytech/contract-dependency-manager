@@ -1,15 +1,13 @@
 import { resolve } from "path";
 import { existsSync, readFileSync } from "fs";
 import type { PolkadotSigner, SS58String, HexString } from "polkadot-api";
-import { Binary, Enum } from "polkadot-api";
-import type { ChainClient } from "@polkadot-apps/chain-client";
-import { paseo_asset_hub } from "@polkadot-apps/descriptors/paseo-asset-hub";
-import { bulletin } from "@polkadot-apps/descriptors/bulletin";
+import { Enum } from "polkadot-api";
+import type { CdmChainClient } from "@dotdm/env";
 import {
     createContractFromClient,
     type Contract,
     type ContractDef,
-} from "@polkadot-apps/contracts";
+} from "@parity/product-sdk-contracts";
 import { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
 
 import {
@@ -21,7 +19,7 @@ import {
     readReadmeContent,
 } from "./detection";
 import { pvmContractBuildAsync, type BuildProgressCallback } from "./builder";
-import { computeCid } from "./cid";
+import { computeBulletinStoreCid } from "./cid";
 import {
     ContractDeployer,
     computeDeploySalt,
@@ -50,18 +48,15 @@ async function queryRegistryVersionCounts(
 }
 
 /**
- * `deployContracts` expects a `ChainClient` that provides both `assetHub` and
- * `bulletin` keys, typed against `@polkadot-apps/descriptors` so callers
+ * `deployContracts` expects a chain-client-shaped object that provides both
+ * `assetHub` and `bulletin` keys, typed against product-sdk descriptors so callers
  * (e.g., playground-cli's `getChainAPI("paseo")`) can pass their own clients
  * in without any cast. We pin AssetHub to `paseo_asset_hub` because it's
  * the primary test target; the relevant pallet surface (Revive, Utility,
  * System constants) matches Polkadot/Kusama AssetHub at runtime, so passing
  * a client bound to any of those descriptors works structurally.
  */
-export type PipelineChainClient = ChainClient<{
-    assetHub: typeof paseo_asset_hub;
-    bulletin: typeof bulletin;
-}>;
+export type PipelineChainClient = CdmChainClient;
 
 // ---------- shared types ----------
 
@@ -457,9 +452,10 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         const assetHubApi = opts.client.assetHub;
         const assetHubClient = opts.client.raw.assetHub;
         const bulletinApi = opts.client.bulletin;
+        const bulletinClient = opts.client.raw.bulletin;
 
         const deployer = new ContractDeployer(signer, opts.origin, assetHubClient, assetHubApi);
-        const publisher = new MetadataPublisher(signer, bulletinApi);
+        const publisher = new MetadataPublisher(signer, bulletinApi, bulletinClient);
         emit({
             type: "phase",
             name: "connecting-registry",
@@ -550,7 +546,9 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                             abi,
                         };
                         metadataList.push(meta);
-                        cidMap[crate] = computeCid(new TextEncoder().encode(JSON.stringify(meta)));
+                        cidMap[crate] = await computeBulletinStoreCid(
+                            new TextEncoder().encode(JSON.stringify(meta)),
+                        );
                     }
                 }
 
@@ -575,7 +573,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                         if (version === undefined) {
                             throw new Error(`Missing registry version count for "${pkg}"`);
                         }
-                        const code = Binary.fromBytes(readFileSync(pvmPath));
+                        const code = new Uint8Array(readFileSync(pvmPath));
                         const salt = computeDeploySalt(pkg, version);
                         const result = await assetHubApi.apis.ReviveApi.instantiate(
                             opts.origin,
@@ -583,12 +581,12 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                             undefined,
                             undefined,
                             Enum("Upload", code),
-                            Binary.fromBytes(new Uint8Array(0)),
+                            new Uint8Array(0),
                             salt,
                             { at: "best" },
                         );
                         if (result.result.success) {
-                            const addr = result.result.value.addr.asHex() as HexString;
+                            const addr = result.result.value.addr as HexString;
                             emit({ type: "check-needs-deploy", crate, address: addr });
                         }
                     } catch {
@@ -914,7 +912,9 @@ if (import.meta.vitest) {
         };
     });
 
-    vi.mock("./cid", () => ({ computeCid: vi.fn(() => "fakeCid123") }));
+    vi.mock("./cid", () => ({
+        computeBulletinStoreCid: vi.fn(async () => "fakeCid123"),
+    }));
 
     vi.mock("fs", () => ({
         existsSync: vi.fn(() => true),

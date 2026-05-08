@@ -7,7 +7,6 @@ import {
     entropyToMiniSecret,
     mnemonicToEntropy,
 } from "@polkadot-labs/hdkd-helpers";
-import { FixedSizeBinary } from "polkadot-api";
 
 // --- Setup signer (Alice) ---
 const entropy = mnemonicToEntropy(DEV_PHRASE);

@@ -11,7 +11,7 @@
         "build": "echo 'No build needed - bun runs TypeScript directly'",
         "compile": "bun build --compile src/cli.ts --outfile dist/cdm",
         "test": "vitest run",
-        "embed-templates": "bun run scripts/embed-templates.ts",
+        "embed-templates": "bun run ../../lib/scripts/embed-templates.ts",
         "clean": "rm -rf dist"
     },
     "dependencies": {
@@ -19,7 +19,7 @@
         "@dotdm/contracts": "workspace:*",
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
-        "@polkadot-apps/contracts": "catalog:",
+        "@parity/product-sdk-contracts": "catalog:",
         "commander": "catalog:",
         "ink": "catalog:",
         "polkadot-api": "catalog:",

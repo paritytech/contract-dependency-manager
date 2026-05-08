@@ -1,11 +1,15 @@
 import {
-  useState, useEffect, useMemo, useCallback, useRef, type ReactNode,
+  useState, useEffect, useCallback, useRef, type ReactNode,
 } from "react";
-import { createCdm } from "@dotdm/cdm";
-import { FixedSizeBinary } from "polkadot-api";
+import { getChainAPI } from "@parity/product-sdk-chain-client";
+import { ContractManager, type CdmJson } from "@parity/product-sdk-contracts";
+import { SignerManager, type SignerAccount, type SignerState } from "@parity/product-sdk-signer";
+import { BulletinClient, createLazySigner } from "@parity/product-sdk-bulletin";
+import { ensureAccountMapped } from "@parity/product-sdk-tx";
+import { createInkSdk } from "@polkadot-api/sdk-ink";
+import type { SizedHex } from "polkadot-api";
 import {
-  ACCOUNTS, deriveWallet, useIntersectionObserver, short, ago, publishBlob,
-  type Wallet,
+  useIntersectionObserver, short, ago,
 } from "./utils.ts";
 import cdmJson from "../cdm.json";
 
@@ -13,10 +17,28 @@ import cdmJson from "../cdm.json";
 // CDM — one connection for the lifetime of the page
 // ---------------------------------------------------------------------------
 
-const cdm = createCdm(cdmJson);
-const ig  = cdm.getContract("@example/instagram");
+const DOT_NS_IDENTIFIER = "instagram.dot";
+const signerManager = new SignerManager({ ss58Prefix: 42, dappName: "instagram" });
+let activeProductAccount: SignerAccount | null = null;
 
-const toBytes = (hex: string) => FixedSizeBinary.fromHex(hex);
+const chain = await getChainAPI("paseo");
+const inkSdk = createInkSdk(chain.raw.assetHub, { atBest: true });
+const contracts = await ContractManager.fromClient(cdmJson as CdmJson, chain.raw.assetHub);
+const bulletin = await BulletinClient.create({
+  environment: "paseo",
+  signer: createLazySigner(() => activeProductAccount?.getSigner() ?? null),
+});
+const ig = contracts.getContract("@example/instagram");
+const toBytes20 = (hex: string): SizedHex<20> => {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(hex)) throw new Error(`Expected bytes20, got ${hex}`);
+  return hex as SizedHex<20>;
+};
+
+async function publishBlob(bytes: Uint8Array): Promise<string> {
+  const result = await bulletin.store(bytes).withManifest(true).send();
+  if (!result.cid) throw new Error("Bulletin upload returned no CID");
+  return result.cid.toString();
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,15 +66,61 @@ const PAGE = 8;
 // ---------------------------------------------------------------------------
 
 export default function App() {
-  const [accountIdx, setAccountIdx] = useState(0);
-  const wallet = useMemo<Wallet>(() => deriveWallet(ACCOUNTS[accountIdx].mnemonic), [accountIdx]);
-  const me = ACCOUNTS[accountIdx].ethAddress;
+  const [signerState, setSignerState] = useState<SignerState>(() => signerManager.getState());
+  const [productAccount, setProductAccount] = useState<SignerAccount | null>(null);
+  const [connectError, setConnectError] = useState("");
+  const [connectStatus, setConnectStatus] = useState("Connecting...");
+  const [tab, setTab] = useState<"posts" | "people">("posts");
+  const me = productAccount?.h160Address ?? "";
+
+  const activateProductAccount = useCallback(async () => {
+    const product = await signerManager.getProductAccount(DOT_NS_IDENTIFIER);
+    if (!product.ok) {
+      setConnectError(product.error.message);
+      return;
+    }
+    setConnectStatus("Preparing account...");
+    await ensureAccountMapped(product.value.address, product.value.getSigner(), inkSdk, chain.assetHub, {
+      onStatus: status => setConnectStatus(
+        status === "mapping" ? "Mapping account..." : "Preparing account..."
+      ),
+    });
+    activeProductAccount = product.value;
+    contracts.setDefaults({
+      origin: product.value.address,
+      signer: product.value.getSigner(),
+    });
+    setProductAccount(product.value);
+    setConnectError("");
+  }, []);
+
+  useEffect(() => signerManager.subscribe(setSignerState), []);
 
   useEffect(() => {
-    cdm.setDefaults({ origin: wallet.address, signer: wallet.signer });
-  }, [wallet]);
+    let cancelled = false;
 
-  const [tab, setTab] = useState<"posts" | "people">("posts");
+    async function connect() {
+      const result = await signerManager.connect();
+      if (cancelled) return;
+      if (!result.ok) {
+        setConnectError(result.error.message);
+        return;
+      }
+      await activateProductAccount();
+    }
+
+    connect().catch(err => setConnectError((err as Error).message));
+    return () => { cancelled = true; };
+  }, [activateProductAccount]);
+
+  const selectHostAccount = useCallback(async (address: string) => {
+    const selected = signerManager.selectAccount(address);
+    if (!selected.ok) {
+      setConnectError(selected.error.message);
+      return;
+    }
+    await activateProductAccount();
+  }, [activateProductAccount]);
 
   // --- Following (persisted per-account in localStorage) ---
   const followKey = `ig-following-${me}`;
@@ -67,7 +135,20 @@ export default function App() {
   }, []);
 
   const nameOf = (addr: string) =>
-    ACCOUNTS.find(a => a.ethAddress === addr)?.name ?? short(addr);
+    addr.toLowerCase() === me.toLowerCase()
+      ? productAccount?.name ?? "You"
+      : short(addr);
+
+  if (!productAccount) {
+    return (
+      <>
+        <header>
+          <h1>instagram</h1>
+        </header>
+        <div className="empty">{connectError || connectStatus}</div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -75,10 +156,12 @@ export default function App() {
         <h1>instagram</h1>
         <select
           className="account-select"
-          value={accountIdx}
-          onChange={e => setAccountIdx(Number(e.target.value))}
+          value={signerState.selectedAccount?.address ?? ""}
+          onChange={e => { void selectHostAccount(e.target.value); }}
         >
-          {ACCOUNTS.map((a, i) => <option key={i} value={i}>{a.name}</option>)}
+          {signerState.accounts.map(a => (
+            <option key={a.address} value={a.address}>{a.name ?? short(a.address)}</option>
+          ))}
         </select>
       </header>
 
@@ -96,7 +179,7 @@ export default function App() {
         : <People me={me} following={following} toggleFollow={toggleFollow} nameOf={nameOf} />
       }
 
-      <CreatePost wallet={wallet} onCreated={() => setTab("posts")} />
+      <CreatePost onCreated={() => setTab("posts")} />
     </>
   );
 }
@@ -134,7 +217,7 @@ function Feed({ following, nameOf }: {
       if (!countsRef.current) {
         const counts = new Map<string, number>();
         await Promise.all(following.map(async addr => {
-          const r = await ig.getPostCount.query(toBytes(addr));
+          const r = await ig.getPostCount.query(toBytes20(addr));
           if (r.success) counts.set(addr, Number(r.value));
         }));
         if (gen !== genRef.current) return;
@@ -155,7 +238,7 @@ function Feed({ following, nameOf }: {
         if (count <= depth) continue;
 
         const postIdx = count - 1 - depth;
-        const r = await ig.getPost.query(toBytes(addr), BigInt(postIdx));
+        const r = await ig.getPost.query(toBytes20(addr), BigInt(postIdx));
         if (gen !== genRef.current) return;
         if (r.success) {
           batch.push({
@@ -250,8 +333,8 @@ function People({ me, following, toggleFollow, nameOf }: {
       for (let i = start; i < start + count; i++) {
         const uRes = await ig.getUserAt.query(BigInt(i));
         if (!uRes.success) continue;
-        const ethAddr = "0x" + [...uRes.value.asBytes()].map(b => b.toString(16).padStart(2, "0")).join("");
-        const cRes = await ig.getPostCount.query(toBytes(ethAddr));
+        const ethAddr = uRes.value as string;
+        const cRes = await ig.getPostCount.query(toBytes20(ethAddr));
         batch.push({ ethAddress: ethAddr, postCount: cRes.success ? Number(cRes.value) : 0 });
       }
 
@@ -271,14 +354,7 @@ function People({ me, following, toggleFollow, nameOf }: {
 
   const sentinelRef = useIntersectionObserver(loadMore, hasMore && !loading);
 
-  // Show known dev accounts first (even if they haven't posted yet)
-  const allPeople = useMemo(() => {
-    const onChain = new Map(users.map(u => [u.ethAddress, u]));
-    const devAccounts: UserInfo[] = ACCOUNTS
-      .filter(a => a.ethAddress !== me && !onChain.has(a.ethAddress))
-      .map(a => ({ ethAddress: a.ethAddress, postCount: 0 }));
-    return [...users.filter(u => u.ethAddress !== me), ...devAccounts];
-  }, [users, me]);
+  const allPeople = users.filter(u => u.ethAddress.toLowerCase() !== me.toLowerCase());
 
   return (
     <div>
@@ -308,7 +384,7 @@ function People({ me, following, toggleFollow, nameOf }: {
 // Create post (FAB + modal)
 // ---------------------------------------------------------------------------
 
-function CreatePost({ wallet, onCreated }: { wallet: Wallet; onCreated: () => void }) {
+function CreatePost({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [desc, setDesc] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -336,7 +412,7 @@ function CreatePost({ wallet, onCreated }: { wallet: Wallet; onCreated: () => vo
       if (file) {
         setStatus("Uploading photo to bulletin...");
         const bytes = new Uint8Array(await file.arrayBuffer());
-        photoCid = await publishBlob(bytes, wallet.signer);
+        photoCid = await publishBlob(bytes);
       }
       setStatus("Submitting post on-chain...");
       await ig.createPost.tx(desc, photoCid);

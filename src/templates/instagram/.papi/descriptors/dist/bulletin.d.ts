@@ -1,11 +1,11 @@
-import { StorageDescriptor, PlainDescriptor, TxDescriptor, RuntimeDescriptor, Enum, ApisFromDef, QueryFromPalletsDef, TxFromPalletsDef, EventsFromPalletsDef, ErrorsFromPalletsDef, ConstFromPalletsDef, ViewFnsFromPalletsDef, SS58String, FixedSizeBinary, Binary, FixedSizeArray } from "polkadot-api";
-import { I5sesotjlssv2d, Iffmde3ekjedi9, I4mddgoa69c0a2, Ic1qn45u9b9hhu, I95g6i7ilua7lq, Ieniouoqkq4icf, Phase, Ibgl04rn6nbfm6, I4q39t5hn830vp, I1v7jbnil3tjns, I8jgj1nhcr2dg8, Ifn6q3equiq9qi, Ia3sb0vgvovhtg, Iav8k1edbj86k7, Itom7fk49o0c9, I4i91h98n3cv1b, I4iumukclgj8ej, Iqnbvitf7a7l3, I48i407regf59r, I6r5cbv8ttrb09, I1q8tnt1cluu5j, I8ds64oj6581v0, Ia7pdug7cdsg8g, Iafsev9pf8ur2h, I9bin2jc70qt6q, TransactionPaymentReleases, I52552vmt51a1m, Icd998p53cb80u, Ianratlvp36bb8, Ia2lhg7l2hilo3, Ifi4da1gej1fri, Ifvgo9568rpmqc, I82jm9g7pufuel, Ic5m5lp1oioo8r, I6cs1itejju2vv, Icgljjb6j82uhn, Ib77b0fp1a6mjr, I5g2vv0ckl2m8b, Ifup3lg9ro8a0f, I5qfubnuvrnqn6, I8t3u2dv73ahbd, I7vlvrrl2pnbgk, Ie0rpl5bahldfk, XcmPalletVersionMigrationStage, I7e5oaj2qi4kl1, Ie849h3gncgvok, Iat62vud7hlod2, Ict03eedr8de9s, Ibkm2gcn4pji30, XcmVersionedLocation, Idh2ug6ou4a8og, Iejeo53sea6n4q, I53esa2ms463bk, Ib4jhb8tt3uung, In7a38730s6qs, If15el53dd76v9, I9s0ave7t0vnrk, I4fo08joqmcqnm, XcmV5Junctions, Iasb8k6ash5mjn, I8ofcg5rbj0g2c, I4adgbll7gku4i, I6pjjpfvhvcfru, I9pj91mj79qekl, I39uah9nss64h9, Ik64dknsq7k08, Ib51vk42m1po4n, Ial23jn8hp0aen, Ifpj261e8s63m3, Idcr6u6361oad9, If7r4ec4rcbutr, I4f7ojrl003883, I9pcmvr27k88j6, Ie5nfvp73mk1cp, I39imp7k99fvuf, I4ktuaksf5i1gk, I9bqtpv2ii35mp, I9j7pagd6d4bda, I2h9pmio37r7fb, Ibmr18suc9ikh9, I9iq22t0burs89, I5u8olqbbvfnvf, I5utcetro501ir, Itrlf5b2o2l8q, Icegg8a2cqf1gu, I4vj3ndsquheo1, I7h5kud22qmfsg, I2i8iea6e4ne1j, I4jotama61aldv, I4cbvqmqadhrea, I3rfugj0vt1ug5, Ifccifqltb5obi, Iadtsfv699cq8b, Ialpmgmhr3gk5r, I3sdol54kg5jaq, I8fougodaj6di6, I81vt5eq60l4b6, I3vh014cqgmrfd, Ia5cotcvi888ln, I21jsa919m88fd, Iegif7m3upfe1k, I9kt8c221c83ln, Ic76kfh5ebqkpl, Icscpmubum33bq, I21d2olof7eb60, Ibgm4rnf22lal1, Ie68np0vpihith, I9bnv6lu0crf1q, Iauhjqifrdklq7, Ie1uso9m8rt5cf, I40pqum1mu8qg3, I1r4c2ghbtvjuc, I71iofbp4gm9ic, I8k3rnvpeeh4hv, Idb6pjdldfi4cc, Ia82mnkmeo2rhc, Icsa46bnbuohqc, Icbccs0ug47ilf, I855j4i3kr8ko1, I67n6mbhp91nlg, Idd7hd99u0ho0n, Iafscmv8tjf0ou, I100l07kaehdlp, I6gnbnvip5vvdi, I368e0tjmrcvlt, I6akqkga7li13u, I133qpg6ru2jqi, I3bp93psani87u, Icv68aq8841478, Ic262ibdoec56a, Iflcfm9b6nlmdd, Ijrsf4mnp3eka, Id5fm4p8lj5qgi, I8tjvj9uq4b7hi, I3qt1hgg4djhgb, I4fooe9dun9o0t, I8mvf14goplnni, Ie09mpthond7d6, I1ispultrc7caq, Iph9c4rn81ub2, Ier2cke86dqbr2, I351cnlhk17436, I395h9meqpi2hf, I66jdpl6lile9j, I39t01nnod9109, I6v8sm60vvkmk7, I1qmtmbe5so8r3, Ih99m6ehpcar7, Idgorhsbgdq2ap, I9ubb2kqevnu6t, I2hq50pu2kdjpo, I9acqruh7322g2, I137t1cld92pod, I61d51nv4cou88, If8u5kl4h8070m, Ibmuil6p3vl83l, I7lul91g50ae87, Icl7nl1rfeog3i, Iasr6pj6shs0fl, I2uqmls7kcdnii, Idg69klialbkb8, I7r6b7145022pp, I30pg328m00nr3, Icmrn7bogp28cs, I7m9b5plj4h5ot, I9onhk772nfs4f, I3l6bnksrmt56r, Idh09k0l2pmdcg, I7uoiphbm0tj4r, I512p1n7qt24l8, I6s1nbislhk619, I3gghqnh2mj0is, I6iv852roh6t3h, I9oc2o6itbiopq, Ibslgga81p36aa, I1rvj4ubaplho0, Ia3uu7lqcc1q1i, I7crucfnonitkn, I7tmrp94r9sq4n, I4kigljjkan2n6, I5rtkmhm2dng4u, I5r8t4iaend96p, Iaqet9jc3ihboe, Ic952bubvq4k7d, I2v50gu3s1aqk6, Iabpgqcjikia83, Ieeb2u9t56qdcr, If7uv525tdvv7a, I2an1fs2eiebjp, TransactionValidityTransactionSource, I9ask1o4tfvcvs, I4ph3d1eepnmr1, Icerf8h8pdu8ss, I6spmpef2c7svf, Iei2mvq0mjvt81, I70tguv6bl335o, Iftvbctbo05fu4, XcmVersionedXcm, Ic0c3req3mlc1l, XcmVersionedAssetId, I7ocn4njqde3v5, Iek7ha36da9mf5, I9g869l9vmunib, I2srrkue8s0910, I1abqdpbsc75ie, Ieh6nis3hdbtgi, XcmVersionedAsset, Icujp6hmv35vbn, I4tjame31218k9, I5gif8vomct5i8, Ic1d4u2opv3fst, Ie9sr1iqcg3cgm, I1mqgk2tmnn9i2, I6lr8sctk0bi4e, Id3cclc8rha27v } from "./common-types";
+import { StorageDescriptor, PlainDescriptor, TxDescriptor, RuntimeDescriptor, Enum, ApisFromDef, QueryFromPalletsDef, TxFromPalletsDef, EventsFromPalletsDef, ErrorsFromPalletsDef, ConstFromPalletsDef, ViewFnsFromPalletsDef, SS58String, SizedHex, FixedSizeArray } from "polkadot-api";
+import type { I5sesotjlssv2d, Iffmde3ekjedi9, I4mddgoa69c0a2, Ic1qn45u9b9hhu, I95g6i7ilua7lq, Ieniouoqkq4icf, Phase, Ibgl04rn6nbfm6, I4q39t5hn830vp, I1v7jbnil3tjns, I8jgj1nhcr2dg8, Ifn6q3equiq9qi, Ia3sb0vgvovhtg, Iav8k1edbj86k7, Itom7fk49o0c9, I4i91h98n3cv1b, I4iumukclgj8ej, Iqnbvitf7a7l3, I48i407regf59r, I6r5cbv8ttrb09, I1q8tnt1cluu5j, I8ds64oj6581v0, Ia7pdug7cdsg8g, Iafsev9pf8ur2h, I9bin2jc70qt6q, TransactionPaymentReleases, I52552vmt51a1m, Icd998p53cb80u, Ianratlvp36bb8, Ia2lhg7l2hilo3, Ifi4da1gej1fri, Ifvgo9568rpmqc, I82jm9g7pufuel, Ic5m5lp1oioo8r, I6cs1itejju2vv, Icgljjb6j82uhn, Ib77b0fp1a6mjr, I5g2vv0ckl2m8b, Ifup3lg9ro8a0f, I5qfubnuvrnqn6, I8t3u2dv73ahbd, I7vlvrrl2pnbgk, Ie0rpl5bahldfk, XcmPalletVersionMigrationStage, I7e5oaj2qi4kl1, Ie849h3gncgvok, Iat62vud7hlod2, Ict03eedr8de9s, Ibkm2gcn4pji30, XcmVersionedLocation, Idh2ug6ou4a8og, Iejeo53sea6n4q, I53esa2ms463bk, Ib4jhb8tt3uung, In7a38730s6qs, If15el53dd76v9, I9s0ave7t0vnrk, I4fo08joqmcqnm, XcmV5Junctions, Iasb8k6ash5mjn, I8ofcg5rbj0g2c, I4adgbll7gku4i, I6pjjpfvhvcfru, I9pj91mj79qekl, I39uah9nss64h9, Ik64dknsq7k08, Ib51vk42m1po4n, Ial23jn8hp0aen, Ifpj261e8s63m3, Idcr6u6361oad9, If7r4ec4rcbutr, I4f7ojrl003883, I9pcmvr27k88j6, Ie5nfvp73mk1cp, I39imp7k99fvuf, I4ktuaksf5i1gk, I9bqtpv2ii35mp, I9j7pagd6d4bda, I2h9pmio37r7fb, Ibmr18suc9ikh9, I9iq22t0burs89, I5u8olqbbvfnvf, I5utcetro501ir, Itrlf5b2o2l8q, Icegg8a2cqf1gu, I4vj3ndsquheo1, I7h5kud22qmfsg, I2i8iea6e4ne1j, I4jotama61aldv, I4cbvqmqadhrea, I3rfugj0vt1ug5, Ifccifqltb5obi, Iadtsfv699cq8b, Ialpmgmhr3gk5r, I3sdol54kg5jaq, I8fougodaj6di6, I81vt5eq60l4b6, I3vh014cqgmrfd, Ia5cotcvi888ln, I21jsa919m88fd, Iegif7m3upfe1k, I9kt8c221c83ln, Ic76kfh5ebqkpl, Icscpmubum33bq, I21d2olof7eb60, Ibgm4rnf22lal1, Ie68np0vpihith, I9bnv6lu0crf1q, Iauhjqifrdklq7, Ie1uso9m8rt5cf, I40pqum1mu8qg3, I1r4c2ghbtvjuc, I71iofbp4gm9ic, I8k3rnvpeeh4hv, Idb6pjdldfi4cc, Ia82mnkmeo2rhc, Icsa46bnbuohqc, Icbccs0ug47ilf, I855j4i3kr8ko1, I67n6mbhp91nlg, Idd7hd99u0ho0n, Iafscmv8tjf0ou, I100l07kaehdlp, I6gnbnvip5vvdi, I368e0tjmrcvlt, I6akqkga7li13u, I133qpg6ru2jqi, I3bp93psani87u, Icv68aq8841478, Ic262ibdoec56a, Iflcfm9b6nlmdd, Ijrsf4mnp3eka, Id5fm4p8lj5qgi, I8tjvj9uq4b7hi, I3qt1hgg4djhgb, I4fooe9dun9o0t, I8mvf14goplnni, Ie09mpthond7d6, I1ispultrc7caq, Iph9c4rn81ub2, Ier2cke86dqbr2, I351cnlhk17436, I395h9meqpi2hf, I66jdpl6lile9j, I39t01nnod9109, I6v8sm60vvkmk7, I1qmtmbe5so8r3, Ih99m6ehpcar7, Idgorhsbgdq2ap, I9ubb2kqevnu6t, I2hq50pu2kdjpo, I9acqruh7322g2, I137t1cld92pod, I61d51nv4cou88, If8u5kl4h8070m, Ibmuil6p3vl83l, I7lul91g50ae87, Icl7nl1rfeog3i, Iasr6pj6shs0fl, I2uqmls7kcdnii, Idg69klialbkb8, I7r6b7145022pp, I30pg328m00nr3, Icmrn7bogp28cs, I7m9b5plj4h5ot, I9onhk772nfs4f, I3l6bnksrmt56r, Idh09k0l2pmdcg, I7uoiphbm0tj4r, I512p1n7qt24l8, I6s1nbislhk619, I3gghqnh2mj0is, I6iv852roh6t3h, I9oc2o6itbiopq, Ibslgga81p36aa, I1rvj4ubaplho0, Ia3uu7lqcc1q1i, I7crucfnonitkn, I7tmrp94r9sq4n, I4kigljjkan2n6, I5rtkmhm2dng4u, I5r8t4iaend96p, Iaqet9jc3ihboe, Ic952bubvq4k7d, I2v50gu3s1aqk6, Iabpgqcjikia83, Ieeb2u9t56qdcr, If7uv525tdvv7a, I2an1fs2eiebjp, TransactionValidityTransactionSource, I9ask1o4tfvcvs, I4ph3d1eepnmr1, Icerf8h8pdu8ss, I6spmpef2c7svf, Iei2mvq0mjvt81, I70tguv6bl335o, Iftvbctbo05fu4, XcmVersionedXcm, Ic0c3req3mlc1l, XcmVersionedAssetId, I7ocn4njqde3v5, Iek7ha36da9mf5, I9g869l9vmunib, I2srrkue8s0910, I1abqdpbsc75ie, Ieh6nis3hdbtgi, XcmVersionedAsset, Icujp6hmv35vbn, I4tjame31218k9, I5gif8vomct5i8, Ic1d4u2opv3fst, Ie9sr1iqcg3cgm, I1mqgk2tmnn9i2, I6lr8sctk0bi4e, Id3cclc8rha27v } from "./common-types";
 type AnonymousEnum<T extends {}> = T & {
     __anonymous: true;
 };
 type MyTuple<T> = [T, ...T[]];
 type SeparateUndefined<T> = undefined extends T ? undefined | Exclude<T, undefined> : T;
-type Anonymize<T> = SeparateUndefined<T extends FixedSizeBinary<infer L> ? number extends L ? Binary : FixedSizeBinary<L> : T extends string | number | bigint | boolean | void | undefined | null | symbol | Uint8Array | Enum<any> ? T : T extends AnonymousEnum<infer V> ? Enum<V> : T extends MyTuple<any> ? {
+type Anonymize<T> = SeparateUndefined<T extends string | number | bigint | boolean | void | undefined | null | symbol | Uint8Array | Enum<any> ? T : T extends AnonymousEnum<infer V> ? Enum<V> : T extends MyTuple<any> ? {
     [K in keyof T]: T[K];
 } : T extends [] ? [] : T extends FixedSizeArray<infer L, infer T> ? number extends L ? Array<T> : FixedSizeArray<L, T> : {
     [K in keyof T & string]: T[K];
@@ -35,11 +35,11 @@ type IStorage = {
         /**
          * Map of block numbers to block hashes.
          */
-        BlockHash: StorageDescriptor<[Key: number], FixedSizeBinary<32>, false, never>;
+        BlockHash: StorageDescriptor<[Key: number], SizedHex<32>, false, never>;
         /**
          * Extrinsics data for the current block (maps an extrinsic's index to its data).
          */
-        ExtrinsicData: StorageDescriptor<[Key: number], Binary, false, never>;
+        ExtrinsicData: StorageDescriptor<[Key: number], Uint8Array, false, never>;
         /**
          * The current block number being processed. Set by `execute_block`.
          */
@@ -47,7 +47,7 @@ type IStorage = {
         /**
          * Hash of the previous block.
          */
-        ParentHash: StorageDescriptor<[], FixedSizeBinary<32>, false, never>;
+        ParentHash: StorageDescriptor<[], SizedHex<32>, false, never>;
         /**
          * Digest of the current block, also part of the block header.
          */
@@ -78,7 +78,7 @@ type IStorage = {
          * the `EventIndex` then in case if the topic has the same contents on the next block
          * no notification will be triggered thus the event might be lost.
          */
-        EventTopics: StorageDescriptor<[Key: FixedSizeBinary<32>], Anonymize<I95g6i7ilua7lq>, false, never>;
+        EventTopics: StorageDescriptor<[Key: SizedHex<32>], Anonymize<I95g6i7ilua7lq>, false, never>;
         /**
          * Stores the `spec_version` and `spec_name` of when the last runtime upgrade happened.
          */
@@ -135,7 +135,7 @@ type IStorage = {
          * [`:code`][sp_core::storage::well_known_keys::CODE] which will result the next block process
          * with the new validation code. This concludes the upgrade process.
          */
-        PendingValidationCode: StorageDescriptor<[], Binary, false, never>;
+        PendingValidationCode: StorageDescriptor<[], Uint8Array, false, never>;
         /**
          * Validation code that is set by the parachain and is to be communicated to collator and
          * consequently the relay-chain.
@@ -143,7 +143,7 @@ type IStorage = {
          * This will be cleared in `on_initialize` of each new block if no other pallet already set
          * the value.
          */
-        NewValidationCode: StorageDescriptor<[], Binary, true, never>;
+        NewValidationCode: StorageDescriptor<[], Uint8Array, true, never>;
         /**
          * The [`PersistedValidationData`] set for this block.
          *
@@ -212,7 +212,7 @@ type IStorage = {
          * This value is loaded before and saved after processing inbound downward messages carried
          * by the system inherent.
          */
-        LastDmqMqcHead: StorageDescriptor<[], FixedSizeBinary<32>, false, never>;
+        LastDmqMqcHead: StorageDescriptor<[], SizedHex<32>, false, never>;
         /**
          * The message queue chain heads we have observed per each channel incoming channel.
          *
@@ -288,7 +288,7 @@ type IStorage = {
          *
          * See `Pallet::set_custom_validation_head_data` for more information.
          */
-        CustomValidationHeadData: StorageDescriptor<[], Binary, true, never>;
+        CustomValidationHeadData: StorageDescriptor<[], Uint8Array, true, never>;
     };
     Timestamp: {
         /**
@@ -483,7 +483,7 @@ type IStorage = {
         /**
          * The next session keys for a validator.
          */
-        NextKeys: StorageDescriptor<[Key: SS58String], FixedSizeBinary<32>, true, never>;
+        NextKeys: StorageDescriptor<[Key: SS58String], SizedHex<32>, true, never>;
         /**
          * The owner of a key. The key is the `KeyTypeId` + the encoded key.
          */
@@ -542,11 +542,11 @@ type IStorage = {
         /**
          * The messages outbound in a given XCMP channel.
          */
-        OutboundXcmpMessages: StorageDescriptor<Anonymize<I5g2vv0ckl2m8b>, Binary, false, never>;
+        OutboundXcmpMessages: StorageDescriptor<Anonymize<I5g2vv0ckl2m8b>, Uint8Array, false, never>;
         /**
          * Any signal messages waiting to be sent.
          */
-        SignalMessages: StorageDescriptor<[Key: number], Binary, false, never>;
+        SignalMessages: StorageDescriptor<[Key: number], Uint8Array, false, never>;
         /**
          * The configuration which controls the dynamics of the outbound queue.
          */
@@ -575,7 +575,7 @@ type IStorage = {
          * Key is the blake2 256 hash of (origin, versioned `Assets`) pair. Value is the number of
          * times this pair has been trapped (usually just 1 if it exists at all).
          */
-        AssetTraps: StorageDescriptor<[Key: FixedSizeBinary<32>], number, false, never>;
+        AssetTraps: StorageDescriptor<[Key: SizedHex<32>], number, false, never>;
         /**
          * Default version to encode XCM when latest version of destination is unknown. If `None`,
          * then the destinations whose XCM version is unknown are considered unreachable.
@@ -2115,12 +2115,12 @@ type IEvent = {
          * Downward message is invalid XCM.
          * \[ id \]
          */
-        InvalidFormat: PlainDescriptor<FixedSizeBinary<32>>;
+        InvalidFormat: PlainDescriptor<SizedHex<32>>;
         /**
          * Downward message is unsupported version of XCM.
          * \[ id \]
          */
-        UnsupportedVersion: PlainDescriptor<FixedSizeBinary<32>>;
+        UnsupportedVersion: PlainDescriptor<SizedHex<32>>;
         /**
          * Downward message executed with the given outcome.
          * \[ id, outcome \]
@@ -2775,7 +2775,7 @@ type IConstants = {
         /**
          * Account Identifier from which the internal Pot is generated.
          */
-        PotId: PlainDescriptor<FixedSizeBinary<8>>;
+        PotId: PlainDescriptor<SizedHex<8>>;
         /**
          * Maximum number of candidates that we should have.
          *
@@ -2955,7 +2955,7 @@ type IRuntimeCalls = {
          * whose state we are querying against, this must always return `true` as long as the slot
          * is more recent than the included block itself.
          */
-        can_build_upon: RuntimeDescriptor<[included_hash: FixedSizeBinary<32>, slot: bigint], boolean>;
+        can_build_upon: RuntimeDescriptor<[included_hash: SizedHex<32>, slot: bigint], boolean>;
     };
     /**
      * The `Core` runtime api that every Substrate runtime needs to implement.
@@ -2981,7 +2981,7 @@ type IRuntimeCalls = {
         /**
          * Returns the metadata of a runtime.
          */
-        metadata: RuntimeDescriptor<[], Binary>;
+        metadata: RuntimeDescriptor<[], Uint8Array>;
         /**
          * Returns the metadata at a given version.
          *
@@ -3006,7 +3006,7 @@ type IRuntimeCalls = {
          * Returns an inclusion outcome which specifies if this extrinsic is included in
          * this block or not.
          */
-        apply_extrinsic: RuntimeDescriptor<[extrinsic: Binary], Anonymize<Ieeb2u9t56qdcr>>;
+        apply_extrinsic: RuntimeDescriptor<[extrinsic: Uint8Array], Anonymize<Ieeb2u9t56qdcr>>;
         /**
          * Finish the current block.
          */
@@ -3035,7 +3035,7 @@ type IRuntimeCalls = {
          * Note that this call may be performed by the pool multiple times and transactions
          * might be verified in any possible order.
          */
-        validate_transaction: RuntimeDescriptor<[source: TransactionValidityTransactionSource, tx: Binary, block_hash: FixedSizeBinary<32>], Anonymize<I9ask1o4tfvcvs>>;
+        validate_transaction: RuntimeDescriptor<[source: TransactionValidityTransactionSource, tx: Uint8Array, block_hash: SizedHex<32>], Anonymize<I9ask1o4tfvcvs>>;
     };
     /**
      * The offchain worker api.
@@ -3059,13 +3059,13 @@ type IRuntimeCalls = {
          *
          * Returns the concatenated SCALE encoded public keys.
          */
-        generate_session_keys: RuntimeDescriptor<[owner: Binary, seed: Anonymize<Iabpgqcjikia83>], Anonymize<I4ph3d1eepnmr1>>;
+        generate_session_keys: RuntimeDescriptor<[owner: Uint8Array, seed: Anonymize<Iabpgqcjikia83>], Anonymize<I4ph3d1eepnmr1>>;
         /**
          * Decode the given public session keys.
          *
          * Returns the list of public raw public keys + key type.
          */
-        decode_session_keys: RuntimeDescriptor<[encoded: Binary], Anonymize<Icerf8h8pdu8ss>>;
+        decode_session_keys: RuntimeDescriptor<[encoded: Uint8Array], Anonymize<Icerf8h8pdu8ss>>;
     };
     /**
      * The API to query account nonce.
@@ -3083,11 +3083,11 @@ type IRuntimeCalls = {
         /**
         
          */
-        query_info: RuntimeDescriptor<[uxt: Binary, len: number], Anonymize<I6spmpef2c7svf>>;
+        query_info: RuntimeDescriptor<[uxt: Uint8Array, len: number], Anonymize<I6spmpef2c7svf>>;
         /**
         
          */
-        query_fee_details: RuntimeDescriptor<[uxt: Binary, len: number], Anonymize<Iei2mvq0mjvt81>>;
+        query_fee_details: RuntimeDescriptor<[uxt: Uint8Array, len: number], Anonymize<Iei2mvq0mjvt81>>;
         /**
         
          */
@@ -3276,7 +3276,7 @@ type IRuntimeCalls = {
          * Please note that provided JSON blob must contain all `RuntimeGenesisConfig` fields, no
          * defaults will be used.
          */
-        build_state: RuntimeDescriptor<[json: Binary], Anonymize<Ie9sr1iqcg3cgm>>;
+        build_state: RuntimeDescriptor<[json: Uint8Array], Anonymize<Ie9sr1iqcg3cgm>>;
         /**
          * Returns a JSON blob representation of the built-in `RuntimeGenesisConfig` identified by
          * `id`.

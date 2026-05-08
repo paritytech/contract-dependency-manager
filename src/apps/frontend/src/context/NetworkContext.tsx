@@ -1,12 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { createClient, type HexString, type PolkadotClient } from "polkadot-api";
-import { getWsProvider } from "polkadot-api/ws-provider/web";
-import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
+import { getWsProvider } from "polkadot-api/ws";
 import {
     createContractFromClient,
     type Contract,
     type ContractDef,
-} from "@polkadot-apps/contracts";
+} from "@parity/product-sdk-contracts";
 import { CONTRACTS_REGISTRY_ABI } from "@dotdm/contracts/abi";
 import { KNOWN_CHAINS, REGISTRY_ADDRESS, type ChainPreset } from "@dotdm/env";
 import { ALICE_SS58 } from "@dotdm/utils";
@@ -86,8 +85,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
             setRegistry(null);
 
             try {
-                const provider = getWsProvider(assethubUrl);
-                const client = createClient(withPolkadotSdkCompat(provider));
+                const client = createClient(getWsProvider(assethubUrl));
                 clientRef.current = client;
 
                 // Verify the connection actually works by fetching chain spec with a timeout.

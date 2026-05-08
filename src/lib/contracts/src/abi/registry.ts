@@ -1,4 +1,4 @@
-import type { AbiEntry } from "@polkadot-apps/contracts";
+import type { AbiEntry } from "@parity/product-sdk-contracts";
 
 /**
  * ABI for the ContractRegistry ink contract.

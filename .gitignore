@@ -12,6 +12,7 @@ target/
 
 *.lock
 *-lock.yaml
+!pnpm-lock.yaml
 *-lock.json
 
 src/templates/*/**/.cdm/

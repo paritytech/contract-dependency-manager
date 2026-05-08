@@ -14,7 +14,16 @@ const CLI_ROOT = join(PROJECT_ROOT, "src/apps/cli");
 const TEMPLATES_DIR = join(PROJECT_ROOT, "src/templates");
 const OUT_FILE = join(CLI_ROOT, "src/generated/templates.ts");
 
-const IGNORE = new Set(["target", "node_modules", ".DS_Store", "Cargo.lock"]);
+const IGNORE = new Set([
+    "target",
+    "node_modules",
+    ".DS_Store",
+    "Cargo.lock",
+    "pnpm-lock.yaml",
+    "package-lock.json",
+    "yarn.lock",
+    "bun.lockb",
+]);
 const BINARY_EXTENSIONS = new Set([".scale", ".wasm", ".png", ".jpg", ".ico", ".bin"]);
 const BINARY_PREFIX = "base64:";
 

@@ -1,5 +1,5 @@
-import { PolkadotClient, TypedApi, Binary, Enum, FixedSizeBinary } from "polkadot-api";
-import { paseo_asset_hub } from "@polkadot-apps/descriptors/paseo-asset-hub";
+import { Binary, Enum, type PolkadotClient, type SizedHex, type TypedApi } from "polkadot-api";
+import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { readFileSync } from "fs";
 import { prepareSigner } from "@dotdm/env";
 import { stringifyBigInt, STORAGE_DEPOSIT_LIMIT, GAS_LIMIT } from "@dotdm/utils";
@@ -9,8 +9,8 @@ import {
     batchSubmitAndWatch,
     applyWeightBuffer,
     type SubmittableTransaction,
-} from "@polkadot-apps/tx";
-import type { Contract, ContractDef } from "@polkadot-apps/contracts";
+} from "@parity/product-sdk-tx";
+import type { Contract, ContractDef } from "@parity/product-sdk-contracts";
 
 /**
  * Registry version index used to make CREATE2 salts unique across publishes
@@ -27,14 +27,11 @@ export type DeploySaltVersion = number | bigint;
  * CDM package deployments should pass the next registry version index so each
  * publish derives a fresh address even if the deployer and bytecode repeat.
  */
-export function computeDeploySalt(
-    cdmPackage: string,
-    version?: DeploySaltVersion,
-): FixedSizeBinary<32> {
+export function computeDeploySalt(cdmPackage: string, version?: DeploySaltVersion): SizedHex<32> {
     const material =
         version === undefined ? cdmPackage : JSON.stringify([cdmPackage, version.toString()]);
     const hash = blake2b(new TextEncoder().encode(material), { dkLen: 32 });
-    return FixedSizeBinary.fromBytes(hash) as FixedSizeBinary<32>;
+    return Binary.toHex(hash) as SizedHex<32>;
 }
 
 export interface WeightLike {
@@ -159,7 +156,7 @@ export interface Metadata {
 
 /**
  * Thin wrapper around `Revive.instantiate_with_code` that uses
- * `@polkadot-apps/tx` for submission lifecycle management (retries/timeouts,
+ * `@parity/product-sdk-tx` for submission lifecycle management (retries/timeouts,
  * best-block vs. finalized gating, onStatus hooks) and `applyWeightBuffer` for
  * weight scaling.
  *
@@ -169,7 +166,7 @@ export interface Metadata {
  *
  * `dryRunDeploy` still uses `ReviveApi.instantiate` directly — that runtime
  * API is the correct primitive for weight/storage estimation of a raw code
- * upload (`extractTransaction` from `@polkadot-apps/tx` targets ink-SDK-shaped
+ * upload (`extractTransaction` from `@parity/product-sdk-tx` targets ink-SDK-shaped
  * dry-run results, which is a different path).
  */
 export class ContractDeployer {
@@ -227,7 +224,7 @@ export class ContractDeployer {
             );
         }
 
-        const address = instantiated[0].contract.asHex();
+        const address = instantiated[0].payload.contract;
         return { address, txHash: result.txHash, blockHash: result.block.hash };
     }
 
@@ -244,9 +241,8 @@ export class ContractDeployer {
      * to perform purely to recover the CREATE2 address.
      */
     async dryRunDeploy(pvmPath: string, cdmPackage?: string, saltVersion?: DeploySaltVersion) {
-        const bytecode = readFileSync(pvmPath);
-        const code = Binary.fromBytes(bytecode);
-        const data = Binary.fromBytes(new Uint8Array(0));
+        const code = new Uint8Array(readFileSync(pvmPath));
+        const data = new Uint8Array(0);
         const salt = cdmPackage ? computeDeploySalt(cdmPackage, saltVersion) : undefined;
         const dryRun = await this.api.apis.ReviveApi.instantiate(
             this.origin,
@@ -272,7 +268,7 @@ export class ContractDeployer {
             storageDeposit = (dryRun.storage_deposit.value * 120n) / 100n;
         }
 
-        const address = dryRun.result.value.addr.asHex();
+        const address = dryRun.result.value.addr;
 
         // The dispatchable's declared weight at submission time ≈
         // dry-run execution weight + pallet-declared static weight. This is
@@ -308,13 +304,13 @@ export class ContractDeployer {
      */
     async getOnChainCode(address: string): Promise<Uint8Array | null> {
         try {
-            const addr = FixedSizeBinary.fromHex(address) as FixedSizeBinary<20>;
+            const addr = address as SizedHex<20>;
             const info = await this.api.query.Revive.AccountInfoOf.getValue(addr);
             if (!info || info.account_type.type !== "Contract") return null;
             const codeHash = info.account_type.value.code_hash;
             const pristine = await this.api.query.Revive.PristineCode.getValue(codeHash);
             if (!pristine) return null;
-            return pristine.asBytes();
+            return pristine;
         } catch {
             return null;
         }
@@ -453,7 +449,7 @@ export class ContractDeployer {
                         `${label} Expected ${idxs.length} Instantiated events, got ${instantiated.length}`,
                     );
                 }
-                const chunkAddrs = instantiated.map((e) => e.contract.asHex());
+                const chunkAddrs = instantiated.map((e) => e.payload.contract);
                 for (let j = 0; j < idxs.length; j++) {
                     addresses[idxs[j]] = chunkAddrs[j];
                 }
@@ -509,9 +505,9 @@ export class ContractDeployer {
      * @param pvmPaths - filesystem paths to compiled `.polkavm` bytecode, one per contract.
      * @param cdmPackages - CDM package name per contract — required because both CREATE2
      *   salt derivation and `registry.publishLatest.contract_name` need it.
-     * @param registry - A `@polkadot-apps/contracts` `Contract` handle for the on-chain
-     *   `ContractRegistry` (from `RegistryManager.contract`). Used to `.prepare(...)` the
-     *   `publishLatest(...)` calls that get batched alongside the deploys.
+     * @param registry - A product-sdk-contracts `Contract` handle for the on-chain
+     *   `ContractRegistry`. Used to `.prepare(...)` the `publishLatest(...)`
+     *   calls that get batched alongside the deploys.
      * @param metadataUris - CIDs from a prior Bulletin publish, one per contract (same order
      *   as `pvmPaths` / `cdmPackages`). Pass `""` for crates without metadata.
      * @param onChunk - Called synchronously after each chunk's submission
@@ -547,14 +543,17 @@ export class ContractDeployer {
             opts?.plan ?? (await this.planDeploy(pvmPaths, cdmPackages, opts?.saltVersions));
         const { prepared, chunks } = plan;
 
-        // 2. Build the `publishLatest` BatchableCalls via `.prepare(...)` using
-        //    the precomputed CREATE2 address + the caller-supplied metadata CID.
+        // 2. Build the `publishLatest` BatchableCalls via product-sdk
+        //    `.prepare(...)` using the precomputed CREATE2 address + CID.
         const prepareOpts = {
             gasLimit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
             storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
         };
         const registerCalls = cdmPackages.map((pkg, i) =>
-            registry.publishLatest.prepare(pkg, prepared[i].address, metadataUris[i], prepareOpts),
+            registry.publishLatest.prepare(pkg, prepared[i].address, metadataUris[i], {
+                origin: this.origin,
+                ...prepareOpts,
+            }),
         );
 
         const addresses: string[] = new Array(pvmPaths.length);
@@ -596,7 +595,7 @@ export class ContractDeployer {
                     `${label} Expected ${idxs.length} Instantiated events, got ${instantiated.length}`,
                 );
             }
-            const chunkAddrs = instantiated.map((e) => e.contract.asHex());
+            const chunkAddrs = instantiated.map((e) => e.payload.contract);
             for (let j = 0; j < idxs.length; j++) {
                 const expected = prepared[idxs[j]].address;
                 if (chunkAddrs[j].toLowerCase() !== expected.toLowerCase()) {
@@ -628,19 +627,19 @@ if (import.meta.vitest) {
 
     describe("computeDeploySalt", () => {
         test("preserves package-only salt when version is omitted", () => {
-            expect(computeDeploySalt("@cdm/example").asHex()).toBe(
-                computeDeploySalt("@cdm/example", undefined).asHex(),
+            expect(computeDeploySalt("@cdm/example")).toBe(
+                computeDeploySalt("@cdm/example", undefined),
             );
         });
 
         test("includes registry version when provided", () => {
-            const unversioned = computeDeploySalt("@cdm/example").asHex();
-            const version0 = computeDeploySalt("@cdm/example", 0).asHex();
-            const version1 = computeDeploySalt("@cdm/example", 1).asHex();
+            const unversioned = computeDeploySalt("@cdm/example");
+            const version0 = computeDeploySalt("@cdm/example", 0);
+            const version1 = computeDeploySalt("@cdm/example", 1);
 
             expect(version0).not.toBe(unversioned);
             expect(version1).not.toBe(version0);
-            expect(computeDeploySalt("@cdm/example", 1n).asHex()).toBe(version1);
+            expect(computeDeploySalt("@cdm/example", 1n)).toBe(version1);
         });
     });
 

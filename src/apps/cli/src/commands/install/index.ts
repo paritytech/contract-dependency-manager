@@ -2,7 +2,7 @@ import { existsSync } from "fs";
 import { resolve } from "path";
 import { Command } from "commander";
 import type { HexString } from "polkadot-api";
-import { createContractFromClient } from "@polkadot-apps/contracts";
+import { createContractFromClient } from "@parity/product-sdk-contracts";
 import {
     createCdmAssetHubClient,
     connectIpfsGateway,

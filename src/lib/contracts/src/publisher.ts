@@ -1,11 +1,18 @@
-import { TypedApi } from "polkadot-api";
-import { bulletin } from "@polkadot-apps/descriptors/bulletin";
+import type { PolkadotClient, TypedApi } from "polkadot-api";
+import { bulletin } from "@parity/product-sdk-descriptors/bulletin";
 import { prepareSigner } from "@dotdm/env";
-import { upload, batchUpload } from "@polkadot-apps/bulletin";
+import {
+    AsyncBulletinClient,
+    BulletinClient,
+    type BulletinApi,
+    type BulletinTypedApi,
+    type StoreBuilder,
+    type SubmitFn,
+} from "@parity/product-sdk-bulletin";
 import type { Metadata } from "./deployer";
 
 /**
- * Thin wrapper around `@polkadot-apps/bulletin` `upload` / `batchUpload`.
+ * Thin wrapper around product-sdk's `BulletinClient.store(...).send()`.
  *
  * Kept as a class with the original surface so downstream callers
  * (deploy-pipeline.ts) don't need to change in this migration step.
@@ -13,21 +20,31 @@ import type { Metadata } from "./deployer";
  * `deployContracts()` and the class can be removed.
  *
  * Behavioral shift vs. the previous implementation:
- * - `publishBatch` is sequential (N txs, N signatures) rather than a single
- *   `Utility.batch_all`. This matches Bulletin's nonce-ordering requirement.
- * - The returned `txHash` for batches is the hash of the LAST item's tx (the
- *   old API returned a single tx hash for the whole batch). The
- *   `@polkadot-apps/bulletin` `UploadResult` does not expose a txHash, so
- *   we fall back to `blockHash` where needed and `blockNumber` is not
- *   available (returned as 0).
+ * `publishBatch` is sequential (N txs, N signatures), matching Bulletin's
+ * nonce-ordering requirement. Product SDK's store result exposes a block
+ * number and extrinsic index rather than block/tx hashes, so display-only hash
+ * fields are returned as empty strings.
  */
 export class MetadataPublisher {
     public signer: ReturnType<typeof prepareSigner>;
     public bulletinApi: TypedApi<typeof bulletin>;
+    private bulletin: BulletinClient;
 
-    constructor(signer: ReturnType<typeof prepareSigner>, api: TypedApi<typeof bulletin>) {
+    constructor(
+        signer: ReturnType<typeof prepareSigner>,
+        api: TypedApi<typeof bulletin>,
+        client: PolkadotClient,
+    ) {
         this.signer = signer;
         this.bulletinApi = api;
+        this.bulletin = BulletinClient.from(
+            new AsyncBulletinClient(
+                api as unknown as BulletinTypedApi,
+                signer,
+                client.submit as SubmitFn,
+            ),
+            api as unknown as BulletinApi,
+        );
     }
 
     async publish(
@@ -35,29 +52,24 @@ export class MetadataPublisher {
     ): Promise<{ cid: string; blockNumber: number; txHash: string; blockHash: string }> {
         const data = new TextEncoder().encode(JSON.stringify(metadata));
 
-        let result: Awaited<ReturnType<typeof upload>>;
+        let result: Awaited<ReturnType<StoreBuilder["send"]>>;
         try {
-            result = await upload(this.bulletinApi, data, this.signer, {
-                waitFor: "best-block",
-            });
+            result = await this.bulletin.store(data).send();
         } catch (err) {
             const orig = err instanceof Error ? err.message : String(err);
             throw new Error(`[Bulletin publish] ${orig}`, { cause: err });
         }
 
-        if (result.kind !== "transaction") {
-            throw new Error(
-                `[Bulletin publish] Expected transaction upload (standalone CLI), got kind="${result.kind}"`,
-            );
+        const cid = result.cid?.toString();
+        if (!cid) {
+            throw new Error("[Bulletin publish] Store result did not include a CID");
         }
 
         return {
-            cid: result.cid,
-            // @polkadot-apps/bulletin does not expose blockNumber or txHash;
-            // callers only use these for display.
-            blockNumber: 0,
+            cid,
+            blockNumber: result.blockNumber ?? 0,
             txHash: "",
-            blockHash: result.blockHash,
+            blockHash: "",
         };
     }
 
@@ -77,40 +89,37 @@ export class MetadataPublisher {
         }));
 
         const N = items.length;
-        let results: Awaited<ReturnType<typeof batchUpload>>;
-        try {
-            results = await batchUpload(this.bulletinApi, items, this.signer, {
-                waitFor: "best-block",
-            });
-        } catch (err) {
-            const orig = err instanceof Error ? err.message : String(err);
-            throw new Error(`[Bulletin publish batch of ${N}] ${orig}`, { cause: err });
-        }
-
         const cids: string[] = [];
-        let lastBlockHash = "";
-        for (let i = 0; i < results.length; i++) {
-            const r = results[i];
+        let lastBlockNumber = 0;
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
             const itemLabel = `[Bulletin publish item ${i + 1}/${N}]`;
-            if (!r.success) {
+
+            let result: Awaited<ReturnType<StoreBuilder["send"]>>;
+            try {
+                result = await this.bulletin.store(item.data).send();
+            } catch (err) {
+                const orig = err instanceof Error ? err.message : String(err);
+                throw new Error(`${itemLabel} Metadata publish failed (${item.label}): ${orig}`, {
+                    cause: err,
+                });
+            }
+
+            const cid = result.cid?.toString();
+            if (!cid) {
                 throw new Error(
-                    `${itemLabel} Batch metadata publish failed (${r.label}): ${r.error}`,
+                    `${itemLabel} Store result did not include a CID for ${item.label}`,
                 );
             }
-            cids.push(r.cid);
-            if (r.kind !== "transaction") {
-                throw new Error(
-                    `${itemLabel} Expected transaction upload (standalone CLI), got kind="${r.kind}"`,
-                );
-            }
-            lastBlockHash = r.blockHash;
+            cids.push(cid);
+            lastBlockNumber = result.blockNumber ?? lastBlockNumber;
         }
 
         return {
             cids,
-            blockNumber: 0,
+            blockNumber: lastBlockNumber,
             txHash: "",
-            blockHash: lastBlockHash,
+            blockHash: "",
         };
     }
 }

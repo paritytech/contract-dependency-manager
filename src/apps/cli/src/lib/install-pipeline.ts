@@ -1,6 +1,6 @@
 import React from "react";
 import { render } from "ink";
-import type { Contract, ContractDef } from "@polkadot-apps/contracts";
+import type { Contract, ContractDef } from "@parity/product-sdk-contracts";
 import { type AbiEntry, saveContract } from "@dotdm/contracts";
 import { InstallTable } from "./components/InstallTable";
 

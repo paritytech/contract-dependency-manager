@@ -1,4 +1,4 @@
-import type { PolkadotSigner, HexString, Binary, FixedSizeBinary, SS58String } from "polkadot-api";
+import type { PolkadotSigner, HexString, SS58String } from "polkadot-api";
 
 // Per-contract definition shape (generated into .cdm/cdm.d.ts via module augmentation)
 export interface CdmContractDef {
