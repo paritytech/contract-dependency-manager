@@ -1,5 +1,11 @@
 # @dotdm/cdm
 
+## 0.6.1
+
+### Patch Changes
+
+- 9ca61eb: Re-release CDM after the previous npm publish left `@dotdm/contracts@2.0.0` unpublished.
+
 ## 0.6.0
 
 ### Minor Changes

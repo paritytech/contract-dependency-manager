@@ -1,5 +1,12 @@
 # @dotdm/cli
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [9ca61eb]
+  - @dotdm/cdm@0.6.1
+
 ## 0.8.0
 
 ### Minor Changes
