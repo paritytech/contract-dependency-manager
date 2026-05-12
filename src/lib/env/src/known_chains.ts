@@ -42,8 +42,10 @@ const KNOWN_CHAINS = {
     },
     "preview-net": {
         assethubUrl: "wss://previewnet.substrate.dev/asset-hub",
-        bulletinUrl: BULLETIN_RPCS.previewnet[0],
-        ipfsGatewayUrl: "https://previewnet.substrate.dev/ipfs",
+        // TEMPORARY_PATCH! Preview-net's IPFS gateway does not currently serve Bulletin CIDs,
+        // so CDM stores preview-net metadata on Paseo Bulletin for now.
+        bulletinUrl: BULLETIN_RPCS.paseo[0],
+        ipfsGatewayUrl: "https://paseo-ipfs.polkadot.io/ipfs",
         registryAddress: PREVIEW_NET_REGISTRY_ADDRESS,
         productSdkEnvironment: "previewnet",
     },

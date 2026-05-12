@@ -33,9 +33,9 @@ export type CdmBulletinApi = TypedApi<CdmBulletinDescriptor>;
  *
  * Uses `@parity/product-sdk-descriptors` for the chain descriptors so the
  * resulting `TypedApi` types line up natively with `ContractDeployer`,
- * `MetadataPublisher`, and the product-sdk batch/bulletin helpers. Paseo
- * and preview-net use their matching product-sdk descriptors; local keeps
- * the paseo descriptors for the local dev chain shape.
+ * `MetadataPublisher`, and the product-sdk batch/bulletin helpers. TEMPORARY_PATCH! Preview-net
+ * currently uses its own Asset Hub descriptor and Paseo's Bulletin descriptor
+ * because CDM stores preview-net metadata on Paseo Bulletin.
  */
 export type CdmChainClient = {
     assetHub: CdmDeployAssetHubApi;
@@ -69,7 +69,7 @@ export interface CdmChainEndpoints {
 
 const DEPLOY_CHAIN_DESCRIPTORS = {
     paseo: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
-    "preview-net": { assetHub: previewnet_asset_hub, bulletin: previewnet_bulletin },
+    "preview-net": { assetHub: previewnet_asset_hub, bulletin: paseo_bulletin },
     local: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
 } as const;
 

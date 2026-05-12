@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { Enum } from "polkadot-api";
 import {
-    createCdmChainClient,
+    createCdmAssetHubClient,
     prepareSigner,
     prepareSignerFromMnemonic,
     getChainPreset,
@@ -17,12 +17,11 @@ import { printBalances } from "./account";
 import { spinner } from "../lib/ui";
 
 const PREVIEW_NET_FUND_AMOUNT = 100_000_000_000_000n; // 100 units
-const PREVIEW_NET_AUTH_TRANSACTIONS = 1000;
-const PREVIEW_NET_AUTH_BYTES = 100_000_000n; // 100 MB
 
 /**
- * Auto-setup an account on preview-net: fund from Alice, authorize on Bulletin, map on Asset Hub.
- * Alice is sudo on preview-net so we can do all of this directly.
+ * Auto-setup an account on preview-net Asset Hub: fund from Alice and map on Asset Hub.
+ * TEMPORARY_PATCH! CDM preview-net metadata is currently stored on Paseo
+ * Bulletin, so authorization is handled by the normal Paseo account/faucet flow.
  */
 async function setupPreviewNet(mnemonic: string): Promise<void> {
     const previewPreset = getChainPreset("preview-net");
@@ -33,35 +32,14 @@ async function setupPreviewNet(mnemonic: string): Promise<void> {
     const aliceSigner = prepareSigner("Alice");
     const accountSigner = prepareSignerFromMnemonic(mnemonic);
 
-    // Connect to both chains under one ChainClient
-    const chainClient = await createCdmChainClient({
-        assethubUrl: previewPreset.assethubUrl,
-        bulletinUrl: previewPreset.bulletinUrl,
-        chainName: "preview-net",
-    });
+    const chainClient = await createCdmAssetHubClient(previewPreset.assethubUrl, "preview-net");
     const ahApi = chainClient.assetHub;
-    const blApi = chainClient.bulletin;
-    await Promise.all([
-        chainClient.raw.assetHub.getChainSpecData(),
-        chainClient.raw.bulletin.getChainSpecData(),
-    ]);
+    await chainClient.raw.assetHub.getChainSpecData();
 
-    // Fund (Asset Hub) and authorize (Bulletin) in parallel
-    const fundPromise = ahApi.tx.Balances.transfer_keep_alive({
+    await ahApi.tx.Balances.transfer_keep_alive({
         dest: Enum("Id", previewAccount.address),
         value: PREVIEW_NET_FUND_AMOUNT,
     }).signAndSubmit(aliceSigner);
-
-    const authorizePromise = (async () => {
-        const authorizeCall = await blApi.tx.TransactionStorage.authorize_account({
-            who: previewAccount.address,
-            transactions: PREVIEW_NET_AUTH_TRANSACTIONS,
-            bytes: PREVIEW_NET_AUTH_BYTES,
-        }).decodedCall;
-        await blApi.tx.Sudo.sudo({ call: authorizeCall }).signAndSubmit(aliceSigner);
-    })();
-
-    await Promise.all([fundPromise, authorizePromise]);
 
     // Map account after funding completes (needs balance for tx fees)
     try {
