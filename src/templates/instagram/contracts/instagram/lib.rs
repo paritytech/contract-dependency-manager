@@ -62,7 +62,11 @@ mod instagram {
         pvm::api::now(&mut buf);
         let timestamp = u64::from_le_bytes(buf[0..8].try_into().unwrap());
 
-        let post = PostData { description, photo_cid, timestamp };
+        let post = PostData {
+            description,
+            photo_cid,
+            timestamp,
+        };
         Storage::posts().insert(&(caller, index), &post);
         Storage::post_counts().insert(&caller, &(index + 1));
 
