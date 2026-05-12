@@ -93,7 +93,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
 
     // Connect to chain with spinner (matching deploy command style)
     const sp = spinner("AssetHub", opts.assethubUrl);
-    const chainClient = await createCdmAssetHubClient(opts.assethubUrl);
+    const chainClient = await createCdmAssetHubClient(opts.assethubUrl, opts.name);
     await chainClient.raw.assetHub.getChainSpecData();
     sp.succeed();
 

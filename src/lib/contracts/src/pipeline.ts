@@ -50,11 +50,8 @@ async function queryRegistryVersionCounts(
 /**
  * `deployContracts` expects a chain-client-shaped object that provides both
  * `assetHub` and `bulletin` keys, typed against product-sdk descriptors so callers
- * (e.g., playground-cli's `getChainAPI("paseo")`) can pass their own clients
- * in without any cast. We pin AssetHub to `paseo_asset_hub` because it's
- * the primary test target; the relevant pallet surface (Revive, Utility,
- * System constants) matches Polkadot/Kusama AssetHub at runtime, so passing
- * a client bound to any of those descriptors works structurally.
+ * (e.g., product-sdk's `getChainAPI("paseo" | "previewnet")`) can pass
+ * their own clients in without any cast.
  */
 export type PipelineChainClient = CdmChainClient;
 

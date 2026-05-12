@@ -45,7 +45,7 @@ if (!existsSync(pvmPath)) {
 console.log(`Connecting to ${assethubUrl}...`);
 const signerName = opts.suri?.startsWith("//") ? opts.suri.slice(2) : undefined;
 const signer = prepareSigner(signerName ?? "Alice");
-const chainClient = await createCdmAssetHubClient(assethubUrl);
+const chainClient = await createCdmAssetHubClient(assethubUrl, opts.name);
 await chainClient.raw.assetHub.getChainSpecData();
 console.log("Connected.");
 

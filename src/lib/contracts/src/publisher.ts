@@ -1,11 +1,10 @@
-import type { PolkadotClient, TypedApi } from "polkadot-api";
-import { bulletin } from "@parity/product-sdk-descriptors/bulletin";
-import { prepareSigner } from "@dotdm/env";
+import type { PolkadotClient } from "polkadot-api";
+import { prepareSigner, type CdmBulletinApi } from "@dotdm/env";
 import {
     AsyncBulletinClient,
     BulletinClient,
     type BulletinApi,
-    type BulletinTypedApi,
+    type BulletinTypedApi as ProductBulletinTypedApi,
     type StoreBuilder,
     type SubmitFn,
 } from "@parity/product-sdk-bulletin";
@@ -27,19 +26,19 @@ import type { Metadata } from "./deployer";
  */
 export class MetadataPublisher {
     public signer: ReturnType<typeof prepareSigner>;
-    public bulletinApi: TypedApi<typeof bulletin>;
+    public bulletinApi: CdmBulletinApi;
     private bulletin: BulletinClient;
 
     constructor(
         signer: ReturnType<typeof prepareSigner>,
-        api: TypedApi<typeof bulletin>,
+        api: CdmBulletinApi,
         client: PolkadotClient,
     ) {
         this.signer = signer;
         this.bulletinApi = api;
         this.bulletin = BulletinClient.from(
             new AsyncBulletinClient(
-                api as unknown as BulletinTypedApi,
+                api as unknown as ProductBulletinTypedApi,
                 signer,
                 client.submit as SubmitFn,
             ),

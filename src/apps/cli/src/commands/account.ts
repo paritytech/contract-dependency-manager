@@ -34,6 +34,7 @@ export async function printBalances(chainName: string, acc: Account) {
     const chainClient = await createCdmChainClient({
         assethubUrl: preset.assethubUrl,
         bulletinUrl: preset.bulletinUrl,
+        chainName,
     });
     const ahClient = chainClient.raw.assetHub;
     const ahApi = chainClient.assetHub;
@@ -112,7 +113,7 @@ account
     .action(async (opts: { name: string }) => {
         const acc = requireAccount(opts.name);
         const preset = getChainPreset(opts.name);
-        const chainClient = await createCdmAssetHubClient(preset.assethubUrl);
+        const chainClient = await createCdmAssetHubClient(preset.assethubUrl, opts.name);
         await chainClient.raw.assetHub.getChainSpecData();
         try {
             await chainClient.assetHub.tx.Revive.map_account().signAndSubmit(

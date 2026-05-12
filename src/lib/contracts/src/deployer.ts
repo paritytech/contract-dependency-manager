@@ -1,7 +1,7 @@
 import { Binary, Enum, type PolkadotClient, type SizedHex, type TypedApi } from "polkadot-api";
-import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
+import type { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { readFileSync } from "fs";
-import { prepareSigner } from "@dotdm/env";
+import { prepareSigner, type CdmDeployAssetHubApi } from "@dotdm/env";
 import { stringifyBigInt, STORAGE_DEPOSIT_LIMIT, GAS_LIMIT } from "@dotdm/utils";
 import { blake2b } from "@noble/hashes/blake2.js";
 import {
@@ -172,14 +172,14 @@ export interface Metadata {
 export class ContractDeployer {
     public signer: ReturnType<typeof prepareSigner>;
     public origin: string;
-    public api: TypedApi<typeof paseo_asset_hub>;
+    public api: CdmDeployAssetHubApi;
     public client: PolkadotClient;
 
     constructor(
         signer: ReturnType<typeof prepareSigner>,
         origin: string,
         client: PolkadotClient,
-        api: TypedApi<typeof paseo_asset_hub>,
+        api: CdmDeployAssetHubApi,
     ) {
         this.signer = signer;
         this.origin = origin;

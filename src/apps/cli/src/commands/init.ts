@@ -37,6 +37,7 @@ async function setupPreviewNet(mnemonic: string): Promise<void> {
     const chainClient = await createCdmChainClient({
         assethubUrl: previewPreset.assethubUrl,
         bulletinUrl: previewPreset.bulletinUrl,
+        chainName: "preview-net",
     });
     const ahApi = chainClient.assetHub;
     const blApi = chainClient.bulletin;

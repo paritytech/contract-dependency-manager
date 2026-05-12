@@ -20,7 +20,7 @@ const deploy = new Command("deploy")
     .description("Deploy and register contracts")
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
     .option("--bulletin-url <url>", "WebSocket URL for Bulletin chain")
-    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, local, custom)")
+    .option("-n, --name <name>", "Chain preset name (paseo, preview-net, local, custom)")
     .option("--suri <uri>", "Secret URI for signing")
     .option("--features <features>", "Cargo feature flags to pass to the build")
     .option(
@@ -124,6 +124,7 @@ async function deployWithRegistry(
         chainClient = await createCdmChainClient({
             assethubUrl: opts.assethubUrl!,
             bulletinUrl: opts.bulletinUrl!,
+            chainName: opts.name,
         });
         await Promise.all([
             chainClient.raw.assetHub.getChainSpecData(),
@@ -180,6 +181,7 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     const chainClient = await createCdmChainClient({
         assethubUrl: opts.assethubUrl!,
         bulletinUrl: opts.bulletinUrl!,
+        chainName: opts.name,
     });
     await Promise.all([
         chainClient.raw.assetHub.getChainSpecData(),
