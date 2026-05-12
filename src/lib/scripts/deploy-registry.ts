@@ -5,12 +5,21 @@
  * Usage:
  *   bun run src/lib/scripts/deploy-registry.ts --name local
  *   bun run src/lib/scripts/deploy-registry.ts --assethub-url ws://127.0.0.1:10020
- *   bun run src/lib/scripts/deploy-registry.ts --name preview-net --suri //Bob
+ *   bun run src/lib/scripts/deploy-registry.ts --name preview-net
+ *   bun run src/lib/scripts/deploy-registry.ts --assethub-url wss://... --registry-address 0x...
  */
 import { resolve } from "path";
 import { existsSync } from "fs";
 import { parseArgs } from "util";
-import { createCdmAssetHubClient, prepareSigner, getChainPreset, ss58Address } from "@dotdm/env";
+import {
+    createCdmAssetHubClient,
+    prepareSigner,
+    prepareSignerFromMnemonic,
+    prepareSignerFromSuri,
+    getChainPreset,
+    ss58Address,
+} from "@dotdm/env";
+import { getAccount } from "@dotdm/utils/accounts";
 import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@dotdm/contracts";
 
 const { values: opts } = parseArgs({
@@ -18,15 +27,17 @@ const { values: opts } = parseArgs({
     options: {
         name: { type: "string", short: "n" },
         "assethub-url": { type: "string" },
+        "registry-address": { type: "string" },
         suri: { type: "string" },
     },
 });
 
+const preset = opts.name ? getChainPreset(opts.name) : undefined;
 let assethubUrl = opts["assethub-url"];
 if (opts.name) {
-    const preset = getChainPreset(opts.name);
-    assethubUrl = assethubUrl ?? preset.assethubUrl;
+    assethubUrl = assethubUrl ?? preset?.assethubUrl;
 }
+const selectedRegistryAddress = opts["registry-address"] ?? preset?.registryAddress;
 if (!assethubUrl) {
     console.error("Error: --assethub-url or --name is required");
     process.exit(1);
@@ -41,11 +52,19 @@ if (!existsSync(pvmPath)) {
     process.exit(1);
 }
 
+function resolveSigner() {
+    if (opts.suri) return prepareSignerFromSuri(opts.suri);
+    if (opts.name) {
+        const account = getAccount(opts.name);
+        if (account) return prepareSignerFromMnemonic(account.mnemonic);
+    }
+    return prepareSigner("Alice");
+}
+
 // Connect
 console.log(`Connecting to ${assethubUrl}...`);
-const signerName = opts.suri?.startsWith("//") ? opts.suri.slice(2) : undefined;
-const signer = prepareSigner(signerName ?? "Alice");
-const chainClient = await createCdmAssetHubClient(assethubUrl);
+const signer = resolveSigner();
+const chainClient = await createCdmAssetHubClient(assethubUrl, opts.name);
 await chainClient.raw.assetHub.getChainSpecData();
 console.log("Connected.");
 
@@ -64,8 +83,23 @@ try {
     // already mapped
 }
 
-// Deploy with CREATE2 for deterministic address
 const CDM_REGISTRY_PACKAGE = "@cdm/registry";
+const expected = await deployer.dryRunDeploy(pvmPath, CDM_REGISTRY_PACKAGE);
+if (
+    selectedRegistryAddress &&
+    expected.address.toLowerCase() !== selectedRegistryAddress.toLowerCase()
+) {
+    console.error(
+        `Refusing to deploy ContractRegistry: signer ${ss58Address(signer.publicKey)} and current bytecode would deploy ${expected.address}, but the selected target uses ${selectedRegistryAddress}.`,
+    );
+    console.error(
+        "Use the matching deployer/bytecode for this target, or pass --registry-address for a separate registry target.",
+    );
+    chainClient.destroy();
+    process.exit(1);
+}
+
+// Deploy with CREATE2 for deterministic address
 console.log(`Deploying ContractRegistry (CREATE2 salt: "${CDM_REGISTRY_PACKAGE}")...`);
 const { address } = await deployer.deploy(pvmPath, CDM_REGISTRY_PACKAGE);
 console.log(`\nCONTRACTS_REGISTRY_ADDR=${address}`);

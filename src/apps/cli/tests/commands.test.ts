@@ -24,6 +24,7 @@ describe("CLI commands", () => {
         expect(output).toContain("--contracts");
         expect(output).toContain("--root");
         expect(output).toContain("--features");
+        expect(output).toContain("--registry-address");
     });
 
     test("cdm deploy --help shows options", () => {
@@ -31,12 +32,14 @@ describe("CLI commands", () => {
         expect(output).toContain("--suri");
         expect(output).toContain("--bootstrap");
         expect(output).toContain("--features");
+        expect(output).toContain("--registry-address");
     });
 
     test("cdm install --help shows options", () => {
         const output = execSync(`bun run ${CLI} install --help`).toString();
         expect(output).toContain("--assethub-url");
         expect(output).toContain("--name");
+        expect(output).toContain("--registry-address");
     });
 
     test("cdm template scaffolds project", () => {

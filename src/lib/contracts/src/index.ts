@@ -60,6 +60,7 @@ export {
     type CdmJsonTarget,
     type CdmJson,
     computeTargetHash,
+    resolveTargetRegistryAddress,
     readCdmJson,
     writeCdmJson,
 } from "./cdm-json";

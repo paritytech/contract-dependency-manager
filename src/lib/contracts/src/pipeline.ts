@@ -50,11 +50,8 @@ async function queryRegistryVersionCounts(
 /**
  * `deployContracts` expects a chain-client-shaped object that provides both
  * `assetHub` and `bulletin` keys, typed against product-sdk descriptors so callers
- * (e.g., playground-cli's `getChainAPI("paseo")`) can pass their own clients
- * in without any cast. We pin AssetHub to `paseo_asset_hub` because it's
- * the primary test target; the relevant pallet surface (Revive, Utility,
- * System constants) matches Polkadot/Kusama AssetHub at runtime, so passing
- * a client bound to any of those descriptors works structurally.
+ * (e.g., product-sdk's `getChainAPI("paseo" | "previewnet")`) can pass
+ * their own clients in without any cast.
  */
 export type PipelineChainClient = CdmChainClient;
 
@@ -66,6 +63,8 @@ export interface BuildContractsOptions {
     contracts?: string[];
     /** Cargo feature flags to pass to the build */
     features?: string;
+    /** Registry address embedded into contracts through CONTRACTS_REGISTRY_ADDR. */
+    registryAddress?: HexString;
     onEvent?: (e: BuildEvent) => void;
 }
 
@@ -255,6 +254,7 @@ async function runBuildPhase(
     layers: string[][],
     emit: BuildEmitter,
     features?: string,
+    registryAddress?: HexString,
 ): Promise<BuildPhaseResult> {
     const failed = new Set<string>();
     const successful: string[] = [];
@@ -283,7 +283,7 @@ async function runBuildPhase(
                 const onProgress: BuildProgressCallback = (compiled, total) => {
                     emit({ type: "build-progress", crate, compiled, total });
                 };
-                return pvmContractBuildAsync(rootDir, crate, onProgress, features);
+                return pvmContractBuildAsync(rootDir, crate, onProgress, features, registryAddress);
             }),
         );
 
@@ -361,6 +361,7 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
             layers,
             emit as BuildEmitter,
             opts.features,
+            opts.registryAddress,
         );
 
         const summary: BuildSummary = {
@@ -436,6 +437,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
             detected.layers,
             emit as BuildEmitter,
             opts.features,
+            opts.registryAddress,
         );
 
         for (const crate of build.failed) {
@@ -1040,13 +1042,20 @@ if (import.meta.vitest) {
                 "a",
                 expect.any(Function),
                 "my-feature",
+                undefined,
             );
         });
 
         test("features is undefined when not provided", async () => {
             (mockDetect as any).mockReturnValue(makeOrder([["a"]]));
             await buildContracts({ rootDir: "/fake" });
-            expect(mockBuild).toHaveBeenCalledWith("/fake", "a", expect.any(Function), undefined);
+            expect(mockBuild).toHaveBeenCalledWith(
+                "/fake",
+                "a",
+                expect.any(Function),
+                undefined,
+                undefined,
+            );
         });
     });
 }

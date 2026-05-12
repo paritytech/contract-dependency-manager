@@ -1,25 +1,37 @@
+import { BULLETIN_RPCS } from "@parity/product-sdk-host";
+import { REGISTRY_ADDRESS } from "@dotdm/utils";
+
 export interface ChainFaucet {
     label: string;
     url: string;
 }
 
+export type ProductSdkEnvironment = "paseo" | "previewnet";
+
 export interface ChainPreset {
     assethubUrl: string;
     bulletinUrl: string;
     ipfsGatewayUrl: string;
-    faucets?: ChainFaucet[];
+    registryAddress?: string;
+    productSdkEnvironment?: ProductSdkEnvironment;
+    faucets?: readonly ChainFaucet[];
 }
 
-export const KNOWN_CHAINS: Record<string, ChainPreset> = {
+const PREVIEW_NET_REGISTRY_ADDRESS = "0x5c7b23d386ff622c7f7a4e7a95d5c7a67b10a00d";
+
+const KNOWN_CHAINS = {
     polkadot: {
         assethubUrl: "wss://polkadot-asset-hub-rpc.polkadot.io",
         bulletinUrl: "wss://polkadot-bulletin-rpc.polkadot.io",
         ipfsGatewayUrl: "https://polkadot-bulletin-rpc.polkadot.io/ipfs",
+        registryAddress: REGISTRY_ADDRESS,
     },
     paseo: {
         assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
-        bulletinUrl: "wss://paseo-bulletin-rpc.polkadot.io",
+        bulletinUrl: BULLETIN_RPCS.paseo[0],
         ipfsGatewayUrl: "https://paseo-ipfs.polkadot.io/ipfs",
+        registryAddress: REGISTRY_ADDRESS,
+        productSdkEnvironment: "paseo",
         faucets: [
             { label: "Asset Hub", url: "https://faucet.polkadot.io/" },
             {
@@ -30,20 +42,39 @@ export const KNOWN_CHAINS: Record<string, ChainPreset> = {
     },
     "preview-net": {
         assethubUrl: "wss://previewnet.substrate.dev/asset-hub",
-        bulletinUrl: "wss://previewnet.substrate.dev/bulletin",
-        ipfsGatewayUrl: "https://previewnet.substrate.dev/ipfs/",
+        // TEMPORARY_PATCH! Preview-net's IPFS gateway does not currently serve Bulletin CIDs,
+        // so CDM stores preview-net metadata on Paseo Bulletin for now.
+        bulletinUrl: BULLETIN_RPCS.paseo[0],
+        ipfsGatewayUrl: "https://paseo-ipfs.polkadot.io/ipfs",
+        registryAddress: PREVIEW_NET_REGISTRY_ADDRESS,
+        productSdkEnvironment: "previewnet",
     },
     local: {
         assethubUrl: "ws://127.0.0.1:10020",
         bulletinUrl: "ws://127.0.0.1:10030",
         ipfsGatewayUrl: "http://127.0.0.1:8283/ipfs",
+        registryAddress: REGISTRY_ADDRESS,
     },
-};
+} as const satisfies Record<string, ChainPreset>;
 
 export type KnownChainName = keyof typeof KNOWN_CHAINS;
 
+export function normalizeChainName(name: string): KnownChainName | "custom" | undefined {
+    if (name === "previewnet") return "preview-net";
+    if (name === "preview-net" || name === "paseo" || name === "polkadot" || name === "local") {
+        return name;
+    }
+    if (name === "custom") return "custom";
+}
+
+export function isKnownChainPreset(name: string): boolean {
+    const normalized = normalizeChainName(name);
+    return normalized !== undefined && normalized !== "custom";
+}
+
 export function getChainPreset(name: string): ChainPreset {
-    const preset = KNOWN_CHAINS[name];
+    const normalized = normalizeChainName(name);
+    const preset = normalized && normalized !== "custom" ? KNOWN_CHAINS[normalized] : undefined;
     if (!preset) {
         const valid = Object.keys(KNOWN_CHAINS).join(", ");
         throw new Error(`Unknown chain "${name}". Valid names: ${valid}`);

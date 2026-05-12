@@ -5,9 +5,12 @@ import {
     type TypedApi,
 } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
+import { polkadot_asset_hub } from "@parity/product-sdk-descriptors/polkadot-asset-hub";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
-import { bulletin } from "@parity/product-sdk-descriptors/bulletin";
-import { getChainPreset } from "./known_chains";
+import { previewnet_asset_hub } from "@parity/product-sdk-descriptors/previewnet-asset-hub";
+import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
+import { previewnet_bulletin } from "@parity/product-sdk-descriptors/previewnet-bulletin";
+import { getChainPreset, normalizeChainName, type KnownChainName } from "./known_chains";
 
 export type CdmDirectChainClient<TChains extends Record<string, ChainDefinition>> = {
     [K in keyof TChains]: TypedApi<TChains[K]>;
@@ -16,47 +19,101 @@ export type CdmDirectChainClient<TChains extends Record<string, ChainDefinition>
     destroy: () => void;
 };
 
+export type CdmDeployAssetHubDescriptor = typeof paseo_asset_hub | typeof previewnet_asset_hub;
+export type CdmAssetHubDescriptor = CdmDeployAssetHubDescriptor | typeof polkadot_asset_hub;
+export type CdmBulletinDescriptor = typeof paseo_bulletin | typeof previewnet_bulletin;
+
+export type CdmDeployAssetHubApi = TypedApi<CdmDeployAssetHubDescriptor>;
+export type CdmAssetHubApi = TypedApi<CdmAssetHubDescriptor>;
+export type CdmBulletinApi = TypedApi<CdmBulletinDescriptor>;
+
 /**
  * Shape of a CDM chain client — both Asset Hub and Bulletin connected
  * under one chain-client-shaped object.
  *
  * Uses `@parity/product-sdk-descriptors` for the chain descriptors so the
  * resulting `TypedApi` types line up natively with `ContractDeployer`,
- * `MetadataPublisher`, and the product-sdk batch/bulletin helpers
- * (no casts required). We pin AssetHub to the Paseo flavor — it's the
- * primary test target, and the pallet surface matches Polkadot/Kusama
- * AssetHub at the queries/txs we use.
+ * `MetadataPublisher`, and the product-sdk batch/bulletin helpers. TEMPORARY_PATCH! Preview-net
+ * currently uses its own Asset Hub descriptor and Paseo's Bulletin descriptor
+ * because CDM stores preview-net metadata on Paseo Bulletin.
  */
-export type CdmChainClient = CdmDirectChainClient<{
-    assetHub: typeof paseo_asset_hub;
-    bulletin: typeof bulletin;
-}>;
+export type CdmChainClient = {
+    assetHub: CdmDeployAssetHubApi;
+    bulletin: CdmBulletinApi;
+    raw: { assetHub: PolkadotClient; bulletin: PolkadotClient };
+    destroy: () => void;
+};
 
 /** Asset-Hub-only variant for callers that don't need Bulletin (e.g., `install`). */
-export type CdmAssetHubClient = CdmDirectChainClient<{
-    assetHub: typeof paseo_asset_hub;
-}>;
+export type CdmAssetHubClient = {
+    assetHub: CdmAssetHubApi;
+    raw: { assetHub: PolkadotClient };
+    destroy: () => void;
+};
 
 export interface AssetHubConnection {
     client: PolkadotClient;
-    api: TypedApi<typeof paseo_asset_hub>;
+    api: CdmAssetHubApi;
 }
 
 export interface BulletinConnection {
     client: PolkadotClient;
-    api: TypedApi<typeof bulletin>;
+    api: CdmBulletinApi;
 }
 
 export interface CdmChainEndpoints {
     assethubUrl: string;
     bulletinUrl: string;
+    chainName?: string;
+}
+
+const DEPLOY_CHAIN_DESCRIPTORS = {
+    paseo: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
+    "preview-net": { assetHub: previewnet_asset_hub, bulletin: paseo_bulletin },
+    local: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
+} as const;
+
+const ASSET_HUB_DESCRIPTORS = {
+    polkadot: polkadot_asset_hub,
+    paseo: paseo_asset_hub,
+    "preview-net": previewnet_asset_hub,
+    local: paseo_asset_hub,
+} as const;
+
+function resolveExplicitChainName(chainName: string): KnownChainName | "custom" {
+    const normalized = normalizeChainName(chainName);
+    if (!normalized) {
+        throw new Error(
+            `Unknown chain "${chainName}". Valid names: polkadot, paseo, preview-net, local, custom`,
+        );
+    }
+    return normalized;
+}
+
+function resolveAssetHubDescriptors(chainName: string | undefined) {
+    const normalized = chainName ? resolveExplicitChainName(chainName) : undefined;
+    return ASSET_HUB_DESCRIPTORS[normalized && normalized !== "custom" ? normalized : "paseo"];
+}
+
+function resolveDeployDescriptors(chainName: string | undefined) {
+    const normalized = chainName ? resolveExplicitChainName(chainName) : undefined;
+    const descriptorChain = normalized && normalized !== "custom" ? normalized : "paseo";
+    if (descriptorChain === "polkadot") {
+        throw new Error(
+            'CDM deploy connections are only available for "paseo", "preview-net", and "local"; product-sdk does not publish a Polkadot Bulletin descriptor yet.',
+        );
+    }
+
+    return DEPLOY_CHAIN_DESCRIPTORS[descriptorChain];
 }
 
 /**
  * Connect to both Asset Hub and Bulletin over direct WebSocket RPC.
  *
- * Accepts either a known chain name (`"polkadot"`, `"paseo"`, `"local"`,
- * `"preview-net"`) resolved through `getChainPreset`, or explicit URLs.
+ * Accepts either a supported deploy chain name (`"paseo"`, `"preview-net"`,
+ * `"local"`) resolved through `getChainPreset`, or explicit URLs. Polkadot
+ * remains available for Asset-Hub-only install reads, but product-sdk does
+ * not publish a Polkadot Bulletin descriptor yet.
  *
  * The returned object matches product-sdk's `ChainClient` shape closely enough
  * for callers to pass either one into CDM APIs. CDM builds this locally because
@@ -71,25 +128,36 @@ export async function createCdmChainClient(
             ? {
                   assethubUrl: getChainPreset(arg).assethubUrl,
                   bulletinUrl: getChainPreset(arg).bulletinUrl,
+                  chainName: arg,
               }
             : arg;
 
-    return createDirectChainClient(
-        { assetHub: paseo_asset_hub, bulletin },
-        { assetHub: endpoints.assethubUrl, bulletin: endpoints.bulletinUrl },
-    );
+    return createDirectChainClient(resolveDeployDescriptors(endpoints.chainName), {
+        assetHub: endpoints.assethubUrl,
+        bulletin: endpoints.bulletinUrl,
+    }) as CdmChainClient;
 }
 
 /**
  * Connect to Asset Hub only (no Bulletin). Used by commands that don't
  * publish metadata — e.g., `install`, `account map`, `deploy-registry`.
  */
-export async function createCdmAssetHubClient(assethubUrl: string): Promise<CdmAssetHubClient> {
-    return createDirectChainClient({ assetHub: paseo_asset_hub }, { assetHub: assethubUrl });
+export async function createCdmAssetHubClient(
+    assethubUrl: string,
+    chainName?: string,
+): Promise<CdmAssetHubClient> {
+    return createDirectChainClient(
+        { assetHub: resolveAssetHubDescriptors(chainName) },
+        { assetHub: assethubUrl },
+    ) as CdmAssetHubClient;
 }
 
 export interface IpfsGateway {
     fetch: (cid: string) => Promise<Response>;
+}
+
+function joinGatewayUrl(url: string, cid: string): string {
+    return `${url.replace(/\/+$/, "")}/${cid.replace(/^\/+/, "")}`;
 }
 
 /**
@@ -104,10 +172,12 @@ export interface IpfsGateway {
 export function connectIpfsGateway(url: string): IpfsGateway {
     return {
         fetch: (cid: string) =>
-            globalThis.fetch(`${url}/${cid}`, { signal: AbortSignal.timeout(15_000) }).then((r) => {
-                if (!r.ok) throw new Error(`IPFS fetch failed: ${r.statusText}`);
-                return r;
-            }),
+            globalThis
+                .fetch(joinGatewayUrl(url, cid), { signal: AbortSignal.timeout(15_000) })
+                .then((r) => {
+                    if (!r.ok) throw new Error(`IPFS fetch failed: ${r.statusText}`);
+                    return r;
+                }),
     };
 }
 

@@ -18,8 +18,10 @@ export default function NetworkConfig() {
         setNetwork,
         assethubUrl,
         bulletinUrl,
+        registryAddress,
         setAssethubUrl,
         setBulletinUrl,
+        setRegistryAddress,
         connected,
         connecting,
     } = useNetwork();
@@ -130,6 +132,18 @@ export default function NetworkConfig() {
                                             value={bulletinUrl}
                                             onChange={(e) => setBulletinUrl(e.target.value)}
                                             placeholder="ws://..."
+                                        />
+                                    </div>
+                                    <div className="net-selector-field">
+                                        <label className="net-selector-field-label">
+                                            Registry Address
+                                        </label>
+                                        <input
+                                            className="net-selector-field-input"
+                                            type="text"
+                                            value={registryAddress}
+                                            onChange={(e) => setRegistryAddress(e.target.value)}
+                                            placeholder="0x..."
                                         />
                                     </div>
                                 </>

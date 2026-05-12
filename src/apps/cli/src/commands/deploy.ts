@@ -20,7 +20,8 @@ const deploy = new Command("deploy")
     .description("Deploy and register contracts")
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
     .option("--bulletin-url <url>", "WebSocket URL for Bulletin chain")
-    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, local, custom)")
+    .option("-n, --name <name>", "Chain preset name (paseo, preview-net, local, custom)")
+    .option("--registry-address <address>", "Registry contract address")
     .option("--suri <uri>", "Secret URI for signing")
     .option("--features <features>", "Cargo feature flags to pass to the build")
     .option(
@@ -33,6 +34,7 @@ type DeployOptions = {
     assethubUrl?: string;
     bulletinUrl?: string;
     ipfsGatewayUrl?: string;
+    registryAddress?: string;
     name?: string;
     suri?: string;
     features?: string;
@@ -63,6 +65,10 @@ function resolveSigner(opts: DeployOptions): {
     return { signer: prepareSigner("Alice"), origin: ALICE_SS58 };
 }
 
+function getRegistryAddress(opts: DeployOptions): string {
+    return opts.registryAddress ?? REGISTRY_ADDRESS;
+}
+
 deploy.action(async (opts: DeployOptions) => {
     // Resolve chain preset
     if (opts.name && opts.name !== "custom") {
@@ -70,6 +76,7 @@ deploy.action(async (opts: DeployOptions) => {
         opts.assethubUrl = opts.assethubUrl ?? preset.assethubUrl;
         opts.bulletinUrl = opts.bulletinUrl ?? preset.bulletinUrl;
         opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? preset.ipfsGatewayUrl;
+        opts.registryAddress = opts.registryAddress ?? preset.registryAddress;
     }
 
     // Validate required URLs are present
@@ -124,6 +131,7 @@ async function deployWithRegistry(
         chainClient = await createCdmChainClient({
             assethubUrl: opts.assethubUrl!,
             bulletinUrl: opts.bulletinUrl!,
+            chainName: opts.name,
         });
         await Promise.all([
             chainClient.raw.assetHub.getChainSpecData(),
@@ -134,14 +142,15 @@ async function deployWithRegistry(
         ownsChainClient = true;
     }
 
-    console.log(`\x1b[1mRegistry\x1b[0m   ${REGISTRY_ADDRESS}\n`);
+    const registryAddress = getRegistryAddress(opts);
+    console.log(`\x1b[1mRegistry\x1b[0m   ${registryAddress}\n`);
 
     const { result } = await runDeployWithUI({
         rootDir,
         client: chainClient,
         signer,
         origin,
-        registryAddress: REGISTRY_ADDRESS as HexString,
+        registryAddress: registryAddress as HexString,
         features: opts.features,
         assethubUrl: opts.assethubUrl,
         bulletinUrl: opts.bulletinUrl,
@@ -180,6 +189,7 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     const chainClient = await createCdmChainClient({
         assethubUrl: opts.assethubUrl!,
         bulletinUrl: opts.bulletinUrl!,
+        chainName: opts.name,
     });
     await Promise.all([
         chainClient.raw.assetHub.getChainSpecData(),
@@ -204,11 +214,27 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
         console.log("  Account already mapped\n");
     }
 
-    // Phase 1: Deploy ContractRegistry (CREATE2 for deterministic address)
+    // Phase 1 preflight: deploy ContractRegistry only if this signer/bytecode
+    // produces the registry address selected for this network/target.
     const CDM_REGISTRY_PACKAGE = "@cdm/registry";
+    const registryAddress = getRegistryAddress(opts);
+    const expectedRegistry = await deployer.dryRunDeploy(registryPvmPath, CDM_REGISTRY_PACKAGE);
+    if (expectedRegistry.address.toLowerCase() !== registryAddress.toLowerCase()) {
+        console.error(
+            `ERROR: ContractRegistry bootstrap would deploy ${expectedRegistry.address}, but the selected target uses ${registryAddress}.`,
+        );
+        console.error(
+            "Use the matching deployer/bytecode for this target, or pass --registry-address for a separate registry target.",
+        );
+        chainClient.destroy();
+        process.exit(1);
+    }
+
+    // Phase 1: Deploy ContractRegistry (CREATE2 for deterministic address)
     console.log("Deploying ContractRegistry...");
     const { address: registryAddr } = await deployer.deploy(registryPvmPath, CDM_REGISTRY_PACKAGE);
     console.log(`  ContractRegistry: ${registryAddr}\n`);
+    opts.registryAddress = registryAddr;
 
     // Phase 2+3: Build and deploy all CDM contracts (reuses the existing chain client)
     const addresses = await deployWithRegistry(rootDir, opts, {

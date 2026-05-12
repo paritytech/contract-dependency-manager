@@ -102,5 +102,5 @@ export function pjsExplorerUrl(rpcUrl: string, blockHash: string): string {
 }
 
 export function ipfsUrl(gatewayUrl: string, cid: string): string {
-    return `${gatewayUrl}/${cid}`;
+    return `${gatewayUrl.replace(/\/+$/, "")}/${cid.replace(/^\/+/, "")}`;
 }

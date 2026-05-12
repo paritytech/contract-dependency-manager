@@ -11,6 +11,7 @@ struct CdmJsonTarget {
     #[serde(rename = "asset-hub")]
     asset_hub: String,
     bulletin: String,
+    registry: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
