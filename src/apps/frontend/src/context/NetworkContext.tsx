@@ -6,6 +6,9 @@ import {
     type Contract,
     type ContractDef,
 } from "@parity/product-sdk-contracts";
+import { polkadot_asset_hub } from "@parity/product-sdk-descriptors/polkadot-asset-hub";
+import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
+import { previewnet_asset_hub } from "@parity/product-sdk-descriptors/previewnet-asset-hub";
 import { CONTRACTS_REGISTRY_ABI } from "@dotdm/contracts/abi";
 import { getChainPreset, REGISTRY_ADDRESS, type ChainPreset } from "@dotdm/env";
 import { ALICE_SS58 } from "@dotdm/utils";
@@ -22,6 +25,14 @@ const NETWORK_PRESETS: Record<string, ChainPreset> = {
         registryAddress: REGISTRY_ADDRESS,
     },
 };
+
+const ASSET_HUB_DESCRIPTORS = {
+    polkadot: polkadot_asset_hub,
+    paseo: paseo_asset_hub,
+    "preview-net": previewnet_asset_hub,
+    local: paseo_asset_hub,
+    custom: paseo_asset_hub,
+} as const;
 
 export type RegistryContract = Contract<ContractDef>;
 
@@ -129,6 +140,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
 
                 const reg = await createContractFromClient(
                     client,
+                    ASSET_HUB_DESCRIPTORS[network as keyof typeof ASSET_HUB_DESCRIPTORS],
                     registryAddress as HexString,
                     CONTRACTS_REGISTRY_ABI,
                     { defaultOrigin: ALICE_SS58 },
@@ -161,7 +173,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
                 clientRef.current = null;
             }
         };
-    }, [assethubUrl, registryAddress]);
+    }, [assethubUrl, registryAddress, network]);
 
     return (
         <NetworkContext.Provider

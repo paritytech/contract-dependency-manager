@@ -15,6 +15,7 @@
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
         "@parity/product-sdk-contracts": "catalog:",
+        "@parity/product-sdk-descriptors": "catalog:",
         "dompurify": "catalog:",
         "marked": "catalog:",
         "polkadot-api": "catalog:",

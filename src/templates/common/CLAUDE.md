@@ -739,8 +739,8 @@ After installing, contracts are available via:
 {
   "targets": {
     "<targetHash>": {
-      "asset-hub": "wss://asset-hub-paseo-rpc.n.dwellir.com",
-      "bulletin": "https://paseo-ipfs.polkadot.io/ipfs",
+      "asset-hub": "wss://paseo-asset-hub-next-rpc.polkadot.io",
+      "bulletin": "https://paseo-bulletin-next-ipfs.polkadot.io",
       "registry": "0xae344f7f0f91d3a2176032af2990abcc7606c7d4"
     }
   },
