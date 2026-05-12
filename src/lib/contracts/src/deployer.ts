@@ -1,5 +1,4 @@
-import { Binary, Enum, type PolkadotClient, type SizedHex, type TypedApi } from "polkadot-api";
-import type { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
+import { Binary, Enum, type PolkadotClient, type SizedHex } from "polkadot-api";
 import { readFileSync } from "fs";
 import { prepareSigner, type CdmDeployAssetHubApi } from "@dotdm/env";
 import { stringifyBigInt, STORAGE_DEPOSIT_LIMIT, GAS_LIMIT } from "@dotdm/utils";
@@ -75,7 +74,7 @@ export const INSTANTIATE_WITH_CODE_STATIC_WEIGHT: WeightLike = {
 export interface DeployPlan {
     budget: WeightLike;
     prepared: Array<{
-        tx: ReturnType<TypedApi<typeof paseo_asset_hub>["tx"]["Revive"]["instantiate_with_code"]>;
+        tx: ReturnType<CdmDeployAssetHubApi["tx"]["Revive"]["instantiate_with_code"]>;
         /** Execution-only weight limit passed to the extrinsic. */
         gasLimit: WeightLike;
         /**

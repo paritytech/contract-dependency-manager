@@ -10,12 +10,7 @@ import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub
 import { previewnet_asset_hub } from "@parity/product-sdk-descriptors/previewnet-asset-hub";
 import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
 import { previewnet_bulletin } from "@parity/product-sdk-descriptors/previewnet-bulletin";
-import {
-    findChainPresetByEndpoints,
-    getChainPreset,
-    normalizeChainName,
-    type KnownChainName,
-} from "./known_chains";
+import { getChainPreset, normalizeChainName, type KnownChainName } from "./known_chains";
 
 export type CdmDirectChainClient<TChains extends Record<string, ChainDefinition>> = {
     [K in keyof TChains]: TypedApi<TChains[K]>;
@@ -85,9 +80,6 @@ const ASSET_HUB_DESCRIPTORS = {
     local: paseo_asset_hub,
 } as const;
 
-type DeployDescriptorChainName = keyof typeof DEPLOY_CHAIN_DESCRIPTORS;
-type AssetHubDescriptorChainName = keyof typeof ASSET_HUB_DESCRIPTORS;
-
 function resolveExplicitChainName(chainName: string): KnownChainName | "custom" {
     const normalized = normalizeChainName(chainName);
     if (!normalized) {
@@ -98,39 +90,21 @@ function resolveExplicitChainName(chainName: string): KnownChainName | "custom" 
     return normalized;
 }
 
-function inferChainName(endpoints: {
-    assethubUrl?: string;
-    bulletinUrl?: string;
-    ipfsGatewayUrl?: string;
-}): KnownChainName | undefined {
-    return findChainPresetByEndpoints(endpoints);
+function resolveAssetHubDescriptors(chainName: string | undefined) {
+    const normalized = chainName ? resolveExplicitChainName(chainName) : undefined;
+    return ASSET_HUB_DESCRIPTORS[normalized && normalized !== "custom" ? normalized : "paseo"];
 }
 
-function resolveAssetHubDescriptorChainName(
-    chainName: string | undefined,
-    assethubUrl: string,
-): AssetHubDescriptorChainName {
+function resolveDeployDescriptors(chainName: string | undefined) {
     const normalized = chainName ? resolveExplicitChainName(chainName) : undefined;
-    if (normalized && normalized !== "custom") return normalized;
-
-    return inferChainName({ assethubUrl }) ?? "paseo";
-}
-
-function resolveDeployDescriptorChainName(
-    chainName: string | undefined,
-    endpoints: CdmChainEndpoints,
-): DeployDescriptorChainName {
-    const normalized = chainName ? resolveExplicitChainName(chainName) : undefined;
-    const inferred = normalized && normalized !== "custom" ? normalized : inferChainName(endpoints);
-    const descriptorChain = inferred ?? "paseo";
-
+    const descriptorChain = normalized && normalized !== "custom" ? normalized : "paseo";
     if (descriptorChain === "polkadot") {
         throw new Error(
             'CDM deploy connections are only available for "paseo", "preview-net", and "local"; product-sdk does not publish a Polkadot Bulletin descriptor yet.',
         );
     }
 
-    return descriptorChain;
+    return DEPLOY_CHAIN_DESCRIPTORS[descriptorChain];
 }
 
 /**
@@ -157,9 +131,8 @@ export async function createCdmChainClient(
                   chainName: arg,
               }
             : arg;
-    const descriptorChain = resolveDeployDescriptorChainName(endpoints.chainName, endpoints);
 
-    return createDirectChainClient(DEPLOY_CHAIN_DESCRIPTORS[descriptorChain], {
+    return createDirectChainClient(resolveDeployDescriptors(endpoints.chainName), {
         assetHub: endpoints.assethubUrl,
         bulletin: endpoints.bulletinUrl,
     }) as CdmChainClient;
@@ -173,9 +146,8 @@ export async function createCdmAssetHubClient(
     assethubUrl: string,
     chainName?: string,
 ): Promise<CdmAssetHubClient> {
-    const descriptorChain = resolveAssetHubDescriptorChainName(chainName, assethubUrl);
     return createDirectChainClient(
-        { assetHub: ASSET_HUB_DESCRIPTORS[descriptorChain] },
+        { assetHub: resolveAssetHubDescriptors(chainName) },
         { assetHub: assethubUrl },
     ) as CdmAssetHubClient;
 }

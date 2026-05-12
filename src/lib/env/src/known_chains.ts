@@ -1,3 +1,5 @@
+import { BULLETIN_RPCS } from "@parity/product-sdk-host";
+
 export interface ChainFaucet {
     label: string;
     url: string;
@@ -21,7 +23,7 @@ export const KNOWN_CHAINS = {
     },
     paseo: {
         assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
-        bulletinUrl: "wss://paseo-bulletin-rpc.polkadot.io",
+        bulletinUrl: BULLETIN_RPCS.paseo[0],
         ipfsGatewayUrl: "https://paseo-ipfs.polkadot.io/ipfs",
         productSdkEnvironment: "paseo",
         faucets: [
@@ -34,7 +36,7 @@ export const KNOWN_CHAINS = {
     },
     "preview-net": {
         assethubUrl: "wss://previewnet.substrate.dev/asset-hub",
-        bulletinUrl: "wss://previewnet.substrate.dev/bulletin",
+        bulletinUrl: BULLETIN_RPCS.previewnet[0],
         ipfsGatewayUrl: "https://previewnet.substrate.dev/ipfs/",
         productSdkEnvironment: "previewnet",
     },
@@ -63,27 +65,4 @@ export function getChainPreset(name: string): ChainPreset {
         throw new Error(`Unknown chain "${name}". Valid names: ${valid}`);
     }
     return preset;
-}
-
-function normalizeUrl(url: string | undefined): string | undefined {
-    return url?.replace(/\/+$/, "");
-}
-
-export function findChainPresetByEndpoints(endpoints: {
-    assethubUrl?: string;
-    bulletinUrl?: string;
-    ipfsGatewayUrl?: string;
-}): KnownChainName | undefined {
-    const assethubUrl = normalizeUrl(endpoints.assethubUrl);
-    const bulletinUrl = normalizeUrl(endpoints.bulletinUrl);
-    const ipfsGatewayUrl = normalizeUrl(endpoints.ipfsGatewayUrl);
-
-    return (Object.keys(KNOWN_CHAINS) as KnownChainName[]).find((name) => {
-        const preset = KNOWN_CHAINS[name];
-        return (
-            (!assethubUrl || normalizeUrl(preset.assethubUrl) === assethubUrl) &&
-            (!bulletinUrl || normalizeUrl(preset.bulletinUrl) === bulletinUrl) &&
-            (!ipfsGatewayUrl || normalizeUrl(preset.ipfsGatewayUrl) === ipfsGatewayUrl)
-        );
-    });
 }
