@@ -1,5 +1,15 @@
 # @dotdm/contracts
 
+## 2.0.1
+
+### Patch Changes
+
+- 11c7611: Make the ContractRegistry address part of CDM network target selection again, including cdm.json target hashing, build-time registry embedding, deploy/install registry resolution, and preview-net presets.
+- e159d8e: Update CDM packages and templates to the latest published product-sdk packages, including the new paseo/preview-net descriptor split for Asset Hub and Bulletin.
+- Updated dependencies [11c7611]
+- Updated dependencies [e159d8e]
+  - @dotdm/env@1.0.2
+
 ## 2.0.0
 
 ### Major Changes
