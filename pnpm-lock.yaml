@@ -370,6 +370,9 @@ importers:
       '@dotdm/env':
         specifier: workspace:*
         version: link:../env
+      '@dotdm/utils':
+        specifier: workspace:*
+        version: link:../utils
     devDependencies:
       '@types/bun':
         specifier: 'catalog:'

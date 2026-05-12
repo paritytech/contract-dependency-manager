@@ -136,6 +136,7 @@ Build all contracts with the ContractRegistry address baked in.
 
 ```bash
 cdm build --contracts counter counter_writer    # Build specific contracts
+cdm build -n preview-net                        # Embed that network's registry
 cdm build --root /path/to/workspace             # Custom workspace root
 ```
 
@@ -147,8 +148,8 @@ Build & deploy/register all contracts
 cdm deploy -n paseo
 
 # Options
-cdm deploy -n paseo --signer Bob  # Use different signer
-cdm deploy -n paseo --dry-run     # Preview deployment plan
+cdm deploy -n paseo --suri //Bob  # Use different signer
+cdm deploy --registry-address 0x... --assethub-url wss://... --bulletin-url wss://...
 ```
 
 ### `cdm install -n <chain> <library>`
@@ -157,6 +158,7 @@ Add a CDM contract library for use with `@dotdm/cdm` or  the polkadot-api. Queri
 
 ```bash
 cdm i -n paseo @polkadot/reputation @polkadot/disputes
+cdm i -n preview-net @polkadot/reputation
 ```
 
 ### `cdm template [name]`

@@ -1,4 +1,5 @@
 import { BULLETIN_RPCS } from "@parity/product-sdk-host";
+import { REGISTRY_ADDRESS } from "@dotdm/utils";
 
 export interface ChainFaucet {
     label: string;
@@ -11,20 +12,25 @@ export interface ChainPreset {
     assethubUrl: string;
     bulletinUrl: string;
     ipfsGatewayUrl: string;
+    registryAddress?: string;
     productSdkEnvironment?: ProductSdkEnvironment;
     faucets?: readonly ChainFaucet[];
 }
+
+const PREVIEW_NET_REGISTRY_ADDRESS = "0x5c7b23d386ff622c7f7a4e7a95d5c7a67b10a00d";
 
 const KNOWN_CHAINS = {
     polkadot: {
         assethubUrl: "wss://polkadot-asset-hub-rpc.polkadot.io",
         bulletinUrl: "wss://polkadot-bulletin-rpc.polkadot.io",
         ipfsGatewayUrl: "https://polkadot-bulletin-rpc.polkadot.io/ipfs",
+        registryAddress: REGISTRY_ADDRESS,
     },
     paseo: {
         assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
         bulletinUrl: BULLETIN_RPCS.paseo[0],
         ipfsGatewayUrl: "https://paseo-ipfs.polkadot.io/ipfs",
+        registryAddress: REGISTRY_ADDRESS,
         productSdkEnvironment: "paseo",
         faucets: [
             { label: "Asset Hub", url: "https://faucet.polkadot.io/" },
@@ -37,13 +43,15 @@ const KNOWN_CHAINS = {
     "preview-net": {
         assethubUrl: "wss://previewnet.substrate.dev/asset-hub",
         bulletinUrl: BULLETIN_RPCS.previewnet[0],
-        ipfsGatewayUrl: "https://previewnet.substrate.dev/ipfs/",
+        ipfsGatewayUrl: "https://previewnet.substrate.dev/ipfs",
+        registryAddress: PREVIEW_NET_REGISTRY_ADDRESS,
         productSdkEnvironment: "previewnet",
     },
     local: {
         assethubUrl: "ws://127.0.0.1:10020",
         bulletinUrl: "ws://127.0.0.1:10030",
         ipfsGatewayUrl: "http://127.0.0.1:8283/ipfs",
+        registryAddress: REGISTRY_ADDRESS,
     },
 } as const satisfies Record<string, ChainPreset>;
 

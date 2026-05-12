@@ -9,7 +9,8 @@
     },
     "dependencies": {
         "@dotdm/contracts": "workspace:*",
-        "@dotdm/env": "workspace:*"
+        "@dotdm/env": "workspace:*",
+        "@dotdm/utils": "workspace:*"
     },
     "devDependencies": {
         "@types/bun": "catalog:",

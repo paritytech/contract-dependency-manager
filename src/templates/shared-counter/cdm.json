@@ -1,19 +1,20 @@
 {
   "targets": {
-    "acc2c3b5e912b762": {
+    "4a1a07609215b417": {
       "asset-hub": "wss://asset-hub-paseo-rpc.n.dwellir.com",
-      "bulletin": "https://paseo-ipfs.polkadot.io/ipfs"
+      "bulletin": "https://paseo-ipfs.polkadot.io/ipfs",
+      "registry": "0xae344f7f0f91d3a2176032af2990abcc7606c7d4"
     }
   },
   "dependencies": {
-    "acc2c3b5e912b762": {
+    "4a1a07609215b417": {
       "@example/counter": "latest",
       "@example/counter-writer": "latest",
       "@example/counter-reader": "latest"
     }
   },
   "contracts": {
-    "acc2c3b5e912b762": {
+    "4a1a07609215b417": {
       "@example/counter": {
         "version": 0,
         "address": "0xC47274C987491d58b99747F344AE661986B580E8",

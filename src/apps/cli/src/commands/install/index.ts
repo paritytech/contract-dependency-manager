@@ -14,6 +14,7 @@ import {
     CONTRACTS_REGISTRY_ABI,
     computeTargetHash,
     readCdmJson,
+    resolveTargetRegistryAddress,
     writeCdmJson,
 } from "@dotdm/contracts";
 import { ALICE_SS58 } from "@dotdm/utils";
@@ -51,12 +52,14 @@ const install = new Command("install")
     )
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain", DEFAULT_NODE_URL)
     .option("-n, --name <name>", "Chain preset name (polkadot, paseo, preview-net, local)")
-    .option("--ipfs-gateway-url <url>", "IPFS gateway URL for fetching metadata");
+    .option("--ipfs-gateway-url <url>", "IPFS gateway URL for fetching metadata")
+    .option("--registry-address <address>", "Registry contract address");
 
 type InstallOptions = {
     assethubUrl: string;
     name?: string;
     ipfsGatewayUrl?: string;
+    registryAddress?: string;
 };
 
 install.action(async (libraries: string[], opts: InstallOptions) => {
@@ -70,6 +73,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         opts.assethubUrl =
             opts.assethubUrl === DEFAULT_NODE_URL ? preset.assethubUrl : opts.assethubUrl;
         opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? preset.ipfsGatewayUrl;
+        opts.registryAddress = opts.registryAddress ?? preset.registryAddress;
     }
 
     // If still missing connection info, populate from cdm.json targets
@@ -80,6 +84,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
             opts.assethubUrl = target["asset-hub"];
         }
         opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? target.bulletin;
+        opts.registryAddress = opts.registryAddress ?? resolveTargetRegistryAddress(target);
     }
 
     if (!opts.ipfsGatewayUrl) {
@@ -89,7 +94,8 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         process.exit(1);
     }
 
-    const targetHash = computeTargetHash(opts.assethubUrl, opts.ipfsGatewayUrl);
+    const registryAddress = opts.registryAddress ?? REGISTRY_ADDRESS;
+    const targetHash = computeTargetHash(opts.assethubUrl, opts.ipfsGatewayUrl, registryAddress);
 
     // Connect to chain with spinner (matching deploy command style)
     const sp = spinner("AssetHub", opts.assethubUrl);
@@ -99,7 +105,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
 
     const registry = await createContractFromClient(
         chainClient.raw.assetHub,
-        REGISTRY_ADDRESS as HexString,
+        registryAddress as HexString,
         CONTRACTS_REGISTRY_ABI,
         { defaultOrigin: ALICE_SS58 },
     );
@@ -109,6 +115,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
     cdmJson.targets[targetHash] = {
         "asset-hub": opts.assethubUrl,
         bulletin: opts.ipfsGatewayUrl,
+        registry: registryAddress,
     };
     if (!cdmJson.dependencies[targetHash]) {
         cdmJson.dependencies[targetHash] = {};
@@ -142,7 +149,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
     const projectType = detectProjectType(process.cwd());
 
     // Header (matching deploy command style)
-    console.log(`\x1b[1mRegistry\x1b[0m   ${REGISTRY_ADDRESS}`);
+    console.log(`\x1b[1mRegistry\x1b[0m   ${registryAddress}`);
     console.log(`\x1b[1mTarget\x1b[0m     ${targetHash}`);
     console.log(
         `\x1b[1mRust\x1b[0m ${projectType.hasRust ? "\x1b[32m✔\x1b[0m" : "\x1b[2m-\x1b[0m"}` +

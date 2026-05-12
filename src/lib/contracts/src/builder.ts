@@ -19,7 +19,12 @@ export type BuildProgressCallback = (
 /**
  * Build a single contract using `cargo pvm-contract build`.
  */
-export function pvmContractBuild(rootDir: string, crateName: string, features?: string): void {
+export function pvmContractBuild(
+    rootDir: string,
+    crateName: string,
+    features?: string,
+    registryAddress: string = REGISTRY_ADDRESS,
+): void {
     const manifestPath = resolve(rootDir, "Cargo.toml");
     const args = ["pvm-contract", "build", "--manifest-path", manifestPath, "-p", crateName];
     if (features) {
@@ -27,7 +32,7 @@ export function pvmContractBuild(rootDir: string, crateName: string, features?: 
     }
     const env: Record<string, string> = {
         ...(process.env as Record<string, string>),
-        CONTRACTS_REGISTRY_ADDR: REGISTRY_ADDRESS,
+        CONTRACTS_REGISTRY_ADDR: registryAddress,
     };
     execFileSync("cargo", args, { cwd: rootDir, stdio: "inherit", env });
 }
@@ -40,6 +45,7 @@ export async function pvmContractBuildAsync(
     crateName: string,
     onProgress?: BuildProgressCallback,
     features?: string,
+    registryAddress: string = REGISTRY_ADDRESS,
 ): Promise<BuildResult> {
     const manifestPath = resolve(rootDir, "Cargo.toml");
 
@@ -60,7 +66,7 @@ export async function pvmContractBuildAsync(
         }
         const env: Record<string, string> = {
             ...(process.env as Record<string, string>),
-            CONTRACTS_REGISTRY_ADDR: REGISTRY_ADDRESS,
+            CONTRACTS_REGISTRY_ADDR: registryAddress,
         };
 
         const child = spawn("cargo", args, {

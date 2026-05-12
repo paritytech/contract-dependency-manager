@@ -15,7 +15,12 @@ const NETWORK_PRESETS: Record<string, ChainPreset> = {
     paseo: getChainPreset("paseo"),
     "preview-net": getChainPreset("preview-net"),
     local: getChainPreset("local"),
-    custom: { assethubUrl: "", bulletinUrl: "", ipfsGatewayUrl: "" },
+    custom: {
+        assethubUrl: "",
+        bulletinUrl: "",
+        ipfsGatewayUrl: "",
+        registryAddress: REGISTRY_ADDRESS,
+    },
 };
 
 export type RegistryContract = Contract<ContractDef>;
@@ -26,9 +31,11 @@ interface NetworkContextType {
     assethubUrl: string;
     bulletinUrl: string;
     ipfsGatewayUrl: string;
+    registryAddress: string;
     setAssethubUrl: (url: string) => void;
     setBulletinUrl: (url: string) => void;
     setIpfsGatewayUrl: (url: string) => void;
+    setRegistryAddress: (address: string) => void;
     registry: RegistryContract | null;
     connected: boolean;
     connecting: boolean;
@@ -48,6 +55,9 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     const [assethubUrl, setAssethubUrl] = useState(NETWORK_PRESETS["paseo"].assethubUrl);
     const [bulletinUrl, setBulletinUrl] = useState(NETWORK_PRESETS["paseo"].bulletinUrl);
     const [ipfsGatewayUrl, setIpfsGatewayUrl] = useState(NETWORK_PRESETS["paseo"].ipfsGatewayUrl);
+    const [registryAddress, setRegistryAddress] = useState(
+        NETWORK_PRESETS["paseo"].registryAddress ?? REGISTRY_ADDRESS,
+    );
     const [registry, setRegistry] = useState<RegistryContract | null>(null);
     const [connected, setConnected] = useState(false);
     const [connecting, setConnecting] = useState(false);
@@ -62,6 +72,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
             setAssethubUrl(preset.assethubUrl);
             setBulletinUrl(preset.bulletinUrl);
             setIpfsGatewayUrl(preset.ipfsGatewayUrl);
+            setRegistryAddress(preset.registryAddress ?? REGISTRY_ADDRESS);
         }
     }, []);
 
@@ -118,7 +129,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
 
                 const reg = await createContractFromClient(
                     client,
-                    REGISTRY_ADDRESS as HexString,
+                    registryAddress as HexString,
                     CONTRACTS_REGISTRY_ABI,
                     { defaultOrigin: ALICE_SS58 },
                 );
@@ -150,7 +161,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
                 clientRef.current = null;
             }
         };
-    }, [assethubUrl]);
+    }, [assethubUrl, registryAddress]);
 
     return (
         <NetworkContext.Provider
@@ -160,9 +171,11 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
                 assethubUrl,
                 bulletinUrl,
                 ipfsGatewayUrl,
+                registryAddress,
                 setAssethubUrl,
                 setBulletinUrl,
                 setIpfsGatewayUrl,
+                setRegistryAddress,
                 registry,
                 connected,
                 connecting,

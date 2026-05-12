@@ -156,6 +156,10 @@ export interface IpfsGateway {
     fetch: (cid: string) => Promise<Response>;
 }
 
+function joinGatewayUrl(url: string, cid: string): string {
+    return `${url.replace(/\/+$/, "")}/${cid.replace(/^\/+/, "")}`;
+}
+
 /**
  * Minimal IPFS gateway HTTP client used by `install` to fetch metadata JSON
  * by CID. Unrelated to chain-client; kept here alongside the chain-connection
@@ -168,10 +172,12 @@ export interface IpfsGateway {
 export function connectIpfsGateway(url: string): IpfsGateway {
     return {
         fetch: (cid: string) =>
-            globalThis.fetch(`${url}/${cid}`, { signal: AbortSignal.timeout(15_000) }).then((r) => {
-                if (!r.ok) throw new Error(`IPFS fetch failed: ${r.statusText}`);
-                return r;
-            }),
+            globalThis
+                .fetch(joinGatewayUrl(url, cid), { signal: AbortSignal.timeout(15_000) })
+                .then((r) => {
+                    if (!r.ok) throw new Error(`IPFS fetch failed: ${r.statusText}`);
+                    return r;
+                }),
     };
 }
 

@@ -40,7 +40,7 @@ build-registry:
 	cargo pvm-contract build --manifest-path $(CURDIR)/Cargo.toml -p contract-registry
 
 deploy-registry: build-registry
-	bun run src/lib/scripts/deploy-registry.ts --name $(or $(CHAIN),local)
+	bun run src/lib/scripts/deploy-registry.ts --name $(or $(CHAIN),local) $(if $(SURI),--suri "$(SURI)") $(if $(REGISTRY_ADDRESS),--registry-address $(REGISTRY_ADDRESS))
 
 build-template:
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter
