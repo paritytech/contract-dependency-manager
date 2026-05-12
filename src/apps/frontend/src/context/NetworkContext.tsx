@@ -7,11 +7,14 @@ import {
     type ContractDef,
 } from "@parity/product-sdk-contracts";
 import { CONTRACTS_REGISTRY_ABI } from "@dotdm/contracts/abi";
-import { KNOWN_CHAINS, REGISTRY_ADDRESS, type ChainPreset } from "@dotdm/env";
+import { getChainPreset, REGISTRY_ADDRESS, type ChainPreset } from "@dotdm/env";
 import { ALICE_SS58 } from "@dotdm/utils";
 
 const NETWORK_PRESETS: Record<string, ChainPreset> = {
-    ...KNOWN_CHAINS,
+    polkadot: getChainPreset("polkadot"),
+    paseo: getChainPreset("paseo"),
+    "preview-net": getChainPreset("preview-net"),
+    local: getChainPreset("local"),
     custom: { assethubUrl: "", bulletinUrl: "", ipfsGatewayUrl: "" },
 };
 

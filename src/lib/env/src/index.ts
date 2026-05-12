@@ -4,7 +4,7 @@ export type {
     KnownChainName,
     ProductSdkEnvironment,
 } from "./known_chains";
-export { KNOWN_CHAINS, getChainPreset } from "./known_chains";
+export { getChainPreset, isKnownChainPreset } from "./known_chains";
 export { DEFAULT_NODE_URL, REGISTRY_ADDRESS } from "@dotdm/utils";
 
 export type {

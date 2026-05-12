@@ -15,7 +15,7 @@ export interface ChainPreset {
     faucets?: readonly ChainFaucet[];
 }
 
-export const KNOWN_CHAINS = {
+const KNOWN_CHAINS = {
     polkadot: {
         assethubUrl: "wss://polkadot-asset-hub-rpc.polkadot.io",
         bulletinUrl: "wss://polkadot-bulletin-rpc.polkadot.io",
@@ -55,6 +55,11 @@ export function normalizeChainName(name: string): KnownChainName | "custom" | un
         return name;
     }
     if (name === "custom") return "custom";
+}
+
+export function isKnownChainPreset(name: string): boolean {
+    const normalized = normalizeChainName(name);
+    return normalized !== undefined && normalized !== "custom";
 }
 
 export function getChainPreset(name: string): ChainPreset {

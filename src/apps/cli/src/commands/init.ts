@@ -1,11 +1,11 @@
 import { Command } from "commander";
 import { Enum } from "polkadot-api";
 import {
-    KNOWN_CHAINS,
     createCdmChainClient,
     prepareSigner,
     prepareSignerFromMnemonic,
     getChainPreset,
+    isKnownChainPreset,
 } from "@dotdm/env";
 import {
     getAccount,
@@ -85,7 +85,7 @@ init.action(async (opts: { name: string }) => {
         return;
     }
 
-    if (!(chainName in KNOWN_CHAINS) || chainName === "polkadot") {
+    if (!isKnownChainPreset(chainName) || chainName === "polkadot") {
         console.error(`Init is not available for "${chainName}".`);
         console.error("Currently only testnet chains (e.g. paseo) support auto-initialization.");
         process.exit(1);
