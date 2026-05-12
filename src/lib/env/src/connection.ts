@@ -16,6 +16,7 @@ export type CdmDirectChainClient<TChains extends Record<string, ChainDefinition>
     [K in keyof TChains]: TypedApi<TChains[K]>;
 } & {
     raw: { [K in keyof TChains]: PolkadotClient };
+    descriptors: TChains;
     destroy: () => void;
 };
 
@@ -41,6 +42,7 @@ export type CdmChainClient = {
     assetHub: CdmDeployAssetHubApi;
     bulletin: CdmBulletinApi;
     raw: { assetHub: PolkadotClient; bulletin: PolkadotClient };
+    descriptors: { assetHub: CdmDeployAssetHubDescriptor; bulletin: CdmBulletinDescriptor };
     destroy: () => void;
 };
 
@@ -48,6 +50,7 @@ export type CdmChainClient = {
 export type CdmAssetHubClient = {
     assetHub: CdmAssetHubApi;
     raw: { assetHub: PolkadotClient };
+    descriptors: { assetHub: CdmAssetHubDescriptor };
     destroy: () => void;
 };
 
@@ -197,6 +200,7 @@ function createDirectChainClient<const TChains extends Record<string, ChainDefin
     return {
         ...apis,
         raw,
+        descriptors: chains,
         destroy() {
             for (const client of Object.values(raw)) {
                 client.destroy();

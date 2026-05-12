@@ -465,6 +465,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         });
         const registryContract = await createContractFromClient(
             assetHubClient,
+            opts.client.descriptors.assetHub,
             opts.registryAddress,
             CONTRACTS_REGISTRY_ABI,
             { defaultSigner: signer, defaultOrigin: opts.origin },

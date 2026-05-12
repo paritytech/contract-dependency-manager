@@ -548,11 +548,13 @@ export class ContractDeployer {
             gasLimit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
             storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
         };
-        const registerCalls = cdmPackages.map((pkg, i) =>
-            registry.publishLatest.prepare(pkg, prepared[i].address, metadataUris[i], {
-                origin: this.origin,
-                ...prepareOpts,
-            }),
+        const registerCalls = await Promise.all(
+            cdmPackages.map((pkg, i) =>
+                registry.publishLatest.prepare(pkg, prepared[i].address, metadataUris[i], {
+                    origin: this.origin,
+                    ...prepareOpts,
+                }),
+            ),
         );
 
         const addresses: string[] = new Array(pvmPaths.length);

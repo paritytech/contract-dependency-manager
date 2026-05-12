@@ -105,6 +105,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
 
     const registry = await createContractFromClient(
         chainClient.raw.assetHub,
+        chainClient.descriptors.assetHub,
         registryAddress as HexString,
         CONTRACTS_REGISTRY_ABI,
         { defaultOrigin: ALICE_SS58 },
