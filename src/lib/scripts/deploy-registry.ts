@@ -38,6 +38,7 @@ if (opts.name) {
     assethubUrl = assethubUrl ?? preset?.assethubUrl;
 }
 const selectedRegistryAddress = opts["registry-address"] ?? preset?.registryAddress;
+const hasExplicitRegistryAddress = Boolean(opts["registry-address"]);
 if (!assethubUrl) {
     console.error("Error: --assethub-url or --name is required");
     process.exit(1);
@@ -75,6 +76,18 @@ const deployer = new ContractDeployer(
     chainClient.assetHub,
 );
 
+if (selectedRegistryAddress) {
+    const info = await chainClient.assetHub.query.Revive.AccountInfoOf.getValue(
+        selectedRegistryAddress as `0x${string}`,
+    );
+    if (info?.account_type.type === "Contract") {
+        console.log(`ContractRegistry already deployed at ${selectedRegistryAddress}`);
+        console.log(`\nCONTRACTS_REGISTRY_ADDR=${selectedRegistryAddress}`);
+        chainClient.destroy();
+        process.exit(0);
+    }
+}
+
 // Map account (required on fresh chains, harmless if already mapped)
 try {
     await chainClient.assetHub.tx.Revive.map_account().signAndSubmit(signer);
@@ -86,6 +99,7 @@ try {
 const CDM_REGISTRY_PACKAGE = "@cdm/registry";
 const expected = await deployer.dryRunDeploy(pvmPath, CDM_REGISTRY_PACKAGE);
 if (
+    hasExplicitRegistryAddress &&
     selectedRegistryAddress &&
     expected.address.toLowerCase() !== selectedRegistryAddress.toLowerCase()
 ) {
@@ -97,6 +111,16 @@ if (
     );
     chainClient.destroy();
     process.exit(1);
+}
+if (
+    !hasExplicitRegistryAddress &&
+    selectedRegistryAddress &&
+    expected.address.toLowerCase() !== selectedRegistryAddress.toLowerCase()
+) {
+    console.warn(
+        `Selected preset currently points at ${selectedRegistryAddress}, but this deployment will create ${expected.address}.`,
+    );
+    console.warn("Update the preset registry address after deployment.");
 }
 
 // Deploy with CREATE2 for deterministic address

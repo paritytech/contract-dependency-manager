@@ -17,6 +17,7 @@ export interface ChainPreset {
     faucets?: readonly ChainFaucet[];
 }
 
+const PASEO_V2_REGISTRY_ADDRESS = "0x5c7b23d386ff622c7f7a4e7a95d5c7a67b10a00d";
 const PREVIEW_NET_REGISTRY_ADDRESS = "0x5c7b23d386ff622c7f7a4e7a95d5c7a67b10a00d";
 // Keep these aligned with product-sdk's `getChainAPI("paseo")` preset. Product-sdk
 // exports Bulletin RPCs, but not the Asset Hub RPC or HTTP gateway constants.
@@ -34,7 +35,7 @@ const KNOWN_CHAINS = {
         assethubUrl: PASEO_ASSET_HUB_URL,
         bulletinUrl: BULLETIN_RPCS.paseo[0],
         ipfsGatewayUrl: PASEO_IPFS_GATEWAY_URL,
-        registryAddress: REGISTRY_ADDRESS,
+        registryAddress: PASEO_V2_REGISTRY_ADDRESS,
         productSdkEnvironment: "paseo",
         faucets: [
             { label: "Asset Hub", url: "https://faucet.polkadot.io/" },
