@@ -22,7 +22,7 @@ const PREVIEW_NET_REGISTRY_ADDRESS = "0x5c7b23d386ff622c7f7a4e7a95d5c7a67b10a00d
 // Keep these aligned with product-sdk's `getChainAPI("paseo")` preset. Product-sdk
 // exports Bulletin RPCs, but not the Asset Hub RPC or HTTP gateway constants.
 const PASEO_ASSET_HUB_URL = "wss://paseo-asset-hub-next-rpc.polkadot.io";
-const PASEO_IPFS_GATEWAY_URL = "https://paseo-bulletin-next-ipfs.polkadot.io";
+const PASEO_IPFS_GATEWAY_URL = "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs";
 
 const KNOWN_CHAINS = {
     polkadot: {

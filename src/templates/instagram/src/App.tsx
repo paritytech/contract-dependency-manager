@@ -63,7 +63,7 @@ interface UserInfo {
   postCount: number;
 }
 
-const IPFS_GATEWAY = "https://paseo-bulletin-next-ipfs.polkadot.io/";
+const IPFS_GATEWAY = "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs/";
 const PAGE = 8;
 
 // ---------------------------------------------------------------------------
