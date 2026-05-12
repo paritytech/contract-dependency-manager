@@ -1,5 +1,15 @@
 # @dotdm/cli
 
+## 0.8.4
+
+### Patch Changes
+
+- 32ed48b: Use the Paseo v2 Bulletin IPFS gateway path that actually serves CIDs.
+- Updated dependencies [32ed48b]
+  - @dotdm/env@1.0.4
+  - @dotdm/cdm@0.6.4
+  - @dotdm/contracts@2.0.3
+
 ## 0.8.3
 
 ### Patch Changes

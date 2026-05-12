@@ -1,5 +1,11 @@
 # @dotdm/env
 
+## 1.0.4
+
+### Patch Changes
+
+- 32ed48b: Use the Paseo v2 Bulletin IPFS gateway path that actually serves CIDs.
+
 ## 1.0.3
 
 ### Patch Changes
