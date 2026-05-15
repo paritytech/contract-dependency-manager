@@ -3,6 +3,7 @@ import { render } from "ink";
 import {
     buildContracts,
     deployContracts,
+    detectBuildOrder,
     detectDeploymentOrderLayered,
     type BuildContractsOptions,
     type DeployContractsOptions,
@@ -56,6 +57,7 @@ interface RenderArgs {
     statuses: Map<string, ContractStatus>;
     displayNames: Map<string, string>;
     crates: string[];
+    logLines: string[];
     buildOnly: boolean;
     assethubUrl?: string;
     bulletinUrl?: string;
@@ -68,6 +70,7 @@ function makeUI(args: RenderArgs) {
             statuses: args.statuses,
             displayNames: args.displayNames,
             crates: args.crates,
+            logLines: args.logLines,
             buildOnly: args.buildOnly,
             assethubUrl: args.assethubUrl,
             bulletinUrl: args.bulletinUrl,
@@ -101,6 +104,19 @@ function precomputeDisplay(rootDir: string, contracts: string[] | undefined) {
     return { crates, displayNames };
 }
 
+function precomputeBuildDisplay(rootDir: string, contracts: string[] | undefined) {
+    const order = detectBuildOrder(rootDir, contracts);
+    const crates = order.layers.flat();
+    const displayNames = new Map<string, string>();
+    for (const contract of order.contracts) {
+        displayNames.set(
+            contract.name,
+            contract.cdmPackage ?? contract.displayName ?? contract.name,
+        );
+    }
+    return { crates, displayNames };
+}
+
 /**
  * Run `buildContracts()` and render progress into the Ink `DeployTable`.
  *
@@ -112,7 +128,7 @@ export async function runBuildWithUI(opts: BuildUIOptions): Promise<{
     summary: BuildSummary;
     result: PipelineResult;
 }> {
-    const { crates, displayNames } = precomputeDisplay(opts.rootDir, opts.contracts);
+    const { crates, displayNames } = precomputeBuildDisplay(opts.rootDir, opts.contracts);
 
     const adapter = new PipelineStatusAdapter({
         onCdmPackageDetected: (crate, pkg) => displayNames.set(crate, pkg),
@@ -122,6 +138,7 @@ export async function runBuildWithUI(opts: BuildUIOptions): Promise<{
         statuses: adapter.statuses,
         displayNames,
         crates,
+        logLines: adapter.logLines,
         buildOnly: true,
     });
 
@@ -164,6 +181,7 @@ export async function runDeployWithUI(opts: DeployUIOptions): Promise<{
         statuses: adapter.statuses,
         displayNames,
         crates,
+        logLines: adapter.logLines,
         buildOnly: false,
         assethubUrl: opts.assethubUrl,
         bulletinUrl: opts.bulletinUrl,

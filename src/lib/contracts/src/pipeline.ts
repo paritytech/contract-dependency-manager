@@ -21,6 +21,11 @@ import {
 import { pvmContractBuildAsync, type BuildProgressCallback } from "./builder";
 import { computeBulletinStoreCid } from "./cid";
 import {
+    buildSolidityToolchain,
+    detectSolidityBuildTargets,
+    type SolidityBuildTarget,
+} from "./solidity";
+import {
     ContractDeployer,
     computeDeploySalt,
     type AbiEntry,
@@ -70,6 +75,7 @@ export interface BuildContractsOptions {
 
 export type BuildEvent =
     | { type: "detect"; contracts: ContractInfo[]; layers: string[][] }
+    | { type: "log"; line: string; source?: string }
     | { type: "build-start"; crate: string }
     | { type: "build-progress"; crate: string; compiled: number; total: number }
     | { type: "build-done"; crate: string; durationMs: number; bytecodeSize: number }
@@ -80,7 +86,12 @@ export type BuildEvent =
 export interface BuildSummary {
     contracts: Array<{
         crate: string;
+        name?: string;
+        displayName?: string;
+        toolchain?: string;
         pvmPath?: string;
+        abiPath?: string;
+        artifactPath?: string;
         bytecodeSize?: number;
         durationMs?: number;
         error?: string;
@@ -110,6 +121,7 @@ export interface DeployContractsOptions {
 
 export type DeployEvent =
     | { type: "detect"; contracts: ContractInfo[]; layers: string[][] }
+    | { type: "log"; line: string; source?: string }
     | { type: "build-start"; crate: string }
     | { type: "build-progress"; crate: string; compiled: number; total: number }
     | { type: "build-done"; crate: string; durationMs: number; bytecodeSize: number }
@@ -213,6 +225,16 @@ interface DetectedPipeline {
     layers: string[][];
 }
 
+interface DetectedBuildPipeline {
+    contracts: ContractInfo[];
+    layers: string[][];
+    rust?: DetectedPipeline;
+    solidity: {
+        foundry: SolidityBuildTarget[];
+        hardhat: SolidityBuildTarget[];
+    };
+}
+
 /** Detect + optionally filter layers. Shared between build and deploy. */
 function detectAndFilter(rootDir: string, filter: string[] | undefined): DetectedPipeline {
     const order = detectDeploymentOrderLayered(rootDir);
@@ -226,6 +248,57 @@ function detectAndFilter(rootDir: string, filter: string[] | undefined): Detecte
     return { order, layers };
 }
 
+function matchesContractFilter(contract: ContractInfo, filterSet: Set<string>): boolean {
+    return (
+        filterSet.has(contract.name) ||
+        (contract.displayName ? filterSet.has(contract.displayName) : false) ||
+        (contract.cdmPackage ? filterSet.has(contract.cdmPackage) : false)
+    );
+}
+
+/**
+ * Detect every buildable contract target in the workspace. Rust uses Cargo's
+ * dependency graph; Solidity targets are build-only for now and are grouped by
+ * toolchain. Cross-language dependency ordering is not defined yet, so Solidity
+ * groups are independent layers.
+ */
+export function detectBuildOrder(
+    rootDir: string,
+    filter: string[] | undefined = undefined,
+): DetectedBuildPipeline {
+    const filterSet = filter && filter.length > 0 ? new Set(filter) : null;
+    let rust: DetectedPipeline | undefined;
+    const rustContracts: ContractInfo[] = [];
+
+    if (existsSync(resolve(rootDir, "Cargo.toml"))) {
+        const detected = detectAndFilter(rootDir, filter);
+        rust = detected;
+        for (const crate of detected.layers.flat()) {
+            const contract = detected.order.contractMap.get(crate);
+            if (contract) rustContracts.push(contract);
+        }
+    }
+
+    const solidityTargets = detectSolidityBuildTargets(rootDir).filter((target) =>
+        filterSet ? matchesContractFilter(target, filterSet) : true,
+    );
+    const foundry = solidityTargets.filter((target) => target.toolchain === "foundry");
+    const hardhat = solidityTargets.filter((target) => target.toolchain === "hardhat");
+
+    const layers = [
+        ...(rust?.layers ?? []),
+        ...(foundry.length > 0 ? [foundry.map((target) => target.name)] : []),
+        ...(hardhat.length > 0 ? [hardhat.map((target) => target.name)] : []),
+    ];
+
+    return {
+        contracts: [...rustContracts, ...foundry, ...hardhat],
+        layers,
+        rust,
+        solidity: { foundry, hardhat },
+    };
+}
+
 interface BuildPhaseResult {
     /** Crates whose build succeeded (in layered order). */
     successful: string[];
@@ -234,7 +307,16 @@ interface BuildPhaseResult {
     /** Per-crate build info (size + durationMs) for the summary. */
     info: Map<
         string,
-        { durationMs: number; pvmPath?: string; bytecodeSize?: number; error?: string }
+        {
+            durationMs: number;
+            pvmPath?: string;
+            abiPath?: string;
+            artifactPath?: string;
+            bytecodeSize?: number;
+            toolchain?: string;
+            displayName?: string;
+            error?: string;
+        }
     >;
 }
 
@@ -260,7 +342,16 @@ async function runBuildPhase(
     const successful: string[] = [];
     const info = new Map<
         string,
-        { durationMs: number; pvmPath?: string; bytecodeSize?: number; error?: string }
+        {
+            durationMs: number;
+            pvmPath?: string;
+            abiPath?: string;
+            artifactPath?: string;
+            bytecodeSize?: number;
+            toolchain?: string;
+            displayName?: string;
+            error?: string;
+        }
     >();
 
     for (const layer of layers) {
@@ -300,6 +391,12 @@ async function runBuildPhase(
                 info.set(result.crateName, {
                     durationMs: result.durationMs,
                     pvmPath,
+                    abiPath: resolve(rootDir, `target/${result.crateName}.release.abi.json`),
+                    toolchain: "rust",
+                    displayName:
+                        order.cdmPackageMap.get(result.crateName) ??
+                        order.contractMap.get(result.crateName)?.displayName ??
+                        result.crateName,
                     bytecodeSize,
                 });
                 emit({
@@ -348,28 +445,108 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
     const emit = (e: BuildEvent) => opts.onEvent?.(e);
 
     try {
-        const { order, layers } = detectAndFilter(opts.rootDir, opts.contracts);
-        const crates = layers.flat();
-        const contracts: ContractInfo[] = crates
-            .map((c) => order.contractMap.get(c))
-            .filter((c): c is ContractInfo => !!c);
-        emit({ type: "detect", contracts, layers });
+        const detected = detectBuildOrder(opts.rootDir, opts.contracts);
+        const crates = detected.layers.flat();
+        emit({ type: "detect", contracts: detected.contracts, layers: detected.layers });
 
-        const build = await runBuildPhase(
-            opts.rootDir,
-            order,
-            layers,
-            emit as BuildEmitter,
-            opts.features,
-            opts.registryAddress,
-        );
+        const build: BuildPhaseResult = {
+            successful: [],
+            failed: new Set<string>(),
+            info: new Map(),
+        };
+
+        if (detected.rust && detected.rust.layers.length > 0) {
+            const rustBuild = await runBuildPhase(
+                opts.rootDir,
+                detected.rust.order,
+                detected.rust.layers,
+                emit as BuildEmitter,
+                opts.features,
+                opts.registryAddress,
+            );
+            build.successful.push(...rustBuild.successful);
+            for (const failed of rustBuild.failed) build.failed.add(failed);
+            for (const [crate, info] of rustBuild.info) build.info.set(crate, info);
+        }
+
+        for (const toolchain of ["foundry", "hardhat"] as const) {
+            const targets = detected.solidity[toolchain];
+            if (targets.length === 0) continue;
+
+            for (const target of targets) {
+                emit({ type: "build-start", crate: target.name });
+                emit({ type: "build-progress", crate: target.name, compiled: 0, total: 1 });
+            }
+
+            const { result, artifacts, missing } = await buildSolidityToolchain(
+                opts.rootDir,
+                toolchain,
+                targets,
+                {
+                    onData: (line) => emit({ type: "log", source: toolchain, line }),
+                },
+            );
+
+            if (!result.success) {
+                const error = result.stderr || result.error || `${toolchain} build failed`;
+                for (const target of targets) {
+                    build.failed.add(target.name);
+                    build.info.set(target.name, {
+                        durationMs: result.durationMs,
+                        toolchain,
+                        displayName: target.displayName ?? target.name,
+                        error,
+                    });
+                    emit({ type: "build-error", crate: target.name, error });
+                }
+                continue;
+            }
+
+            for (const artifact of artifacts) {
+                const crate = artifact.target.name;
+                if (!crates.includes(crate)) crates.push(crate);
+                build.successful.push(crate);
+                build.info.set(crate, {
+                    durationMs: artifact.durationMs,
+                    pvmPath: artifact.bytecodePath,
+                    abiPath: artifact.abiPath,
+                    artifactPath: artifact.artifactPath,
+                    bytecodeSize: artifact.bytecodeSize,
+                    toolchain,
+                    displayName: artifact.target.displayName ?? crate,
+                });
+                emit({
+                    type: "build-done",
+                    crate,
+                    durationMs: artifact.durationMs,
+                    bytecodeSize: artifact.bytecodeSize,
+                });
+            }
+
+            for (const target of missing) {
+                const error = `${toolchain} build did not produce deployable bytecode for ${target.contractName}`;
+                build.failed.add(target.name);
+                build.info.set(target.name, {
+                    durationMs: result.durationMs,
+                    toolchain,
+                    displayName: target.displayName ?? target.name,
+                    error,
+                });
+                emit({ type: "build-error", crate: target.name, error });
+            }
+        }
 
         const summary: BuildSummary = {
             contracts: crates.map((crate) => {
                 const i = build.info.get(crate);
                 return {
                     crate,
+                    name: crate,
+                    displayName: i?.displayName,
+                    toolchain: i?.toolchain,
                     pvmPath: i?.pvmPath,
+                    abiPath: i?.abiPath,
+                    artifactPath: i?.artifactPath,
                     bytecodeSize: i?.bytecodeSize,
                     durationMs: i?.durationMs,
                     error: build.failed.has(crate) ? (i?.error ?? "Build failed") : undefined,
@@ -917,6 +1094,11 @@ if (import.meta.vitest) {
 
     vi.mock("./cid", () => ({
         computeBulletinStoreCid: vi.fn(async () => "fakeCid123"),
+    }));
+
+    vi.mock("./solidity", () => ({
+        buildSolidityToolchain: vi.fn(),
+        detectSolidityBuildTargets: vi.fn(() => []),
     }));
 
     vi.mock("fs", () => ({
