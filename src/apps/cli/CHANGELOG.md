@@ -1,5 +1,11 @@
 # @dotdm/cli
 
+## 0.8.5
+
+### Patch Changes
+
+- 34d6e12: Refresh template documentation and app examples for product-sdk contract usage instead of frontend/runtime `@dotdm/cdm` imports.
+
 ## 0.8.4
 
 ### Patch Changes
