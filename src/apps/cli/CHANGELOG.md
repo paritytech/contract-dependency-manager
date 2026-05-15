@@ -1,5 +1,11 @@
 # @dotdm/cli
 
+## 0.8.6
+
+### Patch Changes
+
+- 60c96f7: Default `cdm template <name>` to scaffold into `./<name>` and allow explicit target directories, including `.` for the current directory.
+
 ## 0.8.5
 
 ### Patch Changes
