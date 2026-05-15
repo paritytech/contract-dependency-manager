@@ -1,0 +1,16 @@
+[package]
+name = "cdm-import-test"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "cdm-import-test"
+path = "lib.rs"
+
+[dependencies]
+cdm = { workspace = true }
+pvm_contract = { workspace = true }
+polkavm-derive = { workspace = true }
+parity-scale-codec = { workspace = true }
+picoalloc = { workspace = true }
