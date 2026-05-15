@@ -1,14 +1,32 @@
 import { Command } from "commander";
-import { resolve, dirname } from "path";
+import { resolve, dirname, basename } from "path";
 import { mkdirSync, readdirSync, writeFileSync } from "fs";
 import { TEMPLATES } from "../generated/templates";
 
 const template = new Command("template")
     .description("Scaffold a CDM example project from a template")
     .argument("[name]", "Template name")
-    .argument("[dir]", "Target directory (defaults to current directory)", ".");
+    .argument("[dir]", "Target directory (defaults to ./<template-name>)");
 
-template.action(async (name: string | undefined, dir: string) => {
+template.action(async (name: string | undefined, dir: string | undefined) => {
+    if (name === "." && dir === undefined) {
+        const inferredName = basename(process.cwd());
+        if (TEMPLATES[inferredName]) {
+            name = inferredName;
+            dir = ".";
+        } else {
+            console.error(
+                `Error: Cannot infer template from current directory "${inferredName}".`,
+            );
+            console.log("Use: cdm template <name> .");
+            console.log("\nAvailable templates:");
+            for (const key of Object.keys(TEMPLATES)) {
+                console.log(`  ${key}`);
+            }
+            process.exit(1);
+        }
+    }
+
     if (!name) {
         console.log("Available templates:");
         for (const key of Object.keys(TEMPLATES)) {
@@ -29,7 +47,8 @@ template.action(async (name: string | undefined, dir: string) => {
         process.exit(1);
     }
 
-    const targetDir = resolve(dir);
+    const targetArg = dir ?? name;
+    const targetDir = resolve(targetArg);
 
     console.log(`=== CDM Template ===\n`);
     console.log(`Scaffolding ${name} project to: ${targetDir}\n`);
@@ -57,8 +76,8 @@ template.action(async (name: string | undefined, dir: string) => {
 
     console.log(`\nCopied ${filesWritten} files.\n`);
     console.log("=== Next steps ===\n");
-    if (dir !== ".") {
-        console.log(`  cd ${dir}`);
+    if (targetArg !== ".") {
+        console.log(`  cd ${targetArg}`);
     }
     console.log("  # Initialize dev account for deploying to paseo:");
     console.log("  cdm init");
