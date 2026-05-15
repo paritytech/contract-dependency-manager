@@ -15,9 +15,7 @@ template.action(async (name: string | undefined, dir: string | undefined) => {
             name = inferredName;
             dir = ".";
         } else {
-            console.error(
-                `Error: Cannot infer template from current directory "${inferredName}".`,
-            );
+            console.error(`Error: Cannot infer template from current directory "${inferredName}".`);
             console.log("Use: cdm template <name> .");
             console.log("\nAvailable templates:");
             for (const key of Object.keys(TEMPLATES)) {
