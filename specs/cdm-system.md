@@ -9,7 +9,7 @@ Status:
 ## System Map
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"fontFamily": "Virgil, Comic Sans MS, sans-serif", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff"}}}%%
+%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
 flowchart LR
     title["CDM: name -> cid -> install -> consume"]
 
@@ -58,7 +58,7 @@ flowchart LR
 ## Language Entry Points
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}}}%%
+%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
 flowchart LR
     root["Project root"] --> detect{"Detect contract project"}
 
@@ -82,18 +82,18 @@ flowchart LR
 ## CLI Pipeline: `cdm build`
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}}}%%
+%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
 flowchart TD
     cmd["cdm build<br/><code>src/apps/cli/src/commands/build.ts</code>"]
     opts["Resolve options<br/>root, contracts filter, features, registryAddress"]
     detect["detectDeploymentOrderLayered(root)<br/><code>cargo metadata --no-deps</code>"]
-    graph["Build dependency layers<br/>same-layer crates build concurrently"]
+    dependencyLayers["Build dependency layers<br/>same-layer crates build concurrently"]
     build["pvmContractBuildAsync(crate)<br/><code>cargo pvm-contract build --manifest-path &lt;root&gt;/Cargo.toml -p &lt;crate&gt;</code>"]
     env["Env:<br/><code>CONTRACTS_REGISTRY_ADDR=&lt;registryAddress&gt;</code>"]
     artifacts["Rust artifacts"]
     summary["BuildSummary"]
 
-    cmd --> opts --> detect --> graph --> build
+    cmd --> opts --> detect --> dependencyLayers --> build
     env --> build
     build --> artifacts --> summary
 ```
@@ -126,7 +126,7 @@ type ContractInfo = {
 ## CLI Pipeline: `cdm deploy`
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}}}%%
+%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
 flowchart TD
     cmd["cdm deploy -n paseo"]
     preset["Resolve preset<br/>Asset Hub URL, Bulletin URL, IPFS gateway, registry"]
@@ -209,7 +209,7 @@ const cid = result.cid.toString();
 ## Published Metadata
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}}}%%
+%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
 flowchart LR
     cargo["Cargo.toml [package]"] --> description["description"]
     cargo --> authors["authors"]
@@ -267,7 +267,7 @@ type AbiParam = {
 ## ContractRegistry State
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}}}%%
+%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
 flowchart TD
     publish["publish_latest(contract_name, contract_address, metadata_uri)"]
     ownerCheck{"name exists?"}
@@ -318,7 +318,7 @@ get_contract_name_at(index) -> String
 ## CLI Pipeline: `cdm install`
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}}}%%
+%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
 flowchart TD
     cmd["cdm install -n paseo @org/foo"]
     target["Resolve target<br/>asset-hub + bulletin gateway + registry"]
@@ -399,7 +399,7 @@ $CDM_ROOT or ~/.cdm/
 ## Consumption
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}}}%%
+%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
 flowchart LR
     cdmJson["cdm.json"] --> manager["product-sdk ContractManager"]
     contractsDts[".cdm/contracts.d.ts"] --> manager
@@ -430,7 +430,7 @@ let foo = foo::cdm_reference();
 This section is intentionally a skeleton. It captures known build inputs and artifact shapes from `playground-cli`, without deciding the final CDM metadata/package-name mechanism.
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}}}%%
+%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
 flowchart TD
     detect{"Project type"}
 
