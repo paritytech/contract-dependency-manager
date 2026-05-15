@@ -9,8 +9,11 @@ Status:
 ## System Map
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
+%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
 flowchart LR
+    subgraph canvas[" "]
+    direction LR
+
     title["CDM: name -> cid -> install -> consume"]
 
     subgraph publish["1. PUBLISH"]
@@ -42,6 +45,9 @@ flowchart LR
     registry -->|"name -> cid/address"| installCmd
     bulletin -->|"cid -> blob"| local
     local --> rust
+    end
+
+    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
 
     classDef publishBox fill:#fff3bf,stroke:#f59e0b,stroke-width:2px,color:#92400e;
     classDef stateBox fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a;
@@ -58,8 +64,11 @@ flowchart LR
 ## Language Entry Points
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
+%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
 flowchart LR
+    subgraph canvas[" "]
+    direction LR
+
     root["Project root"] --> detect{"Detect contract project"}
 
     detect -->|"Cargo.toml + pvm_contract + bin target"| rust["Rust / PVM<br/><b>implemented</b>"]
@@ -77,13 +86,19 @@ flowchart LR
     hardhat -.-> hh["npx hardhat compile"]
     hh -.-> hardhatArtifacts["artifacts/contracts/**/*.json"]
     hardhatArtifacts -.-> hardhatTodo["TODO: metadata + CDM package + deploy adapter"]
+    end
+
+    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
 ```
 
 ## CLI Pipeline: `cdm build`
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
+%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
 flowchart TD
+    subgraph canvas[" "]
+    direction TD
+
     cmd["cdm build<br/><code>src/apps/cli/src/commands/build.ts</code>"]
     opts["Resolve options<br/>root, contracts filter, features, registryAddress"]
     detect["detectDeploymentOrderLayered(root)<br/><code>cargo metadata --no-deps</code>"]
@@ -96,6 +111,9 @@ flowchart TD
     cmd --> opts --> detect --> dependencyLayers --> build
     env --> build
     build --> artifacts --> summary
+    end
+
+    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
 ```
 
 Rust artifact contract:
@@ -126,8 +144,11 @@ type ContractInfo = {
 ## CLI Pipeline: `cdm deploy`
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
+%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
 flowchart TD
+    subgraph canvas[" "]
+    direction TD
+
     cmd["cdm deploy -n paseo"]
     preset["Resolve preset<br/>Asset Hub URL, Bulletin URL, IPFS gateway, registry"]
     signer["Resolve signer<br/>--suri -> ~/.cdm/accounts.json -> Alice"]
@@ -156,6 +177,9 @@ flowchart TD
     publish --> cidCheck["Verify returned CID == precomputed CID"]
     verify --> done["DeploySummary"]
     cidCheck --> done
+    end
+
+    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
 ```
 
 Deploy bytecode transaction:
@@ -209,8 +233,11 @@ const cid = result.cid.toString();
 ## Published Metadata
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
+%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
 flowchart LR
+    subgraph canvas[" "]
+    direction LR
+
     cargo["Cargo.toml [package]"] --> description["description"]
     cargo --> authors["authors"]
     cargo --> homepage["homepage"]
@@ -232,6 +259,9 @@ flowchart LR
     publishBlock --> metadata
 
     metadata --> bulletin["Bulletin CID"]
+    end
+
+    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
 ```
 
 Current metadata shape:
@@ -267,8 +297,11 @@ type AbiParam = {
 ## ContractRegistry State
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
+%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
 flowchart TD
+    subgraph canvas[" "]
+    direction TD
+
     publish["publish_latest(contract_name, contract_address, metadata_uri)"]
     ownerCheck{"name exists?"}
     newName["Create name<br/>owner = caller<br/>version_count = 0<br/>append to contract_name_at"]
@@ -283,6 +316,9 @@ flowchart TD
     auth -- yes --> version
     auth -- no --> revert["revert Unauthorized"]
     version --> address --> metadata
+    end
+
+    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
 ```
 
 Registry storage:
@@ -318,8 +354,11 @@ get_contract_name_at(index) -> String
 ## CLI Pipeline: `cdm install`
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
+%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
 flowchart TD
+    subgraph canvas[" "]
+    direction TD
+
     cmd["cdm install -n paseo @org/foo"]
     target["Resolve target<br/>asset-hub + bulletin gateway + registry"]
     hash["targetHash = blake2b(assetHubUrl, ipfsGatewayUrl, registryAddress)[0..8]"]
@@ -339,6 +378,9 @@ flowchart TD
     fetch --> validate --> save --> json
     json --> ts
     json --> rust
+    end
+
+    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
 ```
 
 Project `cdm.json` shape:
@@ -399,8 +441,11 @@ $CDM_ROOT or ~/.cdm/
 ## Consumption
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
+%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
 flowchart LR
+    subgraph canvas[" "]
+    direction LR
+
     cdmJson["cdm.json"] --> manager["product-sdk ContractManager"]
     contractsDts[".cdm/contracts.d.ts"] --> manager
     cache["~/.cdm/&lt;targetHash&gt;/contracts/.../abi.json"] --> rustMacro["Rust cdm::import!"]
@@ -408,6 +453,9 @@ flowchart LR
 
     manager --> tsApp["TypeScript app<br/>typed getContract('@org/foo')"]
     rustMacro --> rustContract["Rust contract<br/>typed cdm_reference()"]
+    end
+
+    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
 ```
 
 TypeScript apps should use product-sdk contract tooling:
@@ -430,8 +478,11 @@ let foo = foo::cdm_reference();
 This section is intentionally a skeleton. It captures known build inputs and artifact shapes from `playground-cli`, without deciding the final CDM metadata/package-name mechanism.
 
 ```mermaid
-%%{init: {"theme": "base", "look": "handDrawn", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "mainBkg": "#ffffff", "primaryColor": "#ffffff", "primaryTextColor": "#202124", "primaryBorderColor": "#334155", "lineColor": "#3f3f46", "clusterBkg": "#ffffff", "clusterBorder": "#ffffff", "tertiaryColor": "#ffffff", "fontFamily": "Virgil, Comic Sans MS, sans-serif"}}}%%
+%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
 flowchart TD
+    subgraph canvas[" "]
+    direction TD
+
     detect{"Project type"}
 
     detect -->|"foundry.toml"| foundry["Foundry"]
@@ -449,6 +500,9 @@ flowchart TD
     hh --> hardhatOut["Artifact scan:<br/><code>artifacts/contracts/**/*.json</code><br/>skip <code>*.dbg.json</code>"]
     hardhatOut --> hardhatBytecode["Bytecode:<br/><code>artifact.bytecode</code>"]
     hardhatBytecode --> hardhatTodo["TODO:<br/>package name source<br/>metadata source<br/>dependency ordering<br/>constructor args<br/>registry publish path"]
+    end
+
+    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
 ```
 
 Foundry artifact adapter known behavior:
