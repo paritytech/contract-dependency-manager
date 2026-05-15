@@ -1,590 +1,173 @@
 # CDM System
 
-Status:
+**Status**
 
-- Rust/PVM contracts: implemented end-to-end.
-- Foundry Solidity contracts: build artifact shape known; CDM deploy/publish/register path TODO.
-- Hardhat Solidity contracts: build artifact shape known; CDM deploy/publish/register path TODO.
+- **Rust / PVM**: implemented end-to-end (build · deploy · publish metadata · register · install · consume).
+- **Foundry / Hardhat**: build invocation lifts cleanly from playground-cli; CDM-side adapter design (cdmPackage source, metadata source, deploy wiring) is open. See [Toolchain matrix](#toolchain-matrix).
+- **TypeScript SDK**: migrating from `@dotdm/cdm` to `@parity/product-sdk-contracts` (targets `pallet-revive` directly, not Ink). Old SDK to be deprecated once parity is reached.
 
-## System Map
+## System map
 
-```mermaid
-%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
-flowchart LR
-    subgraph canvas[" "]
-    direction LR
+![CDM system map](./assets/cdm-system-map.svg)
 
-    title["CDM: name -> cid -> install -> consume"]
+A CDM package name is a globally unique identifier resolved by an on-chain registry. Contracts publish `(name → address, name → metadataCid)` on Asset Hub; metadata blobs live on Bulletin (content-addressed, retrievable via IPFS gateway). Consumers install a frozen snapshot of `(ABI, address, version)` to `~/.cdm/`, after which Rust contracts use `cdm::import!()` and TypeScript apps use `@parity/product-sdk-contracts`.
 
-    subgraph publish["1. PUBLISH"]
-        author["Contract author<br/><code>#[pvm::contract(cdm = &quot;@org/foo&quot;)]</code>"]
-        deploy["<code>cdm deploy -n paseo</code>"]
-        author --> deploy
-    end
+## Toolchain matrix
 
-    subgraph state["2. STORE / ON-CHAIN STATE"]
-        registry["ContractRegistry (Asset Hub)<br/><br/><code>&quot;@org/foo&quot; -> 0xABC...</code><br/><code>&quot;@org/foo&quot; -> cid:bafy...</code>"]
-        bulletin["Bulletin (content addressed)<br/><br/><code>cid:bafy... -> { abi, readme, authors, repo, ... }</code>"]
-        registry -.->|"metadataCid"| bulletin
-    end
+![Toolchain matrix](./assets/cdm-toolchain-matrix.svg)
 
-    subgraph install["3. INSTALL"]
-        installCmd["<code>cdm install -n paseo @org/foo</code>"]
-        local["<code>~/.cdm/</code> on consumer machine<br/><br/><code>&lt;targetHash&gt;/contracts/@org/foo/&lt;version&gt;/</code><br/><code>├── abi.json</code><br/><code>├── metadata.json</code><br/><code>└── info.json</code>"]
-        installCmd --> local
-    end
+All three toolchains produce PolkaVM bytecode (Solidity via `resolc`, Rust via `cargo pvm-contract build`). The Rust path is end-to-end CDM today. The Solidity paths have a working **build** invocation (liftable from playground-cli) but their three CDM-specific concerns are still open:
 
-    subgraph consume["4. CONSUME"]
-        rust["Rust contract<br/><br/><code>cdm::import!(&quot;@org/foo&quot;);</code><br/><code>foo::cdm_reference()</code>"]
-        ts["TypeScript app<br/><br/><code>ContractManager.getContract(&quot;@org/foo&quot;)</code><br/><code>.increment.tx()</code>"]
-        rust --> ts
-    end
+1. **`cdmPackage` source** — where does the human-readable name live? Candidates: an entry in `cdm.json[contracts]`, a NatSpec `@cdm` tag in source, or a toolchain config field (`foundry.toml`, hardhat config).
+2. **Metadata source** — Cargo.toml + git for Rust is automatic. Solidity has no equivalent convention; needs design (probably `package.json` + repo metadata + toolchain config).
+3. **Deploy + register adapter** — wrapping the bytecode into the existing `deployBatch` flow, with `publish_latest` payloads, is mechanical once the above two are decided.
 
-    deploy -->|"publish latest"| registry
-    deploy -->|"upload metadata"| bulletin
-    registry -->|"name -> cid/address"| installCmd
-    bulletin -->|"cid -> blob"| local
-    local --> rust
-    end
+## Publish pipeline
 
-    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
+![Publish pipeline](./assets/cdm-publish-pipeline.svg)
 
-    classDef publishBox fill:#fff3bf,stroke:#f59e0b,stroke-width:2px,color:#92400e;
-    classDef stateBox fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a;
-    classDef bulletinBox fill:#e0e7ff,stroke:#4f46e5,stroke-width:2px,color:#3730a3;
-    classDef installBox fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#166534;
-    classDef consumeBox fill:#ffe4e6,stroke:#e11d48,stroke-width:2px,color:#9f1239;
-    class author,deploy publishBox;
-    class registry stateBox;
-    class bulletin bulletinBox;
-    class installCmd,local installBox;
-    class rust,ts consumeBox;
+Three stages:
+
+- **① BUILD** — detect toolchain from workspace markers; invoke its native build; normalize the output into a unified internal shape `{ bytecode, cdmPackage, abi, deps, metadataFields }`. Cargo metadata + `__PVM_CDM` ELF symbol give Rust this for free.
+- **② PLAN** — `detect + toposort` produces deployment layers; each contract is dry-run for weight; contracts are greedy-packed into chunks fitting `System.BlockWeights.normal.max_extrinsic`; CREATE2 addresses are pre-computed.
+- **③ SUBMIT** — per chunk: first upload metadata blobs to Bulletin (sequential per Bulletin's nonce ordering, returns CIDs), then a single `Utility.batch_all` atomically issues `Revive.instantiate_with_code` and `Registry.publish_latest(name, addr, cid)`. Atomic within a chunk; chunks across are non-atomic by design.
+
+CREATE2 salt:
+
+```
+salt = blake2b-256(cdmPackage)
+addr = create2_address(deployer, salt, keccak256(bytecode))
 ```
 
-## Language Entry Points
+This makes a contract's address a function of `(deployer, cdmPackage, bytecode)` only — so the same compiled blob deployed by the same address lands at the same on-chain address everywhere. The registry itself is deployed this way under salt `blake2b-256("@cdm/registry")`.
 
-```mermaid
-%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
-flowchart LR
-    subgraph canvas[" "]
-    direction LR
+The metadata blob composition is in the right panel of the publish-pipeline diagram. Two non-obvious fields: `publish_block` is set to Asset Hub's head at submit time; `published_at` is the deployer's wall clock at submit time.
 
-    root["Project root"] --> detect{"Detect contract project"}
+## ContractRegistry
 
-    detect -->|"Cargo.toml + pvm_contract + bin target"| rust["Rust / PVM<br/><b>implemented</b>"]
-    detect -.->|"foundry.toml"| foundry["Foundry / Solidity<br/><b>TODO</b>"]
-    detect -.->|"hardhat.config.{ts,js,cjs,mjs}"| hardhat["Hardhat / Solidity<br/><b>TODO</b>"]
+![ContractRegistry — state machine, storage, queries](./assets/cdm-registry.svg)
 
-    rust --> cargo["cargo pvm-contract build"]
-    cargo --> rustArtifacts["target/&lt;crate&gt;.release.*"]
-    rustArtifacts --> deployRust["CDM deploy pipeline"]
+The registry is a `pallet-revive` contract on Asset Hub, CREATE2-deployed under `@cdm/registry`. Address is a compile-time constant in `@dotdm/utils` (`REGISTRY_ADDRESS`) — no `--registry-address` flag is needed.
 
-    foundry -.-> forge["forge build --resolc"]
-    forge -.-> foundryArtifacts["out/&lt;File.sol&gt;/&lt;Contract&gt;.json"]
-    foundryArtifacts -.-> foundryTodo["TODO: metadata + CDM package + deploy adapter"]
+Key invariants:
 
-    hardhat -.-> hh["npx hardhat compile"]
-    hh -.-> hardhatArtifacts["artifacts/contracts/**/*.json"]
-    hardhatArtifacts -.-> hardhatTodo["TODO: metadata + CDM package + deploy adapter"]
-    end
+- **First-write-wins ownership.** First publisher of a name becomes its owner. Subsequent calls revert unless `caller == info[name].owner`.
+- **Monotonic versions.** No overwrite, no delete, no yank. Upgrades publish at `(name, version + 1)`; old versions remain queryable indefinitely.
+- **Org prefixes are not reserved.** Anyone can claim `@polkadot/foo` if no one else has. Org-level access control (e.g., OpenGov-owned `@polkadot/*`) is an open design question.
 
-    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
-```
+The Storage struct and query surface (`get_address`, `get_metadata_uri`, `get_owner`, `get_version_count`, `get_contract_count`, enumeration via `get_contract_name_at`, plus `_at_version` variants) are in the right pane of the diagram.
 
-## CLI Pipeline: `cdm build`
+## Install pipeline
 
-```mermaid
-%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
-flowchart TD
-    subgraph canvas[" "]
-    direction TD
+![Install pipeline](./assets/cdm-install-pipeline.svg)
 
-    cmd["cdm build<br/><code>src/apps/cli/src/commands/build.ts</code>"]
-    opts["Resolve options<br/>root, contracts filter, features, registryAddress"]
-    detect["detectDeploymentOrderLayered(root)<br/><code>cargo metadata --no-deps</code>"]
-    dependencyLayers["Build dependency layers<br/>same-layer crates build concurrently"]
-    build["pvmContractBuildAsync(crate)<br/><code>cargo pvm-contract build --manifest-path &lt;root&gt;/Cargo.toml -p &lt;crate&gt;</code>"]
-    env["Env:<br/><code>CONTRACTS_REGISTRY_ADDR=&lt;registryAddress&gt;</code>"]
-    artifacts["Rust artifacts"]
-    summary["BuildSummary"]
+`cdm install` reads `cdm.json`, resolves a target environment (from `-n <preset>` or the first `targets[]` entry), computes its `targetHash`, then in parallel per library:
 
-    cmd --> opts --> detect --> dependencyLayers --> build
-    env --> build
-    build --> artifacts --> summary
-    end
+1. **Query registry** — `getVersionCount` → `getMetadataUri(@v)` → `getAddress(@v)`.
+2. **Fetch metadata** — `GET <ipfs-gateway>/<cid>` → parse JSON → validate ABI shape.
+3. **Save to disk** — write `{abi, metadata, info}.json` under `~/.cdm/<targetHash>/contracts/<pkg>/<v>/` and update the `latest` symlink.
+4. **Post-install hooks** — TypeScript: `generateContractTypes` writes `.cdm/contracts.d.ts`. Rust: no-op (the `cdm::import!()` proc-macro reads `~/.cdm/` directly at compile time).
 
-    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
-```
+Finally `cdm.json.contracts[targetHash][pkg]` is updated with `{ version, address, abi, metadataCid }`. The inlined ABI makes builds reproducible and offline-capable; the pinned version pins against future `latest` drift.
 
-Rust artifact contract:
-
-```text
-target/
-  <crate>.release.polkavm      # deploy bytecode
-  <crate>.release.abi.json     # Solidity-compatible ABI consumed by CDM/product-sdk
-  <crate>.release.cdm.json     # { "cdmPackage": "@org/foo" }
-```
-
-Rust contract detection:
-
-```ts
-type ContractInfo = {
-  name: string;                 // Cargo crate name
-  cdmPackage: string | null;    // target/<crate>.release.cdm.json
-  description: string | null;   // Cargo.toml [package]
-  authors: string[];            // Cargo.toml [package]
-  homepage: string | null;      // Cargo.toml [package]
-  repository: string | null;    // Cargo.toml [package]
-  readmePath: string | null;    // Cargo readme or README fallback
-  path: string;                 // crate directory
-  dependsOnCrates: string[];    // workspace contract deps from Cargo metadata
-};
-```
-
-## CLI Pipeline: `cdm deploy`
-
-```mermaid
-%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
-flowchart TD
-    subgraph canvas[" "]
-    direction TD
-
-    cmd["cdm deploy -n paseo"]
-    preset["Resolve preset<br/>Asset Hub URL, Bulletin URL, IPFS gateway, registry"]
-    signer["Resolve signer<br/>--suri -> ~/.cdm/accounts.json -> Alice"]
-    connect["Connect Asset Hub + Bulletin<br/><code>createCdmChainClient</code>"]
-    pipeline["deployContracts(...)"]
-
-    cmd --> preset --> signer --> connect --> pipeline
-
-    pipeline --> detect["Detect + layer contracts"]
-    detect --> build["Build Rust artifacts<br/>same build phase as cdm build"]
-    build --> registryHandle["Create ContractRegistry handle"]
-    registryHandle --> layerLoop["For each dependency layer"]
-
-    layerLoop --> version["Query version count<br/><code>getVersionCount(@org/foo)</code>"]
-    version --> metadata["Assemble metadata JSON"]
-    metadata --> cid["Precompute Bulletin CID"]
-    cid --> plan["Dry-run Revive.instantiate<br/>address, gas, storage, chunk plan"]
-
-    plan --> assetHubLane["Asset Hub lane"]
-    plan --> bulletinLane["Bulletin lane"]
-
-    assetHubLane --> batch["Utility.batch_all<br/>Revive.instantiate_with_code + registry.publishLatest"]
-    bulletinLane --> publish["BulletinClient.store(metadataBytes).send()<br/>one tx per metadata item"]
-
-    batch --> verify["Verify Instantiated address == precomputed address"]
-    publish --> cidCheck["Verify returned CID == precomputed CID"]
-    verify --> done["DeploySummary"]
-    cidCheck --> done
-    end
-
-    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
-```
-
-Deploy bytecode transaction:
-
-```ts
-Revive.instantiate_with_code({
-  value: 0n,
-  weight_limit: dryRunWeightWithBuffer,
-  storage_deposit_limit: dryRunStorageDepositWithBuffer,
-  code: Uint8Array,              // target/<crate>.release.polkavm today
-  data: new Uint8Array(0),       // constructor args not supported today
-  salt: computeDeploySalt(cdmPackage, nextVersion)
-})
-```
-
-Deploy salt:
-
-```ts
-computeDeploySalt(cdmPackage, version) =
-  blake2b(JSON.stringify([cdmPackage, version.toString()]), 32 bytes)
-```
-
-Registry publish transaction:
-
-```ts
-registry.publishLatest.prepare(
-  contractName,       // "@org/foo"
-  contractAddress,    // precomputed Revive address
-  metadataUri,        // Bulletin CID string
-  { origin, gasLimit, storageDepositLimit }
-)
-```
-
-Asset Hub submission:
-
-```text
-Utility.batch_all([
-  Revive.instantiate_with_code(...),
-  ContractRegistry.publish_latest(...)
-])
-```
-
-Bulletin submission:
-
-```ts
-const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
-const result = await bulletin.store(metadataBytes).send();
-const cid = result.cid.toString();
-```
-
-## Published Metadata
-
-```mermaid
-%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
-flowchart LR
-    subgraph canvas[" "]
-    direction LR
-
-    cargo["Cargo.toml [package]"] --> description["description"]
-    cargo --> authors["authors"]
-    cargo --> homepage["homepage"]
-    cargo --> repository1["repository"]
-    git["git remote get-url origin"] --> repository2["repository fallback"]
-    readmeFile["README.md / README.txt / README"] --> readme["readme<br/>max 512KB"]
-    abiFile["target/&lt;crate&gt;.release.abi.json"] --> abi["abi"]
-    clock["new Date().toISOString()"] --> publishedAt["published_at"]
-    zero["0"] --> publishBlock["publish_block"]
-
-    description --> metadata["Published metadata JSON"]
-    authors --> metadata
-    homepage --> metadata
-    repository1 --> metadata
-    repository2 --> metadata
-    readme --> metadata
-    abi --> metadata
-    publishedAt --> metadata
-    publishBlock --> metadata
-
-    metadata --> bulletin["Bulletin CID"]
-    end
-
-    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
-```
-
-Current metadata shape:
-
-```ts
-type PublishedMetadata = {
-  publish_block: number;   // currently 0
-  published_at: string;    // ISO timestamp at deploy time
-  description: string;     // Cargo package description or ""
-  readme: string;          // README contents, truncated at 512KB
-  authors: string[];       // Cargo package authors
-  homepage: string;        // Cargo package homepage or ""
-  repository: string;      // Cargo repository or normalized git origin or ""
-  abi: AbiEntry[];         // parsed from target/<crate>.release.abi.json
-};
-
-type AbiEntry = {
-  type: string;
-  name?: string;
-  inputs: AbiParam[];
-  outputs?: AbiParam[];
-  stateMutability?: string;
-  anonymous?: boolean;
-};
-
-type AbiParam = {
-  name: string;
-  type: string;
-  components?: AbiParam[];
-};
-```
-
-## ContractRegistry State
-
-```mermaid
-%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
-flowchart TD
-    subgraph canvas[" "]
-    direction TD
-
-    publish["publish_latest(contract_name, contract_address, metadata_uri)"]
-    ownerCheck{"name exists?"}
-    newName["Create name<br/>owner = caller<br/>version_count = 0<br/>append to contract_name_at"]
-    auth{"caller == owner?"}
-    version["version = version_count<br/>version_count += 1"]
-    address["published_address[(name, version)] = contract_address"]
-    metadata["published_metadata_uri[(name, version)] = metadata_uri"]
-
-    publish --> ownerCheck
-    ownerCheck -- no --> newName --> version
-    ownerCheck -- yes --> auth
-    auth -- yes --> version
-    auth -- no --> revert["revert Unauthorized"]
-    version --> address --> metadata
-    end
-
-    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
-```
-
-Registry storage:
-
-```rust
-type Version = u32;
-
-struct NamedContractInfo {
-    owner: Address,
-    version_count: Version,
-}
-
-contract_name_count: u32
-contract_name_at[index: u32] -> String
-info[contract_name: String] -> NamedContractInfo
-published_address[(contract_name: String, version: Version)] -> Address
-published_metadata_uri[(contract_name: String, version: Version)] -> String
-```
-
-Registry query surface:
-
-```text
-get_address(name) -> Option<Address>
-get_metadata_uri(name) -> Option<String>
-get_address_at_version(name, version) -> Option<Address>
-get_metadata_uri_at_version(name, version) -> Option<String>
-get_owner(name) -> Address
-get_version_count(name) -> u32
-get_contract_count() -> u32
-get_contract_name_at(index) -> String
-```
-
-## CLI Pipeline: `cdm install`
-
-```mermaid
-%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
-flowchart TD
-    subgraph canvas[" "]
-    direction TD
-
-    cmd["cdm install -n paseo @org/foo"]
-    target["Resolve target<br/>asset-hub + bulletin gateway + registry"]
-    hash["targetHash = blake2b(assetHubUrl, ipfsGatewayUrl, registryAddress)[0..8]"]
-    query["Query ContractRegistry"]
-    latest["latest:<br/>getVersionCount -> getMetadataUri -> getAddress"]
-    pinned["pinned:<br/>getMetadataUriAtVersion -> getAddressAtVersion"]
-    fetch["Fetch metadata JSON from Bulletin/IPFS gateway by CID"]
-    validate["Require metadata.abi non-empty"]
-    save["Save ~/.cdm cache"]
-    json["Update project cdm.json"]
-    ts["If package.json exists:<br/>generate .cdm/cdm.d.ts + .cdm/contracts.d.ts"]
-    rust["If Cargo.toml exists:<br/>Rust macro can resolve ABI from ~/.cdm"]
-
-    cmd --> target --> hash --> query
-    query --> latest --> fetch
-    query --> pinned --> fetch
-    fetch --> validate --> save --> json
-    json --> ts
-    json --> rust
-    end
-
-    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
-```
-
-Project `cdm.json` shape:
-
-```ts
-type CdmJson = {
-  targets: {
-    [targetHash: string]: {
-      "asset-hub": string;     // Asset Hub RPC URL
-      bulletin: string;        // Bulletin IPFS gateway URL
-      registry?: string;       // ContractRegistry address
-    };
-  };
-  dependencies: {
-    [targetHash: string]: {
-      [library: string]: "latest" | number;
-    };
-  };
-  contracts?: {
-    [targetHash: string]: {
-      [library: string]: {
-        version: number;
-        address: string;
-        abi: unknown[];
-        metadataCid: string;
-      };
-    };
-  };
-};
-```
-
-Local cache shape:
-
-```text
-$CDM_ROOT or ~/.cdm/
-  <targetHash>/
-    contracts/
-      @org/foo/
-        <version>/
-          abi.json
-          metadata.json
-          info.json
-        latest -> <version>
-```
-
-`info.json`:
-
-```json
-{
-  "name": "@org/foo",
-  "targetHash": "<targetHash>",
-  "version": 0,
-  "address": "0x...",
-  "metadataCid": "bafy..."
-}
-```
+`~/.cdm/` is shared across workspaces — installing `@polkadot/reputation@7` once benefits every project on the machine.
 
 ## Consumption
 
-```mermaid
-%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
-flowchart LR
-    subgraph canvas[" "]
-    direction LR
+Address resolution happens **at runtime** for Rust contracts (registry call from inside the contract) and **at install time** for TypeScript (baked into `cdm.json.contracts`).
 
-    cdmJson["cdm.json"] --> manager["product-sdk ContractManager"]
-    contractsDts[".cdm/contracts.d.ts"] --> manager
-    cache["~/.cdm/&lt;targetHash&gt;/contracts/.../abi.json"] --> rustMacro["Rust cdm::import!"]
-    cache --> contractsDts
-
-    manager --> tsApp["TypeScript app<br/>typed getContract('@org/foo')"]
-    rustMacro --> rustContract["Rust contract<br/>typed cdm_reference()"]
-    end
-
-    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
-```
-
-TypeScript apps should use product-sdk contract tooling:
-
-```ts
-const contracts = ContractManager.fromClient(cdmJson, chain.raw.assetHub, descriptor);
-const foo = contracts.getContract("@org/foo");
-await foo.increment.tx();
-```
-
-Rust contracts use CDM macro imports:
+### Rust contract
 
 ```rust
 cdm::import!("@org/foo");
-let foo = foo::cdm_reference();
+
+#[pvm::contract(cdm = "@myorg/forum")]
+mod forum {
+    use super::*;
+
+    #[pvm::method]
+    pub fn call_foo(&mut self) {
+        // Resolves @org/foo's address via Registry.get_address at runtime.
+        let f = foo::cdm_reference();
+        f.do_something().expect("call failed");
+    }
+}
 ```
 
-## Solidity Build Skeleton
+The `cdm::import!()` proc-macro reads `cdm.json` + `~/.cdm/<targetHash>/contracts/<pkg>/<v>/abi.json` at compile time and generates the `foo` module. `cdm_reference()` performs the registry read at runtime.
 
-This section is intentionally a skeleton. It captures known build inputs and artifact shapes from `playground-cli`, without deciding the final CDM metadata/package-name mechanism.
+### TypeScript app
 
-```mermaid
-%%{init: {"theme": "base", "flowchart": {"curve": "basis"}, "themeVariables": {"background": "#ffffff", "primaryTextColor": "#202124", "lineColor": "#3f3f46", "fontFamily": "Inter, Arial, sans-serif"}}}%%
-flowchart TD
-    subgraph canvas[" "]
-    direction TD
-
-    detect{"Project type"}
-
-    detect -->|"foundry.toml"| foundry["Foundry"]
-    detect -->|"hardhat.config.*"| hardhat["Hardhat"]
-    detect -->|"Cargo.toml + pvm_contract"| rust["Rust"]
-
-    rust --> rustDone["Implemented:<br/>ContractInfo from Cargo metadata<br/>CDM package from target/*.cdm.json<br/>ABI/readme/package metadata assembled today"]
-
-    foundry --> forge["Command:<br/><code>forge build --resolc</code>"]
-    forge --> foundryOut["Artifact scan:<br/><code>out/&lt;File.sol&gt;/&lt;Contract&gt;.json</code>"]
-    foundryOut --> foundryBytecode["Bytecode:<br/><code>artifact.bytecode.object</code>"]
-    foundryBytecode --> foundryTodo["TODO:<br/>package name source<br/>metadata source<br/>dependency ordering<br/>constructor args<br/>registry publish path"]
-
-    hardhat --> hh["Command:<br/><code>npx hardhat compile</code>"]
-    hh --> hardhatOut["Artifact scan:<br/><code>artifacts/contracts/**/*.json</code><br/>skip <code>*.dbg.json</code>"]
-    hardhatOut --> hardhatBytecode["Bytecode:<br/><code>artifact.bytecode</code>"]
-    hardhatBytecode --> hardhatTodo["TODO:<br/>package name source<br/>metadata source<br/>dependency ordering<br/>constructor args<br/>registry publish path"]
-    end
-
-    style canvas fill:#ffffff,stroke:#ffffff,color:#ffffff
-```
-
-Foundry artifact adapter known behavior:
+Use `@parity/product-sdk-contracts` (replaces `@dotdm/cdm`):
 
 ```ts
-// Detect
-exists("foundry.toml") -> "foundry"
+import { createChainClient } from "@parity/product-sdk-chain-client";
+import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
+import { ContractManager } from "@parity/product-sdk-contracts";
+import { SignerManager } from "@parity/product-sdk-signer";
+import cdmJson from "./cdm.json";
 
-// Build
-forge build --resolc
+const client = await createChainClient({
+    chains: { assetHub: paseo_asset_hub },
+    rpcs:   { assetHub: ["wss://paseo-asset-hub-next-rpc.polkadot.io"] },
+});
 
-// Scan
-out/<File.sol>/<Contract>.json
-skip *.t.sol and *.s.sol directories
+const signerManager = new SignerManager();
+await signerManager.connect();
 
-// Bytecode
-const hex = artifact.bytecode.object;
-skip missing, "", or "0x"
-const bytes = hexToBytes(hex);
+const manager = ContractManager.fromClient(
+    cdmJson, client.raw.assetHub, paseo_asset_hub, { signerManager },
+);
+
+const counter = manager.getContract("@org/counter");
+
+// Read (dry-run, no tx)
+const { value } = await counter.getCount.query();
+
+// Write (signed tx; uses signerManager's current account, falls back to defaultSigner)
+await counter.increment.tx();
+
+// Batchable form (combine with non-contract Asset Hub calls via batchSubmitAndWatch)
+const prepared = counter.increment.prepare();
 ```
 
-Hardhat artifact adapter known behavior:
+Material differences from `@dotdm/cdm`:
+
+- Targets `pallet-revive` directly (not Ink) — wholesale replacement, not an upgrade.
+- Consumer owns the chain client; the SDK wraps it (rather than constructing one internally).
+- `SignerManager` enables dynamic account switching; static `defaultSigner` is a fallback for queries.
+- `.prepare()` enables batching with other Asset Hub extrinsics.
+- Named error classes: `ContractNotFoundError`, `ContractSignerMissingError`, `ContractDryRunFailedError`.
+
+Build-time codegen (Node-only) — emits typed module augmentation for `manager.getContract(...)`:
 
 ```ts
-// Detect
-exists("hardhat.config.ts|js|cjs|mjs") -> "hardhat"
+import { generateContractTypes, resolveContractTypeInputs } from "@parity/product-sdk-contracts/codegen";
+import { writeFileSync } from "node:fs";
 
-// Build
-npx hardhat compile
-// requires @parity/hardhat-polkadot in config so resolc runs underneath
-
-// Scan
-artifacts/contracts/**/*.json
-skip *.dbg.json
-
-// Bytecode
-const hex = artifact.bytecode;
-skip missing, "", or "0x"
-const bytes = hexToBytes(hex);
+const resolved = await resolveContractTypeInputs([
+    { library: "@org/counter", abiPath: "./target/counter.release.abi.json" },
+]);
+writeFileSync(".cdm/contracts.d.ts", generateContractTypes(resolved));
 ```
 
-Shared Solidity TODO contract artifact shape for CDM:
+## Implementation references
 
-```ts
-type SolidityCdmArtifact = {
-  toolchain: "foundry" | "hardhat";
-  contractName: string;
-  sourceName: string;
-  cdmPackage: string;       // TODO: define source of truth
-  bytecode: Uint8Array;     // from artifact bytecode
-  abi: AbiEntry[];          // from artifact ABI
-  metadata: {
-    description: string;    // TODO: source
-    readme: string;         // TODO: source
-    authors: string[];      // TODO: source
-    homepage: string;       // TODO: source
-    repository: string;     // package.json or git origin?
-  };
-  dependencies: string[];   // TODO: dependency graph / layer semantics
-  constructorArgs: Uint8Array; // TODO: currently deploy data is empty
-};
-```
+**Current CDM (this repo):**
 
-## Implementation References
+- `src/apps/cli/src/commands/{build,deploy,install/index}.ts`
+- `src/apps/cli/src/lib/{install-pipeline,deploy-pipeline}.ts`
+- `src/lib/contracts/src/{detection,builder,pipeline,deployer,publisher,store,cdm-json,cdm-local-json}.ts`
+- `src/lib/cdm/rust-macros/src/lib.rs` — `cdm::import!()` proc-macro
+- `src/contract/src/lib.rs` — ContractRegistry on-chain contract
 
-```text
-Current CDM:
-  src/apps/cli/src/commands/build.ts
-  src/apps/cli/src/commands/deploy.ts
-  src/apps/cli/src/commands/install/index.ts
-  src/apps/cli/src/lib/install-pipeline.ts
-  src/lib/contracts/src/detection.ts
-  src/lib/contracts/src/builder.ts
-  src/lib/contracts/src/pipeline.ts
-  src/lib/contracts/src/deployer.ts
-  src/lib/contracts/src/publisher.ts
-  src/lib/contracts/src/store.ts
-  src/lib/contracts/src/cdm-json.ts
-  src/contract/src/lib.rs
+**New TypeScript SDK (separate repo, replaces `@dotdm/cdm`):**
 
-Playground Solidity reference:
-  /Users/charleshetterich/code/playground-cli/src/utils/build/detect.ts
-  /Users/charleshetterich/code/playground-cli/src/utils/build/runner.ts
-  /Users/charleshetterich/code/playground-cli/src/utils/deploy/contracts.ts
-```
+- `/Users/charleshetterich/code/product-sdk/product-sdk/packages/contracts/src/manager.ts` — `ContractManager`
+- `/Users/charleshetterich/code/product-sdk/product-sdk/packages/contracts/src/codegen.ts` — `generateContractTypes`
+- `/Users/charleshetterich/code/product-sdk/product-sdk/packages/contracts/README.md` — full API reference
+
+**Solidity build adapters (to lift into `@dotdm/contracts`):**
+
+- `/Users/charleshetterich/code/playground-cli/src/utils/build/detect.ts` — file-based toolchain detection
+- `/Users/charleshetterich/code/playground-cli/src/utils/deploy/contracts.ts` — `compileFoundry`, `compileHardhat`, `extractFoundryBytecode`, `extractHardhatBytecode`, `hexToBytes`, `writeTmpBytecode`
