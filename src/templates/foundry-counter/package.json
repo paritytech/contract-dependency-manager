@@ -1,0 +1,9 @@
+{
+    "name": "cdm-foundry-counter",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "build": "forge build --resolc",
+        "clean": "forge clean"
+    }
+}
