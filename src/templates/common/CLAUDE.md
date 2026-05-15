@@ -685,7 +685,9 @@ cdm deploy -n <chain> --bootstrap      # Also deploy the ContractRegistry first
 cdm deploy -n <chain> --suri "//Bob"   # Custom signer
 cdm i -n <chain> @org/contract         # Install contract (latest version)
 cdm i -n <chain> @org/contract:3       # Install specific version
-cdm template shared-counter            # Scaffold from template
+cdm template shared-counter            # Scaffold into ./shared-counter
+cdm template shared-counter .          # Scaffold into current directory
+cd shared-counter && cdm template .    # Infer template from current directory name
 cdm init                               # Generate keypair, save to ~/.cdm/accounts.json
 cdm account map -n <chain>             # Map account for Revive pallet (required before first deploy)
 cdm account bal -n <chain>             # Show balances

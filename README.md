@@ -214,11 +214,14 @@ cdm i -n paseo @yourorg/package:3
 
 ### `cdm template [name]`
 
-Scaffold an example project.
+Scaffold an example project into `./<template-name>` by default. Pass a target directory to override it; use `.` to scaffold into the current directory.
 
 ```bash
-cdm template shared-counter
-cdm template instagram
+cdm template shared-counter      # writes ./shared-counter
+cdm template instagram           # writes ./instagram
+cdm template instagram .         # writes current directory
+cdm template instagram ./apps/ig # creates ./apps/ig recursively
+cd instagram && cdm template .   # infers the instagram template from cwd
 ```
 
 The Instagram template is the current browser app example. It uses product-sdk host flows, Product Account signing, Bulletin uploads, and `ContractManager` resolution from `cdm.json`.
