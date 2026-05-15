@@ -9,6 +9,7 @@ src/lib/descriptors/generated/
 target/
 
 *.polkavm
+*.car
 
 *.lock
 *-lock.yaml

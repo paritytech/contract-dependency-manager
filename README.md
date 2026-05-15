@@ -1,17 +1,8 @@
 # Contract Dependency Manager (CDM)
 
-A CLI tool for managing PVM smart contract dependencies on Polkadot. CDM automates contract deployment ordering, cross-contract address resolution, and TypeScript type generation.
+CDM is the deploy, registry, and dependency tool for PVM smart contracts on Polkadot. It builds contracts in dependency order, deploys them to Asset Hub, publishes metadata to Bulletin, registers package names in the on-chain registry, and installs typed ABIs for downstream projects.
 
 Browse published contracts at [contracts.dot.li](https://contracts.dot.li/#/).
-
-## Table of Contents
-
-- [Install CLI](#install)
-- [Quick Start](#quick-start)
-- [Writing CDM Contracts](#writing-cdm-contracts)
-- [Using CDM Contracts from TypeScript](#using-contracts-from-typescript)
-- [Example: Shared Counter](#example-shared-counter)
-- [Commands](#commands)
 
 ## Install
 
@@ -24,22 +15,42 @@ This installs the `cdm` binary, the Rust nightly toolchain with `rust-src`, and 
 ## Quick Start
 
 ```bash
-# Scaffold a new project (current workspace directory)
+# Scaffold a new workspace
 cdm template shared-counter
 
-# Initialize, fund & map dev account for deploying to paseo
-cdm init
+# Generate a deploy account and map it for pallet-revive
+cdm init -n paseo
 cdm account map -n paseo
 
-# Deploy all workspace contracts
+# Build, deploy, publish metadata, and register all workspace contracts
 cdm deploy -n paseo
 ```
 
-> **Important:** Before deploying, open each contract's `lib.rs` and change the org name from `"example"` to your own unique org name (e.g. `"myteam"`). Contract names are scoped by org, so deploying with `"example"` will conflict with other users.
+Before deploying a template, change every `#[pvm::contract(cdm = "@example/...")]` namespace to one you own, such as `@myteam/counter`. Package names are global per registry target.
+
+## CDM And Product SDK
+
+Use CDM for contract lifecycle and dependency resolution:
+
+- Build PVM contracts.
+- Deploy contracts to Asset Hub.
+- Publish ABI/readme metadata to Bulletin.
+- Register `@org/name -> address + metadata` in the ContractRegistry.
+- Install published contracts into `cdm.json` and `.cdm/contracts.d.ts`.
+
+Use product-sdk in apps and frontends:
+
+- Do not import `@dotdm/cdm` in frontend/runtime app code.
+- Use `@parity/product-sdk-contracts` and `ContractManager` to resolve contracts from `cdm.json`.
+- Use `@parity/product-sdk-signer` for Product Account / Triangle host signing.
+- Use `@parity/product-sdk-chain-client` for host chain connections.
+- Use `@parity/product-sdk-tx` when batching `.prepare()` calls with other Asset Hub transactions.
+
+`cdm install` generates type augmentation for `@parity/product-sdk-contracts`, so `ContractManager.getContract("@org/name")` is typed after `.cdm/contracts.d.ts` is included by TypeScript.
 
 ## Writing CDM Contracts
 
-Annotate your contract with a CDM package name:
+Annotate each contract with a CDM package name:
 
 ```rust
 #[pvm::contract(cdm = "@yourorg/mycontract")]
@@ -52,122 +63,165 @@ mod mycontract {
 }
 ```
 
-To call another CDM contract:
+To call another CDM contract from Rust:
 
 ```rust
-cdm::import!("@someorg/other_contract")
+cdm::import!("@someorg/other-contract");
 
-// Add the contract as a cdm dependency using `cdm install`
-// Then use cdm_reference() for runtime address lookup
 let other = other_contract::cdm_reference();
-other.do_something().expect("call failed");
+if let Err(_) = other.do_something() {
+    common::revert(b"OtherCallFailed");
+}
 ```
 
-## Using Contracts from TypeScript
+For external packages, run `cdm i -n paseo @someorg/other-contract` first. The import macro reads `cdm.json`, resolves the installed ABI in `~/.cdm`, and generates the same typed reference shape as a same-workspace Cargo dependency.
 
-After deploying contracts, you can interact with them from TypeScript using `@dotdm/cdm`.
+## Using Contracts From A Triangle App
 
-### 1. Install contract ABIs
+Install published contract ABIs:
 
 ```bash
-cdm install -n paseo @yourorg/counter @yourorg/counter-writer @yourorg/counter-reader
+cdm i -n paseo @yourorg/counter @yourorg/counter-writer
 ```
 
-This fetches contract ABIs from the on-chain registry, saves them to `cdm.json`, and generates TypeScript types in `.cdm/cdm.d.ts`. You get full autocomplete and type safety for every contract method.
+This updates `cdm.json`, stores ABIs under `~/.cdm`, and writes `.cdm/contracts.d.ts`. Keep `.cdm/**/*` in `tsconfig.json` so product-sdk contract handles are typed.
 
-### 2. Create a CDM instance and call contracts
+Install the product-sdk app/runtime packages:
 
-```typescript
-import { createCdm } from "@dotdm/cdm";
-
-// Reads cdm.json from cwd, connects to the chain automatically
-const cdm = createCdm({ defaultSigner: signer });
-
-// Get typed contract handles
-const counter = cdm.getContract("@yourorg/counter");
-const counterWriter = cdm.getContract("@yourorg/counter-writer");
-
-// Query (read-only, no transaction)
-const count = await counter.getCount.query();
-console.log(count); // { success: true, value: 0 }
-
-// Send a transaction (state-changing)
-await counterWriter.writeIncrement.tx();
-
-// Clean up WebSocket connection
-cdm.destroy();
+```bash
+pnpm add @parity/product-sdk-chain-client@^0.4.1 \
+  @parity/product-sdk-contracts@^0.5.0 \
+  @parity/product-sdk-descriptors@^0.4.0 \
+  @parity/product-sdk-signer@^0.2.4 \
+  @parity/product-sdk-tx@^0.2.3 \
+  polkadot-api@^2.1.2
 ```
 
-Every contract method exposes `.query()` for dry-run reads and `.tx()` for signed transactions. Arguments are positional:
+In frontend code, use product-sdk:
 
-```typescript
-await counterWriter.writeIncrementN.tx(5);
+```ts
+import { getChainAPI } from "@parity/product-sdk-chain-client";
+import {
+  ContractManager,
+  ensureContractAccountMapped,
+  type CdmJson,
+} from "@parity/product-sdk-contracts";
+import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
+import { SignerManager } from "@parity/product-sdk-signer";
+import cdmJson from "./cdm.json";
+
+const DOT_NS_IDENTIFIER = "my-app.dot";
+
+const signerManager = new SignerManager({ dappName: "my-app" });
+await signerManager.connect();
+
+const productAccount = await signerManager.getProductAccount(DOT_NS_IDENTIFIER);
+if (!productAccount.ok) throw productAccount.error;
+
+const chain = await getChainAPI("paseo");
+const contracts = ContractManager.fromClient(
+  cdmJson as CdmJson,
+  chain.raw.assetHub,
+  paseo_asset_hub,
+);
+
+await ensureContractAccountMapped(
+  contracts.getRuntime(),
+  productAccount.value.address,
+  productAccount.value.getSigner(),
+);
+
+contracts.setDefaults({
+  origin: productAccount.value.address,
+  signer: productAccount.value.getSigner(),
+});
+
+const counter = contracts.getContract("@yourorg/counter");
+
+const { value } = await counter.getCount.query();
+await counter.increment.tx();
 ```
 
-### 3. Custom signer
+Every contract method exposes:
 
-By default `createCdm()` uses the Alice dev account. To use a custom signer, pass it to `.tx()`:
+- `.query(...args, opts?)` for read-only dry-runs.
+- `.tx(...args, opts?)` for signed contract calls.
+- `.prepare(...args, opts?)` for batch-ready calls.
 
-```typescript
-await counter.increment.tx({ signer: myPolkadotSigner });
+Batch contract calls with other Asset Hub transactions:
+
+```ts
+import { batchSubmitAndWatch } from "@parity/product-sdk-tx";
+
+const a = counter.increment.prepare();
+const counterWriter = contracts.getContract("@yourorg/counter-writer");
+const b = counterWriter.writeIncrement.prepare();
+
+await batchSubmitAndWatch([a, b], chain.raw.assetHub, productAccount.value.getSigner());
 ```
 
 ## Example: Shared Counter
 
-The included shared-counter template demonstrates a 3-contract system:
+The shared-counter template demonstrates a three-contract dependency graph:
 
-- **counter** - Stores a shared count value
-- **counter-writer** - Calls counter to increment (depends on counter via CDM)
-- **counter-reader** - Queries counter for the current value (depends on counter via CDM)
+- `counter` stores a shared count value.
+- `counter-writer` calls `counter.increment()` through a CDM reference.
+- `counter-reader` queries `counter.get_count()` through a CDM reference.
 
-```
+```bash
 cdm template shared-counter
-cdm deploy deploy -n paseo
-cdm install @<yourorg>/counter @<yourorg>/counter-writer @<yourorg>/counter-reader
-
-bun run src/index.ts
+cdm deploy -n paseo
+cdm i -n paseo @yourorg/counter @yourorg/counter-writer @yourorg/counter-reader
 ```
 
 ## Commands
 
 ### `cdm build`
 
-Build all contracts with the ContractRegistry address baked in.
+Build all contracts with the selected ContractRegistry address baked in.
 
 ```bash
-cdm build --contracts counter counter_writer    # Build specific contracts
-cdm build -n preview-net                        # Embed that network's registry
-cdm build --root /path/to/workspace             # Custom workspace root
+cdm build
+cdm build --contracts counter counter_writer
+cdm build -n preview-net
+cdm build --root /path/to/workspace
 ```
 
 ### `cdm deploy -n <chain>`
 
-Build & deploy/register all contracts
+Build, deploy, publish metadata, and register all workspace contracts.
 
 ```bash
 cdm deploy -n paseo
-
-# Options
-cdm deploy -n paseo --suri //Bob  # Use different signer
+cdm deploy -n preview-net
+cdm deploy -n paseo --suri //Bob
 cdm deploy --registry-address 0x... --assethub-url wss://... --bulletin-url wss://...
 ```
 
+Supported deploy presets are `paseo`, `preview-net`, and `local`. The `paseo` preset points at Paseo v2.
+
 ### `cdm install -n <chain> <library>`
 
-Add a CDM contract library for use with `@dotdm/cdm` or  the polkadot-api. Queries the on-chain registry for the contract's ABI metadata and installs it locally.
+Install published contracts for Rust imports and product-sdk TypeScript usage.
 
 ```bash
-cdm i -n paseo @polkadot/reputation @polkadot/disputes
-cdm i -n preview-net @polkadot/reputation
+cdm i -n paseo @polkadot/contexts @polkadot/profiles
+cdm i -n preview-net @yourorg/package
+cdm i -n paseo @yourorg/package:3
 ```
+
+`cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates `cdm.json`, installs ABIs under `~/.cdm`, and regenerates `.cdm/contracts.d.ts`.
 
 ### `cdm template [name]`
 
-Scaffold a complete example project with 3 contracts demonstrating cross-contract CDM dependencies.
+Scaffold an example project.
 
 ```bash
 cdm template shared-counter
+cdm template instagram
 ```
+
+The Instagram template is the current browser app example. It uses product-sdk host flows, Product Account signing, Bulletin uploads, and `ContractManager` resolution from `cdm.json`.
 
 ## Development
 
@@ -176,8 +230,11 @@ git clone https://github.com/paritytech/contract-dependency-manager.git
 cd contract-dependency-manager
 make setup
 
-# Run in dev mode
+# Run the CLI in dev mode
 bun run src/apps/cli/src/cli.ts --help
+
+# Run the frontend; rebuilds local workspace deps first
+make frontend
 
 # Run tests
 make test
@@ -195,17 +252,13 @@ make compile-all
 src/
   apps/
     cli/                  CLI tool (Commander.js, Bun runtime)
-      src/
-        cli.ts            Entry point
-        commands/          build, deploy, install, template
-        lib/              Pipeline orchestration, Ink UI
-    frontend/             Web dashboard (React 19, Vite)
+    frontend/             Contract Hub web dashboard (React, Vite)
   lib/
-    contracts/            @dotdm/contracts — Detection, deployer, publisher, registry, builder
-    env/                  @dotdm/env — Chain connections, signer, chain presets
-    utils/                @dotdm/utils — Shared constants, utilities
-    scripts/              @dotdm/scripts — embed-templates, deploy-registry
-    cdm/                  Stub packages (Rust + TypeScript)
+    contracts/            @dotdm/contracts: detection, deploy, publish, registry, install helpers
+    env/                  @dotdm/env: chain connections, signers, presets
+    utils/                @dotdm/utils: shared constants and utilities
+    scripts/              build/deploy helper scripts
+    cdm/                  Rust macro + TypeScript compatibility package
   contract/               ContractRegistry (Rust/PolkaVM)
   templates/              Project scaffolding templates
 ```
