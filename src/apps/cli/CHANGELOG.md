@@ -1,5 +1,15 @@
 # @dotdm/cli
 
+## 0.8.7
+
+### Patch Changes
+
+- 7036abb: Add first-pass Hardhat and Foundry Solidity counter templates.
+- d2867e3: Add `cdm build` support for Foundry and Hardhat Solidity projects, including reusable package APIs for toolchain detection, compilation, and normalized PolkaVM bytecode artifacts.
+- Updated dependencies [d2867e3]
+  - @dotdm/contracts@2.0.4
+  - @dotdm/cdm@0.6.5
+
 ## 0.8.6
 
 ### Patch Changes

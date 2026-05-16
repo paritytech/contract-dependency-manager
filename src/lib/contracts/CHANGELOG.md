@@ -1,5 +1,11 @@
 # @dotdm/contracts
 
+## 2.0.4
+
+### Patch Changes
+
+- d2867e3: Add `cdm build` support for Foundry and Hardhat Solidity projects, including reusable package APIs for toolchain detection, compilation, and normalized PolkaVM bytecode artifacts.
+
 ## 2.0.3
 
 ### Patch Changes
