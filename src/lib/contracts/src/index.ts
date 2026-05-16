@@ -34,6 +34,8 @@ export {
 
 export {
     type GeneratedSolidityImport,
+    type SolidityAbiEntry,
+    type SolidityAbiParam,
     type SolidityImportContract,
     generateSolidityImport,
     solidityImportPathForLibrary,
