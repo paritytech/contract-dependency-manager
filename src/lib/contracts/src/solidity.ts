@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { basename, dirname, join, relative, resolve } from "path";
 import type { AbiEntry } from "./deployer";
 import type { ContractInfo, ContractToolchain } from "./detection";
+import { solidityLibraryFromImportPath } from "./solidity-imports";
 
 export type SolidityToolchain = Extract<ContractToolchain, "foundry" | "hardhat">;
 
@@ -66,6 +67,7 @@ interface SolidityArtifactJson {
 interface FoundryConfigJson {
     out?: unknown;
     src?: unknown;
+    remappings?: unknown;
 }
 
 interface ScannedSolidityArtifact {
@@ -168,6 +170,12 @@ function blankBlockComments(source: string): string {
     return source.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));
 }
 
+function blankComments(source: string): string {
+    return blankBlockComments(source).replace(/\/\/[^\n]*/g, (comment) =>
+        comment.replace(/[^\n]/g, " "),
+    );
+}
+
 function precedingCdmPackage(source: string, declarationIndex: number): string | null {
     const before = source.slice(0, declarationIndex).replace(/\s*$/g, "");
     const lineComment = before.match(/(?:^|\n)(?:\s*\/\/\/[^\n]*\n?)+$/);
@@ -190,6 +198,170 @@ function extractContractDefinitions(source: string): SolidityContractDefinition[
         });
     }
     return [...definitions.values()].sort((a, b) => a.contractName.localeCompare(b.contractName));
+}
+
+function extractImportSpecifiers(source: string): string[] {
+    const scanSource = blankComments(source);
+    const imports: string[] = [];
+    const re = /\bimport\s+(?:[^"';]*?\s+from\s+)?["']([^"']+)["']\s*;/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(scanSource))) {
+        imports.push(match[1]);
+    }
+    return imports;
+}
+
+function normalizeForImportMatch(path: string): string {
+    return path.replace(/\\/g, "/");
+}
+
+function resolveImportPath(rootDir: string, sourcePath: string, specifier: string): string {
+    if (specifier.startsWith(".")) return resolve(dirname(sourcePath), specifier);
+    if (specifier.startsWith("/")) return resolve(rootDir, `.${specifier}`);
+    return resolve(rootDir, specifier);
+}
+
+interface SolidityImportRemapping {
+    prefix: string;
+    target: string;
+}
+
+function parseSolidityImportRemapping(value: unknown): SolidityImportRemapping | null {
+    if (typeof value !== "string") return null;
+    const eq = value.indexOf("=");
+    if (eq <= 0) return null;
+
+    // Foundry supports optional context prefixes (`context:prefix=target`).
+    // CDM import matching only needs the actual import prefix.
+    const rawPrefix = value.slice(0, eq);
+    const contextSep = rawPrefix.lastIndexOf(":");
+    const prefix = normalizeForImportMatch(
+        contextSep >= 0 ? rawPrefix.slice(contextSep + 1) : rawPrefix,
+    );
+    const target = normalizeForImportMatch(value.slice(eq + 1));
+
+    return prefix && target ? { prefix, target } : null;
+}
+
+function readSolidityImportRemappingsFromText(text: string): SolidityImportRemapping[] {
+    return text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#"))
+        .map(parseSolidityImportRemapping)
+        .filter((entry): entry is SolidityImportRemapping => entry !== null);
+}
+
+function readFoundryImportRemappings(rootDir: string): SolidityImportRemapping[] {
+    const configRemappings = readFoundryConfig(rootDir)?.remappings;
+    if (Array.isArray(configRemappings)) {
+        const remappings = configRemappings
+            .map(parseSolidityImportRemapping)
+            .filter((entry): entry is SolidityImportRemapping => entry !== null);
+        if (remappings.length > 0) return remappings;
+    }
+
+    const remappingsTxtPath = resolve(rootDir, "remappings.txt");
+    if (existsSync(remappingsTxtPath)) {
+        const remappings = readSolidityImportRemappingsFromText(
+            readFileSync(remappingsTxtPath, "utf-8"),
+        );
+        if (remappings.length > 0) return remappings;
+    }
+
+    return [];
+}
+
+function resolveRemappedImport(
+    rootDir: string,
+    specifier: string,
+    remappings: SolidityImportRemapping[],
+): string | null {
+    const normalized = normalizeForImportMatch(specifier);
+    const match = remappings
+        .filter((remapping) => normalized.startsWith(remapping.prefix))
+        .sort((a, b) => b.prefix.length - a.prefix.length)[0];
+    if (!match) return null;
+
+    const suffix = normalized.slice(match.prefix.length);
+    const separator = match.target.endsWith("/") || suffix.startsWith("/") || !suffix ? "" : "/";
+    const mapped = `${match.target}${separator}${suffix}`;
+    return mapped.startsWith("/") ? resolve(mapped) : resolve(rootDir, mapped);
+}
+
+function isWithinGeneratedCdmSolidity(rootDir: string, path: string): boolean {
+    const rel = normalizeForImportMatch(relative(rootDir, path));
+    return rel === ".cdm/solidity" || rel.startsWith(".cdm/solidity/");
+}
+
+function collectCdmImportPackages(
+    rootDir: string,
+    sourcePath: string,
+    resolveImport: (sourcePath: string, specifier: string) => string | null,
+    visited: Set<string> = new Set(),
+): Set<string> {
+    const packages = new Set<string>();
+    if (visited.has(sourcePath) || !existsSync(sourcePath)) return packages;
+    visited.add(sourcePath);
+
+    const source = readFileSync(sourcePath, "utf-8");
+    for (const specifier of extractImportSpecifiers(source)) {
+        const resolved =
+            resolveImport(sourcePath, specifier) ??
+            resolveImportPath(rootDir, sourcePath, specifier);
+        const rootRelative = normalizeForImportMatch(relative(rootDir, resolved));
+        const library =
+            solidityLibraryFromImportPath(rootRelative) ?? solidityLibraryFromImportPath(specifier);
+        if (library) {
+            packages.add(library);
+            continue;
+        }
+
+        if (
+            specifier.endsWith(".sol") &&
+            existsSync(resolved) &&
+            !isWithinGeneratedCdmSolidity(rootDir, resolved)
+        ) {
+            for (const nested of collectCdmImportPackages(
+                rootDir,
+                resolved,
+                resolveImport,
+                visited,
+            )) {
+                packages.add(nested);
+            }
+        }
+    }
+
+    return packages;
+}
+
+function attachSolidityDependencies(
+    rootDir: string,
+    targets: SolidityBuildTarget[],
+): SolidityBuildTarget[] {
+    const localPackageToTarget = new Map<string, string>();
+    const importRemappingsByToolchain: Record<SolidityToolchain, SolidityImportRemapping[]> = {
+        foundry: readFoundryImportRemappings(rootDir),
+        hardhat: [],
+    };
+    for (const target of targets) {
+        if (target.cdmPackage) localPackageToTarget.set(target.cdmPackage, target.name);
+    }
+
+    return targets.map((target) => {
+        const importRemappings = importRemappingsByToolchain[target.toolchain];
+        const resolveImport = (_sourcePath: string, specifier: string) =>
+            resolveRemappedImport(rootDir, specifier, importRemappings);
+        const deps = [...collectCdmImportPackages(rootDir, target.sourcePath, resolveImport)]
+            .map((pkg) => localPackageToTarget.get(pkg))
+            .filter((name): name is string => Boolean(name) && name !== target.name);
+
+        return {
+            ...target,
+            dependsOnCrates: [...new Set(deps)].sort(),
+        };
+    });
 }
 
 function readFoundrySourceDirs(rootDir: string): string[] {
@@ -267,7 +439,7 @@ export function detectSolidityBuildTargets(rootDir: string): SolidityBuildTarget
         }
     }
 
-    return dedupeTargets(targets);
+    return attachSolidityDependencies(rootDir, dedupeTargets(targets));
 }
 
 function dedupeTargets(targets: SolidityBuildTarget[]): SolidityBuildTarget[] {
@@ -724,6 +896,59 @@ if (import.meta.vitest) {
             expect(targets.map((target) => target.name)).toEqual([
                 "@example/counter-a",
                 "@example/counter-b",
+            ]);
+        });
+
+        test("detects local Solidity CDM dependencies from generated imports", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts"), { recursive: true });
+            writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
+            writeFileSync(
+                join(root, "contracts", "CounterA.sol"),
+                "/// @custom:cdm @example/counter-a\ncontract CounterA {}\n",
+            );
+            writeFileSync(
+                join(root, "contracts", "CounterB.sol"),
+                `
+                import "../.cdm/solidity/example/counter-a.sol";
+                /// @custom:cdm @example/counter-b
+                contract CounterB {}
+                `,
+            );
+
+            const targets = detectSolidityBuildTargets(root);
+            const byName = new Map(targets.map((target) => [target.name, target]));
+
+            expect(byName.get("@example/counter-a")?.dependsOnCrates).toEqual([]);
+            expect(byName.get("@example/counter-b")?.dependsOnCrates).toEqual([
+                "@example/counter-a",
+            ]);
+        });
+
+        test("detects local Solidity CDM dependencies through foundry remappings", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts"), { recursive: true });
+            writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
+            writeFileSync(join(root, "remappings.txt"), "@cdm/=.cdm/solidity/\n");
+            writeFileSync(
+                join(root, "contracts", "CounterA.sol"),
+                "/// @custom:cdm @example/counter-a\ncontract CounterA {}\n",
+            );
+            writeFileSync(
+                join(root, "contracts", "CounterB.sol"),
+                `
+                import "@cdm/example/counter-a.sol";
+                /// @custom:cdm @example/counter-b
+                contract CounterB {}
+                `,
+            );
+
+            const targets = detectSolidityBuildTargets(root);
+            const byName = new Map(targets.map((target) => [target.name, target]));
+
+            expect(byName.get("@example/counter-a")?.dependsOnCrates).toEqual([]);
+            expect(byName.get("@example/counter-b")?.dependsOnCrates).toEqual([
+                "@example/counter-a",
             ]);
         });
 

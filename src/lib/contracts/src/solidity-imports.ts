@@ -1,3 +1,5 @@
+import { keccak_256 } from "@noble/hashes/sha3.js";
+
 const SOLIDITY_IMPORT_ROOT = ".cdm/solidity";
 const CDM_PACKAGE_RE = /^@[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+$/;
 const ARRAY_SUFFIX_RE = /(\[[0-9]*\])+$/;
@@ -147,6 +149,20 @@ export function solidityImportPathForLibrary(library: string): string {
     const segments = packageSegments(library);
     const file = `${segments.at(-1)}.sol`;
     return [SOLIDITY_IMPORT_ROOT, ...segments.slice(0, -1), file].join("/");
+}
+
+export function solidityLibraryFromImportPath(importPath: string): string | null {
+    const normalized = importPath.replace(/\\/g, "/").replace(/^\.\//, "");
+    const marker = `${SOLIDITY_IMPORT_ROOT}/`;
+    const markerIndex = normalized.lastIndexOf(marker);
+    if (markerIndex < 0 || !normalized.endsWith(".sol")) return null;
+
+    const relative = normalized.slice(markerIndex + marker.length, -".sol".length);
+    const segments = relative.split("/").filter(Boolean);
+    if (segments.length < 2) return null;
+
+    const library = `@${segments.join("/")}`;
+    return CDM_PACKAGE_RE.test(library) ? library : null;
 }
 
 function toPascalCase(input: string): string {
@@ -486,7 +502,22 @@ function validateAddress(address: string): string {
     if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
         throw new Error(`Invalid contract address for Solidity import generation: ${address}`);
     }
-    return address;
+    return checksumAddress(address);
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+    return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function checksumAddress(address: string): string {
+    const hex = address.slice(2).toLowerCase();
+    const hash = bytesToHex(keccak_256(new TextEncoder().encode(hex)));
+    let result = "0x";
+    for (let i = 0; i < hex.length; i++) {
+        const char = hex[i];
+        result += Number.parseInt(hash[i], 16) >= 8 ? char.toUpperCase() : char;
+    }
+    return result;
 }
 
 export function generateSolidityImport(contract: SolidityImportContract): GeneratedSolidityImport {
@@ -583,7 +614,7 @@ if (import.meta.vitest) {
         test("generates stable import paths and address-backed helpers", () => {
             const generated = generateSolidityImport({
                 library: "@example/counter-a",
-                address: "0x1111111111111111111111111111111111111111",
+                address: "0xccf14cb491b47ee0391b2fefc6991ef9e68e8cba",
                 version: 3,
                 abi: [
                     {
@@ -607,7 +638,7 @@ if (import.meta.vitest) {
             expect(generated.content).toContain("interface IExampleCounterA");
             expect(generated.content).toContain("library ExampleCounterA");
             expect(generated.content).toContain(
-                "address internal constant ADDRESS = 0x1111111111111111111111111111111111111111;",
+                "address internal constant ADDRESS = 0xcCF14Cb491b47ee0391b2fEFc6991eF9E68E8cbA;",
             );
             expect(generated.content).toContain(
                 "function count() external view returns (uint256);",
