@@ -36,7 +36,7 @@ Use CDM for contract lifecycle and dependency resolution:
 - Deploy contracts to Asset Hub.
 - Publish ABI/readme metadata to Bulletin.
 - Register `@org/name -> address + metadata` in the ContractRegistry.
-- Install published contracts into `cdm.json` and `.cdm/contracts.d.ts`.
+- Install published contracts into `cdm.json`, `.cdm/contracts.d.ts`, and generated Solidity import files.
 
 Use product-sdk in apps and frontends:
 
@@ -46,7 +46,7 @@ Use product-sdk in apps and frontends:
 - Use `@parity/product-sdk-chain-client` for host chain connections.
 - Use `@parity/product-sdk-tx` when batching `.prepare()` calls with other Asset Hub transactions.
 
-`cdm install` generates type augmentation for `@parity/product-sdk-contracts`, so `ContractManager.getContract("@org/name")` is typed after `.cdm/contracts.d.ts` is included by TypeScript.
+`cdm install` generates type augmentation for `@parity/product-sdk-contracts`, so `ContractManager.getContract("@org/name")` is typed after `.cdm/contracts.d.ts` is included by TypeScript. Solidity projects also get address-backed interfaces under `.cdm/solidity/`.
 
 ## Writing CDM Contracts
 
@@ -76,6 +76,27 @@ if let Err(_) = other.do_something() {
 
 For external packages, run `cdm i -n paseo @someorg/other-contract` first. The import macro reads `cdm.json`, resolves the installed ABI in `~/.cdm`, and generates the same typed reference shape as a same-workspace Cargo dependency.
 
+Solidity contracts use NatSpec for their own CDM package name:
+
+```solidity
+/// @custom:cdm @yourorg/mycontract
+contract MyContract {}
+```
+
+To call an installed CDM contract from Solidity, import the generated interface:
+
+```solidity
+import ".cdm/solidity/someorg/other-contract.sol";
+
+contract Caller {
+    function callOther() external returns (uint256) {
+        return SomeorgOtherContract.ref().doSomething();
+    }
+}
+```
+
+The generated file contains an interface plus a small library with `ADDRESS`, `ref()`, and `cdm()`. Running `cdm i` updates that generated file from the registry, so contract source does not need an address edit.
+
 ## Using Contracts From A Triangle App
 
 Install published contract ABIs:
@@ -84,7 +105,7 @@ Install published contract ABIs:
 cdm i -n paseo @yourorg/counter @yourorg/counter-writer
 ```
 
-This updates `cdm.json`, stores ABIs under `~/.cdm`, and writes `.cdm/contracts.d.ts`. Keep `.cdm/**/*` in `tsconfig.json` so product-sdk contract handles are typed.
+This updates `cdm.json`, stores ABIs under `~/.cdm`, writes `.cdm/contracts.d.ts`, and generates Solidity imports under `.cdm/solidity/`. Keep `.cdm/**/*` in `tsconfig.json` so product-sdk contract handles are typed.
 
 Install the product-sdk app/runtime packages:
 
@@ -186,7 +207,7 @@ cdm template foundry-counter
 `hardhat-counter` uses `@parity/hardhat-polkadot` and compiles with `pnpm build`.
 `foundry-counter` uses the Polkadot Foundry fork and compiles with `forge build --resolc`.
 
-These templates are compile-ready starter projects. CDM deployment, metadata publishing, and registry integration for Solidity contracts will land in a later pass.
+These templates are compile-ready starter projects and can be built, deployed, published, registered, installed, and consumed through CDM.
 
 ## Commands
 
@@ -216,7 +237,7 @@ Supported deploy presets are `paseo`, `preview-net`, and `local`. The `paseo` pr
 
 ### `cdm install -n <chain> <library>`
 
-Install published contracts for Rust imports and product-sdk TypeScript usage.
+Install published contracts for Rust imports, Solidity imports, and product-sdk TypeScript usage.
 
 ```bash
 cdm i -n paseo @polkadot/contexts @polkadot/profiles
@@ -224,7 +245,7 @@ cdm i -n preview-net @yourorg/package
 cdm i -n paseo @yourorg/package:3
 ```
 
-`cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates `cdm.json`, installs ABIs under `~/.cdm`, and regenerates `.cdm/contracts.d.ts`.
+`cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates `cdm.json`, installs ABIs under `~/.cdm`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`.
 
 ### `cdm template [name]`
 

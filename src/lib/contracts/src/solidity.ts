@@ -14,6 +14,7 @@ const HARDHAT_CONFIGS = [
 ];
 
 const SOLIDITY_SKIP_DIRS = new Set([
+    ".cdm",
     ".git",
     ".turbo",
     "artifacts",
@@ -161,7 +162,7 @@ interface SolidityContractDefinition {
     cdmPackage: string | null;
 }
 
-const CDM_NATSPEC_RE = /@custom:cdm\s+(@[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/;
+const CDM_NATSPEC_RE = /@custom:cdm\s+(@[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+)/;
 
 function blankBlockComments(source: string): string {
     return source.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));
