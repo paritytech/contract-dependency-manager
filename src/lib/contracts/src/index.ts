@@ -1,5 +1,6 @@
 export {
     type ContractInfo,
+    type ContractToolchain,
     type DeploymentOrder,
     type DeploymentOrderLayered,
     detectContracts,
@@ -13,6 +14,33 @@ export {
     getGitRemoteUrl,
     readReadmeContent,
 } from "./detection";
+
+export {
+    type BuildSolidityToolchainOptions,
+    type SolidityBuildArtifact,
+    type SolidityBuildTarget,
+    type SolidityToolchain,
+    buildSolidityToolchain,
+    detectSolidityBuildTargets,
+    extractFoundryBytecode,
+    extractHardhatBytecode,
+    hasBuildableSolidityProject,
+    hasFoundryProject,
+    hasHardhatProject,
+    hexToBytes,
+    resolveFoundryOutDir,
+    resolveHardhatArtifactsDir,
+} from "./solidity";
+
+export {
+    BUILD_MANIFEST_RELATIVE_PATH,
+    BUILD_MANIFEST_VERSION,
+    type CdmBuildManifest,
+    type CdmBuildManifestContract,
+    buildManifestPath,
+    readBuildManifest,
+    writeBuildManifest,
+} from "./build-manifest";
 
 export {
     type BuildResult,
@@ -77,4 +105,5 @@ export {
     type DeployEvent,
     type DeploySummary,
     type PipelineChainClient,
+    detectBuildOrder,
 } from "./pipeline";

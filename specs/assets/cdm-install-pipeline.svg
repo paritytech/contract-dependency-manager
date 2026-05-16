@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" font-family="-apple-system, system-ui, sans-serif" font-size="13">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrowThick" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#15803D"/>
+    </marker>
+    <!-- folder icon -->
+    <symbol id="folderIcon" viewBox="0 0 20 16">
+      <path d="M1 4 L1 14 L19 14 L19 5 L9 5 L7 3 L1 3 Z" fill="currentColor" opacity="0.2"/>
+      <path d="M1 4 L1 14 L19 14 L19 5 L9 5 L7 3 L1 3 Z" stroke="currentColor" stroke-width="1.2" fill="none"/>
+    </symbol>
+    <!-- file icon -->
+    <symbol id="fileIcon" viewBox="0 0 14 16">
+      <path d="M2 1 L9 1 L12 4 L12 15 L2 15 Z" fill="currentColor" opacity="0.15"/>
+      <path d="M2 1 L9 1 L12 4 L12 15 L2 15 Z M9 1 L9 4 L12 4" stroke="currentColor" stroke-width="1" fill="none"/>
+    </symbol>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="1400" height="900" rx="16" ry="16" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="700" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0F172A">Install pipeline</text>
+  <text x="700" y="64" text-anchor="middle" font-size="13" fill="#64748B"><tspan font-family="ui-monospace, Menlo, monospace">cdm install</tspan> — fetch ABI + metadata from registry · cache on disk · update cdm.json</text>
+
+  <!-- ============================================================== -->
+  <!-- LEFT SIDE: pipeline (vertical flow)                              -->
+  <!-- ============================================================== -->
+
+  <!-- Section header -->
+  <text x="60" y="115" font-size="26" font-weight="800" fill="#15803D">▸</text>
+  <text x="90" y="115" font-size="18" font-weight="700" fill="#14532D" letter-spacing="1">pipeline</text>
+
+  <!-- Entry command -->
+  <rect x="60" y="140" width="640" height="46" rx="10" fill="#14532D" stroke="#14532D" stroke-width="2"/>
+  <text x="380" y="170" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="14" font-weight="600" fill="#FFFFFF">cdm install -n paseo @org/foo @org/bar …</text>
+
+  <!-- arrow down -->
+  <line x1="380" y1="188" x2="380" y2="215" stroke="#333" stroke-width="2.5" marker-end="url(#arrowThick)"/>
+
+  <!-- Step 1: resolve target -->
+  <rect x="60" y="220" width="640" height="60" rx="10" fill="#F0FDF4" stroke="#15803D" stroke-width="2"/>
+  <text x="78" y="244" font-weight="700" fill="#14532D">① resolve target</text>
+  <text x="78" y="264" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#15803D">read cdm.json · fill missing URLs from -n flag · th = blake2b₈(asset-hub + ipfs)</text>
+
+  <!-- arrow -->
+  <line x1="380" y1="285" x2="380" y2="310" stroke="#333" stroke-width="2.5" marker-end="url(#arrowThick)"/>
+
+  <!-- Step 2: connect -->
+  <rect x="60" y="315" width="640" height="60" rx="10" fill="#F0FDF4" stroke="#15803D" stroke-width="2"/>
+  <text x="78" y="339" font-weight="700" fill="#14532D">② connect</text>
+  <text x="78" y="358" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#15803D">CdmAssetHubClient(asset-hub)  ·  IpfsGateway(ipfs)</text>
+
+  <!-- arrow -->
+  <line x1="380" y1="380" x2="380" y2="405" stroke="#333" stroke-width="2.5" marker-end="url(#arrowThick)"/>
+
+  <!-- Step 3: per-library (fan out) -->
+  <rect x="60" y="410" width="640" height="280" rx="10" fill="#F0FDF4" stroke="#15803D" stroke-width="2"/>
+  <text x="78" y="434" font-weight="700" fill="#14532D">③ per library — in parallel  <tspan font-size="10" font-style="italic" font-weight="400" fill="#475569">via Promise.allSettled</tspan></text>
+
+  <!-- 4 sub-steps as connected pills -->
+  <!-- pill A: query registry -->
+  <rect x="90" y="450" width="580" height="44" rx="22" fill="#FFFFFF" stroke="#15803D" stroke-width="1.5"/>
+  <circle cx="115" cy="472" r="13" fill="#15803D"/>
+  <text x="115" y="477" text-anchor="middle" font-weight="700" font-size="12" fill="#FFFFFF">A</text>
+  <text x="140" y="468" font-weight="600" font-size="12" fill="#14532D">query registry</text>
+  <text x="140" y="486" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">getVersionCount → getMetadataUri(@v) → getAddress(@v)</text>
+
+  <!-- pill B: fetch metadata -->
+  <rect x="90" y="504" width="580" height="44" rx="22" fill="#FFFFFF" stroke="#15803D" stroke-width="1.5"/>
+  <circle cx="115" cy="526" r="13" fill="#15803D"/>
+  <text x="115" y="531" text-anchor="middle" font-weight="700" font-size="12" fill="#FFFFFF">B</text>
+  <text x="140" y="522" font-weight="600" font-size="12" fill="#14532D">fetch metadata blob</text>
+  <text x="140" y="540" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">GET &lt;ipfs-gateway&gt;/&lt;cid&gt; · parse JSON · validate ABI shape</text>
+
+  <!-- pill C: save -->
+  <rect x="90" y="558" width="580" height="44" rx="22" fill="#FFFFFF" stroke="#15803D" stroke-width="1.5"/>
+  <circle cx="115" cy="580" r="13" fill="#15803D"/>
+  <text x="115" y="585" text-anchor="middle" font-weight="700" font-size="12" fill="#FFFFFF">C</text>
+  <text x="140" y="576" font-weight="600" font-size="12" fill="#14532D">save to disk</text>
+  <text x="140" y="594" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">~/.cdm/&lt;th&gt;/contracts/&lt;pkg&gt;/&lt;v&gt;/{abi,metadata,info}.json · update `latest` symlink</text>
+
+  <!-- pill D: codegen -->
+  <rect x="90" y="612" width="580" height="44" rx="22" fill="#FFFFFF" stroke="#15803D" stroke-width="1.5"/>
+  <circle cx="115" cy="634" r="13" fill="#15803D"/>
+  <text x="115" y="639" text-anchor="middle" font-weight="700" font-size="12" fill="#FFFFFF">D</text>
+  <text x="140" y="630" font-weight="600" font-size="12" fill="#14532D">post-install hooks</text>
+  <text x="140" y="648" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">TS: generateContractTypes → .cdm/contracts.d.ts   ·   Rust: no-op</text>
+
+  <text x="380" y="678" text-anchor="middle" font-size="10" font-style="italic" fill="#475569">A → B → C → D for each library, all libraries concurrent</text>
+
+  <!-- arrow down to "update cdm.json" -->
+  <line x1="380" y1="695" x2="380" y2="725" stroke="#333" stroke-width="2.5" marker-end="url(#arrowThick)"/>
+
+  <!-- final step: update cdm.json -->
+  <rect x="60" y="730" width="640" height="60" rx="10" fill="#DCFCE7" stroke="#15803D" stroke-width="2"/>
+  <text x="78" y="754" font-weight="700" fill="#14532D">④ update cdm.json</text>
+  <text x="78" y="773" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#15803D">cdm.json.contracts[th][pkg] = { version, address, abi, metadataCid }</text>
+
+  <!-- ============================================================== -->
+  <!-- RIGHT SIDE: ~/.cdm/ directory tree + cdm.json table             -->
+  <!-- ============================================================== -->
+
+  <text x="730" y="115" font-size="26" font-weight="800" fill="#4338CA">▸</text>
+  <text x="760" y="115" font-size="18" font-weight="700" fill="#312E81" letter-spacing="1">on-disk artifacts</text>
+  <text x="760" y="135" font-size="11" fill="#64748B">two outputs: user-global cache + workspace manifest</text>
+
+  <!-- ===== Disk cache tree ===== -->
+  <text x="730" y="170" font-weight="700" font-size="13" fill="#312E81">~/.cdm/  <tspan font-size="10" font-weight="400" font-style="italic" fill="#64748B">— shared across workspaces</tspan></text>
+
+  <!-- tree styled as code panel -->
+  <rect x="720" y="180" width="660" height="320" rx="10" fill="#FFFFFF" stroke="#4338CA" stroke-width="1.5"/>
+  <rect x="720" y="180" width="660" height="32" fill="#E0E7FF"/>
+  <line x1="720" y1="212" x2="1380" y2="212" stroke="#4338CA" stroke-width="1.5"/>
+  <text x="740" y="201" font-weight="700" font-size="12" fill="#312E81">path</text>
+  <text x="980" y="201" font-weight="700" font-size="12" fill="#312E81">contents</text>
+  <line x1="965" y1="180" x2="965" y2="500" stroke="#C7D2FE" stroke-width="1"/>
+
+  <!-- rows -->
+  <g font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">
+    <!-- root -->
+    <g color="#4338CA"><use href="#folderIcon" x="740" y="222" width="18" height="14"/></g>
+    <text x="765" y="234">~/.cdm/</text>
+    <text x="980" y="234" fill="#475569">root</text>
+
+    <!-- bin (striped) -->
+    <rect x="720" y="242" width="660" height="22" fill="#F8FAFC"/>
+    <g color="#4338CA"><use href="#folderIcon" x="760" y="246" width="16" height="13"/></g>
+    <text x="782" y="258">├── bin/cdm</text>
+    <text x="980" y="258" fill="#475569">installed binary (make install)</text>
+    <line x1="965" y1="242" x2="965" y2="264" stroke="#C7D2FE" stroke-width="1"/>
+
+    <!-- accounts -->
+    <g color="#4338CA"><use href="#fileIcon" x="760" y="270" width="14" height="14"/></g>
+    <text x="782" y="282">├── accounts.json</text>
+    <text x="980" y="282" fill="#475569">per-chain stored signers</text>
+
+    <!-- target hash dir (striped) -->
+    <rect x="720" y="290" width="660" height="22" fill="#F8FAFC"/>
+    <g color="#4338CA"><use href="#folderIcon" x="760" y="294" width="16" height="13"/></g>
+    <text x="782" y="306">└── &lt;targetHash&gt;/contracts/</text>
+    <text x="980" y="306" fill="#475569">scoped per (asset-hub, ipfs) tuple</text>
+    <line x1="965" y1="290" x2="965" y2="312" stroke="#C7D2FE" stroke-width="1"/>
+
+    <!-- pkg name -->
+    <g color="#4338CA"><use href="#folderIcon" x="800" y="318" width="16" height="13"/></g>
+    <text x="822" y="330">    └── @org/foo/</text>
+    <text x="980" y="330" fill="#475569">cdm package name</text>
+
+    <!-- version dir (striped) -->
+    <rect x="720" y="338" width="660" height="22" fill="#F8FAFC"/>
+    <g color="#4338CA"><use href="#folderIcon" x="840" y="342" width="16" height="13"/></g>
+    <text x="862" y="354">        ├── 0/</text>
+    <text x="980" y="354" fill="#475569">version directory (monotonic)</text>
+    <line x1="965" y1="338" x2="965" y2="360" stroke="#C7D2FE" stroke-width="1"/>
+
+    <!-- abi -->
+    <g color="#4338CA"><use href="#fileIcon" x="880" y="366" width="14" height="14"/></g>
+    <text x="902" y="378">        │   ├── abi.json</text>
+    <text x="980" y="378" fill="#475569">ABI entries · consumed by macros + codegen</text>
+
+    <!-- metadata (striped) -->
+    <rect x="720" y="386" width="660" height="22" fill="#F8FAFC"/>
+    <g color="#4338CA"><use href="#fileIcon" x="880" y="390" width="14" height="14"/></g>
+    <text x="902" y="402">        │   ├── metadata.json</text>
+    <text x="980" y="402" fill="#475569">full Bulletin blob (readme, authors, …)</text>
+    <line x1="965" y1="386" x2="965" y2="408" stroke="#C7D2FE" stroke-width="1"/>
+
+    <!-- info -->
+    <g color="#4338CA"><use href="#fileIcon" x="880" y="414" width="14" height="14"/></g>
+    <text x="902" y="426">        │   └── info.json</text>
+    <text x="980" y="426" fill="#475569">{ address, metadataCid, version }</text>
+
+    <!-- version 1 (striped) -->
+    <rect x="720" y="434" width="660" height="22" fill="#F8FAFC"/>
+    <g color="#4338CA"><use href="#folderIcon" x="840" y="438" width="16" height="13"/></g>
+    <text x="862" y="450">        ├── 1/  ⋯</text>
+    <text x="980" y="450" fill="#475569">additional versions if installed</text>
+    <line x1="965" y1="434" x2="965" y2="456" stroke="#C7D2FE" stroke-width="1"/>
+
+    <!-- latest symlink -->
+    <text x="862" y="476" fill="#4338CA">        └── latest → 1</text>
+    <text x="980" y="476" fill="#475569">symlink to highest installed version</text>
+  </g>
+
+  <!-- ===== cdm.json contracts table ===== -->
+  <text x="730" y="535" font-weight="700" font-size="13" fill="#312E81">cdm.json after install  <tspan font-size="10" font-weight="400" font-style="italic" fill="#64748B">— what gets added under contracts[targetHash]</tspan></text>
+
+  <rect x="720" y="545" width="660" height="245" rx="10" fill="#FFFFFF" stroke="#4338CA" stroke-width="1.5"/>
+  <rect x="720" y="545" width="660" height="32" fill="#E0E7FF"/>
+  <line x1="720" y1="577" x2="1380" y2="577" stroke="#4338CA" stroke-width="1.5"/>
+  <text x="740" y="566" font-weight="700" font-size="12" fill="#312E81">key</text>
+  <text x="980" y="566" font-weight="700" font-size="12" fill="#312E81">value</text>
+  <line x1="965" y1="545" x2="965" y2="790" stroke="#C7D2FE" stroke-width="1"/>
+
+  <!-- rows -->
+  <text x="740" y="600" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">version</text>
+  <text x="980" y="600" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">number  (resolved from "latest" or pinned)</text>
+
+  <rect x="720" y="608" width="660" height="30" fill="#F8FAFC"/>
+  <line x1="965" y1="608" x2="965" y2="638" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="740" y="627" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">address</text>
+  <text x="980" y="627" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">"0x…"  (same across all CREATE2 targets)</text>
+
+  <text x="740" y="657" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">abi</text>
+  <text x="980" y="657" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">AbiEntry[]  (inlined for offline build / codegen)</text>
+
+  <rect x="720" y="665" width="660" height="30" fill="#F8FAFC"/>
+  <line x1="965" y1="665" x2="965" y2="695" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="740" y="684" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">metadataCid</text>
+  <text x="980" y="684" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">"bafy…"  (re-fetch from IPFS as needed)</text>
+
+  <!-- divider -->
+  <line x1="720" y1="705" x2="1380" y2="705" stroke="#C7D2FE" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <text x="740" y="725" font-weight="700" font-size="11" fill="#312E81">+ also updated</text>
+
+  <text x="740" y="750" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">targets[th]</text>
+  <text x="980" y="750" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">backfilled if missing (from -n preset)</text>
+
+  <rect x="720" y="758" width="660" height="30" fill="#F8FAFC"/>
+  <line x1="965" y1="758" x2="965" y2="788" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="740" y="777" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">dependencies[th][pkg]</text>
+  <text x="980" y="777" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">added if not already present</text>
+
+  <!-- footnote on shared cache -->
+  <text x="700" y="855" text-anchor="middle" font-size="11" font-style="italic" fill="#475569">~/.cdm/ is shared across workspaces — installing @org/foo@v once benefits every project on the machine.</text>
+</svg>

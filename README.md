@@ -174,6 +174,20 @@ cdm deploy -n paseo
 cdm i -n paseo @yourorg/counter @yourorg/counter-writer @yourorg/counter-reader
 ```
 
+## Solidity Templates
+
+CDM includes first-pass Solidity scaffolds for the two supported Solidity toolchains:
+
+```bash
+cdm template hardhat-counter
+cdm template foundry-counter
+```
+
+`hardhat-counter` uses `@parity/hardhat-polkadot` and compiles with `pnpm build`.
+`foundry-counter` uses the Polkadot Foundry fork and compiles with `forge build --resolc`.
+
+These templates are compile-ready starter projects. CDM deployment, metadata publishing, and registry integration for Solidity contracts will land in a later pass.
+
 ## Commands
 
 ### `cdm build`
@@ -219,6 +233,8 @@ Scaffold an example project into `./<template-name>` by default. Pass a target d
 ```bash
 cdm template shared-counter      # writes ./shared-counter
 cdm template instagram           # writes ./instagram
+cdm template hardhat-counter     # writes ./hardhat-counter
+cdm template foundry-counter     # writes ./foundry-counter
 cdm template instagram .         # writes current directory
 cdm template instagram ./apps/ig # creates ./apps/ig recursively
 cd instagram && cdm template .   # infers the instagram template from cwd

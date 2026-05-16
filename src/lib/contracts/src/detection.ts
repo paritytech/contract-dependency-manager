@@ -2,9 +2,15 @@ import { execSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 
+export type ContractToolchain = "rust" | "foundry" | "hardhat";
+
 export interface ContractInfo {
     /** Crate name (e.g., "reputation") */
     name: string;
+    /** Human-readable display name when it differs from the stable internal name. */
+    displayName?: string;
+    /** Source toolchain that produced or will produce this contract artifact. */
+    toolchain?: ContractToolchain;
     /** CDM package name (e.g., "@polkadot/reputation") - null if no CDM macro or not yet built */
     cdmPackage: string | null;
     /** Description from Cargo.toml [package] section */
@@ -155,6 +161,8 @@ export function detectContracts(rootDir: string): ContractInfo[] {
 
         return {
             name: pkg.name,
+            displayName: pkg.name,
+            toolchain: "rust",
             cdmPackage: readCdmPackage(rootDir, pkg.name),
             description: pkg.description,
             authors: pkg.authors,

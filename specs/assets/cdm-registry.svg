@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" font-family="-apple-system, system-ui, sans-serif" font-size="13">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#15803D"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#B91C1C"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="1400" height="900" rx="16" ry="16" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="700" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0F172A">ContractRegistry</text>
+  <text x="700" y="64" text-anchor="middle" font-size="13" fill="#64748B">on Asset Hub · pallet-revive contract · CREATE2-deployed at salt = blake2b("@cdm/registry")</text>
+
+  <!-- ============================================================== -->
+  <!-- LEFT: publish_latest state machine                              -->
+  <!-- ============================================================== -->
+
+  <text x="60" y="115" font-size="26" font-weight="800" fill="#1D4ED8">▸</text>
+  <text x="90" y="115" font-size="18" font-weight="700" fill="#1E3A8A" letter-spacing="1">publish_latest — first-write-wins ownership</text>
+  <text x="90" y="135" font-size="11" fill="#64748B">caller-bound ownership. version counter is monotonic. no overwrite, no delete.</text>
+
+  <!-- Entry point -->
+  <rect x="180" y="160" width="360" height="46" rx="10" fill="#1E3A8A" stroke="#1E3A8A" stroke-width="2"/>
+  <text x="360" y="180" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="13" font-weight="600" fill="#FFFFFF">publish_latest(</text>
+  <text x="360" y="196" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="13" font-weight="600" fill="#FFFFFF">name: String, addr: Address, cid: String)</text>
+
+  <!-- Down arrow to decision 1 -->
+  <line x1="360" y1="208" x2="360" y2="240" stroke="#333" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <!-- Decision 1: info[name] set? -->
+  <polygon points="360,245 510,310 360,375 210,310" fill="#F1F5F9" stroke="#475569" stroke-width="2"/>
+  <text x="360" y="302" text-anchor="middle" font-weight="700" font-size="12" fill="#1E293B">info[name]</text>
+  <text x="360" y="320" text-anchor="middle" font-weight="700" font-size="12" fill="#1E293B">already set?</text>
+
+  <!-- NO branch → left → first write -->
+  <line x1="210" y1="310" x2="135" y2="310" stroke="#333" stroke-width="2"/>
+  <text x="175" y="300" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">NO</text>
+  <line x1="135" y1="310" x2="135" y2="425" stroke="#333" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- First write box -->
+  <rect x="40" y="430" width="195" height="120" rx="10" fill="#DCFCE7" stroke="#15803D" stroke-width="2"/>
+  <text x="138" y="452" text-anchor="middle" font-weight="700" font-size="12" fill="#14532D">first publish</text>
+  <line x1="55" y1="462" x2="222" y2="462" stroke="#15803D" stroke-width="1" stroke-dasharray="3 2" opacity="0.6"/>
+  <text x="138" y="481" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#14532D">info[n].owner ← caller</text>
+  <text x="138" y="501" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#14532D">info[n].version_count ← 1</text>
+  <text x="138" y="521" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#14532D">store (n, 0) ↦ (addr, cid)</text>
+  <text x="138" y="538" text-anchor="middle" font-size="10" font-style="italic" fill="#166534">+ append to enumeration</text>
+
+  <!-- YES branch → down → decision 2 -->
+  <line x1="360" y1="375" x2="360" y2="408" stroke="#333" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="372" y="394" font-size="11" font-weight="700" fill="#B91C1C">YES</text>
+
+  <!-- Decision 2: caller==owner? -->
+  <polygon points="360,410 510,475 360,540 210,475" fill="#F1F5F9" stroke="#475569" stroke-width="2"/>
+  <text x="360" y="468" text-anchor="middle" font-weight="700" font-size="12" fill="#1E293B">caller ==</text>
+  <text x="360" y="486" text-anchor="middle" font-weight="700" font-size="12" fill="#1E293B">info[name].owner?</text>
+
+  <!-- NO branch → left → revert -->
+  <line x1="210" y1="475" x2="170" y2="475" stroke="#B91C1C" stroke-width="2"/>
+  <text x="190" y="464" text-anchor="middle" font-size="11" font-weight="700" fill="#B91C1C">NO</text>
+  <line x1="170" y1="475" x2="170" y2="580" stroke="#B91C1C" stroke-width="2" marker-end="url(#arrowRed)"/>
+
+  <!-- Revert box -->
+  <rect x="80" y="586" width="195" height="60" rx="10" fill="#FEE2E2" stroke="#B91C1C" stroke-width="2"/>
+  <text x="178" y="608" text-anchor="middle" font-weight="700" font-size="13" fill="#991B1B">REVERT</text>
+  <text x="178" y="628" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#991B1B">"Unauthorized"</text>
+
+  <!-- YES branch → right → append -->
+  <line x1="510" y1="475" x2="560" y2="475" stroke="#333" stroke-width="2"/>
+  <text x="535" y="464" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">YES</text>
+  <line x1="560" y1="475" x2="560" y2="555" stroke="#333" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Append box -->
+  <rect x="455" y="560" width="210" height="100" rx="10" fill="#DCFCE7" stroke="#15803D" stroke-width="2"/>
+  <text x="560" y="582" text-anchor="middle" font-weight="700" font-size="12" fill="#14532D">append new version</text>
+  <line x1="470" y1="592" x2="650" y2="592" stroke="#15803D" stroke-width="1" stroke-dasharray="3 2" opacity="0.6"/>
+  <text x="560" y="611" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#14532D">v_new = version_count</text>
+  <text x="560" y="630" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#14532D">version_count += 1</text>
+  <text x="560" y="650" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#14532D">store (n, v_new) ↦ (addr, cid)</text>
+
+  <!-- success join: route from first-publish AROUND the revert box, then to terminal -->
+  <polyline points="138,550 138,568 28,568 28,720 360,720" fill="none" stroke="#15803D" stroke-width="2"/>
+  <line x1="560" y1="660" x2="560" y2="720" stroke="#15803D" stroke-width="2"/>
+  <line x1="560" y1="720" x2="360" y2="720" stroke="#15803D" stroke-width="2"/>
+  <line x1="360" y1="720" x2="360" y2="730" stroke="#15803D" stroke-width="2.5" marker-end="url(#arrowGreen)"/>
+
+  <!-- Terminal: OK -->
+  <ellipse cx="360" cy="755" rx="60" ry="22" fill="#15803D" stroke="#14532D" stroke-width="2"/>
+  <text x="360" y="762" text-anchor="middle" font-weight="700" font-size="14" fill="#FFFFFF">OK ✓</text>
+
+  <!-- Note about immutability -->
+  <rect x="40" y="810" width="640" height="60" rx="8" fill="#FFFBEB" stroke="#D97706" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="60" y="831" font-size="12" font-weight="700" fill="#92400E">No yank · no overwrite · no in-place edit</text>
+  <text x="60" y="850" font-size="11" fill="#78350F">Upgrades publish at a new (name, v+1) tuple. Old versions remain queryable indefinitely.</text>
+  <text x="60" y="865" font-size="11" fill="#78350F">org-prefixes (e.g. <tspan font-family="ui-monospace, Menlo, monospace">@polkadot/*</tspan>) are <tspan font-style="italic">not</tspan> reserved — first publisher claims each name.</text>
+
+  <!-- ============================================================== -->
+  <!-- RIGHT: Storage struct + query surface tables                    -->
+  <!-- ============================================================== -->
+
+  <!-- ===== Storage struct ===== -->
+  <text x="720" y="115" font-size="26" font-weight="800" fill="#4338CA">▸</text>
+  <text x="750" y="115" font-size="18" font-weight="700" fill="#312E81" letter-spacing="1">Storage</text>
+  <text x="750" y="135" font-size="11" fill="#64748B">on-chain state. mappings indexed as shown. enumeration via index → name.</text>
+
+  <!-- Storage table -->
+  <rect x="720" y="155" width="640" height="230" rx="10" fill="#FFFFFF" stroke="#4338CA" stroke-width="1.5"/>
+  <!-- header -->
+  <rect x="720" y="155" width="640" height="32" fill="#E0E7FF"/>
+  <line x1="720" y1="187" x2="1360" y2="187" stroke="#4338CA" stroke-width="1.5"/>
+  <text x="740" y="176" font-weight="700" font-size="12" fill="#312E81">field</text>
+  <text x="950" y="176" font-weight="700" font-size="12" fill="#312E81">type</text>
+  <text x="1175" y="176" font-weight="700" font-size="12" fill="#312E81">role</text>
+  <line x1="935" y1="155" x2="935" y2="385" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1160" y1="155" x2="1160" y2="385" stroke="#C7D2FE" stroke-width="1"/>
+
+  <!-- R1 -->
+  <text x="740" y="208" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#1E293B">contract_name_count</text>
+  <text x="950" y="208" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">u32</text>
+  <text x="1175" y="208" font-size="11" fill="#475569">count of unique names</text>
+  <!-- R2 (striped) -->
+  <rect x="720" y="219" width="640" height="32" fill="#F8FAFC"/>
+  <line x1="935" y1="219" x2="935" y2="251" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1160" y1="219" x2="1160" y2="251" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="740" y="240" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#1E293B">contract_name_at</text>
+  <text x="950" y="240" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">Mapping&lt;u32, String&gt;</text>
+  <text x="1175" y="240" font-size="11" fill="#475569">enumeration: index → name</text>
+  <!-- R3 -->
+  <text x="740" y="272" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#1E293B">published_address</text>
+  <text x="950" y="272" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">Mapping&lt;(String, u32), Address&gt;</text>
+  <text x="1175" y="272" font-size="11" fill="#475569">(name, version) → address</text>
+  <!-- R4 (striped) -->
+  <rect x="720" y="283" width="640" height="32" fill="#F8FAFC"/>
+  <line x1="935" y1="283" x2="935" y2="315" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1160" y1="283" x2="1160" y2="315" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="740" y="304" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#1E293B">published_metadata_uri</text>
+  <text x="950" y="304" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">Mapping&lt;(String, u32), String&gt;</text>
+  <text x="1175" y="304" font-size="11" fill="#475569">(name, version) → cid</text>
+  <!-- R5 -->
+  <text x="740" y="336" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#1E293B">info</text>
+  <text x="950" y="336" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">Mapping&lt;String, NCInfo&gt;</text>
+  <text x="1175" y="336" font-size="11" fill="#475569">name → {owner, version_count}</text>
+  <!-- footnote inside table -->
+  <text x="740" y="370" font-size="10" font-style="italic" fill="#64748B">NCInfo = <tspan font-family="ui-monospace, Menlo, monospace">NamedContractInfo { owner: Address, version_count: u32 }</tspan></text>
+
+  <!-- ===== Query surface ===== -->
+  <text x="720" y="430" font-size="26" font-weight="800" fill="#4338CA">▸</text>
+  <text x="750" y="430" font-size="18" font-weight="700" fill="#312E81" letter-spacing="1">Query surface</text>
+  <text x="750" y="450" font-size="11" fill="#64748B">read-only methods. callable by anyone. used by CLI install, frontend discovery, contract runtime.</text>
+
+  <!-- Query table -->
+  <rect x="720" y="470" width="640" height="372" rx="10" fill="#FFFFFF" stroke="#4338CA" stroke-width="1.5"/>
+  <!-- header -->
+  <rect x="720" y="470" width="640" height="32" fill="#E0E7FF"/>
+  <line x1="720" y1="502" x2="1360" y2="502" stroke="#4338CA" stroke-width="1.5"/>
+  <text x="740" y="491" font-weight="700" font-size="12" fill="#312E81">method</text>
+  <text x="1095" y="491" font-weight="700" font-size="12" fill="#312E81">returns</text>
+  <text x="1240" y="491" font-weight="700" font-size="12" fill="#312E81">used by</text>
+  <line x1="1080" y1="470" x2="1080" y2="842" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1225" y1="470" x2="1225" y2="842" stroke="#C7D2FE" stroke-width="1"/>
+
+  <!-- 8 rows, height 41 each, starts y=502 -->
+  <!-- R1 -->
+  <text x="740" y="528" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">get_address(name)</text>
+  <text x="1095" y="528" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">Option&lt;Address&gt;</text>
+  <text x="1240" y="528" font-size="11" fill="#475569">install, runtime</text>
+  <!-- R2 -->
+  <rect x="720" y="543" width="640" height="41" fill="#F8FAFC"/>
+  <line x1="1080" y1="543" x2="1080" y2="584" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1225" y1="543" x2="1225" y2="584" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="740" y="569" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">get_address_at_version(name, v)</text>
+  <text x="1095" y="569" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">Option&lt;Address&gt;</text>
+  <text x="1240" y="569" font-size="11" fill="#475569">pinned installs</text>
+  <!-- R3 -->
+  <text x="740" y="610" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">get_metadata_uri(name)</text>
+  <text x="1095" y="610" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">Option&lt;String&gt;</text>
+  <text x="1240" y="610" font-size="11" fill="#475569">install, frontend</text>
+  <!-- R4 -->
+  <rect x="720" y="625" width="640" height="41" fill="#F8FAFC"/>
+  <line x1="1080" y1="625" x2="1080" y2="666" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1225" y1="625" x2="1225" y2="666" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="740" y="651" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">get_metadata_uri_at_version(n, v)</text>
+  <text x="1095" y="651" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">Option&lt;String&gt;</text>
+  <text x="1240" y="651" font-size="11" fill="#475569">pinned installs</text>
+  <!-- R5 -->
+  <text x="740" y="692" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">get_owner(name)</text>
+  <text x="1095" y="692" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">Address</text>
+  <text x="1240" y="692" font-size="11" fill="#475569">authz checks</text>
+  <!-- R6 -->
+  <rect x="720" y="707" width="640" height="41" fill="#F8FAFC"/>
+  <line x1="1080" y1="707" x2="1080" y2="748" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1225" y1="707" x2="1225" y2="748" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="740" y="733" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">get_version_count(name)</text>
+  <text x="1095" y="733" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">u32</text>
+  <text x="1240" y="733" font-size="11" fill="#475569">version selection</text>
+  <!-- R7 -->
+  <text x="740" y="774" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">get_contract_count()</text>
+  <text x="1095" y="774" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">u32</text>
+  <text x="1240" y="774" font-size="11" fill="#475569">frontend stats</text>
+  <!-- R8 -->
+  <rect x="720" y="789" width="640" height="41" fill="#F8FAFC"/>
+  <line x1="1080" y1="789" x2="1080" y2="830" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1225" y1="789" x2="1225" y2="830" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="740" y="815" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">get_contract_name_at(idx)</text>
+  <text x="1095" y="815" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">String</text>
+  <text x="1240" y="815" font-size="11" fill="#475569">frontend listing</text>
+</svg>

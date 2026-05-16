@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 760" font-family="-apple-system, system-ui, sans-serif" font-size="13">
+  <defs>
+    <!-- status pip green (done) -->
+    <symbol id="pipDone" viewBox="0 0 16 16">
+      <circle cx="8" cy="8" r="7" fill="#16A34A" stroke="#15803D" stroke-width="1"/>
+      <path d="M4.5 8 L7 10.5 L11.5 6" stroke="#FFFFFF" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <!-- status pip yellow (partial/TODO) -->
+    <symbol id="pipTodo" viewBox="0 0 16 16">
+      <circle cx="8" cy="8" r="7" fill="#FBBF24" stroke="#D97706" stroke-width="1"/>
+      <circle cx="8" cy="8" r="2" fill="#92400E"/>
+    </symbol>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="1400" height="760" rx="16" ry="16" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="700" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0F172A">Toolchain matrix</text>
+  <text x="700" y="64" text-anchor="middle" font-size="13" fill="#64748B">how each toolchain plugs into the CDM publish pipeline · what's done vs. what's open</text>
+
+  <!-- Three vertical comparison cards -->
+
+  <!-- ============== CARD 1: Rust / PVM ============== -->
+  <g>
+    <rect x="40" y="100" width="425" height="540" rx="12" fill="#FFFBEB" stroke="#D97706" stroke-width="2"/>
+
+    <!-- header band -->
+    <rect x="40" y="100" width="425" height="56" rx="12" fill="#FDE68A"/>
+    <rect x="40" y="140" width="425" height="16" fill="#FDE68A"/>
+    <line x1="40" y1="156" x2="465" y2="156" stroke="#D97706" stroke-width="1.5"/>
+    <text x="60" y="130" font-weight="800" font-size="18" fill="#92400E">Rust / PVM</text>
+    <use href="#pipDone" x="395" y="118" width="22" height="22"/>
+    <text x="385" y="148" text-anchor="end" font-size="11" font-weight="600" fill="#15803D">implemented end-to-end</text>
+
+    <!-- field: detect -->
+    <text x="60" y="184" font-size="10" font-weight="700" fill="#92400E" letter-spacing="1">DETECT</text>
+    <text x="60" y="206" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#78350F">Cargo.toml mentions</text>
+    <text x="60" y="223" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#78350F">pvm_contract dep</text>
+
+    <!-- field: build -->
+    <text x="60" y="258" font-size="10" font-weight="700" fill="#92400E" letter-spacing="1">BUILD COMMAND</text>
+    <rect x="60" y="266" width="385" height="32" rx="6" fill="#FFFFFF" stroke="#D97706" stroke-width="1"/>
+    <text x="252" y="288" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="12" font-weight="600" fill="#92400E">cargo pvm-contract build</text>
+
+    <!-- field: artifacts -->
+    <text x="60" y="322" font-size="10" font-weight="700" fill="#92400E" letter-spacing="1">ARTIFACTS</text>
+    <text x="60" y="344" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#78350F">target/&lt;crate&gt;.release.polkavm</text>
+    <text x="60" y="361" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#78350F">target/&lt;crate&gt;.release.cdm.json</text>
+
+    <!-- field: bytecode source -->
+    <text x="60" y="396" font-size="10" font-weight="700" fill="#92400E" letter-spacing="1">BYTECODE</text>
+    <text x="60" y="418" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#78350F">.polkavm  (native PVM blob)</text>
+
+    <!-- field: cdmPackage source -->
+    <text x="60" y="452" font-size="10" font-weight="700" fill="#92400E" letter-spacing="1">CDMPACKAGE</text>
+    <use href="#pipDone" x="170" y="441" width="14" height="14"/>
+    <text x="60" y="474" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#78350F">__PVM_CDM ELF symbol</text>
+    <text x="60" y="489" font-size="10" font-style="italic" fill="#A16207">extracted to .cdm.json post-build</text>
+
+    <!-- field: metadata source -->
+    <text x="60" y="524" font-size="10" font-weight="700" fill="#92400E" letter-spacing="1">METADATA SOURCE</text>
+    <use href="#pipDone" x="200" y="513" width="14" height="14"/>
+    <text x="60" y="546" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#78350F">Cargo.toml [package] + git</text>
+
+    <!-- field: deploy adapter -->
+    <text x="60" y="582" font-size="10" font-weight="700" fill="#92400E" letter-spacing="1">DEPLOY + REGISTER</text>
+    <use href="#pipDone" x="215" y="571" width="14" height="14"/>
+    <text x="60" y="603" font-size="11" fill="#78350F">@dotdm/contracts deployer  ·  CREATE2  ·  batch_all</text>
+    <text x="60" y="620" font-size="11" font-style="italic" fill="#15803D">all flows wired end-to-end</text>
+  </g>
+
+  <!-- ============== CARD 2: Foundry ============== -->
+  <g>
+    <rect x="485" y="100" width="425" height="540" rx="12" fill="#ECFEFF" stroke="#0891B2" stroke-width="2"/>
+
+    <!-- header band -->
+    <rect x="485" y="100" width="425" height="56" rx="12" fill="#A5F3FC"/>
+    <rect x="485" y="140" width="425" height="16" fill="#A5F3FC"/>
+    <line x1="485" y1="156" x2="910" y2="156" stroke="#0891B2" stroke-width="1.5"/>
+    <text x="505" y="130" font-weight="800" font-size="18" fill="#155E75">Foundry</text>
+    <use href="#pipTodo" x="840" y="118" width="22" height="22"/>
+    <text x="830" y="148" text-anchor="end" font-size="11" font-weight="600" fill="#B45309">build OK · adapter TODO</text>
+
+    <!-- field: detect -->
+    <text x="505" y="184" font-size="10" font-weight="700" fill="#155E75" letter-spacing="1">DETECT</text>
+    <text x="505" y="206" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#0E7490">foundry.toml present</text>
+
+    <!-- field: build -->
+    <text x="505" y="258" font-size="10" font-weight="700" fill="#155E75" letter-spacing="1">BUILD COMMAND</text>
+    <rect x="505" y="266" width="385" height="32" rx="6" fill="#FFFFFF" stroke="#0891B2" stroke-width="1"/>
+    <text x="697" y="288" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="12" font-weight="600" fill="#155E75">forge build --resolc</text>
+    <text x="505" y="316" font-size="10" font-style="italic" fill="#0E7490">--resolc flag (Polkadot fork) → PolkaVM bytecode</text>
+
+    <!-- field: artifacts -->
+    <text x="505" y="346" font-size="10" font-weight="700" fill="#155E75" letter-spacing="1">ARTIFACTS</text>
+    <text x="505" y="368" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#0E7490">out/&lt;Contract&gt;.sol/&lt;Contract&gt;.json</text>
+    <text x="505" y="385" font-size="10" font-style="italic" fill="#0E7490">skip test/script contracts</text>
+
+    <!-- field: bytecode source -->
+    <text x="505" y="416" font-size="10" font-weight="700" fill="#155E75" letter-spacing="1">BYTECODE</text>
+    <use href="#pipDone" x="612" y="405" width="14" height="14"/>
+    <text x="505" y="438" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#0E7490">json.bytecode.object  (hex)</text>
+    <text x="505" y="453" font-size="10" font-style="italic" fill="#155E75">lift from playground-cli</text>
+
+    <!-- field: cdmPackage source -->
+    <text x="505" y="478" font-size="10" font-weight="700" fill="#155E75" letter-spacing="1">CDMPACKAGE</text>
+    <use href="#pipTodo" x="615" y="467" width="14" height="14"/>
+    <rect x="505" y="487" width="385" height="46" rx="6" fill="#FEF3C7" stroke="#D97706" stroke-width="1" stroke-dasharray="3 3"/>
+    <text x="515" y="504" font-size="11" font-weight="700" fill="#92400E">TODO — where does the name live?</text>
+    <text x="515" y="520" font-size="10" fill="#78350F">options: cdm.json[contracts][name] · NatSpec tag · foundry.toml table</text>
+
+    <!-- field: metadata source -->
+    <text x="505" y="555" font-size="10" font-weight="700" fill="#155E75" letter-spacing="1">METADATA SOURCE</text>
+    <use href="#pipTodo" x="640" y="544" width="14" height="14"/>
+    <text x="505" y="577" font-size="11" font-style="italic" fill="#B45309">TODO — foundry.toml fields? package.json sidecar?</text>
+
+    <!-- field: deploy adapter -->
+    <text x="505" y="603" font-size="10" font-weight="700" fill="#155E75" letter-spacing="1">DEPLOY + REGISTER</text>
+    <use href="#pipTodo" x="660" y="592" width="14" height="14"/>
+    <text x="505" y="624" font-size="11" font-style="italic" fill="#B45309">TODO — wrap bytecode into deployBatch, register</text>
+  </g>
+
+  <!-- ============== CARD 3: Hardhat ============== -->
+  <g>
+    <rect x="930" y="100" width="425" height="540" rx="12" fill="#F5F3FF" stroke="#7C3AED" stroke-width="2"/>
+
+    <!-- header band -->
+    <rect x="930" y="100" width="425" height="56" rx="12" fill="#DDD6FE"/>
+    <rect x="930" y="140" width="425" height="16" fill="#DDD6FE"/>
+    <line x1="930" y1="156" x2="1355" y2="156" stroke="#7C3AED" stroke-width="1.5"/>
+    <text x="950" y="130" font-weight="800" font-size="18" fill="#5B21B6">Hardhat</text>
+    <use href="#pipTodo" x="1285" y="118" width="22" height="22"/>
+    <text x="1275" y="148" text-anchor="end" font-size="11" font-weight="600" fill="#B45309">build OK · adapter TODO</text>
+
+    <!-- field: detect -->
+    <text x="950" y="184" font-size="10" font-weight="700" fill="#5B21B6" letter-spacing="1">DETECT</text>
+    <text x="950" y="206" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#6D28D9">hardhat.config.{ts,js,cjs,mjs}</text>
+
+    <!-- field: build -->
+    <text x="950" y="258" font-size="10" font-weight="700" fill="#5B21B6" letter-spacing="1">BUILD COMMAND</text>
+    <rect x="950" y="266" width="385" height="32" rx="6" fill="#FFFFFF" stroke="#7C3AED" stroke-width="1"/>
+    <text x="1142" y="288" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="12" font-weight="600" fill="#5B21B6">npx hardhat compile</text>
+    <text x="950" y="316" font-size="10" font-style="italic" fill="#6D28D9">requires @parity/hardhat-polkadot plugin → PolkaVM</text>
+
+    <!-- field: artifacts -->
+    <text x="950" y="346" font-size="10" font-weight="700" fill="#5B21B6" letter-spacing="1">ARTIFACTS</text>
+    <text x="950" y="368" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#6D28D9">artifacts/contracts/&lt;F&gt;.sol/&lt;C&gt;.json</text>
+    <text x="950" y="385" font-size="10" font-style="italic" fill="#6D28D9">nested dir per source file</text>
+
+    <!-- field: bytecode source -->
+    <text x="950" y="416" font-size="10" font-weight="700" fill="#5B21B6" letter-spacing="1">BYTECODE</text>
+    <use href="#pipDone" x="1057" y="405" width="14" height="14"/>
+    <text x="950" y="438" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#6D28D9">json.bytecode  (hex, plain field)</text>
+    <text x="950" y="453" font-size="10" font-style="italic" fill="#5B21B6">lift from playground-cli</text>
+
+    <!-- field: cdmPackage source -->
+    <text x="950" y="478" font-size="10" font-weight="700" fill="#5B21B6" letter-spacing="1">CDMPACKAGE</text>
+    <use href="#pipTodo" x="1060" y="467" width="14" height="14"/>
+    <rect x="950" y="487" width="385" height="46" rx="6" fill="#FEF3C7" stroke="#D97706" stroke-width="1" stroke-dasharray="3 3"/>
+    <text x="960" y="504" font-size="11" font-weight="700" fill="#92400E">TODO — where does the name live?</text>
+    <text x="960" y="520" font-size="10" fill="#78350F">options: cdm.json[contracts][name] · NatSpec tag · hardhat config field</text>
+
+    <!-- field: metadata source -->
+    <text x="950" y="555" font-size="10" font-weight="700" fill="#5B21B6" letter-spacing="1">METADATA SOURCE</text>
+    <use href="#pipTodo" x="1085" y="544" width="14" height="14"/>
+    <text x="950" y="577" font-size="11" font-style="italic" fill="#B45309">TODO — package.json + hardhat plugin metadata?</text>
+
+    <!-- field: deploy adapter -->
+    <text x="950" y="603" font-size="10" font-weight="700" fill="#5B21B6" letter-spacing="1">DEPLOY + REGISTER</text>
+    <use href="#pipTodo" x="1105" y="592" width="14" height="14"/>
+    <text x="950" y="624" font-size="11" font-style="italic" fill="#B45309">TODO — wrap bytecode into deployBatch, register</text>
+  </g>
+
+  <!-- ============== Footer note ============== -->
+  <text x="700" y="680" text-anchor="middle" font-weight="700" font-size="13" fill="#1E293B">Status legend</text>
+  <use href="#pipDone" x="430" y="694" width="16" height="16"/>
+  <text x="450" y="706" font-size="12" fill="#1E293B">implemented or directly lifted from playground-cli</text>
+  <use href="#pipTodo" x="820" y="694" width="16" height="16"/>
+  <text x="840" y="706" font-size="12" fill="#1E293B">design open — see TODO in each row</text>
+
+  <text x="700" y="738" text-anchor="middle" font-size="11" font-style="italic" fill="#64748B">All three toolchains produce PolkaVM bytecode. Differences live in: how the artifact is shaped, how the cdmPackage name binds, and how metadata flows.</text>
+</svg>
