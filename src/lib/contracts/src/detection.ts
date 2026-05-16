@@ -1,6 +1,6 @@
 import { execSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
-import { resolve } from "path";
+import { join, resolve } from "path";
 
 export type ContractToolchain = "rust" | "foundry" | "hardhat";
 
@@ -158,6 +158,7 @@ export function detectContracts(rootDir: string): ContractInfo[] {
             .map((d) => d.name);
 
         const manifestDir = resolve(pkg.manifest_path, "..");
+        const configuredReadme = pkg.readme ? resolve(manifestDir, pkg.readme) : null;
 
         return {
             name: pkg.name,
@@ -168,7 +169,9 @@ export function detectContracts(rootDir: string): ContractInfo[] {
             authors: pkg.authors,
             homepage: pkg.homepage,
             repository: pkg.repository,
-            readmePath: pkg.readme ? resolve(manifestDir, pkg.readme) : findReadme(manifestDir),
+            readmePath:
+                (configuredReadme && existsSync(configuredReadme) ? configuredReadme : null) ??
+                findReadmeWithFallback(manifestDir, rootDir),
             path: manifestDir,
             dependsOnCrates: deps,
         };
@@ -373,12 +376,23 @@ export function detectDeploymentOrderLayered(rootDir: string): DeploymentOrderLa
     return { layers, contractMap, cdmPackageMap };
 }
 
-function findReadme(dir: string): string | null {
-    for (const name of ["README.md", "README.txt", "README", "readme.md"]) {
+const README_FILENAMES = ["README.md", "README.txt", "README", "readme.md"] as const;
+
+export function findReadme(dir: string): string | null {
+    for (const name of README_FILENAMES) {
         const p = resolve(dir, name);
         if (existsSync(p)) return p;
     }
     return null;
+}
+
+export function findReadmeWithFallback(primaryDir: string, rootDir: string): string | null {
+    return findReadme(primaryDir) ?? findReadme(rootDir);
+}
+
+export function findNamedMarkdown(dir: string, name: string): string | null {
+    const p = join(dir, `${name}.md`);
+    return existsSync(p) ? p : null;
 }
 
 export function getGitRemoteUrl(rootDir: string): string | null {
@@ -416,7 +430,42 @@ export function readReadmeContent(readmePath: string | null): string {
 }
 
 if (import.meta.vitest) {
-    const { describe, test, expect } = import.meta.vitest;
+    const { afterEach, describe, test, expect } = import.meta.vitest;
+    const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import("fs");
+    const { tmpdir } = await import("os");
+
+    let tmpRoot: string | null = null;
+
+    function makeProject(): string {
+        tmpRoot = mkdtempSync(join(tmpdir(), "cdm-detection-test-"));
+        return tmpRoot;
+    }
+
+    afterEach(() => {
+        if (tmpRoot) rmSync(tmpRoot, { recursive: true, force: true });
+        tmpRoot = null;
+    });
+
+    describe("readme detection", () => {
+        test("prefers contract-local readme before workspace root readme", () => {
+            const root = makeProject();
+            const contractDir = join(root, "contracts", "counter");
+            mkdirSync(contractDir, { recursive: true });
+            writeFileSync(join(root, "README.md"), "workspace docs");
+            writeFileSync(join(contractDir, "README.md"), "contract docs");
+
+            expect(findReadmeWithFallback(contractDir, root)).toBe(join(contractDir, "README.md"));
+        });
+
+        test("falls back to workspace root readme", () => {
+            const root = makeProject();
+            const contractDir = join(root, "contracts", "counter");
+            mkdirSync(contractDir, { recursive: true });
+            writeFileSync(join(root, "README.md"), "workspace docs");
+
+            expect(findReadmeWithFallback(contractDir, root)).toBe(join(root, "README.md"));
+        });
+    });
 
     describe("toposort", () => {
         test("handles empty graph", () => {

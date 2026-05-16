@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { basename, dirname, join, relative, resolve } from "path";
 import type { AbiEntry } from "./deployer";
+import { findNamedMarkdown, findReadme } from "./detection";
 import type { ContractInfo, ContractToolchain } from "./detection";
 import { solidityLibraryFromImportPath } from "./solidity-imports";
 
@@ -162,6 +163,10 @@ function collectSolidityFiles(dir: string, out: string[] = []): string[] {
 interface SolidityContractDefinition {
     contractName: string;
     cdmPackage: string | null;
+    description: string | null;
+    authors: string[];
+    homepage: string | null;
+    repository: string | null;
 }
 
 const CDM_NATSPEC_RE = /@custom:cdm\s+(@[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+)/;
@@ -176,11 +181,76 @@ function blankComments(source: string): string {
     );
 }
 
-function precedingCdmPackage(source: string, declarationIndex: number): string | null {
+function precedingNatSpecComment(source: string, declarationIndex: number): string | null {
     const before = source.slice(0, declarationIndex).replace(/\s*$/g, "");
     const lineComment = before.match(/(?:^|\n)(?:\s*\/\/\/[^\n]*\n?)+$/);
     const blockComment = before.match(/\/\*\*[\s\S]*?\*\/$/);
-    return (lineComment?.[0] ?? blockComment?.[0])?.match(CDM_NATSPEC_RE)?.[1] ?? null;
+    return lineComment?.[0] ?? blockComment?.[0] ?? null;
+}
+
+function normalizeNatSpecComment(comment: string): string[] {
+    return comment
+        .split(/\r?\n/)
+        .map((line) =>
+            line
+                .replace(/^\s*\/\/\/\s?/, "")
+                .replace(/^\s*\/\*\*\s?/, "")
+                .replace(/\s*\*\/\s*$/, "")
+                .replace(/^\s*\*\s?/, "")
+                .trim(),
+        )
+        .filter((line) => line.length > 0);
+}
+
+function parseNatSpecTags(comment: string | null): Map<string, string[]> {
+    const tags = new Map<string, string[]>();
+    if (!comment) return tags;
+
+    let currentTag: string | null = null;
+    for (const line of normalizeNatSpecComment(comment)) {
+        const match = line.match(/^@([A-Za-z][A-Za-z0-9_-]*(?::[A-Za-z0-9_-]+)?)\s*(.*)$/);
+        if (match) {
+            currentTag = match[1];
+            const value = match[2].trim();
+            if (!tags.has(currentTag)) tags.set(currentTag, []);
+            if (value) tags.get(currentTag)!.push(value);
+            continue;
+        }
+
+        if (currentTag) {
+            const values = tags.get(currentTag)!;
+            const last = values[values.length - 1];
+            if (last === undefined) {
+                values.push(line);
+            } else {
+                values[values.length - 1] = `${last} ${line}`;
+            }
+        }
+    }
+
+    return tags;
+}
+
+function firstNatSpecValue(tags: Map<string, string[]>, names: string[]): string | null {
+    for (const name of names) {
+        const value = tags.get(name)?.find((entry) => entry.trim().length > 0);
+        if (value) return value;
+    }
+    return null;
+}
+
+function parsePrecedingNatSpec(source: string, declarationIndex: number) {
+    const comment = precedingNatSpecComment(source, declarationIndex);
+    const tags = parseNatSpecTags(comment);
+    return {
+        cdmPackage: comment?.match(CDM_NATSPEC_RE)?.[1] ?? null,
+        description: firstNatSpecValue(tags, ["custom:description", "notice", "dev"]),
+        authors: [...(tags.get("author") ?? []), ...(tags.get("custom:author") ?? [])].filter(
+            (author) => author.trim().length > 0,
+        ),
+        homepage: firstNatSpecValue(tags, ["custom:homepage"]),
+        repository: firstNatSpecValue(tags, ["custom:repository", "custom:repo"]),
+    };
 }
 
 function extractContractDefinitions(source: string): SolidityContractDefinition[] {
@@ -192,9 +262,10 @@ function extractContractDefinitions(source: string): SolidityContractDefinition[
         if (match[2]) continue;
         const contractName = match[3];
         const declarationIndex = match.index + match[0].lastIndexOf("contract");
+        const natSpec = parsePrecedingNatSpec(source, declarationIndex);
         definitions.set(contractName, {
             contractName,
-            cdmPackage: precedingCdmPackage(source, declarationIndex),
+            ...natSpec,
         });
     }
     return [...definitions.values()].sort((a, b) => a.contractName.localeCompare(b.contractName));
@@ -420,17 +491,20 @@ export function detectSolidityBuildTargets(rootDir: string): SolidityBuildTarget
         )) {
             const source = readFileSync(sourcePath, "utf-8");
             for (const definition of extractContractDefinitions(source)) {
+                const sourceDir = dirname(sourcePath);
                 targets.push({
                     name: definition.cdmPackage ?? definition.contractName,
                     displayName: definition.cdmPackage ?? definition.contractName,
                     toolchain,
                     cdmPackage: definition.cdmPackage,
-                    description: meta.description,
-                    authors: meta.authors,
-                    homepage: meta.homepage,
-                    repository: meta.repository,
-                    readmePath: findProjectReadme(rootDir),
-                    path: dirname(sourcePath),
+                    description: definition.description ?? meta.description,
+                    authors: definition.authors.length > 0 ? definition.authors : meta.authors,
+                    homepage: definition.homepage ?? meta.homepage,
+                    repository: definition.repository ?? meta.repository,
+                    readmePath:
+                        findNamedMarkdown(sourceDir, definition.contractName) ??
+                        findReadme(rootDir),
+                    path: sourceDir,
                     dependsOnCrates: [],
                     sourcePath,
                     contractName: definition.contractName,
@@ -450,14 +524,6 @@ function dedupeTargets(targets: SolidityBuildTarget[]): SolidityBuildTarget[] {
         seen.add(key);
         return true;
     });
-}
-
-function findProjectReadme(rootDir: string): string | null {
-    for (const name of ["README.md", "README.txt", "README", "readme.md"]) {
-        const p = resolve(rootDir, name);
-        if (existsSync(p)) return p;
-    }
-    return null;
 }
 
 function emitData(onData: ((line: string) => void) | undefined, chunk: string) {
@@ -897,6 +963,85 @@ if (import.meta.vitest) {
                 "@example/counter-a",
                 "@example/counter-b",
             ]);
+        });
+
+        test("uses contract NatSpec metadata before project package metadata", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts"), { recursive: true });
+            writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
+            writeFileSync(
+                join(root, "package.json"),
+                JSON.stringify({
+                    description: "Project description",
+                    authors: ["Project Author"],
+                    homepage: "https://example.com/project",
+                    repository: "https://example.com/project.git",
+                }),
+            );
+            writeFileSync(
+                join(root, "contracts", "Counter.sol"),
+                `
+                /**
+                 * @custom:cdm @example/counter-a
+                 * @notice Contract description.
+                 * Continued description.
+                 * @author Contract Author
+                 * @custom:homepage https://example.com/counter
+                 * @custom:repository https://example.com/counter.git
+                 */
+                contract CounterA {}
+
+                contract CounterB {}
+                `,
+            );
+
+            const targets = detectSolidityBuildTargets(root);
+            const byName = new Map(targets.map((target) => [target.contractName, target]));
+
+            expect(byName.get("CounterA")?.description).toBe(
+                "Contract description. Continued description.",
+            );
+            expect(byName.get("CounterA")?.authors).toEqual(["Contract Author"]);
+            expect(byName.get("CounterA")?.homepage).toBe("https://example.com/counter");
+            expect(byName.get("CounterA")?.repository).toBe("https://example.com/counter.git");
+            expect(byName.get("CounterB")?.description).toBe("Project description");
+            expect(byName.get("CounterB")?.authors).toEqual(["Project Author"]);
+            expect(byName.get("CounterB")?.homepage).toBe("https://example.com/project");
+            expect(byName.get("CounterB")?.repository).toBe("https://example.com/project.git");
+        });
+
+        test("prefers contract-name markdown next to source before root readme", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts"), { recursive: true });
+            writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
+            writeFileSync(join(root, "README.md"), "root docs");
+            writeFileSync(join(root, "contracts", "CountttterA.md"), "contract docs");
+            writeFileSync(
+                join(root, "contracts", "CounterA.sol"),
+                `
+                contract CountttterA {}
+                contract CounterB {}
+                `,
+            );
+
+            const targets = detectSolidityBuildTargets(root);
+            const byName = new Map(targets.map((target) => [target.contractName, target]));
+
+            expect(byName.get("CountttterA")?.readmePath).toBe(
+                join(root, "contracts", "CountttterA.md"),
+            );
+            expect(byName.get("CounterB")?.readmePath).toBe(join(root, "README.md"));
+        });
+
+        test("leaves Solidity readme empty when no contract or root readme exists", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts"), { recursive: true });
+            writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
+            writeFileSync(join(root, "contracts", "Counter.sol"), "contract CounterA {}\n");
+
+            const [target] = detectSolidityBuildTargets(root);
+
+            expect(target?.readmePath).toBeNull();
         });
 
         test("detects local Solidity CDM dependencies from generated imports", () => {
