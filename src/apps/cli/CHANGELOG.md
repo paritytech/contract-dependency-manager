@@ -1,5 +1,13 @@
 # @dotdm/cli
 
+## 0.8.8
+
+### Patch Changes
+
+- Updated dependencies [ff4acdd]
+  - @dotdm/contracts@2.1.0
+  - @dotdm/cdm@0.6.6
+
 ## 0.8.7
 
 ### Patch Changes

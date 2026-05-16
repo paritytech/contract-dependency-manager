@@ -1,5 +1,11 @@
 # @dotdm/contracts
 
+## 2.1.0
+
+### Minor Changes
+
+- ff4acdd: Generate robust Solidity CDM import files from installed contract ABIs.
+
 ## 2.0.4
 
 ### Patch Changes
