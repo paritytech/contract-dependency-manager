@@ -33,6 +33,16 @@ export {
 } from "./solidity";
 
 export {
+    type GeneratedSolidityImport,
+    type SolidityAbiEntry,
+    type SolidityAbiParam,
+    type SolidityImportContract,
+    generateSolidityImport,
+    solidityLibraryFromImportPath,
+    solidityImportPathForLibrary,
+} from "./solidity-imports";
+
+export {
     BUILD_MANIFEST_RELATIVE_PATH,
     BUILD_MANIFEST_VERSION,
     type CdmBuildManifest,
