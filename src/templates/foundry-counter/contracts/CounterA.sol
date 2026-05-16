@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.28;
 
+/// @custom:cdm @example/counter-a
 contract CounterA {
     uint256 public count;
 

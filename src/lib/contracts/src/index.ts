@@ -28,7 +28,19 @@ export {
     hasFoundryProject,
     hasHardhatProject,
     hexToBytes,
+    resolveFoundryOutDir,
+    resolveHardhatArtifactsDir,
 } from "./solidity";
+
+export {
+    BUILD_MANIFEST_RELATIVE_PATH,
+    BUILD_MANIFEST_VERSION,
+    type CdmBuildManifest,
+    type CdmBuildManifestContract,
+    buildManifestPath,
+    readBuildManifest,
+    writeBuildManifest,
+} from "./build-manifest";
 
 export {
     type BuildResult,

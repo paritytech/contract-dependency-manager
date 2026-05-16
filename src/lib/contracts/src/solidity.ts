@@ -1,4 +1,4 @@
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { basename, dirname, join, relative, resolve } from "path";
 import type { AbiEntry } from "./deployer";
@@ -52,10 +52,27 @@ interface CommandResult {
 }
 
 interface SolidityArtifactJson {
+    _format?: unknown;
     contractName?: string;
     sourceName?: string;
+    ast?: {
+        absolutePath?: unknown;
+    };
     abi?: unknown;
     bytecode?: unknown;
+}
+
+interface FoundryConfigJson {
+    out?: unknown;
+    src?: unknown;
+}
+
+interface ScannedSolidityArtifact {
+    contractName: string;
+    sourceName: string | null;
+    artifactPath: string;
+    artifact: SolidityArtifactJson;
+    bytecode: string;
 }
 
 export interface BuildSolidityToolchainOptions {
@@ -139,23 +156,48 @@ function collectSolidityFiles(dir: string, out: string[] = []): string[] {
     return out;
 }
 
-function extractContractNames(source: string): string[] {
-    const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-    const names = new Set<string>();
-    const re = /\bcontract\s+([A-Za-z_][A-Za-z0-9_]*)/g;
+interface SolidityContractDefinition {
+    contractName: string;
+    cdmPackage: string | null;
+}
+
+const CDM_NATSPEC_RE = /@custom:cdm\s+(@[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/;
+
+function blankBlockComments(source: string): string {
+    return source.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));
+}
+
+function precedingCdmPackage(source: string, declarationIndex: number): string | null {
+    const before = source.slice(0, declarationIndex).replace(/\s*$/g, "");
+    const lineComment = before.match(/(?:^|\n)(?:\s*\/\/\/[^\n]*\n?)+$/);
+    const blockComment = before.match(/\/\*\*[\s\S]*?\*\/$/);
+    return (lineComment?.[0] ?? blockComment?.[0])?.match(CDM_NATSPEC_RE)?.[1] ?? null;
+}
+
+function extractContractDefinitions(source: string): SolidityContractDefinition[] {
+    const scanSource = blankBlockComments(source);
+    const definitions = new Map<string, SolidityContractDefinition>();
+    const re = /(^|\n)\s*(abstract\s+)?contract\s+([A-Za-z_][A-Za-z0-9_]*)\b/g;
     let match: RegExpExecArray | null;
-    while ((match = re.exec(withoutComments))) {
-        const prefix = withoutComments.slice(Math.max(0, match.index - 16), match.index);
-        if (/\babstract\s+$/.test(prefix)) continue;
-        names.add(match[1]);
+    while ((match = re.exec(scanSource))) {
+        if (match[2]) continue;
+        const contractName = match[3];
+        const declarationIndex = match.index + match[0].lastIndexOf("contract");
+        definitions.set(contractName, {
+            contractName,
+            cdmPackage: precedingCdmPackage(source, declarationIndex),
+        });
     }
-    return [...names].sort();
+    return [...definitions.values()].sort((a, b) => a.contractName.localeCompare(b.contractName));
 }
 
 function readFoundrySourceDirs(rootDir: string): string[] {
-    const foundryTomlPath = resolve(rootDir, "foundry.toml");
+    const config = readFoundryConfig(rootDir);
     const dirs = new Set(["contracts", "src"]);
 
+    if (typeof config?.src === "string") dirs.add(config.src);
+
+    const foundryTomlPath = resolve(rootDir, "foundry.toml");
     if (existsSync(foundryTomlPath)) {
         const content = readFileSync(foundryTomlPath, "utf-8");
         const match = content.match(/^\s*src\s*=\s*["']([^"']+)["']/m);
@@ -165,10 +207,30 @@ function readFoundrySourceDirs(rootDir: string): string[] {
     return [...dirs].map((dir) => resolve(rootDir, dir)).filter((dir) => existsSync(dir));
 }
 
+function readHardhatPathSetting(rootDir: string, key: "artifacts" | "sources"): string | null {
+    for (const name of HARDHAT_CONFIGS) {
+        const configPath = resolve(rootDir, name);
+        if (!existsSync(configPath)) continue;
+        const content = readFileSync(configPath, "utf-8");
+        const match = content.match(
+            new RegExp(`\\bpaths\\s*:\\s*{[\\s\\S]*?\\b${key}\\s*:\\s*["']([^"']+)["']`),
+        );
+        if (match?.[1]) return match[1];
+    }
+    return null;
+}
+
+function readHardhatSourceDirs(rootDir: string): string[] {
+    const dirs = new Set(["contracts"]);
+    const configured = readHardhatPathSetting(rootDir, "sources");
+    if (configured) dirs.add(configured);
+    const existing = [...dirs].map((dir) => resolve(rootDir, dir)).filter((dir) => existsSync(dir));
+    return existing.length > 0 ? existing : [rootDir];
+}
+
 function sourceDirsForToolchain(rootDir: string, toolchain: SolidityToolchain): string[] {
     if (toolchain === "foundry") return readFoundrySourceDirs(rootDir);
-    const contractsDir = resolve(rootDir, "contracts");
-    return existsSync(contractsDir) ? [contractsDir] : [];
+    return readHardhatSourceDirs(rootDir);
 }
 
 export function detectSolidityBuildTargets(rootDir: string): SolidityBuildTarget[] {
@@ -184,12 +246,12 @@ export function detectSolidityBuildTargets(rootDir: string): SolidityBuildTarget
             collectSolidityFiles(dir),
         )) {
             const source = readFileSync(sourcePath, "utf-8");
-            for (const contractName of extractContractNames(source)) {
+            for (const definition of extractContractDefinitions(source)) {
                 targets.push({
-                    name: contractName,
-                    displayName: contractName,
+                    name: definition.cdmPackage ?? definition.contractName,
+                    displayName: definition.cdmPackage ?? definition.contractName,
                     toolchain,
-                    cdmPackage: null,
+                    cdmPackage: definition.cdmPackage,
                     description: meta.description,
                     authors: meta.authors,
                     homepage: meta.homepage,
@@ -198,7 +260,7 @@ export function detectSolidityBuildTargets(rootDir: string): SolidityBuildTarget
                     path: dirname(sourcePath),
                     dependsOnCrates: [],
                     sourcePath,
-                    contractName,
+                    contractName: definition.contractName,
                 });
             }
         }
@@ -274,6 +336,34 @@ function runCommand(
     });
 }
 
+function runCommandSyncJson(cmd: string, args: string[], cwd: string): unknown | null {
+    const result = spawnSync(cmd, args, {
+        cwd,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (result.status !== 0 || !result.stdout) return null;
+    try {
+        return JSON.parse(result.stdout) as unknown;
+    } catch {
+        return null;
+    }
+}
+
+function readFoundryConfig(rootDir: string): FoundryConfigJson | null {
+    const config = runCommandSyncJson("forge", ["config", "--json"], rootDir);
+    return config && typeof config === "object" ? (config as FoundryConfigJson) : null;
+}
+
+export function resolveFoundryOutDir(rootDir: string): string {
+    const out = readFoundryConfig(rootDir)?.out;
+    return resolve(rootDir, typeof out === "string" && out ? out : "out");
+}
+
+export function resolveHardhatArtifactsDir(rootDir: string): string {
+    return resolve(rootDir, readHardhatPathSetting(rootDir, "artifacts") ?? "artifacts");
+}
+
 function readJson(path: string): SolidityArtifactJson | null {
     try {
         return JSON.parse(readFileSync(path, "utf-8")) as SolidityArtifactJson;
@@ -319,12 +409,71 @@ function artifactContractName(path: string, artifact: SolidityArtifactJson): str
     return basename(path, ".json");
 }
 
-function collectJsonFiles(dir: string, out: string[] = []): string[] {
+function normalizePathForMatch(path: string): string {
+    return path.replace(/\\/g, "/");
+}
+
+function artifactSourceName(artifact: SolidityArtifactJson): string | null {
+    if (typeof artifact.sourceName === "string" && artifact.sourceName) {
+        return normalizePathForMatch(artifact.sourceName);
+    }
+    if (typeof artifact.ast?.absolutePath === "string" && artifact.ast.absolutePath) {
+        return normalizePathForMatch(artifact.ast.absolutePath);
+    }
+    return null;
+}
+
+function targetSourceName(rootDir: string, target: SolidityBuildTarget): string {
+    return normalizePathForMatch(relative(rootDir, target.sourcePath));
+}
+
+function artifactMatchesTarget(
+    rootDir: string,
+    artifact: ScannedSolidityArtifact,
+    target: SolidityBuildTarget,
+): boolean {
+    if (artifact.contractName !== target.contractName) return false;
+    if (!artifact.sourceName) return true;
+
+    const artifactSource = normalizePathForMatch(artifact.sourceName);
+    const targetRelative = targetSourceName(rootDir, target);
+    if (artifactSource === targetRelative) return true;
+
+    return (
+        normalizePathForMatch(resolve(rootDir, artifactSource)) ===
+        normalizePathForMatch(target.sourcePath)
+    );
+}
+
+function findArtifactForTarget(
+    rootDir: string,
+    artifacts: ScannedSolidityArtifact[],
+    target: SolidityBuildTarget,
+): ScannedSolidityArtifact | null {
+    const matches = artifacts.filter((artifact) =>
+        artifactMatchesTarget(rootDir, artifact, target),
+    );
+    if (matches.length === 0) return null;
+    if (matches.length > 1) {
+        throw new Error(
+            `Multiple ${target.toolchain} artifacts matched ${targetSourceName(rootDir, target)}:${target.contractName}`,
+        );
+    }
+    return matches[0];
+}
+
+function collectJsonFiles(
+    dir: string,
+    out: string[] = [],
+    skipDirs: ReadonlySet<string> | null = null,
+): string[] {
     if (!existsSync(dir)) return out;
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const full = join(dir, entry.name);
         if (entry.isDirectory()) {
-            collectJsonFiles(full, out);
+            if (!skipDirs?.has(entry.name)) {
+                collectJsonFiles(full, out, skipDirs);
+            }
         } else if (
             entry.isFile() &&
             entry.name.endsWith(".json") &&
@@ -336,14 +485,20 @@ function collectJsonFiles(dir: string, out: string[] = []): string[] {
     return out;
 }
 
-function scanFoundryArtifacts(
-    rootDir: string,
-): Map<string, { artifactPath: string; artifact: SolidityArtifactJson; bytecode: string }> {
-    const artifacts = new Map<
-        string,
-        { artifactPath: string; artifact: SolidityArtifactJson; bytecode: string }
-    >();
-    const outDir = resolve(rootDir, "out");
+function isHardhatArtifact(artifact: SolidityArtifactJson): boolean {
+    return (
+        typeof artifact._format === "string" &&
+        artifact._format.startsWith("hh-resolc-artifact-") &&
+        typeof artifact.contractName === "string" &&
+        typeof artifact.sourceName === "string" &&
+        artifact.sourceName.endsWith(".sol") &&
+        Array.isArray(artifact.abi)
+    );
+}
+
+function scanFoundryArtifacts(rootDir: string): ScannedSolidityArtifact[] {
+    const artifacts: ScannedSolidityArtifact[] = [];
+    const outDir = resolveFoundryOutDir(rootDir);
     if (!existsSync(outDir)) return artifacts;
 
     for (const entry of readdirSync(outDir, { withFileTypes: true })) {
@@ -357,7 +512,9 @@ function scanFoundryArtifacts(
             if (!artifact) continue;
             const bytecode = extractFoundryBytecode(artifact);
             if (!bytecode) continue;
-            artifacts.set(artifactContractName(artifactPath, artifact), {
+            artifacts.push({
+                contractName: artifactContractName(artifactPath, artifact),
+                sourceName: artifactSourceName(artifact),
                 artifactPath,
                 artifact,
                 bytecode,
@@ -368,35 +525,52 @@ function scanFoundryArtifacts(
     return artifacts;
 }
 
-function scanHardhatArtifacts(
-    rootDir: string,
-): Map<string, { artifactPath: string; artifact: SolidityArtifactJson; bytecode: string }> {
-    const artifacts = new Map<
-        string,
-        { artifactPath: string; artifact: SolidityArtifactJson; bytecode: string }
-    >();
-    const artifactsDir = resolve(rootDir, "artifacts", "contracts");
-    if (!existsSync(artifactsDir)) return artifacts;
+function scanHardhatArtifacts(rootDir: string): ScannedSolidityArtifact[] {
+    const artifacts: ScannedSolidityArtifact[] = [];
+    const artifactsDir = resolveHardhatArtifactsDir(rootDir);
+    const contractsDir = resolve(artifactsDir, "contracts");
+    const scanDirs = existsSync(contractsDir)
+        ? [contractsDir]
+        : existsSync(artifactsDir)
+          ? [artifactsDir]
+          : [];
 
-    for (const artifactPath of collectJsonFiles(artifactsDir)) {
-        const artifact = readJson(artifactPath);
-        if (!artifact) continue;
-        const bytecode = extractHardhatBytecode(artifact);
-        if (!bytecode) continue;
-        artifacts.set(artifactContractName(artifactPath, artifact), {
-            artifactPath,
-            artifact,
-            bytecode,
-        });
+    for (const scanDir of scanDirs) {
+        for (const artifactPath of collectJsonFiles(scanDir)) {
+            const artifact = readJson(artifactPath);
+            if (!artifact || !isHardhatArtifact(artifact)) continue;
+            const bytecode = extractHardhatBytecode(artifact);
+            if (!bytecode) continue;
+            artifacts.push({
+                contractName: artifactContractName(artifactPath, artifact),
+                sourceName: artifactSourceName(artifact),
+                artifactPath,
+                artifact,
+                bytecode,
+            });
+        }
+    }
+
+    if (artifacts.length === 0) {
+        for (const artifactPath of collectJsonFiles(rootDir, [], SOLIDITY_SKIP_DIRS)) {
+            const artifact = readJson(artifactPath);
+            if (!artifact || !isHardhatArtifact(artifact)) continue;
+            const bytecode = extractHardhatBytecode(artifact);
+            if (!bytecode) continue;
+            artifacts.push({
+                contractName: artifactContractName(artifactPath, artifact),
+                sourceName: artifactSourceName(artifact),
+                artifactPath,
+                artifact,
+                bytecode,
+            });
+        }
     }
 
     return artifacts;
 }
 
-function scanArtifacts(
-    rootDir: string,
-    toolchain: SolidityToolchain,
-): Map<string, { artifactPath: string; artifact: SolidityArtifactJson; bytecode: string }> {
+function scanArtifacts(rootDir: string, toolchain: SolidityToolchain): ScannedSolidityArtifact[] {
     return toolchain === "foundry" ? scanFoundryArtifacts(rootDir) : scanHardhatArtifacts(rootDir);
 }
 
@@ -422,34 +596,6 @@ function writeNormalizedBytecode(
     return { path, size: bytes.length };
 }
 
-function makeTargetFromArtifact(
-    rootDir: string,
-    toolchain: SolidityToolchain,
-    contractName: string,
-    artifactPath: string,
-): SolidityBuildTarget {
-    const meta = readPackageMetadata(rootDir);
-    const sourcePath = resolve(
-        rootDir,
-        (readJson(artifactPath)?.sourceName as string | undefined) ?? "",
-    );
-    return {
-        name: contractName,
-        displayName: contractName,
-        toolchain,
-        cdmPackage: null,
-        description: meta.description,
-        authors: meta.authors,
-        homepage: meta.homepage,
-        repository: meta.repository,
-        readmePath: findProjectReadme(rootDir),
-        path: existsSync(sourcePath) ? dirname(sourcePath) : rootDir,
-        dependsOnCrates: [],
-        sourcePath: existsSync(sourcePath) ? sourcePath : artifactPath,
-        contractName,
-    };
-}
-
 export async function buildSolidityToolchain(
     rootDir: string,
     toolchain: SolidityToolchain,
@@ -471,20 +617,17 @@ export async function buildSolidityToolchain(
     if (!result.success) return { result, artifacts: [], missing: targets };
 
     const durationMs = result.durationMs;
-    const artifactMap = scanArtifacts(rootDir, toolchain);
-    const byName = new Map(targets.map((target) => [target.contractName, target]));
+    const scannedArtifacts = scanArtifacts(rootDir, toolchain);
     const artifacts: SolidityBuildArtifact[] = [];
+    const missing: SolidityBuildTarget[] = [];
 
-    for (const [contractName, found] of artifactMap) {
-        const target =
-            byName.get(contractName) ??
-            makeTargetFromArtifact(rootDir, toolchain, contractName, found.artifactPath);
-        const normalized = writeNormalizedBytecode(
-            rootDir,
-            toolchain,
-            contractName,
-            found.bytecode,
-        );
+    for (const target of targets) {
+        const found = findArtifactForTarget(rootDir, scannedArtifacts, target);
+        if (!found) {
+            missing.push(target);
+            continue;
+        }
+        const normalized = writeNormalizedBytecode(rootDir, toolchain, target.name, found.bytecode);
         artifacts.push({
             target,
             bytecodePath: normalized.path,
@@ -495,8 +638,6 @@ export async function buildSolidityToolchain(
         });
     }
 
-    const builtNames = new Set(artifacts.map((artifact) => artifact.target.contractName));
-    const missing = targets.filter((target) => !builtNames.has(target.contractName));
     return { result, artifacts, missing };
 }
 
@@ -555,6 +696,36 @@ if (import.meta.vitest) {
             expect(targets.every((target) => target.toolchain === "foundry")).toBe(true);
         });
 
+        test("detects CDM package names from NatSpec", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts"), { recursive: true });
+            writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
+            writeFileSync(
+                join(root, "contracts", "Counters.sol"),
+                `
+                /// @title Counter A
+                /// @custom:cdm @example/counter-a
+                contract CounterA {}
+
+                /**
+                 * @custom:cdm @example/counter-b
+                 */
+                contract CounterB {}
+                `,
+            );
+
+            const targets = detectSolidityBuildTargets(root);
+
+            expect(targets.map((target) => [target.contractName, target.cdmPackage])).toEqual([
+                ["CounterA", "@example/counter-a"],
+                ["CounterB", "@example/counter-b"],
+            ]);
+            expect(targets.map((target) => target.name)).toEqual([
+                "@example/counter-a",
+                "@example/counter-b",
+            ]);
+        });
+
         test("detects hardhat contracts from contracts dir", () => {
             const root = makeProject();
             mkdirSync(join(root, "contracts"), { recursive: true });
@@ -565,6 +736,126 @@ if (import.meta.vitest) {
 
             expect(target?.name).toBe("CounterA");
             expect(target?.toolchain).toBe("hardhat");
+        });
+
+        test("detects hardhat contracts from configured sources dir", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "src"), { recursive: true });
+            writeFileSync(
+                join(root, "hardhat.config.ts"),
+                'export default { paths: { sources: "src" } };\n',
+            );
+            writeFileSync(join(root, "src", "Counter.sol"), "contract CounterA {}\n");
+
+            const [target] = detectSolidityBuildTargets(root);
+
+            expect(target?.name).toBe("CounterA");
+            expect(target?.sourcePath).toBe(join(root, "src", "Counter.sol"));
+        });
+
+        test("reads hardhat artifacts from configured artifacts dir", async () => {
+            const root = makeProject();
+            mkdirSync(join(root, "src"), { recursive: true });
+            mkdirSync(join(root, "build-artifacts", "src", "Counter.sol"), { recursive: true });
+            writeFileSync(
+                join(root, "hardhat.config.ts"),
+                'export default { paths: { sources: "src", artifacts: "build-artifacts" } };\n',
+            );
+            writeFileSync(join(root, "src", "Counter.sol"), "contract CounterA {}\n");
+            writeFileSync(
+                join(root, "build-artifacts", "src", "Counter.sol", "CounterA.json"),
+                JSON.stringify({
+                    _format: "hh-resolc-artifact-1",
+                    contractName: "CounterA",
+                    sourceName: "src/Counter.sol",
+                    abi: [],
+                    bytecode: "0x0102",
+                }),
+            );
+            writeFileSync(
+                join(root, "build-artifacts", "src", "Counter.sol", "Unrelated.json"),
+                JSON.stringify({
+                    _format: "not-a-hardhat-polkadot-artifact",
+                    contractName: "Unrelated",
+                    sourceName: "src/Counter.sol",
+                    abi: [],
+                    bytecode: "0x0304",
+                }),
+            );
+
+            const targets = detectSolidityBuildTargets(root);
+            const { artifacts, missing } = await buildSolidityToolchain(root, "hardhat", targets, {
+                skipBuild: true,
+            });
+
+            expect(missing).toEqual([]);
+            expect(artifacts).toHaveLength(1);
+            expect(artifacts[0].artifactPath).toBe(
+                join(root, "build-artifacts", "src", "Counter.sol", "CounterA.json"),
+            );
+            expect([...readFileSync(artifacts[0].bytecodePath)]).toEqual([1, 2]);
+        });
+
+        test("matches hardhat artifacts by source file and contract name", async () => {
+            const root = makeProject();
+            mkdirSync(join(root, "src", "a"), { recursive: true });
+            mkdirSync(join(root, "src", "b"), { recursive: true });
+            mkdirSync(join(root, "artifacts", "src", "a", "Counter.sol"), { recursive: true });
+            mkdirSync(join(root, "artifacts", "src", "b", "Counter.sol"), { recursive: true });
+            writeFileSync(
+                join(root, "hardhat.config.ts"),
+                'export default { paths: { sources: "src" } };\n',
+            );
+            writeFileSync(
+                join(root, "src", "a", "Counter.sol"),
+                "/// @custom:cdm @example/a-counter\ncontract Counter {}\n",
+            );
+            writeFileSync(
+                join(root, "src", "b", "Counter.sol"),
+                "/// @custom:cdm @example/b-counter\ncontract Counter {}\n",
+            );
+            writeFileSync(
+                join(root, "artifacts", "src", "a", "Counter.sol", "Counter.json"),
+                JSON.stringify({
+                    _format: "hh-resolc-artifact-1",
+                    contractName: "Counter",
+                    sourceName: "src/a/Counter.sol",
+                    abi: [],
+                    bytecode: "0x0a",
+                }),
+            );
+            writeFileSync(
+                join(root, "artifacts", "src", "b", "Counter.sol", "Counter.json"),
+                JSON.stringify({
+                    _format: "hh-resolc-artifact-1",
+                    contractName: "Counter",
+                    sourceName: "src/b/Counter.sol",
+                    abi: [],
+                    bytecode: "0x0b",
+                }),
+            );
+
+            const targets = detectSolidityBuildTargets(root);
+            const { artifacts, missing } = await buildSolidityToolchain(root, "hardhat", targets, {
+                skipBuild: true,
+            });
+            const byPackage = new Map(
+                artifacts.map((artifact) => [artifact.target.name, artifact]),
+            );
+
+            expect(missing).toEqual([]);
+            expect(byPackage.get("@example/a-counter")?.artifactPath).toBe(
+                join(root, "artifacts", "src", "a", "Counter.sol", "Counter.json"),
+            );
+            expect(byPackage.get("@example/b-counter")?.artifactPath).toBe(
+                join(root, "artifacts", "src", "b", "Counter.sol", "Counter.json"),
+            );
+            expect([...readFileSync(byPackage.get("@example/a-counter")!.bytecodePath)]).toEqual([
+                10,
+            ]);
+            expect([...readFileSync(byPackage.get("@example/b-counter")!.bytecodePath)]).toEqual([
+                11,
+            ]);
         });
 
         test("extracts deployable bytecode from foundry and hardhat artifacts", () => {

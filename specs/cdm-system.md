@@ -3,24 +3,27 @@
 **Status**
 
 - **Rust / PVM**: implemented end-to-end (build · deploy · publish metadata · register · install · consume).
-- **Foundry / Hardhat**: build invocation lifts cleanly from playground-cli; CDM-side adapter design (cdmPackage source, metadata source, deploy wiring) is open. See [Toolchain matrix](#toolchain-matrix).
+- **Foundry / Hardhat**: first-pass build + deploy pipeline implemented. Solidity bytecode/ABI is normalized before deploy; `/// @custom:cdm @org/name` supplies the registry package name.
 - **TypeScript SDK**: migrating from `@dotdm/cdm` to `@parity/product-sdk-contracts` (targets `pallet-revive` directly, not Ink). Old SDK to be deprecated once parity is reached.
 
 ## System map
 
 ![CDM system map](./assets/cdm-system-map.svg)
 
-A CDM package name is a globally unique identifier resolved by an on-chain registry. Contracts publish `(name → address, name → metadataCid)` on Asset Hub; metadata blobs live on Bulletin (content-addressed, retrievable via IPFS gateway). Consumers install a frozen snapshot of `(ABI, address, version)` to `~/.cdm/`, after which Rust contracts use `cdm::import!()` and TypeScript apps use `@parity/product-sdk-contracts`.
+A CDM package name is a globally unique identifier resolved by an on-chain registry. Rust contracts declare it with `#[pvm::contract(cdm = "@org/name")]`; Solidity contracts declare it with `/// @custom:cdm @org/name`. Contracts publish `(name → address, name → metadataCid)` on Asset Hub; metadata blobs live on Bulletin (content-addressed, retrievable via IPFS gateway). Consumers install a frozen snapshot of `(ABI, address, version)` to `~/.cdm/`, after which Rust contracts use `cdm::import!()` and TypeScript apps use `@parity/product-sdk-contracts`.
 
 ## Toolchain matrix
 
 ![Toolchain matrix](./assets/cdm-toolchain-matrix.svg)
 
-All three toolchains produce PolkaVM bytecode (Solidity via `resolc`, Rust via `cargo pvm-contract build`). The Rust path is end-to-end CDM today. The Solidity paths have a working **build** invocation (liftable from playground-cli) but their three CDM-specific concerns are still open:
+All three toolchains produce PolkaVM bytecode (Solidity via `resolc`, Rust via `cargo pvm-contract build`). Each toolchain adapter is allowed to know its own build output shape. The adapter output is normalized into a CDM build record containing the package name, bytecode path, ABI/artifact path, source path, toolchain, and display metadata. Deploy consumes those records uniformly; it should not branch on Rust vs Foundry vs Hardhat once build output has been normalized.
 
-1. **`cdmPackage` source** — where does the human-readable name live? Candidates: an entry in `cdm.json[contracts]`, a NatSpec `@cdm` tag in source, or a toolchain config field (`foundry.toml`, hardhat config).
-2. **Metadata source** — Cargo.toml + git for Rust is automatic. Solidity has no equivalent convention; needs design (probably `package.json` + repo metadata + toolchain config).
-3. **Deploy + register adapter** — wrapping the bytecode into the existing `deployBatch` flow, with `publish_latest` payloads, is mechanical once the above two are decided.
+Current Solidity conventions:
+
+- **`cdmPackage` source** — NatSpec immediately before the concrete contract declaration: `/// @custom:cdm @org/name`.
+- **Artifact lookup** — Foundry uses `forge config --json` for `out`; Hardhat uses configured `paths.artifacts` when statically readable, then validates artifacts by shape. Artifacts are matched to detected contracts by source file + Solidity contract name, not by contract name alone.
+- **Metadata source** — first pass uses project-level `package.json`, root README, and git remote. More precise per-contract metadata conventions are still open.
+- **Deploy + register** — all package-bearing contracts publish metadata to Bulletin and call `Registry.publish_latest(...)` in the same deploy/register flow.
 
 ## Publish pipeline
 
@@ -35,11 +38,11 @@ Three stages:
 CREATE2 salt:
 
 ```
-salt = blake2b-256(cdmPackage)
+salt = blake2b-256(JSON.stringify([cdmPackage, nextRegistryVersion]))
 addr = create2_address(deployer, salt, keccak256(bytecode))
 ```
 
-This makes a contract's address a function of `(deployer, cdmPackage, bytecode)` only — so the same compiled blob deployed by the same address lands at the same on-chain address everywhere. The registry itself is deployed this way under salt `blake2b-256("@cdm/registry")`.
+This makes a contract's address a function of `(deployer, cdmPackage, nextRegistryVersion, bytecode)`. Re-publishing the same package gets a fresh address instead of colliding with a previous deployment. The registry itself is the special stable case and is deployed under the package-only salt `blake2b-256("@cdm/registry")`.
 
 The metadata blob composition is in the right panel of the publish-pipeline diagram. Two non-obvious fields: `publish_block` is set to Asset Hub's head at submit time; `published_at` is the deployer's wall clock at submit time.
 

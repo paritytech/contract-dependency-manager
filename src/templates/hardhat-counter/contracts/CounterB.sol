@@ -7,6 +7,7 @@ interface ICounterA {
     function add(uint256 amount) external returns (uint256);
 }
 
+/// @custom:cdm @example/counter-b
 contract CounterB {
     address public counterA;
     uint256 public localCount;
