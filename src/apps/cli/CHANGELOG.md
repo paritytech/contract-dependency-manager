@@ -1,5 +1,14 @@
 # @dotdm/cli
 
+## 0.8.9
+
+### Patch Changes
+
+- 40949ac: Generate local Solidity CDM build stubs before compiling Hardhat and Foundry projects, and publish richer Solidity contract metadata from NatSpec and per-contract README files.
+- Updated dependencies [40949ac]
+  - @dotdm/contracts@2.1.1
+  - @dotdm/cdm@0.6.7
+
 ## 0.8.8
 
 ### Patch Changes
