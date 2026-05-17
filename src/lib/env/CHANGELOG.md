@@ -1,5 +1,11 @@
 # @dotdm/env
 
+## 1.0.5
+
+### Patch Changes
+
+- c12538f: Add a lightweight registry export for frontend consumers.
+
 ## 1.0.4
 
 ### Patch Changes
