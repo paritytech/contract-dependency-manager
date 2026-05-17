@@ -72,8 +72,8 @@ export default function SearchPage() {
                     <div className="search-empty">
                         <h2>Connection Error</h2>
                         <p>
-                            Could not connect to <strong>{networkConfig.label}</strong>. Check your connection
-                            settings.
+                            Could not connect to <strong>{networkConfig.label}</strong>. Check your
+                            connection settings.
                         </p>
                         <p>{error}</p>
                     </div>

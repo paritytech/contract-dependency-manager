@@ -1,0 +1,33 @@
+.search-box {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 22px;
+  background: #2a2a2a;
+  border: 0;
+  border-radius: 28px;
+}
+
+.search-box-icon {
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.search-box-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #ffffff;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.search-box-input::placeholder {
+  color: var(--color-text-secondary);
+}

@@ -1,36 +1,37 @@
 /* Global Reset & Base Styles — adapted from Polkadot docs */
 :root {
   /* Fonts */
-  --font-serif: "DM Serif Display", serif;
-  --font-sans: "DM Sans", sans-serif;
-  --font-code: "Courier New", monospace;
+  --font-serif: "DM Serif Display", Georgia, "Times New Roman", serif;
+  --font-sans: "DM Sans", "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --font-code: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Greyscale (from Polkadot docs) */
-  --grey-50: #fafaf9;
+  --grey-50: #ffffff;
   --grey-100: #f5f5f4;
   --grey-200: #e7e5e4;
   --grey-300: #d6d3d1;
-  --grey-400: #a8a29e;
-  --grey-500: #78716c;
-  --grey-600: #57534e;
-  --grey-700: #44403c;
-  --grey-800: #292524;
-  --grey-900: #1c1917;
-  --grey-950: #0f0f0f;
+  --grey-400: #a1a1a6;
+  --grey-500: #71717a;
+  --grey-600: #52525b;
+  --grey-700: rgba(255, 255, 255, 0.16);
+  --grey-800: rgba(255, 255, 255, 0.08);
+  --grey-900: #141414;
+  --grey-950: #000000;
 
   /* Accent */
-  --accent: #e6007a;
-  --accent-hover: #cc0066;
+  --accent: #ec4899;
+  --accent-hover: #f472b6;
 
   /* Dark theme (matching Polkadot docs custom-dark) */
-  --color-bg: var(--grey-950);
-  --color-surface: var(--grey-900);
-  --color-surface-secondary: var(--grey-800);
-  --color-text-primary: var(--grey-50);
-  --color-text-secondary: var(--grey-400);
-  --color-text-tertiary: var(--grey-600);
-  --color-border: var(--grey-800);
-  --color-border-strong: var(--grey-700);
+  --color-bg: #000000;
+  --color-surface: #0f0f0f;
+  --color-surface-secondary: #141414;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a1a1a6;
+  --color-text-tertiary: #71717a;
+  --color-text-quaternary: #52525b;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
 
   /* Semantic */
   --success: #059669;
@@ -48,9 +49,11 @@
 body {
   font-family: var(--font-sans);
   color: var(--color-text-secondary);
-  background: var(--color-bg);
+  background: #000000;
   line-height: 1.625;
   min-width: 320px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 h1, h2, h3, h4, h5, h6 {

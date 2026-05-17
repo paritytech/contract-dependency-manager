@@ -1,12 +1,13 @@
 .contract-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 72px;
+    row-gap: 52px;
 }
 
 .contract-grid-message {
-    text-align: center;
-    padding: 40px 20px;
+    text-align: left;
+    padding: 0;
     color: var(--color-text-secondary);
 }
 
@@ -25,5 +26,13 @@
 @media (max-width: 768px) {
     .contract-grid {
         grid-template-columns: 1fr;
+        row-gap: 34px;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1120px) {
+    .contract-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: 42px;
     }
 }

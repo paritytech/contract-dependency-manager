@@ -6,23 +6,24 @@
 .net-selector-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  background: none;
-  border: none;
-  padding: 2px 4px;
+  gap: 8px;
+  background: #050505;
+  border: 1px solid var(--color-border);
+  padding: 7px 13px;
   margin: 0;
   cursor: pointer;
-  font-family: var(--font-serif);
-  font-size: 1.25rem;
-  font-weight: 400;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0;
-  color: var(--color-text-primary);
-  border-radius: 6px;
-  transition: color 0.15s;
+  color: var(--color-text-secondary);
+  border-radius: 999px;
+  transition: border-color 0.15s, color 0.15s;
 }
 
 .net-selector-trigger:hover {
-  color: var(--accent);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
 }
 
 .net-selector-name {
@@ -73,10 +74,10 @@
 .net-selector-dropdown {
   position: absolute;
   top: calc(100% + 6px);
-  left: 0;
+  right: 0;
   min-width: 220px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-strong);
+  background: #0a0a0a;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 200;
