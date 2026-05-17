@@ -195,13 +195,13 @@ export default function PackagePage() {
     const [copied, setCopied] = useState(false);
     const [addrCopied, setAddrCopied] = useState(false);
 
-    const { pkg, loading, notFound, error, network } = usePackage(name);
+    const { pkg, loading, notFound, error, networkConfig } = usePackage(name);
 
     if (loading) {
         return (
             <Layout>
                 <div className="package-not-found">
-                    <p>Connecting to {network}...</p>
+                    <p>Connecting to {networkConfig.label}...</p>
                 </div>
             </Layout>
         );
@@ -213,7 +213,7 @@ export default function PackagePage() {
                 <div className="package-not-found">
                     <h2>Connection Error</h2>
                     <p>
-                        Could not connect to <strong>{network}</strong>. Check your connection
+                        Could not connect to <strong>{networkConfig.label}</strong>. Check your connection
                         settings.
                     </p>
                     <p>{error}</p>
@@ -234,10 +234,7 @@ export default function PackagePage() {
         );
     }
 
-    const namedPresets = ["polkadot", "paseo", "preview-net"];
-    const installCmd = namedPresets.includes(network)
-        ? `cdm i -n ${network} ${pkg.name}`
-        : `cdm i ${pkg.name}`;
+    const installCmd = `cdm i -n ${networkConfig.installName} ${pkg.name}`;
     const handleCopy = () => {
         navigator.clipboard.writeText(installCmd);
         setCopied(true);

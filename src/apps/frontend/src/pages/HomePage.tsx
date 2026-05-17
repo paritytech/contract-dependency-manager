@@ -1,14 +1,13 @@
 import { useState } from "react";
 import Layout from "../components/Layout";
 import ContractGrid from "../components/ContractGrid";
-import GrainCanvas from "../components/GrainCanvas";
 import { CopyIcon, CheckIcon } from "../components/Icons";
-import { useNetwork } from "../context/NetworkContext";
+import { useNetwork } from "../context/useNetwork";
 import { useRegistry } from "../hooks/useRegistry";
 import "./HomePage.css";
 
 export default function HomePage() {
-    const { network, connecting, error: networkError } = useNetwork();
+    const { networkConfig, connecting, error: networkError } = useNetwork();
     const {
         packages,
         loading,
@@ -32,7 +31,6 @@ export default function HomePage() {
     return (
         <Layout>
             <div className="hero-grain-wrapper">
-                <GrainCanvas />
                 <section className="hero">
                     <div className="hero-inner">
                         <h1 className="hero-tagline">Build the future</h1>
@@ -79,7 +77,7 @@ export default function HomePage() {
                     loading={loading}
                     hasMore={hasMore}
                     loadMore={loadMore}
-                    network={network}
+                    network={networkConfig.label}
                     connecting={connecting}
                     error={error}
                 />

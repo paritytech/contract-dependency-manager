@@ -1,17 +1,20 @@
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import ContractGrid from "../components/ContractGrid";
-import { useNetwork } from "../context/NetworkContext";
+import { useNetwork } from "../context/useNetwork";
 import { useRegistry } from "../hooks/useRegistry";
+import { resolveNetworkKey } from "../config/networks";
+
 export default function WidgetPage() {
     const [searchParams] = useSearchParams();
-    const { network, setNetwork, connecting, error: networkError } = useNetwork();
+    const { networkConfig, setNetwork, connecting, error: networkError } = useNetwork();
     const { packages, loading, error: registryError, hasMore, loadMore } = useRegistry();
 
     const requestedNetwork = searchParams.get("network");
     useEffect(() => {
-        if (requestedNetwork) {
-            setNetwork(requestedNetwork);
+        const nextNetwork = resolveNetworkKey(requestedNetwork);
+        if (nextNetwork) {
+            setNetwork(nextNetwork);
         }
     }, [requestedNetwork, setNetwork]);
 
@@ -22,7 +25,7 @@ export default function WidgetPage() {
                 loading={loading}
                 hasMore={hasMore}
                 loadMore={loadMore}
-                network={network}
+                network={networkConfig.label}
                 connecting={connecting}
                 error={networkError || registryError}
                 linkTarget="_blank"

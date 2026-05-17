@@ -1,5 +1,5 @@
 import type { Package, AbiEntry } from "./types";
-import type { RegistryContract } from "../context/NetworkContext";
+import type { RegistryContract } from "../context/network-context";
 
 export function unwrapOption<T>(val: unknown): T | undefined {
     if (val && typeof val === "object" && "isSome" in val) {
@@ -34,6 +34,15 @@ export async function queryContractByName(
     };
 }
 
+export function metadataCidFromUri(uri: string | undefined): string | undefined {
+    if (!uri) return undefined;
+    if (uri.startsWith("ipfs://")) return uri.slice("ipfs://".length);
+    const ipfsPath = "/ipfs/";
+    const idx = uri.indexOf(ipfsPath);
+    if (idx >= 0) return uri.slice(idx + ipfsPath.length);
+    return uri.includes(":") ? undefined : uri;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function parseMetadata(metadata: any): Partial<Package> {
     const author =
@@ -56,6 +65,12 @@ export function parseMetadata(metadata: any): Partial<Package> {
         readme: metadata.readme || undefined,
         homepage: metadata.homepage || undefined,
         repository: metadata.repository || undefined,
+        license: metadata.license || undefined,
+        keywords: Array.isArray(metadata.keywords) ? metadata.keywords : undefined,
+        dependencies:
+            metadata.dependencies && typeof metadata.dependencies === "object"
+                ? metadata.dependencies
+                : undefined,
         author,
         lastPublished,
         publishedDate: lastPublished,

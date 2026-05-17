@@ -29,7 +29,7 @@
   font-weight: 400;
   color: var(--color-text-primary);
   font-family: var(--font-serif);
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .package-version-badge {
@@ -147,7 +147,7 @@
   font-size: 1.1rem;
   margin: 16px 0 8px;
   line-height: 1.3;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .package-readme p {

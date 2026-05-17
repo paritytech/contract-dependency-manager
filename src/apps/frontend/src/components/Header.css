@@ -41,7 +41,7 @@
   color: var(--color-text-primary);
   font-weight: 400;
   font-size: 1.25rem;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   font-family: var(--font-serif);
 }
 
