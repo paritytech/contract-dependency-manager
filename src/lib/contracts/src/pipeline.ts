@@ -1,4 +1,4 @@
-import { dirname, resolve } from "path";
+import { dirname, relative, resolve } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import type { PolkadotSigner, SS58String, HexString } from "polkadot-api";
 import { Enum } from "polkadot-api";
@@ -34,7 +34,12 @@ import {
     detectSolidityBuildTargets,
     type SolidityBuildTarget,
 } from "./solidity";
-import { generateSolidityImport, type SolidityAbiEntry } from "./solidity-imports";
+import {
+    generateSolidityImport,
+    generateSolidityLocalBuildImport,
+    type SolidityAbiEntry,
+    solidityImportPathForLibrary,
+} from "./solidity-imports";
 import {
     ContractDeployer,
     computeDeploySalt,
@@ -554,6 +559,41 @@ async function buildSolidityTargets(
     }
 }
 
+function relativeSolidityImport(fromDir: string, toFile: string): string {
+    const normalized = relative(fromDir, toFile).replace(/\\/g, "/");
+    return normalized.startsWith(".") ? normalized : `./${normalized}`;
+}
+
+function writeGeneratedSolidityFile(rootDir: string, generated: { path: string; content: string }) {
+    const path = resolve(rootDir, generated.path);
+    mkdirSync(dirname(path), { recursive: true });
+    if (existsSync(path)) {
+        const current = readFileSync(path, "utf-8");
+        if (current === generated.content) return;
+    }
+    writeFileSync(path, generated.content);
+}
+
+function writeLocalSolidityBuildImports(rootDir: string, detected: DetectedBuildPipeline): void {
+    const targets = [...detected.solidity.foundry, ...detected.solidity.hardhat].filter(
+        (target) => target.cdmPackage,
+    );
+
+    for (const target of targets) {
+        const importPath = solidityImportPathForLibrary(target.cdmPackage!);
+        const sourceImportPath = relativeSolidityImport(
+            dirname(resolve(rootDir, importPath)),
+            target.sourcePath,
+        );
+        const generated = generateSolidityLocalBuildImport({
+            library: target.cdmPackage!,
+            contractName: target.contractName,
+            sourceImportPath,
+        });
+        writeGeneratedSolidityFile(rootDir, generated);
+    }
+}
+
 async function runBuildLayer(
     rootDir: string,
     detected: DetectedBuildPipeline,
@@ -808,9 +848,7 @@ function writeSolidityImportForDeployable(
         abi: readAbiEntries(deployable.abiPath) as SolidityAbiEntry[],
         version: typeof version === "bigint" ? Number(version) : version,
     });
-    const path = resolve(rootDir, generated.path);
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, generated.content);
+    writeGeneratedSolidityFile(rootDir, generated);
 }
 
 async function precomputeDeployAddress(
@@ -890,6 +928,7 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
 
     try {
         const detected = detectBuildOrder(opts.rootDir, opts.contracts);
+        writeLocalSolidityBuildImports(opts.rootDir, detected);
         emit({ type: "detect", contracts: detected.contracts, layers: detected.layers });
         const { build, crates } = await runDetectedBuild(
             opts.rootDir,
@@ -938,6 +977,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
 
     // ---- 1. detect + build ----
     const detected = detectBuildOrder(opts.rootDir, opts.contracts);
+    writeLocalSolidityBuildImports(opts.rootDir, detected);
     const crates = [...detected.layers.flat()];
     const contracts = detected.contracts;
 
@@ -1351,6 +1391,11 @@ if (import.meta.vitest) {
     const { readCdmPackage: mockReadCdm, detectDeploymentOrderLayered: mockDetect } = await import(
         "./detection"
     );
+    const {
+        buildSolidityToolchain: mockBuildSolidity,
+        detectSolidityBuildTargets: mockDetectSolidity,
+    } = await import("./solidity");
+    const { writeFileSync: mockWriteFileSync } = await import("fs");
 
     type CI = ContractInfo;
 
@@ -1381,6 +1426,12 @@ if (import.meta.vitest) {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        (mockDetectSolidity as any).mockReturnValue([]);
+        (mockBuildSolidity as any).mockResolvedValue({
+            result: { success: true, stdout: "", stderr: "", durationMs: 10 },
+            artifacts: [],
+            missing: [],
+        });
         (mockBuild as any).mockImplementation(async (_root: string, crateName: string) => ({
             crateName,
             success: true,
@@ -1496,6 +1547,61 @@ if (import.meta.vitest) {
                 expect.any(Function),
                 undefined,
                 undefined,
+            );
+        });
+
+        test("overwrites local Solidity imports with build stubs before compiling Solidity targets", async () => {
+            (mockDetect as any).mockReturnValue(makeOrder([]));
+            (mockDetectSolidity as any).mockReturnValue([
+                {
+                    name: "@example/counter-a",
+                    displayName: "@example/counter-a",
+                    toolchain: "foundry",
+                    cdmPackage: "@example/counter-a",
+                    description: null,
+                    authors: [],
+                    homepage: null,
+                    repository: null,
+                    readmePath: null,
+                    path: "/fake/contracts",
+                    dependsOnCrates: [],
+                    sourcePath: "/fake/contracts/CounterA.sol",
+                    contractName: "CounterA",
+                },
+            ]);
+            (mockBuildSolidity as any).mockResolvedValue({
+                result: { success: true, stdout: "", stderr: "", durationMs: 10 },
+                artifacts: [
+                    {
+                        target: {
+                            name: "@example/counter-a",
+                            displayName: "@example/counter-a",
+                            toolchain: "foundry",
+                            cdmPackage: "@example/counter-a",
+                            sourcePath: "/fake/contracts/CounterA.sol",
+                            contractName: "CounterA",
+                        },
+                        bytecodePath: "/fake/target/cdm/foundry/counter-a.polkavm",
+                        artifactPath: "/fake/out/CounterA.sol/CounterA.json",
+                        abiPath: "/fake/out/CounterA.sol/CounterA.json",
+                        bytecodeSize: 42,
+                        durationMs: 10,
+                    },
+                ],
+                missing: [],
+            });
+
+            await buildContracts({ rootDir: "/fake" });
+
+            expect(mockWriteFileSync).toHaveBeenCalledWith(
+                "/fake/.cdm/solidity/example/counter-a.sol",
+                expect.stringContaining('import "../../../contracts/CounterA.sol";'),
+            );
+            expect(mockBuildSolidity).toHaveBeenCalledWith(
+                "/fake",
+                "foundry",
+                expect.any(Array),
+                expect.any(Object),
             );
         });
     });
