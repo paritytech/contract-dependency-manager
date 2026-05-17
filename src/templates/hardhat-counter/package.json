@@ -2,6 +2,13 @@
     "name": "cdm-hardhat-counter",
     "version": "0.1.0",
     "private": true,
+    "description": "Hardhat Solidity counter contracts for CDM deployment and cross-contract calls",
+    "author": "Parity Technologies",
+    "homepage": "https://github.com/paritytech/contract-dependency-manager",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/paritytech/contract-dependency-manager"
+    },
     "scripts": {
         "build": "hardhat compile",
         "clean": "hardhat clean"
