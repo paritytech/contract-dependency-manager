@@ -2,9 +2,10 @@ export type {
     ChainPreset,
     ChainFaucet,
     KnownChainName,
-    ProductSdkEnvironment,
 } from "./known_chains";
 export { getChainPreset, isKnownChainPreset } from "./known_chains";
+export type { ProductSdkEnvironment } from "./registry";
+export { getRegistryAddress } from "./registry";
 export { DEFAULT_NODE_URL, REGISTRY_ADDRESS } from "@dotdm/utils";
 
 export type {

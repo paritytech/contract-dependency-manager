@@ -1,6 +1,7 @@
 import type { Package } from "../data/types";
 import PackageCard from "./PackageCard";
 import InfiniteScroll from "./InfiniteScroll";
+import { SkeletonGrid } from "./SkeletonCard";
 import "./ContractGrid.css";
 
 interface ContractGridProps {
@@ -36,11 +37,7 @@ export default function ContractGrid({
     }
 
     if (connecting || (loading && packages.length === 0)) {
-        return (
-            <div className="contract-grid-message">
-                <p>Connecting to {network}...</p>
-            </div>
-        );
+        return <SkeletonGrid />;
     }
 
     if (packages.length === 0) {

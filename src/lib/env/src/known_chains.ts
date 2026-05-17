@@ -1,12 +1,13 @@
 import { BULLETIN_RPCS } from "@parity/product-sdk-host";
 import { REGISTRY_ADDRESS } from "@dotdm/utils";
+import { getRegistryAddress, type ProductSdkEnvironment } from "./registry";
 
 export interface ChainFaucet {
     label: string;
     url: string;
 }
 
-export type ProductSdkEnvironment = "paseo" | "previewnet";
+export type { ProductSdkEnvironment };
 
 export interface ChainPreset {
     assethubUrl: string;
@@ -17,8 +18,6 @@ export interface ChainPreset {
     faucets?: readonly ChainFaucet[];
 }
 
-const PASEO_V2_REGISTRY_ADDRESS = "0x5c7b23d386ff622c7f7a4e7a95d5c7a67b10a00d";
-const PREVIEW_NET_REGISTRY_ADDRESS = "0x5c7b23d386ff622c7f7a4e7a95d5c7a67b10a00d";
 // Keep these aligned with product-sdk's `getChainAPI("paseo")` preset. Product-sdk
 // exports Bulletin RPCs, but not the Asset Hub RPC or HTTP gateway constants.
 const PASEO_ASSET_HUB_URL = "wss://paseo-asset-hub-next-rpc.polkadot.io";
@@ -35,7 +34,7 @@ const KNOWN_CHAINS = {
         assethubUrl: PASEO_ASSET_HUB_URL,
         bulletinUrl: BULLETIN_RPCS.paseo[0],
         ipfsGatewayUrl: PASEO_IPFS_GATEWAY_URL,
-        registryAddress: PASEO_V2_REGISTRY_ADDRESS,
+        registryAddress: getRegistryAddress("paseo"),
         productSdkEnvironment: "paseo",
         faucets: [
             { label: "Asset Hub", url: "https://faucet.polkadot.io/" },
@@ -51,7 +50,7 @@ const KNOWN_CHAINS = {
         // so CDM stores preview-net metadata on Paseo Bulletin for now.
         bulletinUrl: BULLETIN_RPCS.paseo[0],
         ipfsGatewayUrl: PASEO_IPFS_GATEWAY_URL,
-        registryAddress: PREVIEW_NET_REGISTRY_ADDRESS,
+        registryAddress: getRegistryAddress("preview-net"),
         productSdkEnvironment: "previewnet",
     },
     local: {

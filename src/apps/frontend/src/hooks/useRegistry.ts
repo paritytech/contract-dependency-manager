@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useNetwork } from "../context/NetworkContext";
+import { useNetwork } from "../context/useNetwork";
+import { queryBulletinJson } from "../data/bulletin-client";
 import type { Package } from "../data/types";
-import { connectIpfsGateway } from "@dotdm/env";
-import { queryContractByName, parseMetadata } from "../data/registry-queries";
+import { queryContractByName, parseMetadata, metadataCidFromUri } from "../data/registry-queries";
+import { withTimeout } from "../data/timeout";
 import { useInfiniteLoad } from "./useInfiniteLoad";
 
 const PAGE_SIZE = 10;
@@ -14,16 +15,19 @@ export function useRegistry() {
         connecting,
         error: networkError,
         network,
-        ipfsGatewayUrl,
+        networkConfig,
     } = useNetwork();
 
     // Phase 1: Paginated on-chain data via useInfiniteLoad
     const fetchCount = useCallback(async () => {
         if (!registry) throw new Error("Registry not connected");
-        const result = await registry.getContractCount.query();
+        const result = await withTimeout(
+            registry.getContractCount.query(),
+            `Registry count query timed out on ${networkConfig.label}.`,
+        );
         if (!result.success) throw new Error("Failed to query contract count");
         return result.value as number;
-    }, [registry]);
+    }, [networkConfig.label, registry]);
 
     const fetchPage = useCallback(
         async (start: number, count: number) => {
@@ -31,16 +35,22 @@ export function useRegistry() {
 
             const packages: Package[] = [];
             for (let i = start; i < start + count; i++) {
-                const nameResult = await registry.getContractNameAt.query(i);
+                const nameResult = await withTimeout(
+                    registry.getContractNameAt.query(i),
+                    `Registry name query timed out on ${networkConfig.label}.`,
+                );
                 if (!nameResult.success) continue;
                 const name = nameResult.value as string;
 
-                const pkg = await queryContractByName(registry, name);
+                const pkg = await withTimeout(
+                    queryContractByName(registry, name),
+                    `Registry package query timed out for ${name}.`,
+                );
                 if (pkg) packages.push(pkg);
             }
             return packages;
         },
-        [registry],
+        [networkConfig.label, registry],
     );
 
     const {
@@ -63,49 +73,40 @@ export function useRegistry() {
     const [metadataMap, setMetadataMap] = useState<Record<string, Partial<Package>>>({});
     const metadataAttempted = useRef<Set<string>>(new Set());
 
-    // Reset metadata when the registry changes
-    useEffect(() => {
-        setMetadataMap({});
-        metadataAttempted.current = new Set();
-    }, [registry]);
+    const metadataKey = useCallback((pkg: Package) => `${network}:${pkg.name}`, [network]);
 
     useEffect(() => {
-        if (!ipfsGatewayUrl) return;
-
         const toFetch = basePackages.filter(
             (p) =>
-                p.metadataUri &&
-                !p.metadataUri.includes(":") &&
-                !metadataAttempted.current.has(p.name),
+                metadataCidFromUri(p.metadataUri) && !metadataAttempted.current.has(metadataKey(p)),
         );
 
         if (toFetch.length === 0) return;
 
         for (const p of toFetch) {
-            metadataAttempted.current.add(p.name);
+            metadataAttempted.current.add(metadataKey(p));
         }
 
-        const ipfs = connectIpfsGateway(ipfsGatewayUrl);
-
         for (const pkg of toFetch) {
-            ipfs.fetch(pkg.metadataUri!)
-                .then((r) => r.json())
-                .then((metadata: any) => {
-                    setMetadataMap((prev) => ({ ...prev, [pkg.name]: parseMetadata(metadata) }));
+            const cid = metadataCidFromUri(pkg.metadataUri)!;
+            const key = metadataKey(pkg);
+            queryBulletinJson(networkConfig.productSdkEnvironment, cid)
+                .then((metadata) => {
+                    setMetadataMap((prev) => ({ ...prev, [key]: parseMetadata(metadata) }));
                 })
                 .catch(() => {
                     setMetadataMap((prev) => ({
                         ...prev,
-                        [pkg.name]: { metadataLoaded: true },
+                        [key]: { metadataLoaded: true },
                     }));
                 });
         }
-    }, [basePackages, ipfsGatewayUrl]);
+    }, [basePackages, metadataKey, networkConfig.productSdkEnvironment]);
 
     // Merge on-chain data with IPFS metadata
     const packages = useMemo(
-        () => basePackages.map((pkg) => ({ ...pkg, ...metadataMap[pkg.name] })),
-        [basePackages, metadataMap],
+        () => basePackages.map((pkg) => ({ ...pkg, ...metadataMap[metadataKey(pkg)] })),
+        [basePackages, metadataKey, metadataMap],
     );
 
     const error = networkError ?? pageError;

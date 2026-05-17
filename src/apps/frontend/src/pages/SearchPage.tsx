@@ -2,7 +2,8 @@ import { useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import PackageCard from "../components/PackageCard";
-import { useNetwork } from "../context/NetworkContext";
+import { SkeletonCard } from "../components/SkeletonCard";
+import { useNetwork } from "../context/useNetwork";
 import { useRegistry } from "../hooks/useRegistry";
 import "./SearchPage.css";
 
@@ -12,7 +13,7 @@ export default function SearchPage() {
     const [searchParams] = useSearchParams();
     const query = searchParams.get("q") || "";
     const [sort, setSort] = useState<SortMode>("name");
-    const { network, connecting, error: networkError } = useNetwork();
+    const { networkConfig, connecting, error: networkError } = useNetwork();
     const { packages, loading, error: registryError } = useRegistry();
 
     const error = networkError || registryError;
@@ -72,14 +73,17 @@ export default function SearchPage() {
                     <div className="search-empty">
                         <h2>Connection Error</h2>
                         <p>
-                            Could not connect to <strong>{network}</strong>. Check your connection
-                            settings.
+                            Could not connect to <strong>{networkConfig.label}</strong>. Check your
+                            connection settings.
                         </p>
                         <p>{error}</p>
                     </div>
                 ) : connecting || (loading && packages.length === 0) ? (
-                    <div className="search-empty">
-                        <p>Connecting to {network}...</p>
+                    <div className="search-results-list">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                            // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative array
+                            <SkeletonCard key={i} />
+                        ))}
                     </div>
                 ) : results.length === 0 ? (
                     <div className="search-empty">
