@@ -38,6 +38,7 @@ export {
     type SolidityAbiParam,
     type SolidityImportContract,
     generateSolidityImport,
+    generateSolidityLocalBuildImport,
     solidityLibraryFromImportPath,
     solidityImportPathForLibrary,
 } from "./solidity-imports";

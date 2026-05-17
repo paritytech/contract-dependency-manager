@@ -1,1 +1,1 @@
-printf "\n\033[1mRun \`pnpm build\` or \`forge build --resolc\` to compile the Solidity contracts.\033[0m\n"
+printf "\n\033[1mRun \`cdm build\` to compile the Solidity contracts.\033[0m\n"
