@@ -68,29 +68,28 @@
   }
 }
 
-/* Inline "other options" that slide in to the right of the trigger */
+/* "Other options" float to the right of the trigger without taking flow space,
+   so the surrounding (centered) nav doesn't shift when the picker opens. */
 .net-picker-others {
   display: inline-flex;
   align-items: center;
   gap: 18px;
-  overflow: hidden;
-  max-width: 0;
-  margin-left: 0;
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: 18px;
+  transform: translate(-8px, -50%);
+  white-space: nowrap;
   opacity: 0;
-  transform: translateX(8px);
   pointer-events: none;
   transition:
     opacity 0.2s ease,
-    transform 0.2s ease,
-    max-width 0.24s ease,
-    margin-left 0.24s ease;
+    transform 0.2s ease;
 }
 
 .net-picker--open .net-picker-others {
-  max-width: 320px;
-  margin-left: 18px;
   opacity: 1;
-  transform: translateX(0);
+  transform: translate(0, -50%);
   pointer-events: auto;
 }
 

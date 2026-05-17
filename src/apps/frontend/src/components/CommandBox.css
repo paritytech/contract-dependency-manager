@@ -1,7 +1,6 @@
 .command-box {
   position: relative;
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -26,15 +25,18 @@
   color: var(--color-text-tertiary);
   font-family: var(--font-sans);
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 .command-box-prompt {
   color: var(--accent);
   font-weight: 800;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .command-box-value {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   color: #ffffff;

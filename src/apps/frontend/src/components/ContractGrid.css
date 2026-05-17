@@ -1,8 +1,8 @@
 .contract-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    column-gap: 72px;
-    row-gap: 52px;
+    column-gap: 36px;
+    row-gap: 40px;
 }
 
 .contract-grid-message {
@@ -33,6 +33,6 @@
 @media (min-width: 769px) and (max-width: 1120px) {
     .contract-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        column-gap: 42px;
+        column-gap: 28px;
     }
 }

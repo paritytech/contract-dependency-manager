@@ -1,11 +1,12 @@
 .header {
   display: flex;
   align-items: center;
+  justify-content: center;
   position: relative;
   top: 0;
   z-index: 100;
   min-height: 72px;
-  padding: 28px calc(6vw + 22px) 0;
+  padding: 28px 0 0;
   background-color: #000000;
 }
 
@@ -13,6 +14,9 @@
   display: flex;
   align-items: center;
   gap: 22px;
+  width: 100%;
+  max-width: 1140px;
+  padding: 0 calc(32px + 22px);
 }
 
 .header-nav-link {
@@ -32,10 +36,11 @@
 
 @media (max-width: 900px) {
   .header {
-    padding: 24px calc(24px + 22px) 0;
+    padding: 24px 0 0;
   }
 
   .header-nav {
     gap: 16px;
+    padding: 0 calc(24px + 22px);
   }
 }

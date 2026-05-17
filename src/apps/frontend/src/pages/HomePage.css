@@ -1,11 +1,12 @@
 .registry-home {
-  width: 100%;
-  min-height: 100%;
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 0 32px;
   background: #000000;
 }
 
 .registry-hero {
-  padding: 20vh 6vw 78px;
+  padding: 20vh 0 78px;
 }
 
 .hero-inner {
@@ -41,18 +42,17 @@
 }
 
 .registry-list {
-  max-width: none;
-  margin: 0 calc(6vw + 22px);
+  margin: 0 22px;
   padding: 46px 0 96px;
 }
 
 @media (max-width: 900px) {
-  .registry-hero {
-    padding: 16vh 24px 64px;
+  .registry-home {
+    padding: 0 24px;
   }
 
-  .registry-list {
-    margin: 0 calc(24px + 22px);
+  .registry-hero {
+    padding: 16vh 0 64px;
   }
 }
 

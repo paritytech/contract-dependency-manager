@@ -37,7 +37,7 @@ export default function HomePage() {
                         <div className="hero-actions">
                             <CommandBox
                                 command={installCmd}
-                                label="Install"
+                                label="Install CDM"
                                 className="hero-command"
                             />
                             <SearchBox

@@ -4,11 +4,12 @@ import "./CommandBox.css";
 
 interface CommandBoxProps {
     command: string;
+    /** Optional label rendered before the prompt. Omit for a label-less variant. */
     label?: string;
     className?: string;
 }
 
-export default function CommandBox({ command, label = "Install", className }: CommandBoxProps) {
+export default function CommandBox({ command, label, className }: CommandBoxProps) {
     const [copied, setCopied] = useState(false);
 
     const handleCopy = () => {
@@ -17,14 +18,16 @@ export default function CommandBox({ command, label = "Install", className }: Co
         setTimeout(() => setCopied(false), 2000);
     };
 
+    const ariaLabel = `Copy ${label ? label.toLowerCase() : "install"} command`;
+
     return (
         <button
             className={`command-box${copied ? " command-box--copied" : ""}${className ? ` ${className}` : ""}`}
             onClick={handleCopy}
             type="button"
-            aria-label={`Copy ${label.toLowerCase()} command`}
+            aria-label={ariaLabel}
         >
-            <span className="command-box-label">{label}</span>
+            {label && <span className="command-box-label">{label}</span>}
             <span className="command-box-prompt">$</span>
             <span className="command-box-value">{command}</span>
             <span
