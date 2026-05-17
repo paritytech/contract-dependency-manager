@@ -6,11 +6,11 @@ import type { NetworkKey } from "../config/networks";
 export default function NetworkConfig() {
     const { network, networks, setNetwork, connected, connecting } = useNetwork();
     const [open, setOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         function handleClickOutside(e: MouseEvent) {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
                 setOpen(false);
             }
         }
@@ -19,84 +19,40 @@ export default function NetworkConfig() {
     }, [open]);
 
     const active = networks.find((item) => item.key === network);
+    const others = networks.filter((item) => item.key !== network);
+    const statusModifier = connecting ? "connecting" : connected ? "connected" : "disconnected";
 
     return (
-        <div className="net-selector" ref={dropdownRef}>
+        <div className={`net-picker${open ? " net-picker--open" : ""}`} ref={containerRef}>
             <button
-                className="net-selector-trigger"
+                className="net-picker-item net-picker-current"
                 onClick={() => setOpen((v) => !v)}
                 type="button"
                 aria-expanded={open}
+                aria-haspopup="listbox"
             >
-                <span className="net-selector-name">
-                    <span
-                        className={`net-dot ${
-                            connecting
-                                ? "net-dot--connecting"
-                                : connected
-                                  ? "net-dot--connected"
-                                  : "net-dot--disconnected"
-                        }`}
-                    />
+                <span className={`net-picker-pill net-picker-pill--${statusModifier}`}>
                     {active?.label ?? network}
                 </span>
-                <svg
-                    className={`net-selector-chevron ${open ? "net-selector-chevron--open" : ""}`}
-                    width="14"
-                    height="14"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    aria-hidden="true"
-                >
-                    <path
-                        d="M4 6l4 4 4-4"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                    />
-                </svg>
             </button>
-
-            {open && (
-                <div className="net-selector-dropdown">
-                    <ul className="net-selector-list">
-                        {networks.map((item) => (
-                            <li key={item.key}>
-                                <button
-                                    className={`net-selector-option ${
-                                        network === item.key ? "net-selector-option--active" : ""
-                                    }`}
-                                    onClick={() => {
-                                        setNetwork(item.key as NetworkKey);
-                                        setOpen(false);
-                                    }}
-                                    type="button"
-                                >
-                                    <span>{item.label}</span>
-                                    {network === item.key && (
-                                        <svg
-                                            width="14"
-                                            height="14"
-                                            viewBox="0 0 16 16"
-                                            fill="none"
-                                            aria-hidden="true"
-                                        >
-                                            <path
-                                                d="M3 8.5l3.5 3.5L13 5"
-                                                stroke="currentColor"
-                                                strokeWidth="1.5"
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                            />
-                                        </svg>
-                                    )}
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            )}
+            <div className="net-picker-others" role="listbox">
+                {others.map((item, index) => (
+                    <button
+                        key={item.key}
+                        className="net-picker-item net-picker-other"
+                        onClick={() => {
+                            setNetwork(item.key as NetworkKey);
+                            setOpen(false);
+                        }}
+                        type="button"
+                        tabIndex={open ? 0 : -1}
+                        aria-hidden={!open}
+                        style={{ transitionDelay: open ? `${index * 40}ms` : "0ms" }}
+                    >
+                        <span className="net-picker-label">{item.label}</span>
+                    </button>
+                ))}
+            </div>
         </div>
     );
 }

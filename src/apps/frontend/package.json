@@ -18,6 +18,7 @@
         "@parity/product-sdk-chain-client": "catalog:",
         "@parity/product-sdk-contracts": "catalog:",
         "@parity/product-sdk-descriptors": "catalog:",
+        "@parity/product-sdk-host": "catalog:",
         "dompurify": "catalog:",
         "marked": "catalog:",
         "react": "catalog:",

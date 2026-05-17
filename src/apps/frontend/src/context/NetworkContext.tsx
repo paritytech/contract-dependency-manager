@@ -34,6 +34,10 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
 
     const setNetwork = useCallback((name: NetworkKey) => {
         setNetworkState(name);
+        setConnecting(true);
+        setConnected(false);
+        setRegistry(null);
+        setError(null);
     }, []);
 
     useEffect(() => {

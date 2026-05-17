@@ -1,171 +1,103 @@
-.net-selector {
+.net-picker {
+  display: inline-flex;
+  align-items: center;
   position: relative;
 }
 
-/* Trigger button */
-.net-selector-trigger {
+.net-picker-item {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: #050505;
-  border: 1px solid var(--color-border);
-  padding: 7px 13px;
   margin: 0;
-  cursor: pointer;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--color-text-tertiary);
   font-family: var(--font-sans);
   font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0;
-  color: var(--color-text-secondary);
-  border-radius: 999px;
-  transition: border-color 0.15s, color 0.15s;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: color 0.1s ease;
 }
 
-.net-selector-trigger:hover {
-  border-color: var(--color-border-strong);
+.net-picker-current {
+  color: var(--color-text-secondary);
+}
+
+.net-picker-current:hover {
   color: var(--color-text-primary);
 }
 
-.net-selector-name {
+.net-picker-label {
+  line-height: 1.1;
+}
+
+/* Status pill outline around the active network name */
+.net-picker-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  line-height: 1.1;
+  color: var(--color-text-secondary);
+  transition:
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.net-picker-pill--connected {
+  border-color: rgba(34, 197, 94, 0.45);
+}
+
+.net-picker-pill--connecting {
+  border-color: rgba(234, 179, 8, 0.45);
+  animation: net-pill-pulse 1.6s ease-in-out infinite;
+}
+
+.net-picker-pill--disconnected {
+  border-color: var(--color-border-strong);
+}
+
+@keyframes net-pill-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Inline "other options" that slide in to the right of the trigger */
+.net-picker-others {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-}
-
-/* Connection status dot */
-.net-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.net-dot--connected {
-  background-color: #22c55e;
-}
-
-.net-dot--connecting {
-  background-color: #eab308;
-  animation: net-dot-pulse 1.2s ease-in-out infinite;
-}
-
-.net-dot--disconnected {
-  background-color: var(--color-text-tertiary);
-}
-
-@keyframes net-dot-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-/* Chevron */
-.net-selector-chevron {
-  color: var(--color-text-secondary);
-  transition: transform 0.15s;
-  flex-shrink: 0;
-}
-
-.net-selector-chevron--open {
-  transform: rotate(180deg);
-}
-
-/* Dropdown panel */
-.net-selector-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  min-width: 220px;
-  background: #0a0a0a;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  z-index: 200;
+  gap: 18px;
   overflow: hidden;
+  max-width: 0;
+  margin-left: 0;
+  opacity: 0;
+  transform: translateX(8px);
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    max-width 0.24s ease,
+    margin-left 0.24s ease;
 }
 
-/* Option list */
-.net-selector-list {
-  list-style: none;
-  margin: 0;
-  padding: 4px;
+.net-picker--open .net-picker-others {
+  max-width: 320px;
+  margin-left: 18px;
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
 }
 
-.net-selector-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 8px 12px;
-  margin: 0;
-  cursor: pointer;
-  font-family: var(--font-sans);
-  font-size: 0.875rem;
+.net-picker-other {
+  white-space: nowrap;
+}
+
+.net-picker-other:hover {
   color: var(--color-text-primary);
-  border-radius: 6px;
-  transition: background-color 0.1s;
-}
-
-.net-selector-option:hover {
-  background-color: var(--color-surface-secondary);
-}
-
-.net-selector-option--active {
-  background-color: var(--color-surface-secondary);
-  color: var(--accent);
-}
-
-.net-selector-option--active svg {
-  color: var(--accent);
-}
-
-/* Input fields section */
-.net-selector-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--color-border-strong);
-}
-
-.net-selector-field {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.net-selector-field-label {
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  padding-left: 2px;
-  font-family: var(--font-sans);
-}
-
-.net-selector-field-input {
-  background: var(--color-surface-secondary);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 6px;
-  padding: 5px 8px;
-  font-size: 12px;
-  font-family: var(--font-sans);
-  min-width: 200px;
-  outline: none;
-}
-
-.net-selector-field-input::placeholder {
-  color: var(--color-text-tertiary);
-}
-
-.net-selector-field-input:focus {
-  border-color: var(--color-text-tertiary);
-}
-
-.net-selector-field-input:disabled {
-  background: var(--color-surface-secondary);
-  color: var(--color-text-tertiary);
-  border-color: var(--color-border);
-  cursor: not-allowed;
 }
