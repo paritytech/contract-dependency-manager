@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import Layout from "../components/Layout";
+import NetworkLoader from "../components/NetworkLoader";
 import { CopyIcon, CheckIcon } from "../components/Icons";
 import { usePackage } from "../hooks/usePackage";
 import type { AbiEntry, AbiParam } from "../data/types";
@@ -200,9 +201,7 @@ export default function PackagePage() {
     if (loading) {
         return (
             <Layout>
-                <div className="package-not-found">
-                    <p>Connecting to {networkConfig.label}...</p>
-                </div>
+                <NetworkLoader network={networkConfig.label} />
             </Layout>
         );
     }

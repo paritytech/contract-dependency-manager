@@ -42,7 +42,7 @@
 
 .registry-list {
   max-width: none;
-  margin: 0 5vw;
+  margin: 0 calc(6vw + 22px);
   padding: 46px 0 96px;
 }
 
@@ -52,7 +52,7 @@
   }
 
   .registry-list {
-    margin: 0 24px;
+    margin: 0 calc(24px + 22px);
   }
 }
 

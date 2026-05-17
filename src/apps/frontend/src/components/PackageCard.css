@@ -39,6 +39,7 @@
   gap: 10px;
   min-width: 0;
   margin-bottom: 12px;
+  min-height: 22px;
 }
 
 .package-card-name {
@@ -79,11 +80,19 @@
 }
 
 .package-card-description {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 8px;
+  margin-bottom: 22px;
+  min-height: 44px;
+}
+
+.package-card-description-text {
   color: var(--color-text-secondary);
   font-size: 15px;
-  margin-bottom: 22px;
   line-height: 1.42;
-  flex: 1;
+  margin: 0;
 }
 
 .package-card-meta {
@@ -95,6 +104,7 @@
   font-size: 13px;
   line-height: 1.4;
   color: var(--color-text-quaternary);
+  min-height: 16px;
 }
 
 .package-card-author {
@@ -108,28 +118,4 @@
 .package-card-date {
   color: var(--color-text-quaternary);
   flex-shrink: 0;
-}
-
-.package-card-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface-secondary) 25%,
-    var(--color-border) 50%,
-    var(--color-surface-secondary) 75%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s ease-in-out infinite;
-  border-radius: 4px;
-  color: transparent !important;
-  min-width: 120px;
-  display: inline-block;
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
 }

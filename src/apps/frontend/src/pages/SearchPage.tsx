@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import PackageCard from "../components/PackageCard";
+import { SkeletonCard } from "../components/SkeletonCard";
 import { useNetwork } from "../context/useNetwork";
 import { useRegistry } from "../hooks/useRegistry";
 import "./SearchPage.css";
@@ -78,8 +79,11 @@ export default function SearchPage() {
                         <p>{error}</p>
                     </div>
                 ) : connecting || (loading && packages.length === 0) ? (
-                    <div className="search-empty">
-                        <p>Connecting to {networkConfig.label}...</p>
+                    <div className="search-results-list">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                            // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative array
+                            <SkeletonCard key={i} />
+                        ))}
                     </div>
                 ) : results.length === 0 ? (
                     <div className="search-empty">

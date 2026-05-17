@@ -35,28 +35,35 @@ export default function PackageCard({ pkg, linkTarget }: PackageCardProps) {
                 <span className="package-card-version">v{pkg.version}</span>
             </div>
 
-            {pkg.description ? (
-                <p className="package-card-description">{pkg.description}</p>
-            ) : metadataLoading ? (
-                <p className="package-card-description package-card-shimmer">&nbsp;</p>
-            ) : null}
+            <div className="package-card-description">
+                {pkg.description ? (
+                    <p className="package-card-description-text">{pkg.description}</p>
+                ) : metadataLoading ? (
+                    <>
+                        <span className="skeleton-bar skeleton-bar--desc" />
+                        <span className="skeleton-bar skeleton-bar--desc skeleton-bar--desc-short" />
+                    </>
+                ) : null}
+            </div>
 
             <div className="package-card-meta">
                 {pkg.author ? (
                     <span className="package-card-author">{pkg.author}</span>
                 ) : metadataLoading ? (
-                    <span className="package-card-author package-card-shimmer">
-                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                    </span>
-                ) : null}
+                    <span className="skeleton-bar skeleton-bar--author" />
+                ) : (
+                    <span />
+                )}
                 {pkg.weeklyCalls != null && (
                     <span className="package-card-downloads">
                         {formatCalls(pkg.weeklyCalls)} weekly calls
                     </span>
                 )}
-                {pkg.publishedDate && (
+                {pkg.publishedDate ? (
                     <span className="package-card-date">{pkg.publishedDate}</span>
-                )}
+                ) : metadataLoading ? (
+                    <span className="skeleton-bar skeleton-bar--date" />
+                ) : null}
             </div>
         </>
     );
