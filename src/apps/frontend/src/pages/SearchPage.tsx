@@ -1,7 +1,9 @@
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import InfiniteScroll from "../components/InfiniteScroll";
 import Layout from "../components/Layout";
 import PackageCard from "../components/PackageCard";
+import SearchBox from "../components/SearchBox";
 import { SkeletonCard } from "../components/SkeletonCard";
 import { useNetwork } from "../context/useNetwork";
 import { useRegistrySearch } from "../hooks/useRegistrySearch";
@@ -10,6 +12,8 @@ import "./SearchPage.css";
 export default function SearchPage() {
     const [searchParams] = useSearchParams();
     const query = (searchParams.get("q") || "").trim();
+    const [inputValue, setInputValue] = useState(query);
+    const navigate = useNavigate();
     const { networkConfig, connecting, error: networkError } = useNetwork();
     const {
         packages,
@@ -21,12 +25,33 @@ export default function SearchPage() {
 
     const error = networkError || registryError;
 
+    useEffect(() => {
+        setInputValue(query);
+    }, [query]);
+
+    const handleSearch = (value: string) => {
+        const trimmed = value.trim();
+        if (trimmed) navigate(`/search?q=${encodeURIComponent(trimmed)}`);
+    };
+
     if (!query) {
         return (
             <Layout>
-                <div className="search-empty">
-                    <h2>Search for contracts</h2>
-                    <p>Enter a search term to find contracts on cdm.</p>
+                <div className="search-page">
+                    <div className="search-header">
+                        <SearchBox
+                            value={inputValue}
+                            onChange={setInputValue}
+                            onSubmit={handleSearch}
+                            placeholder="Search @org/package names..."
+                            ariaLabel="Search package names"
+                            className="search-page-box"
+                        />
+                    </div>
+                    <div className="search-empty">
+                        <h2>Search for contracts</h2>
+                        <p>Enter a package name prefix to find contracts on cdm.</p>
+                    </div>
                 </div>
             </Layout>
         );
@@ -36,6 +61,14 @@ export default function SearchPage() {
         <Layout>
             <div className="search-page">
                 <div className="search-header">
+                    <SearchBox
+                        value={inputValue}
+                        onChange={setInputValue}
+                        onSubmit={handleSearch}
+                        placeholder="Search @org/package names..."
+                        ariaLabel="Search package names"
+                        className="search-page-box"
+                    />
                     <p className="search-result-count">
                         Showing <strong>{packages.length}</strong> package name match
                         {packages.length !== 1 ? "es" : ""} for &ldquo;{query}&rdquo;

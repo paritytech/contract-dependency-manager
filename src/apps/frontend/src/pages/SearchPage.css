@@ -8,6 +8,11 @@
   margin-bottom: 24px;
 }
 
+.search-page-box {
+  max-width: 720px;
+  margin-bottom: 18px;
+}
+
 .search-result-count {
   font-size: 1.1rem;
   color: var(--color-text-secondary);
@@ -26,12 +31,30 @@
 }
 
 .search-results-list .package-card {
+  height: auto;
+  min-height: 116px;
+  padding: 22px 0;
   border-bottom: 1px solid var(--color-border);
   border-radius: 0;
 }
 
+.search-results-list .package-card::before {
+  inset: 0 -16px;
+  border-radius: 8px;
+}
+
 .search-results-list .package-card:first-child {
   border-top: 1px solid var(--color-border);
+}
+
+.search-results-list .package-card-description {
+  flex: initial;
+  min-height: 0;
+  margin-bottom: 16px;
+}
+
+.search-results-list .package-card-meta {
+  justify-content: flex-start;
 }
 
 .search-empty {
