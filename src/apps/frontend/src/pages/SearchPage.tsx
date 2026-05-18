@@ -15,13 +15,7 @@ export default function SearchPage() {
     const [inputValue, setInputValue] = useState(query);
     const navigate = useNavigate();
     const { networkConfig, connecting, error: networkError } = useNetwork();
-    const {
-        packages,
-        loading,
-        error: registryError,
-        hasMore,
-        loadMore,
-    } = useRegistrySearch(query);
+    const { packages, loading, error: registryError, hasMore, loadMore } = useRegistrySearch(query);
 
     const error = networkError || registryError;
 
