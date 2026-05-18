@@ -1,5 +1,17 @@
 # @dotdm/contracts
 
+## 2.1.3
+
+### Patch Changes
+
+- 83696a6: Add registry package-name search support and fix redeploying CDM packages against fresh registry deployments.
+
+  `@dotdm/contracts` now includes the registry `searchContractNames` ABI, scopes package deployment salts by registry address, and avoids dry-running dependent layers before prior layers have been registered. `@dotdm/utils` exposes the registry package salt constant used by deploy scripts and bootstrap deploys. `@dotdm/env` points presets at the redeployed registry address.
+
+- Updated dependencies [83696a6]
+  - @dotdm/env@1.0.6
+  - @dotdm/utils@0.3.2
+
 ## 2.1.2
 
 ### Patch Changes
