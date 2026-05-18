@@ -2,8 +2,9 @@
 #![no_std]
 
 use alloc::string::String;
+use core::ops::Bound;
 use parity_scale_codec::{Decode, Encode};
-use pvm::storage::Mapping;
+use pvm::storage::{Mapping, OrderedIndex};
 use pvm::{Address, ReturnFlags, caller};
 use pvm_contract as pvm;
 
@@ -12,6 +13,8 @@ fn revert(msg: &[u8]) -> ! {
 }
 
 pub type Version = u32;
+const MAX_CONTRACT_NAME_LEN: usize = 64;
+const MAX_SEARCH_LIMIT: u32 = 100;
 
 /// A published contract version in the registry.
 #[derive(Clone, Encode, Decode)]
@@ -31,12 +34,48 @@ pub struct NamedContractInfo {
     pub version_count: Version,
 }
 
+#[derive(Default, pvm::SolAbi)]
+pub struct ContractNameSearchPage {
+    pub names: alloc::vec::Vec<String>,
+    pub next_offset: u32,
+    pub done: bool,
+}
+
+fn validate_contract_name(contract_name: &String) {
+    if contract_name.is_empty() {
+        revert(b"ContractNameEmpty");
+    }
+    if contract_name.as_bytes().len() > MAX_CONTRACT_NAME_LEN {
+        revert(b"ContractNameTooLong");
+    }
+    if !contract_name.is_ascii() {
+        revert(b"ContractNameInvalid");
+    }
+}
+
+fn prefix_upper_bound(prefix: &String) -> Option<String> {
+    let mut bytes = prefix.as_bytes().to_vec();
+
+    while bytes.last() == Some(&0xff) {
+        bytes.pop();
+    }
+
+    if let Some(last) = bytes.last_mut() {
+        *last = last.saturating_add(1);
+        Some(String::from_utf8_lossy(&bytes).into_owned())
+    } else {
+        None
+    }
+}
+
 #[pvm::storage]
 struct Storage {
     /// Count of registered contract names
     contract_name_count: u32,
     /// Maps index to contract name (simulates StorageVec)
     contract_name_at: Mapping<u32, String>,
+    /// Sorted index of contract names for prefix search.
+    contract_name_index: OrderedIndex<String, u32, 2>,
     /// Stores all published versions of named contracts where the key for
     /// an individual versioned contract is given by `(contract_name, version)`
     published_address: Mapping<(String, Version), Address>,
@@ -60,6 +99,8 @@ mod contract_registry {
     /// either the name is available or they are already the owner of the name.
     #[pvm::method]
     pub fn publish_latest(contract_name: String, contract_address: Address, metadata_uri: String) {
+        validate_contract_name(&contract_name);
+
         let caller = caller();
 
         // Get existing info or register new `contract_name` with caller as owner
@@ -73,6 +114,7 @@ mod contract_registry {
                 // Append to contract names list
                 let count = Storage::contract_name_count().get().unwrap_or(0);
                 Storage::contract_name_at().insert(&count, &contract_name);
+                Storage::contract_name_index().insert(&contract_name, &count);
                 Storage::contract_name_count().set(&(count + 1));
                 info
             }
@@ -138,6 +180,49 @@ mod contract_registry {
     #[pvm::method]
     pub fn get_contract_name_at(index: u32) -> String {
         Storage::contract_name_at().get(&index).unwrap_or_default()
+    }
+
+    /// Search registered contract names by prefix.
+    #[pvm::method]
+    pub fn search_contract_names(
+        prefix: String,
+        offset: u32,
+        limit: u32,
+    ) -> ContractNameSearchPage {
+        let cap = if limit > MAX_SEARCH_LIMIT {
+            MAX_SEARCH_LIMIT
+        } else {
+            limit
+        };
+
+        if cap == 0 || prefix.as_bytes().len() > MAX_CONTRACT_NAME_LEN || !prefix.is_ascii() {
+            return ContractNameSearchPage {
+                names: alloc::vec::Vec::new(),
+                next_offset: offset,
+                done: true,
+            };
+        }
+
+        let upper = prefix_upper_bound(&prefix);
+        let to = match upper.as_ref() {
+            Some(bound) => Bound::Excluded(bound),
+            None => Bound::Unbounded,
+        };
+
+        let hits = Storage::contract_name_index().range(
+            Bound::Included(&prefix),
+            to,
+            offset as u64,
+            cap as u64,
+        );
+        let returned = hits.len() as u32;
+        let names = hits.into_iter().map(|(name, _)| name).collect();
+
+        ContractNameSearchPage {
+            names,
+            next_offset: offset + returned,
+            done: returned < cap,
+        }
     }
 
     /// Get the owner of a contract name.
