@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-pvm-cdm-macros = { path = "../pvm-cdm-macros", version = "0.3.0" }
+pvm-cdm-macros = { path = "../pvm-cdm-macros" }
 
 [dev-dependencies]
-pvm-contract-sdk = { path = "../pvm-contract-sdk", features = ["alloc"] }
+pvm-contract-sdk.workspace = true

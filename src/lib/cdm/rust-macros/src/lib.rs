@@ -49,6 +49,26 @@ fn derive_module_name(package_name: &str) -> String {
         .replace('-', "_")
 }
 
+// Matches `pvm_contract_macros::utils::to_pascal_case`: the upstream
+// `abi_import!` macro applies pascal-case to the user-supplied name when
+// minting the generated contract struct type, so we mirror that here to
+// produce the path `<module>::<Type>` for `pvm_cdm::reference!`.
+fn to_pascal_case(snake: &str) -> String {
+    let mut out = String::with_capacity(snake.len());
+    let mut capitalize_next = true;
+    for ch in snake.chars() {
+        if ch == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            out.extend(ch.to_uppercase());
+            capitalize_next = false;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 #[proc_macro]
 pub fn import(input: TokenStream) -> TokenStream {
     let lit: syn::LitStr = match syn::parse(input) {
@@ -214,10 +234,16 @@ pub fn import(input: TokenStream) -> TokenStream {
     }
 
     let module_name = derive_module_name(&package_name);
+    let module_ident = syn::Ident::new(&module_name, proc_macro2::Span::call_site());
+    let contract_ident = syn::Ident::new(
+        &to_pascal_case(&module_name),
+        proc_macro2::Span::call_site(),
+    );
     let abi_path_str = abi_path.to_string_lossy().to_string();
 
     quote! {
-        pvm::abi_import!(#module_name, #abi_path_str, cdm = #package_name);
+        pvm_contract_sdk::abi_import!(#module_ident, #abi_path_str);
+        pvm_cdm::reference!(#module_ident::#contract_ident, #package_name);
     }
     .into()
 }

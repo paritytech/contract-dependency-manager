@@ -140,6 +140,7 @@ pub fn reference(input: TokenStream) -> TokenStream {
                 let mut output_ref: &mut [u8] = &mut output_buf[..];
 
                 let result = <::pvm_contract_sdk::PolkaVmHost as ::pvm_contract_sdk::HostApi>::call_evm(
+                    &::pvm_contract_sdk::PolkaVmHost,
                     ::pvm_contract_sdk::CallFlags::ALLOW_REENTRY,
                     &__REGISTRY_ADDR,
                     u64::MAX,

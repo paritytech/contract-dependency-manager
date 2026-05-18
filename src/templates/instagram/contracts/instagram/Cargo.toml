@@ -13,9 +13,13 @@ path = "lib.rs"
 name = "instagram"
 path = "lib.rs"
 
+[features]
+abi-gen = ["pvm-contract-sdk/abi-gen"]
+
+[package.metadata.cdm-package]
+name = "@example/instagram"
+
 [dependencies]
-cdm = { workspace = true }
-pvm_contract = { workspace = true }
+pvm-contract-sdk = { workspace = true }
 polkavm-derive = { workspace = true }
-parity-scale-codec = { workspace = true }
 picoalloc = { workspace = true }

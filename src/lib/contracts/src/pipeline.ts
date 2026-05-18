@@ -289,7 +289,7 @@ async function runBuildPhase(
 
         for (const result of results) {
             if (result.success) {
-                const pvmPath = resolve(rootDir, `target/${result.crateName}.release.polkavm`);
+                const pvmPath = resolve(rootDir, `target/release/${result.crateName}.polkavm`);
                 let bytecodeSize: number | undefined;
                 try {
                     bytecodeSize = readFileSync(pvmPath).length;

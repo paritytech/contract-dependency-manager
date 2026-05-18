@@ -1,8 +1,8 @@
 [package]
-name = "suuport_contract"
+name = "support_contract"
 version.workspace = true
 edition.workspace = true
-description = "Reads the current count from the shared counter contract via cross-contract CDM reference"
+description = "Reads the current count from the app-api contract via cross-contract CDM reference"
 authors.workspace = true
 homepage.workspace = true
 
@@ -13,9 +13,15 @@ path = "lib.rs"
 name = "support_contract"
 path = "lib.rs"
 
+[features]
+abi-gen = ["pvm-contract-sdk/abi-gen"]
+
+[package.metadata.cdm-package]
+name = "@example/support-contract"
+
 [dependencies]
 cdm = { workspace = true }
-pvm_contract = { workspace = true }
+pvm-contract-sdk = { workspace = true }
+pvm-cdm = { workspace = true }
 polkavm-derive = { workspace = true }
-parity-scale-codec = { workspace = true }
 picoalloc = { workspace = true }

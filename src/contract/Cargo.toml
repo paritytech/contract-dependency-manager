@@ -3,10 +3,15 @@ name = "contract-registry"
 version.workspace = true
 edition.workspace = true
 
+[features]
+abi-gen = ["pvm-contract-sdk/abi-gen"]
+
+[package.metadata.cdm-package]
+name = "@cdm/contract-registry"
+
 [dependencies]
-pvm_contract.workspace = true
+pvm-contract-sdk.workspace = true
 polkavm-derive.workspace = true
-parity-scale-codec.workspace = true
 picoalloc.workspace = true
 
 [lib]

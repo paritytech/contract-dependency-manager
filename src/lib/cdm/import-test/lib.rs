@@ -1,5 +1,4 @@
-#![no_main]
-#![no_std]
+#![cfg_attr(not(feature = "abi-gen"), no_main, no_std)]
 
 // Workspace-sibling integration test for `cdm::import!`.
 //
@@ -15,14 +14,14 @@
 // contract block exists solely to satisfy the PVM bin scaffold (allocator +
 // entry point); the test's signal is whether the build succeeds.
 
-use pvm_contract as pvm;
-
 cdm::import!("@test/sample");
 
-#[pvm::contract(cdm = "@test/import-test")]
+#[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
 mod harness {
-    #[pvm::constructor]
-    pub fn new() -> Result<(), Error> {
-        Ok(())
+    pub struct Harness {}
+
+    impl Harness {
+        #[pvm_contract_sdk::constructor]
+        pub fn new(&mut self) {}
     }
 }

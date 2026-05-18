@@ -6,11 +6,13 @@ members = ["src/contract", "src/lib/cdm/rust", "src/lib/cdm/rust-macros", "src/l
 version = "0.1.0"
 authors = ["Parity Technologies"]
 edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/paritytech/contract-dependency-manager"
 
 [workspace.dependencies]
-pvm_contract = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "main" }
+pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "sm/cdm", features = ["alloc"] }
+pvm-cdm = { path = "src/lib/cdm/rust-macros/pvm-cdm" }
 polkavm-derive = "0.31"
-parity-scale-codec = { version = "3.7", default-features = false, features = ["derive"] }
 picoalloc = "5.2"
 cdm = { path = "src/lib/cdm/rust" }
 cdm-macros = { path = "src/lib/cdm/rust-macros" }
@@ -20,3 +22,4 @@ proc-macro2 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 home = "0.5"
+keccak-const = "0.2"

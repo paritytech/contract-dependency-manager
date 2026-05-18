@@ -8,9 +8,12 @@ publish = false
 name = "cdm-import-test"
 path = "lib.rs"
 
+[features]
+abi-gen = ["pvm-contract-sdk/abi-gen"]
+
 [dependencies]
 cdm = { workspace = true }
-pvm_contract = { workspace = true }
+pvm-contract-sdk = { workspace = true }
+pvm-cdm = { workspace = true }
 polkavm-derive = { workspace = true }
-parity-scale-codec = { workspace = true }
 picoalloc = { workspace = true }
