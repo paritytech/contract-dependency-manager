@@ -115,7 +115,11 @@ mod contract_registry {
                 let count = Storage::contract_name_count().get().unwrap_or(0);
                 Storage::contract_name_at().insert(&count, &contract_name);
                 Storage::contract_name_index().insert(&contract_name, &count);
-                Storage::contract_name_count().set(&(count + 1));
+                Storage::contract_name_count().set(
+                    &count
+                        .checked_add(1)
+                        .unwrap_or_else(|| revert(b"ContractCountOverflow")),
+                );
                 info
             }
         };
@@ -220,7 +224,7 @@ mod contract_registry {
 
         ContractNameSearchPage {
             names,
-            next_offset: offset + returned,
+            next_offset: offset.saturating_add(returned),
             done: returned < cap,
         }
     }
