@@ -136,17 +136,6 @@ function extractCdmPackage(pkg: CargoPackage): string | null {
 }
 
 /**
- * Back-compat shim. The post-build `.cdm.json` artifact is gone on the new
- * SDK; package identity now comes from Cargo.toml metadata, which is read at
- * detection time. Kept as a no-op so existing callers (e.g. the build-phase
- * refresh in `pipeline.ts`) don't need to be rewritten — they'll just see
- * `null` and skip the refresh.
- */
-export function readCdmPackage(_rootDir: string, _crateName: string): string | null {
-    return null;
-}
-
-/**
  * Detect all PVM contracts in a workspace using cargo metadata.
  *
  * This replaces the old regex-based detection with Cargo's own resolver:
