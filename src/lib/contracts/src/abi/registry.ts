@@ -5,7 +5,7 @@ import type { AbiEntry } from "@parity/product-sdk-contracts";
  *
  * Source of truth: `src/contract/src/lib.rs` compiled to PolkaVM; this array
  * mirrors the Solidity-ABI export produced by `cargo pvm-contract build`
- * (`target/contract-registry.release.abi.json`). Keep it bit-for-bit identical
+ * (`target/release/contract-registry.abi.json`). Keep it bit-for-bit identical
  * to the on-chain metadata — editing this file by hand will desync it from
  * the registry deployed on every network.
  *
@@ -34,32 +34,14 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
         type: "function",
         name: "getAddress",
         inputs: [{ name: "contract_name", type: "string" }],
-        outputs: [
-            {
-                name: "",
-                type: "tuple",
-                components: [
-                    { name: "isSome", type: "bool" },
-                    { name: "value", type: "address" },
-                ],
-            },
-        ],
+        outputs: [{ name: "", type: "address" }],
         stateMutability: "view",
     },
     {
         type: "function",
         name: "getMetadataUri",
         inputs: [{ name: "contract_name", type: "string" }],
-        outputs: [
-            {
-                name: "",
-                type: "tuple",
-                components: [
-                    { name: "isSome", type: "bool" },
-                    { name: "value", type: "string" },
-                ],
-            },
-        ],
+        outputs: [{ name: "", type: "string" }],
         stateMutability: "view",
     },
     {
@@ -69,16 +51,7 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
             { name: "contract_name", type: "string" },
             { name: "version", type: "uint32" },
         ],
-        outputs: [
-            {
-                name: "",
-                type: "tuple",
-                components: [
-                    { name: "isSome", type: "bool" },
-                    { name: "value", type: "address" },
-                ],
-            },
-        ],
+        outputs: [{ name: "", type: "address" }],
         stateMutability: "view",
     },
     {
@@ -88,16 +61,7 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
             { name: "contract_name", type: "string" },
             { name: "version", type: "uint32" },
         ],
-        outputs: [
-            {
-                name: "",
-                type: "tuple",
-                components: [
-                    { name: "isSome", type: "bool" },
-                    { name: "value", type: "string" },
-                ],
-            },
-        ],
+        outputs: [{ name: "", type: "string" }],
         stateMutability: "view",
     },
     {

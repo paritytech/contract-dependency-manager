@@ -1,27 +1,12 @@
-import { describe, test, expect, beforeAll } from "vitest";
-import {
-    detectContracts,
-    buildDependencyGraph,
-    toposort,
-    detectDeploymentOrder,
-} from "../src/detection";
+import { describe, test, expect } from "vitest";
+import { detectContracts, buildDependencyGraph, detectDeploymentOrder } from "../src/detection";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { rmSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_DIR = resolve(__dirname, "../../../templates/shared-counter");
 
 describe("detection via cargo metadata", () => {
-    beforeAll(() => {
-        const targetDir = resolve(TEMPLATE_DIR, "target");
-        for (const name of ["counter", "counter_reader", "counter_writer"]) {
-            try {
-                rmSync(resolve(targetDir, `${name}.release.cdm.json`));
-            } catch {}
-        }
-    });
-
     test("detects all 3 contracts in shared-counter template", () => {
         const contracts = detectContracts(TEMPLATE_DIR);
         const names = contracts.map((c) => c.name).sort();
@@ -43,10 +28,14 @@ describe("detection via cargo metadata", () => {
         expect(order.crateNames.length).toBe(3);
     });
 
-    test("CDM packages are null before build (no .cdm.json files)", () => {
+    test("CDM package names come from [package.metadata.cdm-package] in Cargo.toml", () => {
+        // After the new SDK migration, cdmPackage is resolved at detection
+        // time from `[package.metadata.cdm-package]` (surfaced by `cargo
+        // metadata`), not from a post-build `.cdm.json` artifact.
         const contracts = detectContracts(TEMPLATE_DIR);
-        for (const c of contracts) {
-            expect(c.cdmPackage).toBeNull();
-        }
+        const byName = new Map(contracts.map((c) => [c.name, c.cdmPackage]));
+        expect(byName.get("counter")).toBe("@example/counter");
+        expect(byName.get("counter_writer")).toBe("@example/counter-writer");
+        expect(byName.get("counter_reader")).toBe("@example/counter-reader");
     });
 });

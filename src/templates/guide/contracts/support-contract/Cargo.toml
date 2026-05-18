@@ -25,3 +25,5 @@ pvm-contract-sdk = { workspace = true }
 pvm-cdm = { workspace = true }
 polkavm-derive = { workspace = true }
 picoalloc = { workspace = true }
+# Build/deploy ordering only — source consumes `app-api` via `cdm::import!`.
+app-api = { path = "../app-api" }
