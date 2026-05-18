@@ -4,7 +4,7 @@
 mod contract_registry {
     use alloc::string::String;
     use alloc::vec::Vec;
-    use pvm_contract_sdk::{Address, HostApi, Lazy, Mapping, MappingString, SolType};
+    use pvm_contract_sdk::{Address, HostApi, Lazy, Mapping, MappingString};
 
     pub type Version = u32;
 
@@ -40,25 +40,7 @@ mod contract_registry {
     #[derive(Debug, pvm_contract_sdk::SolError)]
     pub struct ContractNameInvalid;
 
-    #[derive(Clone, SolType)]
-    pub struct NamedContractInfo {
-        /// The owner of the contract name.
-        pub owner: Address,
-        /// `version_count - 1` is the latest published version index. Zero
-        /// means the name is unregistered.
-        pub version_count: u32,
-    }
-
-    impl Default for NamedContractInfo {
-        fn default() -> Self {
-            Self {
-                owner: Address::ZERO,
-                version_count: 0,
-            }
-        }
-    }
-
-    #[derive(Clone, SolType)]
+    #[derive(Clone, pvm_contract_sdk::SolType)]
     pub struct ContractNameSearchPage {
         pub names: Vec<String>,
         pub next_offset: u32,
@@ -92,9 +74,21 @@ mod contract_registry {
         /// Dynamic value.
         #[slot(3)]
         published_metadata_uri: MappingString<(String, Version)>,
-        /// `contract_name → ownership + version count`.
+        /// `contract_name → owner address`.
+        ///
+        /// Per-name ownership and version-count are stored in two parallel
+        /// mappings instead of a single `NamedContractInfo` struct because
+        /// `Mapping<K, V>` on sm/cdm reads/writes exactly 32 bytes per slot
+        /// (single-slot SLOAD/SSTORE), so any value that ABI-encodes to more
+        /// than 32 bytes (e.g. `Address` + `u32` = 64) silently corrupts on
+        /// decode. Splitting into two static-sized mappings sidesteps that
+        /// constraint until upstream lifts it.
         #[slot(4)]
-        info: Mapping<String, NamedContractInfo>,
+        owner_of: Mapping<String, Address>,
+        /// `contract_name → version_count`. Zero means unregistered.
+        /// `version_count - 1` is the latest published version index.
+        #[slot(5)]
+        version_count_of: Mapping<String, u32>,
     }
 
     impl ContractRegistry {
@@ -118,23 +112,23 @@ mod contract_registry {
             validate_contract_name(&contract_name)?;
 
             let caller = self.caller();
-
-            let mut info = self.info.get(&contract_name);
-            if info.version_count == 0 {
+            let prev_version_count = self.version_count_of.get(&contract_name);
+            if prev_version_count == 0 {
                 // First-time registration: claim the name.
-                info.owner = caller;
+                self.owner_of.insert(&contract_name, &caller);
                 let count = self.contract_name_count.get();
                 self.contract_name_at.insert(&count, &contract_name);
                 self.contract_name_count
                     .set(&count.checked_add(1).ok_or(ContractCountOverflow)?);
-            } else if info.owner != caller {
+            } else if self.owner_of.get(&contract_name) != caller {
                 return Err(Unauthorized.into());
             }
 
-            info.version_count = info.version_count.checked_add(1).ok_or(VersionOverflow)?;
-            self.info.insert(&contract_name, &info);
+            let new_version_count = prev_version_count.checked_add(1).ok_or(VersionOverflow)?;
+            self.version_count_of
+                .insert(&contract_name, &new_version_count);
 
-            let version_idx = info.version_count - 1;
+            let version_idx = new_version_count - 1;
             self.published_address
                 .insert(&(contract_name.clone(), version_idx), &contract_address);
             self.published_metadata_uri
@@ -190,24 +184,22 @@ mod contract_registry {
         /// Returns `Address::ZERO` when the name is unregistered.
         #[pvm_contract_sdk::method]
         pub fn get_address(&self, contract_name: String) -> Address {
-            let info = self.info.get(&contract_name);
-            if info.version_count == 0 {
+            let count = self.version_count_of.get(&contract_name);
+            if count == 0 {
                 return Address::ZERO;
             }
-            let latest = info.version_count - 1;
-            self.published_address.get(&(contract_name, latest))
+            self.published_address.get(&(contract_name, count - 1))
         }
 
         /// Metadata URI of the latest published version of `contract_name`.
         /// Returns the empty string when the name is unregistered.
         #[pvm_contract_sdk::method]
         pub fn get_metadata_uri(&self, contract_name: String) -> String {
-            let info = self.info.get(&contract_name);
-            if info.version_count == 0 {
+            let count = self.version_count_of.get(&contract_name);
+            if count == 0 {
                 return String::new();
             }
-            let latest = info.version_count - 1;
-            self.published_metadata_uri.get(&(contract_name, latest))
+            self.published_metadata_uri.get(&(contract_name, count - 1))
         }
 
         /// Address of a specific version of `contract_name`.
@@ -237,13 +229,13 @@ mod contract_registry {
         /// Owner of a contract name. Returns `Address::ZERO` when unregistered.
         #[pvm_contract_sdk::method]
         pub fn get_owner(&self, contract_name: String) -> Address {
-            self.info.get(&contract_name).owner
+            self.owner_of.get(&contract_name)
         }
 
         /// Number of versions published under `contract_name`. Zero means unregistered.
         #[pvm_contract_sdk::method]
         pub fn get_version_count(&self, contract_name: String) -> Version {
-            self.info.get(&contract_name).version_count
+            self.version_count_of.get(&contract_name)
         }
 
         /// Number of distinct contract names registered.
