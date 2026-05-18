@@ -856,9 +856,10 @@ async function precomputeDeployAddress(
     origin: SS58String,
     deployable: DeployableContract,
     version: DeploySaltVersion,
+    registryAddress: HexString,
 ): Promise<HexString> {
     const code = new Uint8Array(readFileSync(deployable.pvmPath));
-    const salt = computeDeploySalt(deployable.cdmPackage, version);
+    const salt = computeDeploySalt(deployable.cdmPackage, version, registryAddress);
     const result = await api.apis.ReviveApi.instantiate(
         origin,
         0n,
@@ -873,47 +874,6 @@ async function precomputeDeployAddress(
         throw new Error(`Dry-run failed: ${stringifyBigInt(result.result)}`);
     }
     return result.result.value.addr as HexString;
-}
-
-async function precomputeLayerSolidityImports(args: {
-    rootDir: string;
-    builtCrates: string[];
-    build: BuildPhaseResult;
-    contractMap: Map<string, ContractInfo>;
-    registryContract: Contract<ContractDef>;
-    assetHubApi: PipelineChainClient["assetHub"];
-    origin: SS58String;
-    nextVersionByCrate?: Map<string, DeploySaltVersion>;
-    predictedAddressByCrate?: Map<string, HexString>;
-}): Promise<void> {
-    if (args.builtCrates.length === 0) return;
-
-    const deployables = args.builtCrates.map((crate) =>
-        getDeployableContract(args.build, args.contractMap, crate),
-    );
-    const packages = deployables.map((contract) => contract.cdmPackage);
-    const versionCounts = await queryRegistryVersionCounts(args.registryContract, packages);
-
-    await Promise.all(
-        deployables.map(async (deployable) => {
-            const version = versionCounts.get(deployable.cdmPackage);
-            if (version === undefined) {
-                throw new Error(
-                    `Failed to query registry version count for "${deployable.cdmPackage}"`,
-                );
-            }
-
-            const address = await precomputeDeployAddress(
-                args.assetHubApi,
-                args.origin,
-                deployable,
-                version,
-            );
-            args.nextVersionByCrate?.set(deployable.crate, version);
-            args.predictedAddressByCrate?.set(deployable.crate, address);
-            writeSolidityImportForDeployable(args.rootDir, deployable, address, version);
-        }),
-    );
 }
 
 // ---------- public API ----------
@@ -1020,7 +980,6 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         );
 
         const nextVersionByCrate = new Map<string, DeploySaltVersion>();
-        const predictedAddressByCrate = new Map<string, HexString>();
 
         const { build, crates: builtCrates } = await runDetectedBuild(
             opts.rootDir,
@@ -1028,19 +987,6 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
             emit as BuildEmitter,
             opts.features,
             opts.registryAddress,
-            async ({ builtCrates: layerBuiltCrates, build }) => {
-                await precomputeLayerSolidityImports({
-                    rootDir: opts.rootDir,
-                    builtCrates: layerBuiltCrates,
-                    build,
-                    contractMap: detected.contractMap,
-                    registryContract,
-                    assetHubApi,
-                    origin: opts.origin,
-                    nextVersionByCrate,
-                    predictedAddressByCrate,
-                });
-            },
         );
         const buildContractsSummary = summarizeBuildContracts(detected, build, builtCrates);
         writeManifestFromBuildSummary(opts.rootDir, buildContractsSummary);
@@ -1145,14 +1091,13 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                                 `Missing registry version count for "${deployable.cdmPackage}"`,
                             );
                         }
-                        const addr =
-                            predictedAddressByCrate.get(deployable.crate) ??
-                            (await precomputeDeployAddress(
-                                assetHubApi,
-                                opts.origin,
-                                deployable,
-                                version,
-                            ));
+                        const addr = await precomputeDeployAddress(
+                            assetHubApi,
+                            opts.origin,
+                            deployable,
+                            version,
+                            opts.registryAddress,
+                        );
                         emit({
                             type: "check-needs-deploy",
                             crate: deployable.crate,
@@ -1207,7 +1152,12 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 // weights, and final chunk layout. Reuses the plan inside the
                 // batch call (no duplicate dry-run). At this point Rust,
                 // Foundry, and Hardhat contracts are all the same shape.
-                const plan = await deployer.planDeploy(pvmPaths, deployablePackages, saltVersions);
+                const plan = await deployer.planDeploy(
+                    pvmPaths,
+                    deployablePackages,
+                    saltVersions,
+                    opts.registryAddress,
+                );
                 const perContract = plan.prepared.map((prepared, i) => ({
                     crate: deployableCrates[i],
                     gasLimit: {
@@ -1257,7 +1207,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                                 durationMs: Date.now() - deployT0,
                             });
                         },
-                        { plan, saltVersions },
+                        { plan, saltVersions, saltScope: opts.registryAddress },
                     ),
                     publisher.publishBatch(metadataList).then((r) => {
                         // Verify CIDs match precomputation — any drift
@@ -1273,7 +1223,16 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     }),
                 ]);
 
-                void deployRes;
+                for (let i = 0; i < deployables.length; i++) {
+                    const address = deployRes.addresses[i] as HexString;
+                    addresses[deployableCrates[i]] = address;
+                    writeSolidityImportForDeployable(
+                        opts.rootDir,
+                        deployables[i],
+                        address,
+                        saltVersions[i],
+                    );
+                }
 
                 const cidsOut: Record<string, string> = {};
                 for (let i = 0; i < deployables.length; i++) {
