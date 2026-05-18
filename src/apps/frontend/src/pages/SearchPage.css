@@ -19,34 +19,6 @@
   color: var(--color-text-primary);
 }
 
-.search-sort-bar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 24px;
-}
-
-.sort-btn {
-  padding: 6px 16px;
-  font-size: 0.85rem;
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
-  border-radius: 8px;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.sort-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.sort-btn.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-}
-
 .search-results-list {
   display: flex;
   flex-direction: column;
