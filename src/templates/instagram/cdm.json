@@ -3,7 +3,7 @@
     "8e7e0cf0a51d8e5e": {
       "asset-hub": "wss://paseo-asset-hub-next-rpc.polkadot.io",
       "bulletin": "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs",
-      "registry": "0x5c7b23d386ff622c7f7a4e7a95d5c7a67b10a00d"
+      "registry": "0xa7ae171c78f06c248a9b2556c793aa1df5c9173a"
     }
   },
   "dependencies": {

@@ -44,7 +44,7 @@ export default function HomePage() {
                                 value={query}
                                 onChange={setQuery}
                                 onSubmit={handleSearch}
-                                placeholder="Search contracts, authors, descriptions..."
+                                placeholder="Search @org/package names..."
                                 ariaLabel="Search contracts"
                             />
                         </div>

@@ -1,6 +1,12 @@
 import type { Package, AbiEntry } from "./types";
 import type { RegistryContract } from "../context/network-context";
 
+export interface ContractNameSearchPage {
+    names: string[];
+    nextOffset: number;
+    done: boolean;
+}
+
 export function unwrapOption<T>(val: unknown): T | undefined {
     if (val && typeof val === "object" && "isSome" in val) {
         const opt = val as { isSome: boolean; value: T };
@@ -32,6 +38,43 @@ export async function queryContractByName(
             : undefined,
         metadataLoaded: false,
     };
+}
+
+function parseSearchPage(value: unknown): ContractNameSearchPage {
+    if (Array.isArray(value)) {
+        return {
+            names: Array.isArray(value[0]) ? value[0] : [],
+            nextOffset: Number(value[1] ?? 0),
+            done: Boolean(value[2]),
+        };
+    }
+
+    if (value && typeof value === "object") {
+        const page = value as {
+            names?: unknown;
+            next_offset?: unknown;
+            nextOffset?: unknown;
+            done?: unknown;
+        };
+        return {
+            names: Array.isArray(page.names) ? (page.names as string[]) : [],
+            nextOffset: Number(page.next_offset ?? page.nextOffset ?? 0),
+            done: Boolean(page.done),
+        };
+    }
+
+    return { names: [], nextOffset: 0, done: true };
+}
+
+export async function queryContractNamesByPrefix(
+    registry: RegistryContract,
+    prefix: string,
+    offset: number,
+    limit: number,
+): Promise<ContractNameSearchPage> {
+    const result = await registry.searchContractNames.query(prefix, offset, limit);
+    if (!result.success) throw new Error("Failed to search contract names");
+    return parseSearchPage(result.value);
 }
 
 export function metadataCidFromUri(uri: string | undefined): string | undefined {
