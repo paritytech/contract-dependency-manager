@@ -1,18 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { useNetwork } from "../context/NetworkContext";
+import { useNetwork } from "../context/useNetwork";
+import { queryBulletinJson } from "../data/bulletin-client";
 import type { Package } from "../data/types";
-import { connectIpfsGateway } from "@dotdm/env";
-import { queryContractByName, parseMetadata } from "../data/registry-queries";
+import { queryContractByName, parseMetadata, metadataCidFromUri } from "../data/registry-queries";
+import { withTimeout } from "../data/timeout";
 
 export function usePackage(name: string | undefined) {
-    const {
-        registry,
-        connected,
-        connecting,
-        error: networkError,
-        network,
-        ipfsGatewayUrl,
-    } = useNetwork();
+    const { registry, connected, connecting, error: networkError, networkConfig } = useNetwork();
 
     const [pkg, setPkg] = useState<Package | null>(null);
     const [loading, setLoading] = useState(true);
@@ -37,7 +31,10 @@ export function usePackage(name: string | undefined) {
         let cancelled = false;
         (async () => {
             try {
-                const result = await queryContractByName(registry, name);
+                const result = await withTimeout(
+                    queryContractByName(registry, name),
+                    `Registry package query timed out for ${name}.`,
+                );
                 if (cancelled) return;
                 if (!result) {
                     setNotFound(true);
@@ -58,18 +55,21 @@ export function usePackage(name: string | undefined) {
     }, [registry, connected, name]);
 
     // Phase 2: IPFS metadata enrichment
+    const pkgName = pkg?.name;
+    const metadataUri = pkg?.metadataUri;
+    const metadataLoaded = pkg?.metadataLoaded;
+
     useEffect(() => {
-        if (!pkg || !ipfsGatewayUrl || pkg.metadataLoaded) return;
-        if (!pkg.metadataUri || pkg.metadataUri.includes(":")) {
+        if (!pkgName || metadataLoaded) return;
+        const cid = metadataCidFromUri(metadataUri);
+        if (!cid) {
             setPkg((prev) => (prev ? { ...prev, metadataLoaded: true } : null));
             return;
         }
 
         let cancelled = false;
-        connectIpfsGateway(ipfsGatewayUrl)
-            .fetch(pkg.metadataUri)
-            .then((r) => r.json())
-            .then((metadata: any) => {
+        queryBulletinJson(networkConfig.productSdkEnvironment, cid)
+            .then((metadata) => {
                 if (!cancelled)
                     setPkg((prev) => (prev ? { ...prev, ...parseMetadata(metadata) } : null));
             })
@@ -80,7 +80,13 @@ export function usePackage(name: string | undefined) {
         return () => {
             cancelled = true;
         };
-    }, [pkg?.name, pkg?.metadataUri, pkg?.metadataLoaded, ipfsGatewayUrl]);
+    }, [pkgName, metadataUri, metadataLoaded, networkConfig.productSdkEnvironment]);
 
-    return { pkg, loading: loading || connecting, notFound, error: networkError ?? error, network };
+    return {
+        pkg,
+        loading: loading || connecting,
+        notFound,
+        error: networkError ?? error,
+        networkConfig,
+    };
 }

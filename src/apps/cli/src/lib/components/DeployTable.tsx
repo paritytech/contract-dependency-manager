@@ -11,6 +11,7 @@ import {
     Done,
     Failed,
     Cached,
+    LogTail,
     truncateAddress,
     shortHash,
     pjsExplorerUrl,
@@ -216,6 +217,8 @@ export interface DeployTableProps {
     assethubUrl?: string;
     bulletinUrl?: string;
     ipfsGatewayUrl?: string;
+    logLines?: string[];
+    logHeight?: number;
 }
 
 export function DeployTable({
@@ -225,6 +228,8 @@ export function DeployTable({
     buildOnly,
     assethubUrl,
     ipfsGatewayUrl,
+    logLines = [],
+    logHeight = 5,
 }: DeployTableProps) {
     const [tick, setTick] = useState(0);
 
@@ -233,18 +238,28 @@ export function DeployTable({
         return () => clearInterval(timer);
     }, []);
 
-    // Collect errors for display below table
-    const errors: { name: string; error: string }[] = [];
-    for (const crate of crates) {
+    const rowCrates = [
+        ...crates,
+        ...Array.from(statuses.keys()).filter((crate) => !crates.includes(crate)),
+    ];
+
+    // Collect and group errors for display below table. Toolchain-level
+    // failures often apply to every contract in a build batch, and printing
+    // the same stderr once per row makes the TUI unusable.
+    const errorGroups = new Map<string, string[]>();
+    for (const crate of rowCrates) {
         const s = statuses.get(crate);
         if (s?.state === "error" && s.error) {
-            errors.push({ name: displayNames.get(crate) ?? crate, error: s.error });
+            const names = errorGroups.get(s.error) ?? [];
+            names.push(displayNames.get(crate) ?? crate);
+            errorGroups.set(s.error, names);
         }
     }
+    const errors = [...errorGroups].map(([error, names]) => ({ error, names }));
 
     return (
         <Box flexDirection="column" marginTop={1}>
-            {crates.map((crate) => (
+            {rowCrates.map((crate) => (
                 <ContractRow
                     key={crate}
                     name={displayNames.get(crate) ?? crate}
@@ -255,11 +270,12 @@ export function DeployTable({
                     ipfsGatewayUrl={ipfsGatewayUrl}
                 />
             ))}
+            {logLines.length > 0 && <LogTail lines={logLines} height={logHeight} />}
             {errors.length > 0 && (
                 <Box flexDirection="column" marginTop={1}>
-                    {errors.map(({ name, error }) => (
-                        <Box key={name} flexDirection="column">
-                            <Text color="red">{name}:</Text>
+                    {errors.map(({ names, error }) => (
+                        <Box key={`${names.join(",")}:${error}`} flexDirection="column">
+                            <Text color="red">{formatErrorNames(names)}:</Text>
                             <Text>{error}</Text>
                         </Box>
                     ))}
@@ -267,4 +283,11 @@ export function DeployTable({
             )}
         </Box>
     );
+}
+
+function formatErrorNames(names: string[]): string {
+    if (names.length === 1) return names[0]!;
+    const preview = names.slice(0, 3).join(", ");
+    const suffix = names.length > 3 ? ", ..." : "";
+    return `${names.length} contracts (${preview}${suffix})`;
 }

@@ -8,17 +8,14 @@
     "build:frontend": "tsc -b && vite build",
     "build:contracts": "cdm build",
     "deploy": "cdm deploy -n paseo",
-    "preview": "vite preview",
-    "postinstall": "papi"
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@parity/product-sdk-bulletin": "^0.3.0",
-    "@parity/product-sdk-chain-client": "^0.3.0",
-    "@parity/product-sdk-contracts": "^0.2.2",
-    "@parity/product-sdk-signer": "^0.2.2",
-    "@parity/product-sdk-tx": "^0.2.1",
-    "@polkadot-api/descriptors": "file:.papi/descriptors",
-    "@polkadot-api/sdk-ink": "^0.7.0",
+    "@parity/product-sdk-bulletin": "^0.4.1",
+    "@parity/product-sdk-chain-client": "^0.4.1",
+    "@parity/product-sdk-contracts": "^0.5.0",
+    "@parity/product-sdk-descriptors": "^0.4.0",
+    "@parity/product-sdk-signer": "^0.2.4",
     "polkadot-api": "^2.1.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

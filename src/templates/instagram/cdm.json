@@ -1,21 +1,21 @@
 {
   "targets": {
-    "4a1a07609215b417": {
-      "asset-hub": "wss://asset-hub-paseo-rpc.n.dwellir.com",
-      "bulletin": "https://paseo-ipfs.polkadot.io/ipfs",
-      "registry": "0xae344f7f0f91d3a2176032af2990abcc7606c7d4"
+    "8e7e0cf0a51d8e5e": {
+      "asset-hub": "wss://paseo-asset-hub-next-rpc.polkadot.io",
+      "bulletin": "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs",
+      "registry": "0xa7ae171c78f06c248a9b2556c793aa1df5c9173a"
     }
   },
   "dependencies": {
-    "4a1a07609215b417": {
+    "8e7e0cf0a51d8e5e": {
       "@example/instagram": "latest"
     }
   },
   "contracts": {
-    "4a1a07609215b417": {
+    "8e7e0cf0a51d8e5e": {
       "@example/instagram": {
-        "version": 0,
-        "address": "0x90A7b2DcdE1bB922d81b20869E0a48a7D7DA092A",
+        "version": 1,
+        "address": "0x6469272A4c5b91cA3c8317410576795fBC78D73A",
         "abi": [
           {
             "type": "constructor",
@@ -125,7 +125,7 @@
             "stateMutability": "view"
           }
         ],
-        "metadataCid": "bafk2bzacebm65fmgb4flzblexv5cxzla62omm6tki244oqauljim7kuetj6m4"
+        "metadataCid": "bafk2bzacebnoogpudglgs4r5yg3lf3ui6wyxv5ci4mt5rqidf6t55glpajpvs"
       }
     }
   }

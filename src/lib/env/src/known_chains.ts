@@ -1,12 +1,13 @@
 import { BULLETIN_RPCS } from "@parity/product-sdk-host";
 import { REGISTRY_ADDRESS } from "@dotdm/utils";
+import { getRegistryAddress, type ProductSdkEnvironment } from "./registry";
 
 export interface ChainFaucet {
     label: string;
     url: string;
 }
 
-export type ProductSdkEnvironment = "paseo" | "previewnet";
+export type { ProductSdkEnvironment };
 
 export interface ChainPreset {
     assethubUrl: string;
@@ -17,7 +18,10 @@ export interface ChainPreset {
     faucets?: readonly ChainFaucet[];
 }
 
-const PREVIEW_NET_REGISTRY_ADDRESS = "0x5c7b23d386ff622c7f7a4e7a95d5c7a67b10a00d";
+// Keep these aligned with product-sdk's `getChainAPI("paseo")` preset. Product-sdk
+// exports Bulletin RPCs, but not the Asset Hub RPC or HTTP gateway constants.
+const PASEO_ASSET_HUB_URL = "wss://paseo-asset-hub-next-rpc.polkadot.io";
+const PASEO_IPFS_GATEWAY_URL = "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs";
 
 const KNOWN_CHAINS = {
     polkadot: {
@@ -27,10 +31,10 @@ const KNOWN_CHAINS = {
         registryAddress: REGISTRY_ADDRESS,
     },
     paseo: {
-        assethubUrl: "wss://asset-hub-paseo-rpc.n.dwellir.com",
+        assethubUrl: PASEO_ASSET_HUB_URL,
         bulletinUrl: BULLETIN_RPCS.paseo[0],
-        ipfsGatewayUrl: "https://paseo-ipfs.polkadot.io/ipfs",
-        registryAddress: REGISTRY_ADDRESS,
+        ipfsGatewayUrl: PASEO_IPFS_GATEWAY_URL,
+        registryAddress: getRegistryAddress("paseo"),
         productSdkEnvironment: "paseo",
         faucets: [
             { label: "Asset Hub", url: "https://faucet.polkadot.io/" },
@@ -45,8 +49,8 @@ const KNOWN_CHAINS = {
         // TEMPORARY_PATCH! Preview-net's IPFS gateway does not currently serve Bulletin CIDs,
         // so CDM stores preview-net metadata on Paseo Bulletin for now.
         bulletinUrl: BULLETIN_RPCS.paseo[0],
-        ipfsGatewayUrl: "https://paseo-ipfs.polkadot.io/ipfs",
-        registryAddress: PREVIEW_NET_REGISTRY_ADDRESS,
+        ipfsGatewayUrl: PASEO_IPFS_GATEWAY_URL,
+        registryAddress: getRegistryAddress("preview-net"),
         productSdkEnvironment: "previewnet",
     },
     local: {
@@ -61,6 +65,7 @@ export type KnownChainName = keyof typeof KNOWN_CHAINS;
 
 export function normalizeChainName(name: string): KnownChainName | "custom" | undefined {
     if (name === "previewnet") return "preview-net";
+    if (name === "paseo-next-v2" || name === "paseo-v2") return "paseo";
     if (name === "preview-net" || name === "paseo" || name === "polkadot" || name === "local") {
         return name;
     }

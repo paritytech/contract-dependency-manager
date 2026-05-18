@@ -19,6 +19,7 @@ import {
     getChainPreset,
     ss58Address,
 } from "@dotdm/env";
+import { CONTRACTS_REGISTRY_PACKAGE } from "@dotdm/utils";
 import { getAccount } from "@dotdm/utils/accounts";
 import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@dotdm/contracts";
 
@@ -38,6 +39,7 @@ if (opts.name) {
     assethubUrl = assethubUrl ?? preset?.assethubUrl;
 }
 const selectedRegistryAddress = opts["registry-address"] ?? preset?.registryAddress;
+const hasExplicitRegistryAddress = Boolean(opts["registry-address"]);
 if (!assethubUrl) {
     console.error("Error: --assethub-url or --name is required");
     process.exit(1);
@@ -83,9 +85,24 @@ try {
     // already mapped
 }
 
-const CDM_REGISTRY_PACKAGE = "@cdm/registry";
-const expected = await deployer.dryRunDeploy(pvmPath, CDM_REGISTRY_PACKAGE);
+const expected = await deployer.dryRunDeploy(pvmPath, CONTRACTS_REGISTRY_PACKAGE);
+
+if (selectedRegistryAddress) {
+    const info = await chainClient.assetHub.query.Revive.AccountInfoOf.getValue(
+        selectedRegistryAddress as `0x${string}`,
+    );
+    if (info?.account_type.type === "Contract") {
+        if (expected.address.toLowerCase() === selectedRegistryAddress.toLowerCase()) {
+            console.log(`ContractRegistry already deployed at ${selectedRegistryAddress}`);
+            console.log(`\nCONTRACTS_REGISTRY_ADDR=${selectedRegistryAddress}`);
+            chainClient.destroy();
+            process.exit(0);
+        }
+    }
+}
+
 if (
+    hasExplicitRegistryAddress &&
     selectedRegistryAddress &&
     expected.address.toLowerCase() !== selectedRegistryAddress.toLowerCase()
 ) {
@@ -99,9 +116,30 @@ if (
     process.exit(1);
 }
 
+const expectedInfo = await chainClient.assetHub.query.Revive.AccountInfoOf.getValue(
+    expected.address as `0x${string}`,
+);
+if (expectedInfo?.account_type.type === "Contract") {
+    console.log(`ContractRegistry already deployed at ${expected.address}`);
+    console.log(`\nCONTRACTS_REGISTRY_ADDR=${expected.address}`);
+    chainClient.destroy();
+    process.exit(0);
+}
+
+if (
+    !hasExplicitRegistryAddress &&
+    selectedRegistryAddress &&
+    expected.address.toLowerCase() !== selectedRegistryAddress.toLowerCase()
+) {
+    console.warn(
+        `Selected preset currently points at ${selectedRegistryAddress}, but this deployment will create ${expected.address}.`,
+    );
+    console.warn("Update the preset registry address after deployment.");
+}
+
 // Deploy with CREATE2 for deterministic address
-console.log(`Deploying ContractRegistry (CREATE2 salt: "${CDM_REGISTRY_PACKAGE}")...`);
-const { address } = await deployer.deploy(pvmPath, CDM_REGISTRY_PACKAGE);
+console.log(`Deploying ContractRegistry (CREATE2 salt: "${CONTRACTS_REGISTRY_PACKAGE}")...`);
+const { address } = await deployer.deploy(pvmPath, CONTRACTS_REGISTRY_PACKAGE);
 console.log(`\nCONTRACTS_REGISTRY_ADDR=${address}`);
 
 chainClient.destroy();

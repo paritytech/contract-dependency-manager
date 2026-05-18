@@ -1,152 +1,100 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
-import { createClient, type HexString, type PolkadotClient } from "polkadot-api";
-import { getWsProvider } from "polkadot-api/ws";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    createContractFromClient,
-    type Contract,
-    type ContractDef,
-} from "@parity/product-sdk-contracts";
+    destroyAll,
+    getChainAPI,
+    isInsideContainer,
+    type ChainClient,
+    type PresetChains,
+} from "@parity/product-sdk-chain-client";
+import { createContract, createContractRuntimeFromClient } from "@parity/product-sdk-contracts";
+import type { ContractRuntime } from "@parity/product-sdk-contracts";
 import { CONTRACTS_REGISTRY_ABI } from "@dotdm/contracts/abi";
-import { getChainPreset, REGISTRY_ADDRESS, type ChainPreset } from "@dotdm/env";
 import { ALICE_SS58 } from "@dotdm/utils";
+import {
+    DEFAULT_NETWORK,
+    NETWORKS,
+    NETWORK_OPTIONS,
+    type NetworkConfig,
+    type NetworkKey,
+} from "../config/networks";
+import { withTimeout } from "../data/timeout";
+import { NetworkContext, type RegistryContract } from "./network-context";
 
-const NETWORK_PRESETS: Record<string, ChainPreset> = {
-    polkadot: getChainPreset("polkadot"),
-    paseo: getChainPreset("paseo"),
-    "preview-net": getChainPreset("preview-net"),
-    local: getChainPreset("local"),
-    custom: {
-        assethubUrl: "",
-        bulletinUrl: "",
-        ipfsGatewayUrl: "",
-        registryAddress: REGISTRY_ADDRESS,
-    },
-};
-
-export type RegistryContract = Contract<ContractDef>;
-
-interface NetworkContextType {
-    network: string;
-    setNetwork: (name: string) => void;
-    assethubUrl: string;
-    bulletinUrl: string;
-    ipfsGatewayUrl: string;
-    registryAddress: string;
-    setAssethubUrl: (url: string) => void;
-    setBulletinUrl: (url: string) => void;
-    setIpfsGatewayUrl: (url: string) => void;
-    setRegistryAddress: (address: string) => void;
-    registry: RegistryContract | null;
-    connected: boolean;
-    connecting: boolean;
-    error: string | null;
-}
-
-const NetworkContext = createContext<NetworkContextType | null>(null);
-
-export function useNetwork(): NetworkContextType {
-    const ctx = useContext(NetworkContext);
-    if (!ctx) throw new Error("useNetwork must be used within a NetworkProvider");
-    return ctx;
-}
+type ProductChainClient = ChainClient<PresetChains<NetworkConfig["productSdkEnvironment"]>>;
+const CONNECTION_TIMEOUT_MS = 20_000;
 
 export function NetworkProvider({ children }: { children: React.ReactNode }) {
-    const [network, setNetworkState] = useState("paseo");
-    const [assethubUrl, setAssethubUrl] = useState(NETWORK_PRESETS["paseo"].assethubUrl);
-    const [bulletinUrl, setBulletinUrl] = useState(NETWORK_PRESETS["paseo"].bulletinUrl);
-    const [ipfsGatewayUrl, setIpfsGatewayUrl] = useState(NETWORK_PRESETS["paseo"].ipfsGatewayUrl);
-    const [registryAddress, setRegistryAddress] = useState(
-        NETWORK_PRESETS["paseo"].registryAddress ?? REGISTRY_ADDRESS,
-    );
+    const [network, setNetworkState] = useState<NetworkKey>(DEFAULT_NETWORK);
     const [registry, setRegistry] = useState<RegistryContract | null>(null);
     const [connected, setConnected] = useState(false);
     const [connecting, setConnecting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const clientRef = useRef<PolkadotClient | null>(null);
+    const networkConfig = NETWORKS[network];
 
-    const setNetwork = useCallback((name: string) => {
+    const setNetwork = useCallback((name: NetworkKey) => {
         setNetworkState(name);
-        const preset = NETWORK_PRESETS[name];
-        if (preset) {
-            setAssethubUrl(preset.assethubUrl);
-            setBulletinUrl(preset.bulletinUrl);
-            setIpfsGatewayUrl(preset.ipfsGatewayUrl);
-            setRegistryAddress(preset.registryAddress ?? REGISTRY_ADDRESS);
-        }
+        setConnecting(true);
+        setConnected(false);
+        setRegistry(null);
+        setError(null);
     }, []);
 
     useEffect(() => {
-        if (!assethubUrl) {
-            setRegistry(null);
-            setConnected(false);
-            setError(null);
-            return;
-        }
-
         const abort = new AbortController();
+        let client: ProductChainClient | null = null;
 
         const connect = async () => {
-            // Clean up previous connection
-            if (clientRef.current) {
-                clientRef.current.destroy();
-                clientRef.current = null;
-            }
-
             setConnecting(true);
             setConnected(false);
             setError(null);
             setRegistry(null);
 
             try {
-                const client = createClient(getWsProvider(assethubUrl));
-                clientRef.current = client;
+                if (!(await isInsideContainer())) {
+                    throw new Error(
+                        "Host provider unavailable. Open Contract Hub inside Polkadot Desktop.",
+                    );
+                }
 
-                // Verify the connection actually works by fetching chain spec with a timeout.
-                // getWsProvider silently retries forever, so without this the UI would just
-                // spin indefinitely when the node is unreachable.
-                const CONNECTION_TIMEOUT_MS = 15_000;
-                await Promise.race([
-                    client.getChainSpecData(),
-                    new Promise<never>((_, reject) => {
-                        const tid = setTimeout(
-                            () =>
-                                reject(
-                                    new Error(
-                                        `Connection to ${assethubUrl} timed out after ${CONNECTION_TIMEOUT_MS / 1000}s`,
-                                    ),
-                                ),
-                            CONNECTION_TIMEOUT_MS,
-                        );
-                        abort.signal.addEventListener("abort", () => {
-                            clearTimeout(tid);
-                            reject(new Error("aborted"));
-                        });
-                    }),
-                ]);
+                client = (await withTimeout(
+                    getChainAPI(networkConfig.productSdkEnvironment),
+                    `Connection to ${networkConfig.label} timed out after ${CONNECTION_TIMEOUT_MS / 1000}s.`,
+                    CONNECTION_TIMEOUT_MS,
+                    abort.signal,
+                )) as ProductChainClient;
+                if (abort.signal.aborted) {
+                    client.destroy();
+                    return;
+                }
 
-                if (abort.signal.aborted) return;
-
-                const reg = await createContractFromClient(
-                    client,
-                    registryAddress as HexString,
+                const runtime: ContractRuntime = createContractRuntimeFromClient(
+                    client.raw.assetHub,
+                    networkConfig.assetHubDescriptor,
+                );
+                const reg = createContract(
+                    runtime,
+                    networkConfig.registryAddress,
                     CONTRACTS_REGISTRY_ABI,
                     { defaultOrigin: ALICE_SS58 },
                 );
 
-                if (abort.signal.aborted) return;
+                if (abort.signal.aborted) {
+                    client.destroy();
+                    return;
+                }
 
                 setRegistry(reg);
                 setConnected(true);
-                setConnecting(false);
             } catch (err) {
                 if (!abort.signal.aborted) {
-                    // Clean up the failed client so it stops retrying
-                    if (clientRef.current) {
-                        clientRef.current.destroy();
-                        clientRef.current = null;
-                    }
+                    client?.destroy();
+                    client = null;
+                    destroyAll();
                     setError(err instanceof Error ? err.message : "Connection failed");
+                }
+            } finally {
+                if (!abort.signal.aborted) {
                     setConnecting(false);
                 }
             }
@@ -156,35 +104,24 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
 
         return () => {
             abort.abort();
-            if (clientRef.current) {
-                clientRef.current.destroy();
-                clientRef.current = null;
-            }
+            client?.destroy();
         };
-    }, [assethubUrl, registryAddress]);
+    }, [networkConfig]);
 
-    return (
-        <NetworkContext.Provider
-            value={{
-                network,
-                setNetwork,
-                assethubUrl,
-                bulletinUrl,
-                ipfsGatewayUrl,
-                registryAddress,
-                setAssethubUrl,
-                setBulletinUrl,
-                setIpfsGatewayUrl,
-                setRegistryAddress,
-                registry,
-                connected,
-                connecting,
-                error,
-            }}
-        >
-            {children}
-        </NetworkContext.Provider>
+    const value = useMemo(
+        () => ({
+            network,
+            networkConfig,
+            networks: NETWORK_OPTIONS,
+            setNetwork,
+            registryAddress: networkConfig.registryAddress,
+            registry,
+            connected,
+            connecting,
+            error,
+        }),
+        [network, networkConfig, setNetwork, registry, connected, connecting, error],
     );
-}
 
-export { NETWORK_PRESETS };
+    return <NetworkContext.Provider value={value}>{children}</NetworkContext.Provider>;
+}

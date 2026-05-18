@@ -1,5 +1,36 @@
 # @dotdm/env
 
+## 1.0.6
+
+### Patch Changes
+
+- 83696a6: Add registry package-name search support and fix redeploying CDM packages against fresh registry deployments.
+
+  `@dotdm/contracts` now includes the registry `searchContractNames` ABI, scopes package deployment salts by registry address, and avoids dry-running dependent layers before prior layers have been registered. `@dotdm/utils` exposes the registry package salt constant used by deploy scripts and bootstrap deploys. `@dotdm/env` points presets at the redeployed registry address.
+
+- Updated dependencies [83696a6]
+  - @dotdm/utils@0.3.2
+
+## 1.0.5
+
+### Patch Changes
+
+- c12538f: Add a lightweight registry export for frontend consumers.
+
+## 1.0.4
+
+### Patch Changes
+
+- 32ed48b: Use the Paseo v2 Bulletin IPFS gateway path that actually serves CIDs.
+
+## 1.0.3
+
+### Patch Changes
+
+- 0ef910a: Update CDM's Paseo preset to Paseo Next v2 and upgrade product-sdk packages to the 0.4 release line. Contract registry handles now pass product-sdk descriptors into the 0.4 contract runtime factories, and batched registry publishes await async `.prepare()` calls.
+
+  The Paseo preset now points at the ContractRegistry deployed on Paseo Next v2, and `make deploy-registry` refreshes local package builds before running the deployment script. Re-running `deploy-registry` exits successfully when the selected registry is already deployed.
+
 ## 1.0.2
 
 ### Patch Changes

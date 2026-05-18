@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 980" font-family="-apple-system, system-ui, sans-serif" font-size="13">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrowThick" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrowDashed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#888"/>
+    </marker>
+    <!-- Document/artifact icon (folded corner) -->
+    <symbol id="docIcon" viewBox="0 0 20 24">
+      <path d="M2 2 L13 2 L18 7 L18 22 L2 22 Z" fill="currentColor" opacity="0.15"/>
+      <path d="M2 2 L13 2 L18 7 L18 22 L2 22 Z M13 2 L13 7 L18 7" stroke="currentColor" stroke-width="1.5" fill="none"/>
+    </symbol>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="1400" height="980" rx="16" ry="16" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="700" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0F172A">Publish pipeline</text>
+  <text x="700" y="64" text-anchor="middle" font-size="14" fill="#64748B"><tspan font-family="ui-monospace, Menlo, monospace">cdm build</tspan>  →  <tspan font-family="ui-monospace, Menlo, monospace">cdm deploy</tspan>  →  registry + bulletin</text>
+
+  <!-- =============================================================== -->
+  <!-- ① BUILD — multi-language convergence                            -->
+  <!-- =============================================================== -->
+
+  <!-- big stage label -->
+  <text x="60" y="120" font-size="28" font-weight="800" fill="#D97706">①</text>
+  <text x="100" y="120" font-size="20" font-weight="700" fill="#92400E" letter-spacing="2">BUILD</text>
+  <text x="100" y="142" font-size="11" fill="#A16207">detect toolchain → produce unified artifact shape</text>
+
+  <!-- 3 horizontal lanes for toolchains -->
+  <!-- Lane 1: Rust -->
+  <g>
+    <!-- toolchain badge (pill) -->
+    <rect x="60" y="170" width="105" height="34" rx="17" fill="#FEF3C7" stroke="#D97706" stroke-width="2"/>
+    <text x="112" y="192" text-anchor="middle" font-weight="700" font-size="13" fill="#92400E">Rust / PVM</text>
+
+    <!-- detect criterion -->
+    <text x="180" y="183" font-size="10" font-style="italic" fill="#A16207">if</text>
+    <text x="200" y="183" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#78350F">Cargo.toml ⊃ pvm_contract</text>
+
+    <!-- arrow -->
+    <line x1="180" y1="196" x2="380" y2="196" stroke="#D97706" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <!-- build command pill -->
+    <rect x="385" y="178" width="230" height="36" rx="6" fill="#FDE68A" stroke="#D97706" stroke-width="2"/>
+    <text x="500" y="201" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="12" font-weight="600" fill="#92400E">cargo pvm-contract build</text>
+
+    <!-- arrow -->
+    <line x1="620" y1="196" x2="700" y2="196" stroke="#D97706" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <!-- artifact -->
+    <g color="#92400E">
+      <use href="#docIcon" x="710" y="174" width="20" height="24"/>
+    </g>
+    <text x="740" y="192" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#78350F">target/&lt;crate&gt;.release.polkavm</text>
+    <text x="740" y="206" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#78350F">target/&lt;crate&gt;.release.cdm.json</text>
+
+    <!-- status pip -->
+    <circle cx="1080" cy="196" r="6" fill="#16A34A"/>
+    <text x="1095" y="200" font-size="11" font-weight="600" fill="#15803D">implemented</text>
+  </g>
+
+  <!-- Lane 2: Foundry -->
+  <g>
+    <rect x="60" y="226" width="105" height="34" rx="17" fill="#CFFAFE" stroke="#0891B2" stroke-width="2"/>
+    <text x="112" y="248" text-anchor="middle" font-weight="700" font-size="13" fill="#155E75">Foundry</text>
+
+    <text x="180" y="239" font-size="10" font-style="italic" fill="#0E7490">if</text>
+    <text x="200" y="239" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#155E75">foundry.toml present</text>
+
+    <line x1="180" y1="252" x2="380" y2="252" stroke="#0891B2" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="385" y="234" width="230" height="36" rx="6" fill="#A5F3FC" stroke="#0891B2" stroke-width="2"/>
+    <text x="500" y="257" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="12" font-weight="600" fill="#155E75">forge build --resolc</text>
+
+    <line x1="620" y1="252" x2="700" y2="252" stroke="#0891B2" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <g color="#155E75">
+      <use href="#docIcon" x="710" y="230" width="20" height="24"/>
+    </g>
+    <text x="740" y="248" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#155E75">out/&lt;Contract&gt;.sol/&lt;Contract&gt;.json</text>
+    <text x="740" y="262" font-size="10" fill="#0E7490">bytecode in <tspan font-family="ui-monospace, Menlo, monospace">.bytecode.object</tspan></text>
+
+    <circle cx="1080" cy="252" r="6" fill="#F59E0B"/>
+    <text x="1095" y="256" font-size="11" font-weight="600" fill="#B45309">build OK · adapter TODO</text>
+  </g>
+
+  <!-- Lane 3: Hardhat -->
+  <g>
+    <rect x="60" y="282" width="105" height="34" rx="17" fill="#EDE9FE" stroke="#7C3AED" stroke-width="2"/>
+    <text x="112" y="304" text-anchor="middle" font-weight="700" font-size="13" fill="#5B21B6">Hardhat</text>
+
+    <text x="180" y="295" font-size="10" font-style="italic" fill="#6D28D9">if</text>
+    <text x="200" y="295" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#5B21B6">hardhat.config.{ts,js,cjs,mjs}</text>
+
+    <line x1="180" y1="308" x2="380" y2="308" stroke="#7C3AED" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="385" y="290" width="230" height="36" rx="6" fill="#DDD6FE" stroke="#7C3AED" stroke-width="2"/>
+    <text x="500" y="313" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="12" font-weight="600" fill="#5B21B6">npx hardhat compile</text>
+
+    <line x1="620" y1="308" x2="700" y2="308" stroke="#7C3AED" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <g color="#5B21B6">
+      <use href="#docIcon" x="710" y="286" width="20" height="24"/>
+    </g>
+    <text x="740" y="304" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#5B21B6">artifacts/contracts/**/*.json</text>
+    <text x="740" y="318" font-size="10" fill="#6D28D9">requires <tspan font-family="ui-monospace, Menlo, monospace">@parity/hardhat-polkadot</tspan></text>
+
+    <circle cx="1080" cy="308" r="6" fill="#F59E0B"/>
+    <text x="1095" y="312" font-size="11" font-weight="600" fill="#B45309">build OK · adapter TODO</text>
+  </g>
+
+  <!-- Section divider — visual break between BUILD and the "pass artifacts down" -->
+  <line x1="100" y1="355" x2="1340" y2="355" stroke="#E2E8F0" stroke-width="1"/>
+
+  <!-- Centered note describing the unified shape -->
+  <text x="700" y="385" text-anchor="middle" font-weight="600" font-size="13" fill="#1E293B">extract → unified artifact</text>
+  <text x="700" y="404" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">{ bytecode, cdmPackage, abi, deps, metadataFields }</text>
+  <text x="700" y="423" text-anchor="middle" font-size="10" font-style="italic" fill="#64748B">cdmPackage source: __PVM_CDM ELF symbol (Rust) · TODO for Solidity</text>
+
+  <!-- Single down arrow from build section to plan, centered -->
+  <line x1="700" y1="435" x2="700" y2="475" stroke="#333" stroke-width="2.5" marker-end="url(#arrowThick)"/>
+
+  <!-- =============================================================== -->
+  <!-- ② PLAN                                                          -->
+  <!-- =============================================================== -->
+  <text x="60" y="486" font-size="28" font-weight="800" fill="#475569">②</text>
+  <text x="100" y="486" font-size="20" font-weight="700" fill="#334155" letter-spacing="2">PLAN</text>
+  <text x="100" y="508" font-size="11" fill="#64748B">order contracts &amp; size each chunk</text>
+
+  <!-- Plan flow: 4 chevrons horizontally -->
+  <g font-size="12" font-weight="600" fill="#1E293B">
+    <!-- chevron 1 -->
+    <polygon points="380,485 540,485 560,515 540,545 380,545 400,515" fill="#F1F5F9" stroke="#475569" stroke-width="1.5"/>
+    <text x="470" y="510" text-anchor="middle">detect + toposort</text>
+    <text x="470" y="528" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="10" font-weight="400" fill="#475569">→ layers[][]</text>
+
+    <!-- chevron 2 -->
+    <polygon points="580,485 740,485 760,515 740,545 580,545 600,515" fill="#F1F5F9" stroke="#475569" stroke-width="1.5"/>
+    <text x="670" y="510" text-anchor="middle">dry-run all</text>
+    <text x="670" y="528" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="10" font-weight="400" fill="#475569">→ weights</text>
+
+    <!-- chevron 3 -->
+    <polygon points="780,485 940,485 960,515 940,545 780,545 800,515" fill="#F1F5F9" stroke="#475569" stroke-width="1.5"/>
+    <text x="870" y="510" text-anchor="middle">chunk by weight</text>
+    <text x="870" y="528" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="10" font-weight="400" fill="#475569">≤ max_extrinsic</text>
+
+    <!-- chevron 4 -->
+    <polygon points="980,485 1180,485 1200,515 1180,545 980,545 1000,515" fill="#E0E7FF" stroke="#4338CA" stroke-width="1.5"/>
+    <text x="1090" y="510" text-anchor="middle" fill="#312E81">precompute addresses</text>
+    <text x="1090" y="528" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="10" font-weight="400" fill="#4338CA">CREATE2 · salt = blake2b(name)</text>
+  </g>
+
+  <!-- Down arrow to submit -->
+  <line x1="700" y1="560" x2="700" y2="615" stroke="#333" stroke-width="2.5" marker-end="url(#arrowThick)"/>
+
+  <!-- =============================================================== -->
+  <!-- ③ SUBMIT                                                         -->
+  <!-- =============================================================== -->
+  <text x="60" y="630" font-size="28" font-weight="800" fill="#1D4ED8">③</text>
+  <text x="100" y="630" font-size="20" font-weight="700" fill="#1E3A8A" letter-spacing="2">SUBMIT</text>
+  <text x="100" y="652" font-size="11" fill="#1E40AF">per chunk: upload blobs → batch_all { instantiate, publish_latest }</text>
+
+  <!-- Submit composition: two phases side by side -->
+  <!-- Phase A: Bulletin upload -->
+  <g>
+    <rect x="60" y="675" width="380" height="170" rx="12" fill="#EEF2FF" stroke="#4338CA" stroke-width="2"/>
+    <text x="250" y="697" text-anchor="middle" font-weight="700" font-size="14" fill="#312E81">A · upload metadata to Bulletin</text>
+    <text x="250" y="715" text-anchor="middle" font-size="10" font-style="italic" fill="#4338CA">sequential (Bulletin nonce ordering)</text>
+
+    <!-- step glyph -->
+    <rect x="90" y="730" width="320" height="42" rx="6" fill="#FFFFFF" stroke="#4338CA" stroke-width="1"/>
+    <text x="100" y="755" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#312E81">Bulletin.put(json_blob)  →  cid</text>
+
+    <rect x="90" y="784" width="320" height="42" rx="6" fill="#FFFFFF" stroke="#4338CA" stroke-width="1"/>
+    <text x="100" y="809" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#312E81">cid = blake2b-256(blob)</text>
+    <text x="305" y="809" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#6366F1">CIDv1·base32</text>
+  </g>
+
+  <!-- arrow A → B -->
+  <line x1="445" y1="760" x2="490" y2="760" stroke="#333" stroke-width="2.5" marker-end="url(#arrowThick)"/>
+  <text x="468" y="753" text-anchor="middle" font-size="10" font-style="italic" fill="#475569">cids</text>
+
+  <!-- Phase B: Utility.batch_all -->
+  <g>
+    <rect x="495" y="675" width="510" height="170" rx="12" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="2"/>
+    <text x="750" y="697" text-anchor="middle" font-weight="700" font-size="14" fill="#1E3A8A">B · Utility.batch_all  (atomic)</text>
+    <text x="750" y="715" text-anchor="middle" font-size="10" font-style="italic" fill="#1D4ED8">for each chunk · both calls land or neither does</text>
+
+    <!-- envelope stack visualization -->
+    <rect x="525" y="730" width="450" height="42" rx="6" fill="#FFFFFF" stroke="#1D4ED8" stroke-width="1"/>
+    <text x="540" y="755" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#1E3A8A">Revive.instantiate_with_code(code, salt, data, value)</text>
+
+    <rect x="525" y="784" width="450" height="42" rx="6" fill="#FFFFFF" stroke="#1D4ED8" stroke-width="1"/>
+    <text x="540" y="809" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="#1E3A8A">Registry.publish_latest(name, addr, cid)</text>
+  </g>
+
+  <!-- Down arrows from each phase to endpoints -->
+  <line x1="250" y1="850" x2="250" y2="895" stroke="#4338CA" stroke-width="2.5" marker-end="url(#arrowThick)"/>
+  <line x1="750" y1="850" x2="750" y2="895" stroke="#1D4ED8" stroke-width="2.5" marker-end="url(#arrowThick)"/>
+
+  <!-- =============================================================== -->
+  <!-- ENDPOINTS                                                        -->
+  <!-- =============================================================== -->
+
+  <!-- Bulletin (left, matches phase A) -->
+  <g>
+    <rect x="60" y="900" width="380" height="60" rx="10" fill="#E0E7FF" stroke="#4338CA" stroke-width="2"/>
+    <text x="250" y="922" text-anchor="middle" font-weight="700" font-size="14" fill="#312E81">Bulletin</text>
+    <text x="250" y="940" text-anchor="middle" font-size="10" fill="#4338CA">content-addressed transient storage · IPFS gateway</text>
+    <text x="250" y="954" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#312E81">cid:bafy… → { metadata blob }</text>
+  </g>
+
+  <!-- ContractRegistry (right, matches phase B) -->
+  <g>
+    <rect x="495" y="900" width="510" height="60" rx="10" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="2"/>
+    <text x="750" y="922" text-anchor="middle" font-weight="700" font-size="14" fill="#1E3A8A">ContractRegistry</text>
+    <text x="750" y="940" text-anchor="middle" font-size="10" fill="#1E40AF">Asset Hub · pallet-revive · CREATE2-deployed @ "@cdm/registry"</text>
+    <text x="750" y="954" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E3A8A">"@org/foo" → 0xABC…  ·  cid:bafy…</text>
+  </g>
+
+  <!-- registry → bulletin reference (dotted, well-spaced) -->
+  <path d="M 495 935 C 478 935, 460 935, 442 935" fill="none" stroke="#888" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arrowDashed)"/>
+  <text x="448" y="925" font-size="10" font-style="italic" fill="#666">metadataCid</text>
+
+  <!-- =============================================================== -->
+  <!-- METADATA BLOB TABLE (right side, separate panel)                 -->
+  <!-- =============================================================== -->
+
+  <!-- callout label -->
+  <text x="1240" y="690" font-weight="700" font-size="13" fill="#312E81">Metadata blob</text>
+  <text x="1240" y="704" font-size="10" fill="#6366F1">↳ what cid:bafy… resolves to</text>
+
+  <!-- Table -->
+  <rect x="1040" y="715" width="340" height="245" rx="10" fill="#FFFFFF" stroke="#4338CA" stroke-width="1.5"/>
+  <!-- header -->
+  <rect x="1040" y="715" width="340" height="28" fill="#E0E7FF"/>
+  <line x1="1040" y1="743" x2="1380" y2="743" stroke="#4338CA" stroke-width="1.5"/>
+  <text x="1058" y="734" font-weight="700" font-size="12" fill="#312E81">field</text>
+  <text x="1175" y="734" font-weight="700" font-size="12" fill="#312E81">type</text>
+  <text x="1265" y="734" font-weight="700" font-size="12" fill="#312E81">source</text>
+  <line x1="1160" y1="715" x2="1160" y2="960" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1255" y1="715" x2="1255" y2="960" stroke="#C7D2FE" stroke-width="1"/>
+
+  <!-- rows: y starts at 743, height 27 each, 8 rows -->
+  <!-- R1 -->
+  <text x="1058" y="762" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">description</text>
+  <text x="1175" y="762" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">string</text>
+  <text x="1265" y="762" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">Cargo.toml</text>
+  <!-- R2 -->
+  <rect x="1040" y="770" width="340" height="27" fill="#F8FAFC"/>
+  <line x1="1160" y1="770" x2="1160" y2="797" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1255" y1="770" x2="1255" y2="797" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="1058" y="788" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">readme</text>
+  <text x="1175" y="788" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">string (md)</text>
+  <text x="1265" y="788" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">[package.readme]</text>
+  <!-- R3 -->
+  <text x="1058" y="816" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">authors</text>
+  <text x="1175" y="816" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">string[]</text>
+  <text x="1265" y="816" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">Cargo.toml</text>
+  <!-- R4 -->
+  <rect x="1040" y="824" width="340" height="27" fill="#F8FAFC"/>
+  <line x1="1160" y1="824" x2="1160" y2="851" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1255" y1="824" x2="1255" y2="851" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="1058" y="842" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">homepage</text>
+  <text x="1175" y="842" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">string</text>
+  <text x="1265" y="842" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">Cargo.toml</text>
+  <!-- R5 -->
+  <text x="1058" y="870" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">repository</text>
+  <text x="1175" y="870" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">string</text>
+  <text x="1265" y="870" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">Cargo.toml</text>
+  <!-- R6 -->
+  <rect x="1040" y="878" width="340" height="27" fill="#F8FAFC"/>
+  <line x1="1160" y1="878" x2="1160" y2="905" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1255" y1="878" x2="1255" y2="905" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="1058" y="896" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">abi</text>
+  <text x="1175" y="896" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">AbiEntry[]</text>
+  <text x="1265" y="896" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">build output</text>
+  <!-- R7 -->
+  <text x="1058" y="924" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">publish_block</text>
+  <text x="1175" y="924" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">u32</text>
+  <text x="1265" y="924" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">chain @ submit</text>
+  <!-- R8 -->
+  <rect x="1040" y="932" width="340" height="27" fill="#F8FAFC"/>
+  <line x1="1160" y1="932" x2="1160" y2="959" stroke="#C7D2FE" stroke-width="1"/>
+  <line x1="1255" y1="932" x2="1255" y2="959" stroke="#C7D2FE" stroke-width="1"/>
+  <text x="1058" y="950" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">published_at</text>
+  <text x="1175" y="950" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">ISO date</text>
+  <text x="1265" y="950" font-family="ui-monospace, Menlo, monospace" font-size="10" fill="#475569">deployer clock</text>
+
+</svg>

@@ -1,157 +1,58 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./NetworkConfig.css";
-import { useNetwork } from "../context/NetworkContext";
-
-const DISPLAY_NAMES: Record<string, string> = {
-    "preview-net": "Preview Net",
-    paseo: "Paseo",
-    polkadot: "Polkadot",
-    local: "Local",
-    custom: "Custom",
-};
-
-const NETWORK_OPTIONS = ["paseo", "preview-net", "polkadot", "local", "custom"];
+import { useNetwork } from "../context/useNetwork";
+import type { NetworkKey } from "../config/networks";
 
 export default function NetworkConfig() {
-    const {
-        network,
-        setNetwork,
-        assethubUrl,
-        bulletinUrl,
-        registryAddress,
-        setAssethubUrl,
-        setBulletinUrl,
-        setRegistryAddress,
-        connected,
-        connecting,
-    } = useNetwork();
-
+    const { network, networks, setNetwork, connected, connecting } = useNetwork();
     const [open, setOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         function handleClickOutside(e: MouseEvent) {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
                 setOpen(false);
             }
         }
-        if (open) {
-            document.addEventListener("mousedown", handleClickOutside);
-        }
+        if (open) document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [open]);
 
-    const handleSelect = (key: string) => {
-        setNetwork(key);
-    };
-
-    const showInputs = open && (network === "custom" || network === "local");
+    const active = networks.find((item) => item.key === network);
+    const others = networks.filter((item) => item.key !== network);
+    const statusModifier = connecting ? "connecting" : connected ? "connected" : "disconnected";
 
     return (
-        <div className="net-selector" ref={dropdownRef}>
+        <div className={`net-picker${open ? " net-picker--open" : ""}`} ref={containerRef}>
             <button
-                className="net-selector-trigger"
+                className="net-picker-item net-picker-current"
                 onClick={() => setOpen((v) => !v)}
                 type="button"
+                aria-expanded={open}
+                aria-haspopup="listbox"
             >
-                <span className="net-selector-name">
-                    {connecting && <span className="net-dot net-dot--connecting" />}
-                    {connected && !connecting && <span className="net-dot net-dot--connected" />}
-                    {!connected && !connecting && (
-                        <span className="net-dot net-dot--disconnected" />
-                    )}
-                    {DISPLAY_NAMES[network] ?? network}
+                <span className={`net-picker-pill net-picker-pill--${statusModifier}`}>
+                    {active?.label ?? network}
                 </span>
-                <svg
-                    className={`net-selector-chevron ${open ? "net-selector-chevron--open" : ""}`}
-                    width="14"
-                    height="14"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                >
-                    <path
-                        d="M4 6l4 4 4-4"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                    />
-                </svg>
             </button>
-
-            {open && (
-                <div className="net-selector-dropdown">
-                    <ul className="net-selector-list">
-                        {NETWORK_OPTIONS.map((key) => (
-                            <li key={key}>
-                                <button
-                                    className={`net-selector-option ${network === key ? "net-selector-option--active" : ""}`}
-                                    onClick={() => handleSelect(key)}
-                                    type="button"
-                                >
-                                    <span>{DISPLAY_NAMES[key]}</span>
-                                    {network === key && (
-                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                                            <path
-                                                d="M3 8.5l3.5 3.5L13 5"
-                                                stroke="currentColor"
-                                                strokeWidth="1.5"
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                            />
-                                        </svg>
-                                    )}
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-
-                    {showInputs && (
-                        <div className="net-selector-fields">
-                            {network === "custom" && (
-                                <>
-                                    <div className="net-selector-field">
-                                        <label className="net-selector-field-label">
-                                            AssetHub URL
-                                        </label>
-                                        <input
-                                            className="net-selector-field-input"
-                                            type="text"
-                                            value={assethubUrl}
-                                            onChange={(e) => setAssethubUrl(e.target.value)}
-                                            placeholder="ws://..."
-                                        />
-                                    </div>
-                                    <div className="net-selector-field">
-                                        <label className="net-selector-field-label">
-                                            Bulletin URL
-                                        </label>
-                                        <input
-                                            className="net-selector-field-input"
-                                            type="text"
-                                            value={bulletinUrl}
-                                            onChange={(e) => setBulletinUrl(e.target.value)}
-                                            placeholder="ws://..."
-                                        />
-                                    </div>
-                                    <div className="net-selector-field">
-                                        <label className="net-selector-field-label">
-                                            Registry Address
-                                        </label>
-                                        <input
-                                            className="net-selector-field-input"
-                                            type="text"
-                                            value={registryAddress}
-                                            onChange={(e) => setRegistryAddress(e.target.value)}
-                                            placeholder="0x..."
-                                        />
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    )}
-                </div>
-            )}
+            <div className="net-picker-others" role="listbox">
+                {others.map((item, index) => (
+                    <button
+                        key={item.key}
+                        className="net-picker-item net-picker-other"
+                        onClick={() => {
+                            setNetwork(item.key as NetworkKey);
+                            setOpen(false);
+                        }}
+                        type="button"
+                        tabIndex={open ? 0 : -1}
+                        aria-hidden={!open}
+                        style={{ transitionDelay: open ? `${index * 40}ms` : "0ms" }}
+                    >
+                        <span className="net-picker-label">{item.label}</span>
+                    </button>
+                ))}
+            </div>
         </div>
     );
 }

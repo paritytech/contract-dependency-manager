@@ -2,11 +2,14 @@ import {
   useState, useEffect, useCallback, useRef, type ReactNode,
 } from "react";
 import { getChainAPI } from "@parity/product-sdk-chain-client";
-import { ContractManager, type CdmJson } from "@parity/product-sdk-contracts";
+import {
+  ContractManager,
+  ensureContractAccountMapped,
+  type CdmJson,
+} from "@parity/product-sdk-contracts";
+import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { SignerManager, type SignerAccount, type SignerState } from "@parity/product-sdk-signer";
 import { BulletinClient, createLazySigner } from "@parity/product-sdk-bulletin";
-import { ensureAccountMapped } from "@parity/product-sdk-tx";
-import { createInkSdk } from "@polkadot-api/sdk-ink";
 import type { SizedHex } from "polkadot-api";
 import {
   useIntersectionObserver, short, ago,
@@ -22,8 +25,11 @@ const signerManager = new SignerManager({ ss58Prefix: 42, dappName: "instagram" 
 let activeProductAccount: SignerAccount | null = null;
 
 const chain = await getChainAPI("paseo");
-const inkSdk = createInkSdk(chain.raw.assetHub, { atBest: true });
-const contracts = await ContractManager.fromClient(cdmJson as CdmJson, chain.raw.assetHub);
+const contracts = ContractManager.fromClient(
+  cdmJson as CdmJson,
+  chain.raw.assetHub,
+  paseo_asset_hub,
+);
 const bulletin = await BulletinClient.create({
   environment: "paseo",
   signer: createLazySigner(() => activeProductAccount?.getSigner() ?? null),
@@ -58,7 +64,7 @@ interface UserInfo {
   postCount: number;
 }
 
-const IPFS_GATEWAY = "https://paseo-ipfs.polkadot.io/ipfs/";
+const IPFS_GATEWAY = "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs/";
 const PAGE = 8;
 
 // ---------------------------------------------------------------------------
@@ -80,11 +86,16 @@ export default function App() {
       return;
     }
     setConnectStatus("Preparing account...");
-    await ensureAccountMapped(product.value.address, product.value.getSigner(), inkSdk, chain.assetHub, {
-      onStatus: status => setConnectStatus(
-        status === "mapping" ? "Mapping account..." : "Preparing account..."
-      ),
-    });
+    await ensureContractAccountMapped(
+      contracts.getRuntime(),
+      product.value.address,
+      product.value.getSigner(),
+      {
+        onStatus: status => setConnectStatus(
+          status === "mapping" ? "Mapping account..." : "Preparing account..."
+        ),
+      },
+    );
     activeProductAccount = product.value;
     contracts.setDefaults({
       origin: product.value.address,

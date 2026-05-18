@@ -3,14 +3,22 @@
 #[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 65536)]
 mod contract_registry {
     use alloc::string::String;
+    use alloc::vec::Vec;
     use pvm_contract_sdk::{Address, HostApi, Lazy, Mapping, MappingString, SolType};
 
     pub type Version = u32;
+
+    const MAX_CONTRACT_NAME_LEN: usize = 64;
+    const MAX_SEARCH_LIMIT: u32 = 100;
 
     pvm_contract_sdk::sol_revert_enum! {
         pub enum Error {
             Unauthorized(Unauthorized),
             VersionOverflow(VersionOverflow),
+            ContractCountOverflow(ContractCountOverflow),
+            ContractNameEmpty(ContractNameEmpty),
+            ContractNameTooLong(ContractNameTooLong),
+            ContractNameInvalid(ContractNameInvalid),
         }
     }
 
@@ -19,6 +27,18 @@ mod contract_registry {
 
     #[derive(Debug, pvm_contract_sdk::SolError)]
     pub struct VersionOverflow;
+
+    #[derive(Debug, pvm_contract_sdk::SolError)]
+    pub struct ContractCountOverflow;
+
+    #[derive(Debug, pvm_contract_sdk::SolError)]
+    pub struct ContractNameEmpty;
+
+    #[derive(Debug, pvm_contract_sdk::SolError)]
+    pub struct ContractNameTooLong;
+
+    #[derive(Debug, pvm_contract_sdk::SolError)]
+    pub struct ContractNameInvalid;
 
     #[derive(Clone, SolType)]
     pub struct NamedContractInfo {
@@ -36,6 +56,26 @@ mod contract_registry {
                 version_count: 0,
             }
         }
+    }
+
+    #[derive(Clone, SolType)]
+    pub struct ContractNameSearchPage {
+        pub names: Vec<String>,
+        pub next_offset: u32,
+        pub done: bool,
+    }
+
+    fn validate_contract_name(contract_name: &str) -> Result<(), Error> {
+        if contract_name.is_empty() {
+            return Err(ContractNameEmpty.into());
+        }
+        if contract_name.len() > MAX_CONTRACT_NAME_LEN {
+            return Err(ContractNameTooLong.into());
+        }
+        if !contract_name.is_ascii() {
+            return Err(ContractNameInvalid.into());
+        }
+        Ok(())
     }
 
     pub struct ContractRegistry {
@@ -75,6 +115,8 @@ mod contract_registry {
             contract_address: Address,
             metadata_uri: String,
         ) -> Result<(), Error> {
+            validate_contract_name(&contract_name)?;
+
             let caller = self.caller();
 
             let mut info = self.info.get(&contract_name);
@@ -83,7 +125,8 @@ mod contract_registry {
                 info.owner = caller;
                 let count = self.contract_name_count.get();
                 self.contract_name_at.insert(&count, &contract_name);
-                self.contract_name_count.set(&(count + 1));
+                self.contract_name_count
+                    .set(&count.checked_add(1).ok_or(ContractCountOverflow)?);
             } else if info.owner != caller {
                 return Err(Unauthorized.into());
             }
@@ -97,6 +140,50 @@ mod contract_registry {
             self.published_metadata_uri
                 .insert(&(contract_name, version_idx), metadata_uri.as_str());
             Ok(())
+        }
+
+        /// Search registered contract names by prefix.
+        ///
+        /// The pre-sm/cdm registry used a sorted `OrderedIndex` for O(log n)
+        /// prefix lookups. The new SDK's storage layer doesn't expose ordered
+        /// indices, so this is a linear scan over `contract_name_at` (cheap
+        /// for the current registry sizes; revisit if `OrderedIndex` lands).
+        ///
+        /// Returns up to `limit` (capped at `MAX_SEARCH_LIMIT`) names matching
+        /// `prefix`, starting from name-index `offset` in registration order.
+        /// `done = true` when the scan reached the end of the registry.
+        #[pvm_contract_sdk::method]
+        pub fn search_contract_names(
+            &self,
+            prefix: String,
+            offset: u32,
+            limit: u32,
+        ) -> ContractNameSearchPage {
+            let cap = limit.min(MAX_SEARCH_LIMIT);
+            if cap == 0 || prefix.len() > MAX_CONTRACT_NAME_LEN || !prefix.is_ascii() {
+                return ContractNameSearchPage {
+                    names: Vec::new(),
+                    next_offset: offset,
+                    done: true,
+                };
+            }
+
+            let total = self.contract_name_count.get();
+            let mut names = Vec::new();
+            let mut idx = offset;
+            while idx < total && (names.len() as u32) < cap {
+                let name = self.contract_name_at.get(&idx);
+                if name.starts_with(prefix.as_str()) {
+                    names.push(name);
+                }
+                idx += 1;
+            }
+
+            ContractNameSearchPage {
+                names,
+                next_offset: idx,
+                done: idx >= total,
+            }
         }
 
         /// Address of the latest published version of `contract_name`.

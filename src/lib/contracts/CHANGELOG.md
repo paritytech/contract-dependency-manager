@@ -1,5 +1,60 @@
 # @dotdm/contracts
 
+## 2.1.3
+
+### Patch Changes
+
+- 83696a6: Add registry package-name search support and fix redeploying CDM packages against fresh registry deployments.
+
+  `@dotdm/contracts` now includes the registry `searchContractNames` ABI, scopes package deployment salts by registry address, and avoids dry-running dependent layers before prior layers have been registered. `@dotdm/utils` exposes the registry package salt constant used by deploy scripts and bootstrap deploys. `@dotdm/env` points presets at the redeployed registry address.
+
+- Updated dependencies [83696a6]
+  - @dotdm/env@1.0.6
+  - @dotdm/utils@0.3.2
+
+## 2.1.2
+
+### Patch Changes
+
+- Updated dependencies [c12538f]
+  - @dotdm/env@1.0.5
+
+## 2.1.1
+
+### Patch Changes
+
+- 40949ac: Generate local Solidity CDM build stubs before compiling Hardhat and Foundry projects, and publish richer Solidity contract metadata from NatSpec and per-contract README files.
+
+## 2.1.0
+
+### Minor Changes
+
+- ff4acdd: Generate robust Solidity CDM import files from installed contract ABIs.
+
+## 2.0.4
+
+### Patch Changes
+
+- d2867e3: Add `cdm build` support for Foundry and Hardhat Solidity projects, including reusable package APIs for toolchain detection, compilation, and normalized PolkaVM bytecode artifacts.
+
+## 2.0.3
+
+### Patch Changes
+
+- Updated dependencies [32ed48b]
+  - @dotdm/env@1.0.4
+
+## 2.0.2
+
+### Patch Changes
+
+- 0ef910a: Update CDM's Paseo preset to Paseo Next v2 and upgrade product-sdk packages to the 0.4 release line. Contract registry handles now pass product-sdk descriptors into the 0.4 contract runtime factories, and batched registry publishes await async `.prepare()` calls.
+
+  The Paseo preset now points at the ContractRegistry deployed on Paseo Next v2, and `make deploy-registry` refreshes local package builds before running the deployment script. Re-running `deploy-registry` exits successfully when the selected registry is already deployed.
+
+- Updated dependencies [0ef910a]
+  - @dotdm/env@1.0.3
+
 ## 2.0.1
 
 ### Patch Changes

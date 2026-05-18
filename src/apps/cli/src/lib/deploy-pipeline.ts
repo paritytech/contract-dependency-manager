@@ -73,6 +73,8 @@ export interface AdapterOptions {
     onCdmPackageDetected?: (crateName: string, cdmPackage: string) => void;
     /** Called when the library emits a `phase` event. */
     onPhaseChange?: (phase: PhaseInfo | null) => void;
+    /** Called when a process log line is appended to the retained tail. */
+    onLogChange?: (lines: string[]) => void;
 }
 
 /**
@@ -82,7 +84,10 @@ export interface AdapterOptions {
  * can render the table layout as soon as detection completes.
  */
 export class PipelineStatusAdapter {
+    static readonly LOG_TAIL_LINES = 5;
+
     readonly statuses = new Map<string, ContractStatus>();
+    readonly logLines: string[] = [];
     crates: string[] = [];
     layers: string[][] = [];
     contracts: ContractInfo[] = [];
@@ -91,6 +96,22 @@ export class PipelineStatusAdapter {
     phase: PhaseInfo | null = null;
 
     constructor(private opts: AdapterOptions = {}) {}
+
+    private appendLog(rawLine: string) {
+        const line = cleanLogLine(rawLine);
+        if (!line) return;
+        this.logLines.push(line);
+        if (this.logLines.length > PipelineStatusAdapter.LOG_TAIL_LINES) {
+            this.logLines.splice(0, this.logLines.length - PipelineStatusAdapter.LOG_TAIL_LINES);
+        }
+        this.opts.onLogChange?.([...this.logLines]);
+    }
+
+    private clearLogs() {
+        if (this.logLines.length === 0) return;
+        this.logLines.splice(0);
+        this.opts.onLogChange?.([]);
+    }
 
     private update(crate: string, state: ContractState, extra?: Partial<ContractStatus>) {
         const current = this.statuses.get(crate) ?? { crateName: crate, state: "waiting" };
@@ -102,6 +123,9 @@ export class PipelineStatusAdapter {
     /** Forward a `BuildEvent` (emitted by `buildContracts()`) into the UI map. */
     handleBuildEvent = (e: BuildEvent) => {
         switch (e.type) {
+            case "log":
+                this.appendLog(e.line);
+                return;
             case "detect":
                 this.contracts = e.contracts;
                 this.layers = e.layers;
@@ -115,6 +139,11 @@ export class PipelineStatusAdapter {
                 }
                 for (const [crate, pkg] of this.cdmPackageMap) {
                     this.opts.onCdmPackageDetected?.(crate, pkg);
+                }
+                for (const c of e.contracts) {
+                    if (!c.cdmPackage && c.displayName && c.displayName !== c.name) {
+                        this.opts.onCdmPackageDetected?.(c.name, c.displayName);
+                    }
                 }
                 return;
             case "build-start":
@@ -146,6 +175,9 @@ export class PipelineStatusAdapter {
                 for (const [crate, s] of this.statuses) {
                     if (s.state === "built") this.update(crate, "done");
                 }
+                if (e.summary.contracts.every((contract) => !contract.error)) {
+                    this.clearLogs();
+                }
                 return;
         }
     };
@@ -154,6 +186,7 @@ export class PipelineStatusAdapter {
     handleDeployEvent = (e: DeployEvent) => {
         switch (e.type) {
             case "detect":
+            case "log":
             case "build-start":
             case "build-progress":
             case "build-done":
@@ -249,6 +282,10 @@ export class PipelineStatusAdapter {
                 }
                 return;
             case "pipeline-done":
+                if (e.summary.contracts.every((contract) => contract.status !== "error")) {
+                    this.clearLogs();
+                }
+                return;
             case "pipeline-error":
                 return;
         }
@@ -263,6 +300,14 @@ export class PipelineStatusAdapter {
         }
         return out;
     }
+}
+
+const ANSI_PATTERN =
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: terminal log sanitization.
+    /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
+
+function cleanLogLine(line: string): string {
+    return line.replace(ANSI_PATTERN, "").replace(/\r/g, "").trimEnd();
 }
 
 export interface PipelineResult {

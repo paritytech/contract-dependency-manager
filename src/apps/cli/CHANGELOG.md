@@ -1,5 +1,86 @@
 # @dotdm/cli
 
+## 0.8.11
+
+### Patch Changes
+
+- Updated dependencies [83696a6]
+  - @dotdm/contracts@2.1.3
+  - @dotdm/env@1.0.6
+  - @dotdm/utils@0.3.2
+  - @dotdm/cdm@0.6.9
+
+## 0.8.10
+
+### Patch Changes
+
+- Updated dependencies [c12538f]
+  - @dotdm/env@1.0.5
+  - @dotdm/cdm@0.6.8
+  - @dotdm/contracts@2.1.2
+
+## 0.8.9
+
+### Patch Changes
+
+- 40949ac: Generate local Solidity CDM build stubs before compiling Hardhat and Foundry projects, and publish richer Solidity contract metadata from NatSpec and per-contract README files.
+- Updated dependencies [40949ac]
+  - @dotdm/contracts@2.1.1
+  - @dotdm/cdm@0.6.7
+
+## 0.8.8
+
+### Patch Changes
+
+- Updated dependencies [ff4acdd]
+  - @dotdm/contracts@2.1.0
+  - @dotdm/cdm@0.6.6
+
+## 0.8.7
+
+### Patch Changes
+
+- 7036abb: Add first-pass Hardhat and Foundry Solidity counter templates.
+- d2867e3: Add `cdm build` support for Foundry and Hardhat Solidity projects, including reusable package APIs for toolchain detection, compilation, and normalized PolkaVM bytecode artifacts.
+- Updated dependencies [d2867e3]
+  - @dotdm/contracts@2.0.4
+  - @dotdm/cdm@0.6.5
+
+## 0.8.6
+
+### Patch Changes
+
+- 60c96f7: Default `cdm template <name>` to scaffold into `./<name>` and allow explicit target directories, including `.` for the current directory.
+
+## 0.8.5
+
+### Patch Changes
+
+- 34d6e12: Refresh template documentation and app examples for product-sdk contract usage instead of frontend/runtime `@dotdm/cdm` imports.
+
+## 0.8.4
+
+### Patch Changes
+
+- 32ed48b: Use the Paseo v2 Bulletin IPFS gateway path that actually serves CIDs.
+- Updated dependencies [32ed48b]
+  - @dotdm/env@1.0.4
+  - @dotdm/cdm@0.6.4
+  - @dotdm/contracts@2.0.3
+
+## 0.8.3
+
+### Patch Changes
+
+- 0ef910a: Update CDM's Paseo preset to Paseo Next v2 and upgrade product-sdk packages to the 0.4 release line. Contract registry handles now pass product-sdk descriptors into the 0.4 contract runtime factories, and batched registry publishes await async `.prepare()` calls.
+
+  The Paseo preset now points at the ContractRegistry deployed on Paseo Next v2, and `make deploy-registry` refreshes local package builds before running the deployment script. Re-running `deploy-registry` exits successfully when the selected registry is already deployed.
+
+- Updated dependencies [0ef910a]
+  - @dotdm/cdm@0.6.3
+  - @dotdm/contracts@2.0.2
+  - @dotdm/env@1.0.3
+
 ## 0.8.2
 
 ### Patch Changes

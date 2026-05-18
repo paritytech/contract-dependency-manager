@@ -18,9 +18,13 @@ dev: embed-templates
 	bun run $(CLI_DIR)/src/cli.ts
 
 frontend:
+	pnpm --filter @dotdm/env build
+	pnpm --filter @dotdm/contracts build
 	pnpm --filter @dotdm/frontend dev
 
 build:
+	pnpm --filter @dotdm/env build
+	pnpm --filter @dotdm/contracts build
 	pnpm --filter @dotdm/frontend build
 
 embed-templates:
@@ -40,6 +44,8 @@ build-registry:
 	cargo pvm-contract build --manifest-path $(CURDIR)/Cargo.toml -p contract-registry
 
 deploy-registry: build-registry
+	pnpm --filter @dotdm/env build
+	pnpm --filter @dotdm/contracts build
 	bun run src/lib/scripts/deploy-registry.ts --name $(or $(CHAIN),local) $(if $(SURI),--suri "$(SURI)") $(if $(REGISTRY_ADDRESS),--registry-address $(REGISTRY_ADDRESS))
 
 build-template:

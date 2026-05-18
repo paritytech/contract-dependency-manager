@@ -1,5 +1,63 @@
 # @dotdm/cdm
 
+## 0.6.9
+
+### Patch Changes
+
+- Updated dependencies [83696a6]
+  - @dotdm/contracts@2.1.3
+  - @dotdm/env@1.0.6
+  - @dotdm/utils@0.3.2
+
+## 0.6.8
+
+### Patch Changes
+
+- Updated dependencies [c12538f]
+  - @dotdm/env@1.0.5
+  - @dotdm/contracts@2.1.2
+
+## 0.6.7
+
+### Patch Changes
+
+- Updated dependencies [40949ac]
+  - @dotdm/contracts@2.1.1
+
+## 0.6.6
+
+### Patch Changes
+
+- Updated dependencies [ff4acdd]
+  - @dotdm/contracts@2.1.0
+
+## 0.6.5
+
+### Patch Changes
+
+- Updated dependencies [d2867e3]
+  - @dotdm/contracts@2.0.4
+
+## 0.6.4
+
+### Patch Changes
+
+- Updated dependencies [32ed48b]
+  - @dotdm/env@1.0.4
+  - @dotdm/contracts@2.0.3
+
+## 0.6.3
+
+### Patch Changes
+
+- 0ef910a: Update CDM's Paseo preset to Paseo Next v2 and upgrade product-sdk packages to the 0.4 release line. Contract registry handles now pass product-sdk descriptors into the 0.4 contract runtime factories, and batched registry publishes await async `.prepare()` calls.
+
+  The Paseo preset now points at the ContractRegistry deployed on Paseo Next v2, and `make deploy-registry` refreshes local package builds before running the deployment script. Re-running `deploy-registry` exits successfully when the selected registry is already deployed.
+
+- Updated dependencies [0ef910a]
+  - @dotdm/contracts@2.0.2
+  - @dotdm/env@1.0.3
+
 ## 0.6.2
 
 ### Patch Changes

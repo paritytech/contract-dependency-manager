@@ -74,6 +74,25 @@ export function Cached() {
     return <Text color="blue">~</Text>;
 }
 
+export function LogTail({
+    lines,
+    height,
+}: {
+    lines: string[];
+    height: number;
+}) {
+    const tail = lines.slice(-height);
+    return (
+        <Box flexDirection="column" height={height} marginTop={1}>
+            {Array.from({ length: height }, (_, i) => (
+                <Text key={i} dimColor wrap="truncate">
+                    {tail[i] ?? " "}
+                </Text>
+            ))}
+        </Box>
+    );
+}
+
 /**
  * Format a byte count as a compact, base-10 size string.
  * Chosen to be short enough to sit inside a 20-char build column.

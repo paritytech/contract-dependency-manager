@@ -13,6 +13,7 @@ import {
 import {
     CONTRACTS_REGISTRY_ABI,
     computeTargetHash,
+    hasBuildableSolidityProject,
     readCdmJson,
     resolveTargetRegistryAddress,
     writeCdmJson,
@@ -22,13 +23,19 @@ import { spinner } from "../../lib/ui";
 import { runInstallWithUI } from "../../lib/install-pipeline";
 import type { InstallResult } from "../../lib/install-pipeline";
 import { postInstallRust } from "./rust";
+import { postInstallSolidity } from "./solidity";
 import { postInstallTypeScript } from "./typescript";
 
 export type { InstallResult } from "../../lib/install-pipeline";
 
-function detectProjectType(dir: string): { hasRust: boolean; hasTypeScript: boolean } {
+function detectProjectType(dir: string): {
+    hasRust: boolean;
+    hasSolidity: boolean;
+    hasTypeScript: boolean;
+} {
     return {
         hasRust: existsSync(resolve(dir, "Cargo.toml")),
+        hasSolidity: hasBuildableSolidityProject(dir),
         hasTypeScript: existsSync(resolve(dir, "package.json")),
     };
 }
@@ -105,6 +112,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
 
     const registry = await createContractFromClient(
         chainClient.raw.assetHub,
+        chainClient.descriptors.assetHub,
         registryAddress as HexString,
         CONTRACTS_REGISTRY_ABI,
         { defaultOrigin: ALICE_SS58 },
@@ -153,6 +161,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
     console.log(`\x1b[1mTarget\x1b[0m     ${targetHash}`);
     console.log(
         `\x1b[1mRust\x1b[0m ${projectType.hasRust ? "\x1b[32m✔\x1b[0m" : "\x1b[2m-\x1b[0m"}` +
+            `  \x1b[1mSolidity\x1b[0m ${projectType.hasSolidity ? "\x1b[32m✔\x1b[0m" : "\x1b[2m-\x1b[0m"}` +
             `  \x1b[1mTypeScript\x1b[0m ${projectType.hasTypeScript ? "\x1b[32m✔\x1b[0m" : "\x1b[2m-\x1b[0m"}`,
     );
 
@@ -188,6 +197,9 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
     if (results.length > 0) {
         if (projectType.hasRust) {
             await postInstallRust();
+        }
+        if (projectType.hasSolidity) {
+            await postInstallSolidity(results[results.length - 1]);
         }
         if (projectType.hasTypeScript) {
             await postInstallTypeScript(results[results.length - 1]);

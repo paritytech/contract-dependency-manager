@@ -11,7 +11,7 @@ import {
     type CdmChainClient,
 } from "@dotdm/env";
 import { getAccount } from "@dotdm/utils/accounts";
-import { ALICE_SS58, REGISTRY_ADDRESS } from "@dotdm/utils";
+import { ALICE_SS58, CONTRACTS_REGISTRY_PACKAGE, REGISTRY_ADDRESS } from "@dotdm/utils";
 import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, resolveFeatures } from "@dotdm/contracts";
 import type { HexString } from "polkadot-api";
 import { runDeployWithUI, spinner } from "../lib/ui";
@@ -216,9 +216,11 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
 
     // Phase 1 preflight: deploy ContractRegistry only if this signer/bytecode
     // produces the registry address selected for this network/target.
-    const CDM_REGISTRY_PACKAGE = "@cdm/registry";
     const registryAddress = getRegistryAddress(opts);
-    const expectedRegistry = await deployer.dryRunDeploy(registryPvmPath, CDM_REGISTRY_PACKAGE);
+    const expectedRegistry = await deployer.dryRunDeploy(
+        registryPvmPath,
+        CONTRACTS_REGISTRY_PACKAGE,
+    );
     if (expectedRegistry.address.toLowerCase() !== registryAddress.toLowerCase()) {
         console.error(
             `ERROR: ContractRegistry bootstrap would deploy ${expectedRegistry.address}, but the selected target uses ${registryAddress}.`,
@@ -232,7 +234,10 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
 
     // Phase 1: Deploy ContractRegistry (CREATE2 for deterministic address)
     console.log("Deploying ContractRegistry...");
-    const { address: registryAddr } = await deployer.deploy(registryPvmPath, CDM_REGISTRY_PACKAGE);
+    const { address: registryAddr } = await deployer.deploy(
+        registryPvmPath,
+        CONTRACTS_REGISTRY_PACKAGE,
+    );
     console.log(`  ContractRegistry: ${registryAddr}\n`);
     opts.registryAddress = registryAddr;
 

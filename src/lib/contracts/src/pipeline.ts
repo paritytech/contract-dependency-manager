@@ -1,5 +1,5 @@
-import { resolve } from "path";
-import { existsSync, readFileSync } from "fs";
+import { dirname, relative, resolve } from "path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import type { PolkadotSigner, SS58String, HexString } from "polkadot-api";
 import { Enum } from "polkadot-api";
 import type { CdmChainClient } from "@dotdm/env";
@@ -8,18 +8,38 @@ import {
     type Contract,
     type ContractDef,
 } from "@parity/product-sdk-contracts";
+import { stringifyBigInt } from "@dotdm/utils";
 import { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
 
 import {
     type ContractInfo,
+    type ContractToolchain,
     type DeploymentOrderLayered,
+    buildDependencyGraph,
     detectDeploymentOrderLayered,
     getGitRemoteUrl,
     readCdmPackage,
     readReadmeContent,
+    toposortLayers,
 } from "./detection";
 import { pvmContractBuildAsync, type BuildProgressCallback } from "./builder";
 import { computeBulletinStoreCid } from "./cid";
+import {
+    type CdmBuildManifestContract,
+    buildManifestPath,
+    writeBuildManifest,
+} from "./build-manifest";
+import {
+    buildSolidityToolchain,
+    detectSolidityBuildTargets,
+    type SolidityBuildTarget,
+} from "./solidity";
+import {
+    generateSolidityImport,
+    generateSolidityLocalBuildImport,
+    type SolidityAbiEntry,
+    solidityImportPathForLibrary,
+} from "./solidity-imports";
 import {
     ContractDeployer,
     computeDeploySalt,
@@ -70,6 +90,7 @@ export interface BuildContractsOptions {
 
 export type BuildEvent =
     | { type: "detect"; contracts: ContractInfo[]; layers: string[][] }
+    | { type: "log"; line: string; source?: string }
     | { type: "build-start"; crate: string }
     | { type: "build-progress"; crate: string; compiled: number; total: number }
     | { type: "build-done"; crate: string; durationMs: number; bytecodeSize: number }
@@ -78,11 +99,20 @@ export type BuildEvent =
     | { type: "pipeline-error"; error: string };
 
 export interface BuildSummary {
+    manifestPath?: string;
     contracts: Array<{
         crate: string;
+        name?: string;
+        displayName?: string;
+        toolchain?: ContractToolchain;
         pvmPath?: string;
+        abiPath?: string;
+        artifactPath?: string;
+        sourcePath?: string;
+        contractName?: string;
         bytecodeSize?: number;
         durationMs?: number;
+        cdmPackage?: string | null;
         error?: string;
     }>;
     totalDurationMs: number;
@@ -110,6 +140,7 @@ export interface DeployContractsOptions {
 
 export type DeployEvent =
     | { type: "detect"; contracts: ContractInfo[]; layers: string[][] }
+    | { type: "log"; line: string; source?: string }
     | { type: "build-start"; crate: string }
     | { type: "build-progress"; crate: string; compiled: number; total: number }
     | { type: "build-done"; crate: string; durationMs: number; bytecodeSize: number }
@@ -213,6 +244,18 @@ interface DetectedPipeline {
     layers: string[][];
 }
 
+interface DetectedBuildPipeline {
+    contracts: ContractInfo[];
+    layers: string[][];
+    contractMap: Map<string, ContractInfo>;
+    cdmPackageMap: Map<string, string>;
+    rust?: DetectedPipeline;
+    solidity: {
+        foundry: SolidityBuildTarget[];
+        hardhat: SolidityBuildTarget[];
+    };
+}
+
 /** Detect + optionally filter layers. Shared between build and deploy. */
 function detectAndFilter(rootDir: string, filter: string[] | undefined): DetectedPipeline {
     const order = detectDeploymentOrderLayered(rootDir);
@@ -226,115 +269,611 @@ function detectAndFilter(rootDir: string, filter: string[] | undefined): Detecte
     return { order, layers };
 }
 
+function matchesContractFilter(contract: ContractInfo, filterSet: Set<string>): boolean {
+    return (
+        filterSet.has(contract.name) ||
+        (contract.displayName ? filterSet.has(contract.displayName) : false) ||
+        (contract.cdmPackage ? filterSet.has(contract.cdmPackage) : false)
+    );
+}
+
+function assertUniqueCdmPackages(contracts: ContractInfo[]): void {
+    const seen = new Map<string, string>();
+    for (const contract of contracts) {
+        if (!contract.cdmPackage) continue;
+
+        const previous = seen.get(contract.cdmPackage);
+        if (previous) {
+            throw new Error(
+                `Duplicate CDM package "${contract.cdmPackage}" declared by ${previous} and ${contract.name}`,
+            );
+        }
+        seen.set(contract.cdmPackage, contract.name);
+    }
+}
+
+function assertUniqueBuiltCdmPackages(build: BuildPhaseResult): void {
+    const seen = new Map<string, string>();
+    for (const [crate, info] of build.info) {
+        if (build.failed.has(crate) || !info.cdmPackage) continue;
+
+        const previous = seen.get(info.cdmPackage);
+        if (previous) {
+            throw new Error(
+                `Duplicate CDM package "${info.cdmPackage}" declared by ${previous} and ${crate}`,
+            );
+        }
+        seen.set(info.cdmPackage, crate);
+    }
+}
+
+/**
+ * Detect every buildable contract target in the workspace and normalize all
+ * dependency edges into crate/target names. Rust contributes Cargo dependency
+ * edges; Solidity contributes CDM import edges from generated `.cdm/solidity`
+ * import files. The resulting layers are language-agnostic.
+ */
+export function detectBuildOrder(
+    rootDir: string,
+    filter: string[] | undefined = undefined,
+): DetectedBuildPipeline {
+    const filterSet = filter && filter.length > 0 ? new Set(filter) : null;
+    let rust: DetectedPipeline | undefined;
+    const rustContracts: ContractInfo[] = [];
+
+    if (existsSync(resolve(rootDir, "Cargo.toml"))) {
+        const detected = detectAndFilter(rootDir, filter);
+        rust = detected;
+        for (const crate of detected.layers.flat()) {
+            const contract = detected.order.contractMap.get(crate);
+            if (contract) rustContracts.push(contract);
+        }
+    }
+
+    const solidityTargets = detectSolidityBuildTargets(rootDir).filter((target) =>
+        filterSet ? matchesContractFilter(target, filterSet) : true,
+    );
+    const foundry = solidityTargets.filter((target) => target.toolchain === "foundry");
+    const hardhat = solidityTargets.filter((target) => target.toolchain === "hardhat");
+
+    const contracts = [...rustContracts, ...foundry, ...hardhat];
+    assertUniqueCdmPackages(contracts);
+
+    const graph = buildDependencyGraph(contracts);
+    const layers = toposortLayers(graph);
+    const contractMap = new Map<string, ContractInfo>();
+    const cdmPackageMap = new Map<string, string>();
+    for (const contract of contracts) {
+        contractMap.set(contract.name, contract);
+        if (contract.cdmPackage) cdmPackageMap.set(contract.name, contract.cdmPackage);
+    }
+
+    return {
+        contracts,
+        layers,
+        contractMap,
+        cdmPackageMap,
+        rust,
+        solidity: { foundry, hardhat },
+    };
+}
+
+interface BuildInfo {
+    durationMs: number;
+    pvmPath?: string;
+    abiPath?: string;
+    artifactPath?: string;
+    sourcePath?: string;
+    contractName?: string;
+    bytecodeSize?: number;
+    toolchain?: ContractToolchain;
+    displayName?: string;
+    error?: string;
+    cdmPackage?: string | null;
+}
+
 interface BuildPhaseResult {
     /** Crates whose build succeeded (in layered order). */
     successful: string[];
     /** Crates whose build failed or were skipped due to dep failure. */
     failed: Set<string>;
     /** Per-crate build info (size + durationMs) for the summary. */
-    info: Map<
-        string,
-        { durationMs: number; pvmPath?: string; bytecodeSize?: number; error?: string }
-    >;
+    info: Map<string, BuildInfo>;
+}
+
+interface DeployableContract {
+    crate: string;
+    cdmPackage: string;
+    pvmPath: string;
+    abiPath?: string;
+    contract: ContractInfo;
 }
 
 type BuildEmitter = (e: BuildEvent | DeployEvent) => void;
 
-/**
- * Build all layers. On layer N, crates build concurrently. Dep failures cascade
- * (a crate whose dep failed is marked failed without attempting to build).
- *
- * Emits only the build-related events (`build-start`, `build-progress`,
- * `build-done`, `build-error`) — both BuildEvent and DeployEvent share those
- * variants, so this works for both pipelines.
- */
-async function runBuildPhase(
+function markSkippedBuild(
+    build: BuildPhaseResult,
+    detected: DetectedBuildPipeline,
+    crate: string,
+    emit: BuildEmitter,
+): void {
+    build.failed.add(crate);
+    build.info.set(crate, {
+        durationMs: 0,
+        error: "Skipped: dependency failed",
+        cdmPackage: detected.cdmPackageMap.get(crate) ?? null,
+    });
+    emit({ type: "build-error", crate, error: "Skipped: dependency failed" });
+}
+
+async function buildRustTargets(
     rootDir: string,
-    order: DeploymentOrderLayered,
-    layers: string[][],
+    detected: DetectedBuildPipeline,
+    build: BuildPhaseResult,
+    crates: string[],
     emit: BuildEmitter,
     features?: string,
     registryAddress?: HexString,
-): Promise<BuildPhaseResult> {
-    const failed = new Set<string>();
-    const successful: string[] = [];
-    const info = new Map<
-        string,
-        { durationMs: number; pvmPath?: string; bytecodeSize?: number; error?: string }
-    >();
+): Promise<void> {
+    const results = await Promise.all(
+        crates.map(async (crate) => {
+            emit({ type: "build-start", crate });
+            const onProgress: BuildProgressCallback = (compiled, total) => {
+                emit({ type: "build-progress", crate, compiled, total });
+            };
+            return pvmContractBuildAsync(rootDir, crate, onProgress, features, registryAddress);
+        }),
+    );
 
-    for (const layer of layers) {
-        const runnable: string[] = [];
-        for (const crate of layer) {
-            const contract = order.contractMap.get(crate);
-            const hasFailedDep = contract?.dependsOnCrates.some((dep) => failed.has(dep));
-            if (hasFailedDep) {
-                failed.add(crate);
-                info.set(crate, { durationMs: 0, error: "Skipped: dependency failed" });
-                emit({ type: "build-error", crate, error: "Skipped: dependency failed" });
-            } else {
-                runnable.push(crate);
+    for (const result of results) {
+        if (result.success) {
+            const pvmPath = resolve(rootDir, `target/release/${result.crateName}.polkavm`);
+            let bytecodeSize: number | undefined;
+            try {
+                bytecodeSize = readFileSync(pvmPath).length;
+            } catch {
+                bytecodeSize = undefined;
             }
-        }
 
-        const results = await Promise.all(
-            runnable.map(async (crate) => {
-                emit({ type: "build-start", crate });
-                const onProgress: BuildProgressCallback = (compiled, total) => {
-                    emit({ type: "build-progress", crate, compiled, total });
-                };
-                return pvmContractBuildAsync(rootDir, crate, onProgress, features, registryAddress);
-            }),
+            const contract = detected.contractMap.get(result.crateName);
+            const cdmPackage =
+                readCdmPackage(rootDir, result.crateName) ??
+                detected.cdmPackageMap.get(result.crateName) ??
+                null;
+            if (cdmPackage) {
+                detected.cdmPackageMap.set(result.crateName, cdmPackage);
+                if (contract) contract.cdmPackage = cdmPackage;
+            }
+
+            build.successful.push(result.crateName);
+            build.info.set(result.crateName, {
+                durationMs: result.durationMs,
+                pvmPath,
+                abiPath: resolve(rootDir, `target/release/${result.crateName}.abi.json`),
+                toolchain: "rust",
+                displayName: cdmPackage ?? contract?.displayName ?? result.crateName,
+                sourcePath: contract?.path,
+                contractName: result.crateName,
+                cdmPackage,
+                bytecodeSize,
+            });
+            emit({
+                type: "build-done",
+                crate: result.crateName,
+                durationMs: result.durationMs,
+                bytecodeSize: bytecodeSize ?? 0,
+            });
+        } else {
+            build.failed.add(result.crateName);
+            build.info.set(result.crateName, {
+                durationMs: result.durationMs,
+                error: result.stderr || "Build failed",
+                cdmPackage: detected.cdmPackageMap.get(result.crateName) ?? null,
+            });
+            emit({
+                type: "build-error",
+                crate: result.crateName,
+                error: result.stderr || "Build failed",
+            });
+        }
+    }
+}
+
+async function buildSolidityTargets(
+    rootDir: string,
+    build: BuildPhaseResult,
+    toolchain: "foundry" | "hardhat",
+    targets: SolidityBuildTarget[],
+    emit: BuildEmitter,
+): Promise<void> {
+    if (targets.length === 0) return;
+
+    for (const target of targets) {
+        emit({ type: "build-start", crate: target.name });
+        emit({ type: "build-progress", crate: target.name, compiled: 0, total: 1 });
+    }
+
+    const { result, artifacts, missing } = await buildSolidityToolchain(
+        rootDir,
+        toolchain,
+        targets,
+        {
+            onData: (line) => emit({ type: "log", source: toolchain, line }),
+        },
+    );
+
+    if (!result.success) {
+        const error = result.stderr || result.error || `${toolchain} build failed`;
+        for (const target of targets) {
+            build.failed.add(target.name);
+            build.info.set(target.name, {
+                durationMs: result.durationMs,
+                toolchain,
+                displayName: target.displayName ?? target.name,
+                sourcePath: target.sourcePath,
+                contractName: target.contractName,
+                cdmPackage: target.cdmPackage,
+                error,
+            });
+            emit({ type: "build-error", crate: target.name, error });
+        }
+        return;
+    }
+
+    for (const artifact of artifacts) {
+        const crate = artifact.target.name;
+        build.successful.push(crate);
+        build.info.set(crate, {
+            durationMs: artifact.durationMs,
+            pvmPath: artifact.bytecodePath,
+            abiPath: artifact.abiPath,
+            artifactPath: artifact.artifactPath,
+            bytecodeSize: artifact.bytecodeSize,
+            toolchain,
+            displayName: artifact.target.displayName ?? crate,
+            sourcePath: artifact.target.sourcePath,
+            contractName: artifact.target.contractName,
+            cdmPackage: artifact.target.cdmPackage,
+        });
+        emit({
+            type: "build-done",
+            crate,
+            durationMs: artifact.durationMs,
+            bytecodeSize: artifact.bytecodeSize,
+        });
+    }
+
+    for (const target of missing) {
+        const error = `${toolchain} build did not produce deployable bytecode for ${target.contractName}`;
+        build.failed.add(target.name);
+        build.info.set(target.name, {
+            durationMs: result.durationMs,
+            toolchain,
+            displayName: target.displayName ?? target.name,
+            sourcePath: target.sourcePath,
+            contractName: target.contractName,
+            cdmPackage: target.cdmPackage,
+            error,
+        });
+        emit({ type: "build-error", crate: target.name, error });
+    }
+}
+
+function relativeSolidityImport(fromDir: string, toFile: string): string {
+    const normalized = relative(fromDir, toFile).replace(/\\/g, "/");
+    return normalized.startsWith(".") ? normalized : `./${normalized}`;
+}
+
+function writeGeneratedSolidityFile(rootDir: string, generated: { path: string; content: string }) {
+    const path = resolve(rootDir, generated.path);
+    mkdirSync(dirname(path), { recursive: true });
+    if (existsSync(path)) {
+        const current = readFileSync(path, "utf-8");
+        if (current === generated.content) return;
+    }
+    writeFileSync(path, generated.content);
+}
+
+function writeLocalSolidityBuildImports(rootDir: string, detected: DetectedBuildPipeline): void {
+    const targets = [...detected.solidity.foundry, ...detected.solidity.hardhat].filter(
+        (target) => target.cdmPackage,
+    );
+
+    for (const target of targets) {
+        const importPath = solidityImportPathForLibrary(target.cdmPackage!);
+        const sourceImportPath = relativeSolidityImport(
+            dirname(resolve(rootDir, importPath)),
+            target.sourcePath,
         );
+        const generated = generateSolidityLocalBuildImport({
+            library: target.cdmPackage!,
+            contractName: target.contractName,
+            sourceImportPath,
+        });
+        writeGeneratedSolidityFile(rootDir, generated);
+    }
+}
 
-        for (const result of results) {
-            if (result.success) {
-                const pvmPath = resolve(rootDir, `target/release/${result.crateName}.polkavm`);
-                let bytecodeSize: number | undefined;
-                try {
-                    bytecodeSize = readFileSync(pvmPath).length;
-                } catch {
-                    bytecodeSize = undefined;
-                }
-                successful.push(result.crateName);
-                info.set(result.crateName, {
-                    durationMs: result.durationMs,
-                    pvmPath,
-                    bytecodeSize,
-                });
-                emit({
-                    type: "build-done",
-                    crate: result.crateName,
-                    durationMs: result.durationMs,
-                    bytecodeSize: bytecodeSize ?? 0,
-                });
-            } else {
-                failed.add(result.crateName);
-                info.set(result.crateName, {
-                    durationMs: result.durationMs,
-                    error: result.stderr || "Build failed",
-                });
-                emit({
-                    type: "build-error",
-                    crate: result.crateName,
-                    error: result.stderr || "Build failed",
-                });
-            }
-        }
-
-        // Refresh CDM package info from build artifacts (.cdm.json) for
-        // freshly-built crates so later phases see accurate package names.
-        for (const crate of runnable) {
-            if (!failed.has(crate)) {
-                const cdmPkg = readCdmPackage(rootDir, crate);
-                if (cdmPkg) {
-                    order.cdmPackageMap.set(crate, cdmPkg);
-                }
-            }
+async function runBuildLayer(
+    rootDir: string,
+    detected: DetectedBuildPipeline,
+    build: BuildPhaseResult,
+    layer: string[],
+    emit: BuildEmitter,
+    features?: string,
+    registryAddress?: HexString,
+): Promise<string[]> {
+    const runnable: string[] = [];
+    for (const crate of layer) {
+        const contract = detected.contractMap.get(crate);
+        const hasFailedDep = contract?.dependsOnCrates.some((dep) => build.failed.has(dep));
+        if (hasFailedDep) {
+            markSkippedBuild(build, detected, crate, emit);
+        } else {
+            runnable.push(crate);
         }
     }
 
-    return { successful, failed, info };
+    const byToolchain = new Map<ContractToolchain, string[]>();
+    for (const crate of runnable) {
+        const toolchain = detected.contractMap.get(crate)?.toolchain ?? "rust";
+        const list = byToolchain.get(toolchain) ?? [];
+        list.push(crate);
+        byToolchain.set(toolchain, list);
+    }
+
+    const rustCrates = byToolchain.get("rust") ?? [];
+    if (rustCrates.length > 0) {
+        await buildRustTargets(
+            rootDir,
+            detected,
+            build,
+            rustCrates,
+            emit,
+            features,
+            registryAddress,
+        );
+    }
+
+    for (const toolchain of ["foundry", "hardhat"] as const) {
+        const names = byToolchain.get(toolchain) ?? [];
+        const targets = names
+            .map((name) => detected.contractMap.get(name))
+            .filter((target): target is SolidityBuildTarget => target?.toolchain === toolchain);
+        await buildSolidityTargets(rootDir, build, toolchain, targets, emit);
+    }
+
+    return runnable.filter((crate) => !build.failed.has(crate));
+}
+
+async function runDetectedBuild(
+    rootDir: string,
+    detected: DetectedBuildPipeline,
+    emit: BuildEmitter,
+    features?: string,
+    registryAddress?: HexString,
+    onLayerBuilt?: (args: {
+        layerIndex: number;
+        layer: string[];
+        builtCrates: string[];
+        build: BuildPhaseResult;
+    }) => Promise<void>,
+): Promise<{ build: BuildPhaseResult; crates: string[] }> {
+    const crates = [...detected.layers.flat()];
+    const build: BuildPhaseResult = {
+        successful: [],
+        failed: new Set<string>(),
+        info: new Map(),
+    };
+
+    for (let layerIndex = 0; layerIndex < detected.layers.length; layerIndex++) {
+        const layer = detected.layers[layerIndex];
+        const builtCrates = await runBuildLayer(
+            rootDir,
+            detected,
+            build,
+            layer,
+            emit,
+            features,
+            registryAddress,
+        );
+        await onLayerBuilt?.({ layerIndex, layer, builtCrates, build });
+    }
+
+    assertUniqueBuiltCdmPackages(build);
+    return { build, crates };
+}
+
+function summarizeBuildContracts(
+    detected: DetectedBuildPipeline,
+    build: BuildPhaseResult,
+    crates: string[],
+): BuildSummary["contracts"] {
+    return crates.map((crate) => {
+        const i = build.info.get(crate);
+        return {
+            crate,
+            name: crate,
+            displayName: i?.displayName,
+            toolchain: i?.toolchain,
+            pvmPath: i?.pvmPath,
+            abiPath: i?.abiPath,
+            artifactPath: i?.artifactPath,
+            sourcePath: i?.sourcePath,
+            contractName: i?.contractName,
+            bytecodeSize: i?.bytecodeSize,
+            durationMs: i?.durationMs,
+            error: build.failed.has(crate) ? (i?.error ?? "Build failed") : undefined,
+            cdmPackage:
+                i?.cdmPackage ??
+                detected.contracts.find((contract) => contract.name === crate)?.cdmPackage ??
+                null,
+        };
+    });
+}
+
+function writeManifestFromBuildSummary(
+    rootDir: string,
+    contracts: BuildSummary["contracts"],
+): string {
+    const manifestContracts: CdmBuildManifestContract[] = contracts
+        .filter((contract) => !contract.error && contract.pvmPath && contract.toolchain)
+        .map((contract) => ({
+            name: contract.name ?? contract.crate,
+            displayName: contract.displayName,
+            toolchain: contract.toolchain as CdmBuildManifestContract["toolchain"],
+            cdmPackage: contract.cdmPackage ?? null,
+            bytecodePath: contract.pvmPath!,
+            abiPath: contract.abiPath,
+            artifactPath: contract.artifactPath,
+            sourcePath: contract.sourcePath,
+            contractName: contract.contractName,
+            bytecodeSize: contract.bytecodeSize,
+        }));
+
+    return manifestContracts.length > 0
+        ? writeBuildManifest(rootDir, manifestContracts)
+        : buildManifestPath(rootDir);
+}
+
+function buildContractIndexes(
+    rootDir: string,
+    detected: DetectedBuildPipeline,
+    build: BuildPhaseResult,
+): { contractMap: Map<string, ContractInfo>; cdmPackageMap: Map<string, string> } {
+    const contractMap = new Map<string, ContractInfo>(
+        detected.contracts.map((contract) => [contract.name, { ...contract }]),
+    );
+    const cdmPackageMap = new Map<string, string>();
+
+    for (const contract of contractMap.values()) {
+        if (contract.cdmPackage) cdmPackageMap.set(contract.name, contract.cdmPackage);
+    }
+
+    for (const [crate, info] of build.info) {
+        if (!contractMap.has(crate)) {
+            contractMap.set(crate, {
+                name: crate,
+                displayName: info.displayName,
+                toolchain: info.toolchain,
+                cdmPackage: info.cdmPackage ?? null,
+                description: null,
+                authors: [],
+                homepage: null,
+                repository: null,
+                readmePath: null,
+                path: info.sourcePath ? dirname(info.sourcePath) : rootDir,
+                dependsOnCrates: [],
+            });
+        }
+
+        if (info.cdmPackage) {
+            cdmPackageMap.set(crate, info.cdmPackage);
+            const contract = contractMap.get(crate);
+            if (contract) contract.cdmPackage = info.cdmPackage;
+        }
+    }
+
+    return { contractMap, cdmPackageMap };
+}
+
+function getBuiltPvmPath(build: BuildPhaseResult, crate: string): string {
+    const pvmPath = build.info.get(crate)?.pvmPath;
+    if (!pvmPath) throw new Error(`Missing built bytecode for ${crate}`);
+    return pvmPath;
+}
+
+function getDeployableContract(
+    build: BuildPhaseResult,
+    contractMap: Map<string, ContractInfo>,
+    crate: string,
+): DeployableContract {
+    const info = build.info.get(crate);
+    const cdmPackage = info?.cdmPackage ?? contractMap.get(crate)?.cdmPackage;
+    if (!cdmPackage) {
+        throw new Error(
+            `Missing CDM package for ${crate}. Add #[pvm::contract(cdm = "@org/name")] or /// @custom:cdm @org/name.`,
+        );
+    }
+
+    return {
+        crate,
+        cdmPackage,
+        pvmPath: getBuiltPvmPath(build, crate),
+        abiPath: info?.abiPath,
+        contract: contractMap.get(crate) ?? {
+            name: crate,
+            displayName: info?.displayName,
+            toolchain: info?.toolchain,
+            cdmPackage,
+            description: null,
+            authors: [],
+            homepage: null,
+            repository: null,
+            readmePath: null,
+            path: info?.sourcePath ? dirname(info.sourcePath) : "",
+            dependsOnCrates: [],
+        },
+    };
+}
+
+function readAbiEntries(path: string | undefined): AbiEntry[] {
+    if (!path || !existsSync(path)) return [];
+    try {
+        const parsed = JSON.parse(readFileSync(path, "utf-8")) as unknown;
+        if (Array.isArray(parsed)) return parsed as AbiEntry[];
+        if (
+            parsed &&
+            typeof parsed === "object" &&
+            "abi" in parsed &&
+            Array.isArray((parsed as { abi?: unknown }).abi)
+        ) {
+            return (parsed as { abi: AbiEntry[] }).abi;
+        }
+    } catch {
+        // ignore — deploy succeeds with empty abi
+    }
+    return [];
+}
+
+function writeSolidityImportForDeployable(
+    rootDir: string,
+    deployable: DeployableContract,
+    address: HexString,
+    version: DeploySaltVersion,
+): void {
+    const generated = generateSolidityImport({
+        library: deployable.cdmPackage,
+        address,
+        abi: readAbiEntries(deployable.abiPath) as SolidityAbiEntry[],
+        version: typeof version === "bigint" ? Number(version) : version,
+    });
+    writeGeneratedSolidityFile(rootDir, generated);
+}
+
+async function precomputeDeployAddress(
+    api: PipelineChainClient["assetHub"],
+    origin: SS58String,
+    deployable: DeployableContract,
+    version: DeploySaltVersion,
+    registryAddress: HexString,
+): Promise<HexString> {
+    const code = new Uint8Array(readFileSync(deployable.pvmPath));
+    const salt = computeDeploySalt(deployable.cdmPackage, version, registryAddress);
+    const result = await api.apis.ReviveApi.instantiate(
+        origin,
+        0n,
+        undefined,
+        undefined,
+        Enum("Upload", code),
+        new Uint8Array(0),
+        salt,
+        { at: "best" },
+    );
+    if (!result.result.success) {
+        throw new Error(`Dry-run failed: ${stringifyBigInt(result.result)}`);
+    }
+    return result.result.value.addr as HexString;
 }
 
 // ---------- public API ----------
@@ -348,33 +887,22 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
     const emit = (e: BuildEvent) => opts.onEvent?.(e);
 
     try {
-        const { order, layers } = detectAndFilter(opts.rootDir, opts.contracts);
-        const crates = layers.flat();
-        const contracts: ContractInfo[] = crates
-            .map((c) => order.contractMap.get(c))
-            .filter((c): c is ContractInfo => !!c);
-        emit({ type: "detect", contracts, layers });
-
-        const build = await runBuildPhase(
+        const detected = detectBuildOrder(opts.rootDir, opts.contracts);
+        writeLocalSolidityBuildImports(opts.rootDir, detected);
+        emit({ type: "detect", contracts: detected.contracts, layers: detected.layers });
+        const { build, crates } = await runDetectedBuild(
             opts.rootDir,
-            order,
-            layers,
+            detected,
             emit as BuildEmitter,
             opts.features,
             opts.registryAddress,
         );
+        const contracts = summarizeBuildContracts(detected, build, crates);
+        const manifestPath = writeManifestFromBuildSummary(opts.rootDir, contracts);
 
         const summary: BuildSummary = {
-            contracts: crates.map((crate) => {
-                const i = build.info.get(crate);
-                return {
-                    crate,
-                    pvmPath: i?.pvmPath,
-                    bytecodeSize: i?.bytecodeSize,
-                    durationMs: i?.durationMs,
-                    error: build.failed.has(crate) ? (i?.error ?? "Build failed") : undefined,
-                };
-            }),
+            manifestPath,
+            contracts,
             totalDurationMs: Date.now() - t0,
         };
         emit({ type: "pipeline-done", summary });
@@ -387,7 +915,7 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
 }
 
 /**
- * Full pipeline: build contracts, then for each layer of dependencies
+ * Full pipeline: for each dependency layer, build then deploy/register.
  *
  *  1. Query the next registry version index for each CDM-annotated crate.
  *     That version is included in its CREATE2 salt so repeated publishes get
@@ -407,13 +935,11 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
     const t0 = Date.now();
     const emit = (e: DeployEvent) => opts.onEvent?.(e);
 
-    // ---- 1. detect + build ----
-    const detected = detectAndFilter(opts.rootDir, opts.contracts);
-    const { order } = detected;
-    const crates = detected.layers.flat();
-    const contracts: ContractInfo[] = crates
-        .map((c) => order.contractMap.get(c))
-        .filter((c): c is ContractInfo => !!c);
+    // ---- 1. detect + prepare local Solidity imports ----
+    const detected = detectBuildOrder(opts.rootDir, opts.contracts);
+    writeLocalSolidityBuildImports(opts.rootDir, detected);
+    const crates = [...detected.layers.flat()];
+    const contracts = detected.contracts;
 
     // Per-crate running status for the final summary.
     const status = new Map<
@@ -431,24 +957,6 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
     try {
         emit({ type: "detect", contracts, layers: detected.layers });
 
-        const build = await runBuildPhase(
-            opts.rootDir,
-            order,
-            detected.layers,
-            emit as BuildEmitter,
-            opts.features,
-            opts.registryAddress,
-        );
-
-        for (const crate of build.failed) {
-            const info = build.info.get(crate);
-            status.set(crate, {
-                status: "error",
-                error: info?.error ?? "Build failed",
-                cdmPackage: order.cdmPackageMap.get(crate),
-            });
-        }
-
         // ---- 2. wire service classes (implementation details) ----
         const signer = opts.signer;
         const assetHubApi = opts.client.assetHub;
@@ -465,151 +973,157 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         });
         const registryContract = await createContractFromClient(
             assetHubClient,
+            opts.client.descriptors.assetHub,
             opts.registryAddress,
             CONTRACTS_REGISTRY_ABI,
             { defaultSigner: signer, defaultOrigin: opts.origin },
         );
 
-        // ---- 3. per-layer deploy loop ----
-        const failedCrates = new Set(build.failed);
-        const addresses: Record<string, HexString> = {};
+        const build: BuildPhaseResult = {
+            successful: [],
+            failed: new Set<string>(),
+            info: new Map(),
+        };
         const nextVersionByCrate = new Map<string, DeploySaltVersion>();
+        let { contractMap, cdmPackageMap } = buildContractIndexes(opts.rootDir, detected, build);
+
+        // ---- 3. per-layer build + deploy loop ----
+        const failedCrates = new Set<string>();
+        const addresses: Record<string, HexString> = {};
 
         for (let layerIndex = 0; layerIndex < detected.layers.length; layerIndex++) {
             const layer = detected.layers[layerIndex];
-            const layerDeployable = layer.filter((c) => !failedCrates.has(c));
+            const builtCrates = await runBuildLayer(
+                opts.rootDir,
+                detected,
+                build,
+                layer,
+                emit as BuildEmitter,
+                opts.features,
+                opts.registryAddress,
+            );
+            assertUniqueBuiltCdmPackages(build);
+            ({ contractMap, cdmPackageMap } = buildContractIndexes(opts.rootDir, detected, build));
+
+            for (const crate of layer) {
+                if (!build.failed.has(crate)) continue;
+                const info = build.info.get(crate);
+                failedCrates.add(crate);
+                status.set(crate, {
+                    status: "error",
+                    error: info?.error ?? "Build failed",
+                    cdmPackage: cdmPackageMap.get(crate),
+                });
+            }
+
+            const layerDeployable = builtCrates.filter((c) => {
+                if (failedCrates.has(c)) return false;
+                const contract = contractMap.get(c);
+                return !contract?.dependsOnCrates.some((dep) => failedCrates.has(dep));
+            });
             if (layerDeployable.length === 0) continue;
 
             try {
-                // 3a. Resolve registry version counts for versioned CREATE2 salts.
-                const cdmCrates = layerDeployable.filter((c) => order.cdmPackageMap.has(c));
-                const nonCdmCrates = layerDeployable.filter((c) => !order.cdmPackageMap.has(c));
+                const deployables = layerDeployable.map((crate) =>
+                    getDeployableContract(build, contractMap, crate),
+                );
+                const deployableCrates = deployables.map((contract) => contract.crate);
+                const deployablePackages = deployables.map((contract) => contract.cdmPackage);
 
-                const toDeploy: string[] = [...nonCdmCrates, ...cdmCrates];
-
-                if (cdmCrates.length > 0) {
-                    emit({
-                        type: "phase",
-                        name: "checking-versions",
-                        description: `Checking layer ${layerIndex + 1} registry versions`,
-                        layer: layerIndex,
-                    });
-                    const pkgs = cdmCrates.map((c) => order.cdmPackageMap.get(c)!);
-                    const versionCounts = await queryRegistryVersionCounts(registryContract, pkgs);
-
-                    for (const crate of cdmCrates) {
-                        const pkg = order.cdmPackageMap.get(crate)!;
-                        const versionCount = versionCounts.get(pkg);
-                        if (versionCount === undefined) {
-                            throw new Error(`Failed to query registry version count for "${pkg}"`);
-                        }
-                        nextVersionByCrate.set(crate, versionCount);
+                emit({
+                    type: "phase",
+                    name: "checking-versions",
+                    description: `Checking layer ${layerIndex + 1} registry versions`,
+                    layer: layerIndex,
+                });
+                const versionCounts = await queryRegistryVersionCounts(
+                    registryContract,
+                    deployablePackages,
+                );
+                for (const contract of deployables) {
+                    const versionCount =
+                        nextVersionByCrate.get(contract.crate) ??
+                        versionCounts.get(contract.cdmPackage);
+                    if (versionCount === undefined) {
+                        throw new Error(
+                            `Failed to query registry version count for "${contract.cdmPackage}"`,
+                        );
                     }
+                    nextVersionByCrate.set(contract.crate, versionCount);
                 }
 
-                if (toDeploy.length === 0) continue;
-
-                // 3b. precompute metadata + CIDs for CDM crates, precompute addresses too
-                const cdmToDeploy = toDeploy.filter((c) => order.cdmPackageMap.has(c));
-                const nonCdmToDeploy = toDeploy.filter((c) => !order.cdmPackageMap.has(c));
                 const cidMap: Record<string, string> = {};
                 const metadataList: Metadata[] = [];
 
-                if (cdmToDeploy.length > 0) {
-                    emit({
-                        type: "phase",
-                        name: "preparing-metadata",
-                        description: `Assembling metadata for ${cdmToDeploy.length} contract${cdmToDeploy.length === 1 ? "" : "s"}`,
-                        layer: layerIndex,
-                    });
-                    const publishedAt = new Date().toISOString();
-                    for (const crate of cdmToDeploy) {
-                        const contract = order.contractMap.get(crate)!;
-                        const readmeContent = readReadmeContent(contract.readmePath);
-                        const repository =
-                            contract.repository ?? getGitRemoteUrl(opts.rootDir) ?? "";
-                        const abiPath = resolve(opts.rootDir, `target/${crate}.release.abi.json`);
-                        let abi: AbiEntry[] = [];
-                        if (existsSync(abiPath)) {
-                            try {
-                                abi = JSON.parse(readFileSync(abiPath, "utf-8"));
-                            } catch {
-                                // ignore — deploy succeeds with empty abi
-                            }
-                        }
-                        const meta: Metadata = {
-                            publish_block: 0,
-                            published_at: publishedAt,
-                            description: contract.description ?? "",
-                            readme: readmeContent,
-                            authors: contract.authors,
-                            homepage: contract.homepage ?? "",
-                            repository,
-                            abi,
-                        };
-                        metadataList.push(meta);
-                        cidMap[crate] = await computeBulletinStoreCid(
-                            new TextEncoder().encode(JSON.stringify(meta)),
-                        );
-                    }
+                emit({
+                    type: "phase",
+                    name: "preparing-metadata",
+                    description: `Assembling metadata for ${deployables.length} contract${deployables.length === 1 ? "" : "s"}`,
+                    layer: layerIndex,
+                });
+                const publishedAt = new Date().toISOString();
+                for (const deployable of deployables) {
+                    const contract = deployable.contract;
+                    const readmeContent = readReadmeContent(contract.readmePath);
+                    const repository = contract.repository ?? getGitRemoteUrl(opts.rootDir) ?? "";
+                    const abi = readAbiEntries(deployable.abiPath);
+                    const meta: Metadata = {
+                        publish_block: 0,
+                        published_at: publishedAt,
+                        description: contract.description ?? "",
+                        readme: readmeContent,
+                        authors: contract.authors,
+                        homepage: contract.homepage ?? "",
+                        repository,
+                        abi,
+                    };
+                    metadataList.push(meta);
+                    cidMap[deployable.crate] = await computeBulletinStoreCid(
+                        new TextEncoder().encode(JSON.stringify(meta)),
+                    );
                 }
 
                 // Precomputed addresses for emit "check-needs-deploy" — the
                 // deploy-register batch computes this internally, but we
-                // need it eagerly for the event before signing. Use a dry-run
-                // to fetch CREATE2 addresses for CDM crates; non-CDM have no
-                // salt so their precompute is skipped.
-                if (cdmToDeploy.length > 0) {
-                    emit({
-                        type: "phase",
-                        name: "precomputing-addresses",
-                        description: `Dry-running ${cdmToDeploy.length} contract deploy${cdmToDeploy.length === 1 ? "" : "s"} for layer ${layerIndex + 1}`,
-                        layer: layerIndex,
-                    });
-                }
-                for (const crate of cdmToDeploy) {
+                // need it eagerly for the event before signing.
+                emit({
+                    type: "phase",
+                    name: "precomputing-addresses",
+                    description: `Dry-running ${deployables.length} contract deploy${deployables.length === 1 ? "" : "s"} for layer ${layerIndex + 1}`,
+                    layer: layerIndex,
+                });
+                for (const deployable of deployables) {
                     try {
-                        const pvmPath = resolve(opts.rootDir, `target/${crate}.release.polkavm`);
-                        const pkg = order.cdmPackageMap.get(crate)!;
-                        const version = nextVersionByCrate.get(crate);
+                        const version = nextVersionByCrate.get(deployable.crate);
                         if (version === undefined) {
-                            throw new Error(`Missing registry version count for "${pkg}"`);
+                            throw new Error(
+                                `Missing registry version count for "${deployable.cdmPackage}"`,
+                            );
                         }
-                        const code = new Uint8Array(readFileSync(pvmPath));
-                        const salt = computeDeploySalt(pkg, version);
-                        const result = await assetHubApi.apis.ReviveApi.instantiate(
+                        const addr = await precomputeDeployAddress(
+                            assetHubApi,
                             opts.origin,
-                            0n,
-                            undefined,
-                            undefined,
-                            Enum("Upload", code),
-                            new Uint8Array(0),
-                            salt,
-                            { at: "best" },
+                            deployable,
+                            version,
+                            opts.registryAddress,
                         );
-                        if (result.result.success) {
-                            const addr = result.result.value.addr as HexString;
-                            emit({ type: "check-needs-deploy", crate, address: addr });
-                        }
+                        emit({
+                            type: "check-needs-deploy",
+                            crate: deployable.crate,
+                            address: addr,
+                        });
                     } catch {
                         // best-effort event — swallow
                     }
                 }
 
-                // 3c. parallel publish (Bulletin) + deploy+register (AssetHub)
-                const pvmPaths = toDeploy.map((c) =>
-                    resolve(opts.rootDir, `target/${c}.release.polkavm`),
-                );
-
                 // Sign requests fire immediately before submission.
                 emit({
                     type: "sign-request",
                     phase: "deploy-register",
-                    crates: toDeploy,
+                    crates: deployableCrates,
                 });
-                if (cdmToDeploy.length > 0) {
-                    emit({ type: "sign-request", phase: "publish", crates: cdmToDeploy });
-                }
+                emit({ type: "sign-request", phase: "publish", crates: deployableCrates });
 
                 emit({
                     type: "phase",
@@ -617,236 +1131,156 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     description: "Submitting deploy+register batch",
                     layer: layerIndex,
                 });
-                emit({ type: "deploy-register-start", crates: toDeploy });
-                if (cdmToDeploy.length > 0) {
-                    emit({
-                        type: "phase",
-                        name: "publishing",
-                        description: "Submitting metadata publish",
-                        layer: layerIndex,
-                    });
-                    emit({ type: "publish-start", crates: cdmToDeploy });
-                }
+                emit({ type: "deploy-register-start", crates: deployableCrates });
+                emit({
+                    type: "phase",
+                    name: "publishing",
+                    description: "Submitting metadata publish",
+                    layer: layerIndex,
+                });
+                emit({ type: "publish-start", crates: deployableCrates });
 
                 const deployT0 = Date.now();
                 const publishT0 = Date.now();
-                let cdmCursor = 0;
-                let nonCdmCursor = 0;
+                let deployCursor = 0;
 
-                // Non-CDM crates skip register. We split:
-                // - pure deploy (utility.batch_all) for non-CDM
-                // - deploy+register (utility.batch_all) for CDM
-                // Both paths now chunk by weight, emitting one
-                // `deploy-register-done` per chunk via the onChunk callback.
-                // `durationMs` on each done event is measured from the layer's
-                // deploy start (deployT0) — not per-chunk — so the UI sees a
-                // monotonically growing duration as chunks land.
-                const cdmPvmPaths = cdmToDeploy.map((c) =>
-                    resolve(opts.rootDir, `target/${c}.release.polkavm`),
-                );
-                const cdmPkgs = cdmToDeploy.map((c) => order.cdmPackageMap.get(c)!);
-                const cdmSaltVersions = cdmToDeploy.map((crate, i) => {
-                    const version = nextVersionByCrate.get(crate);
+                const pvmPaths = deployables.map((contract) => contract.pvmPath);
+                const saltVersions = deployables.map((contract) => {
+                    const version = nextVersionByCrate.get(contract.crate);
                     if (version === undefined) {
-                        throw new Error(`Missing registry version count for "${cdmPkgs[i]}"`);
+                        throw new Error(
+                            `Missing registry version count for "${contract.cdmPackage}"`,
+                        );
                     }
                     return version;
                 });
-                const cdmMetadataUris = cdmToDeploy.map((c) => cidMap[c]);
-                const nonCdmPvmPaths = nonCdmToDeploy.map((c) =>
-                    resolve(opts.rootDir, `target/${c}.release.polkavm`),
-                );
+                const metadataUris = deployables.map((contract) => cidMap[contract.crate]);
 
                 // Plan BEFORE submission so we can emit a diagnostic
                 // `deploy-plan` event carrying the real budget, per-contract
                 // weights, and final chunk layout. Reuses the plan inside the
-                // batch call (no duplicate dry-run). We build a single merged
-                // plan view over the concatenation [cdm..., nonCdm...] for the
-                // event, even though the actual submission splits CDM vs
-                // non-CDM. The per-contract entries are labeled by crate so
-                // downstream consumers can reconstruct whichever view they need.
-                const cdmPlan =
-                    cdmToDeploy.length > 0
-                        ? await deployer.planDeploy(cdmPvmPaths, cdmPkgs, cdmSaltVersions)
-                        : null;
-                const nonCdmPlan =
-                    nonCdmToDeploy.length > 0 ? await deployer.planDeploy(nonCdmPvmPaths) : null;
+                // batch call (no duplicate dry-run). At this point Rust,
+                // Foundry, and Hardhat contracts are all the same shape.
+                const plan = await deployer.planDeploy(
+                    pvmPaths,
+                    deployablePackages,
+                    saltVersions,
+                    opts.registryAddress,
+                );
+                const perContract = plan.prepared.map((prepared, i) => ({
+                    crate: deployableCrates[i],
+                    gasLimit: {
+                        ref_time: prepared.gasLimit.ref_time,
+                        proof_size: prepared.gasLimit.proof_size,
+                    },
+                    extrinsicWeight: {
+                        ref_time: prepared.extrinsicWeight.ref_time,
+                        proof_size: prepared.extrinsicWeight.proof_size,
+                    },
+                    storageDeposit: prepared.storageDeposit,
+                }));
+                emit({
+                    type: "deploy-plan",
+                    layer: layerIndex,
+                    crates: deployableCrates,
+                    budget: {
+                        ref_time: plan.budget.ref_time,
+                        proof_size: plan.budget.proof_size,
+                    },
+                    perContract,
+                    chunks: plan.chunks.map((idxs) => idxs.map((i) => deployableCrates[i])),
+                });
 
-                const planBudget = cdmPlan?.budget ?? nonCdmPlan?.budget;
-                if (planBudget) {
-                    const perContract: Array<{
-                        crate: string;
-                        gasLimit: { ref_time: bigint; proof_size: bigint };
-                        extrinsicWeight: { ref_time: bigint; proof_size: bigint };
-                        storageDeposit: bigint;
-                    }> = [];
-                    const cdmChunks: string[][] =
-                        cdmPlan?.chunks.map((idxs) => idxs.map((i) => cdmToDeploy[i])) ?? [];
-                    const nonCdmChunks: string[][] =
-                        nonCdmPlan?.chunks.map((idxs) => idxs.map((i) => nonCdmToDeploy[i])) ?? [];
-                    if (cdmPlan) {
-                        for (let i = 0; i < cdmToDeploy.length; i++) {
-                            const p = cdmPlan.prepared[i];
-                            perContract.push({
-                                crate: cdmToDeploy[i],
-                                gasLimit: {
-                                    ref_time: p.gasLimit.ref_time,
-                                    proof_size: p.gasLimit.proof_size,
-                                },
-                                extrinsicWeight: {
-                                    ref_time: p.extrinsicWeight.ref_time,
-                                    proof_size: p.extrinsicWeight.proof_size,
-                                },
-                                storageDeposit: p.storageDeposit,
+                const [deployRes, publishRes] = await Promise.all([
+                    deployer.deployAndRegisterBatch(
+                        pvmPaths,
+                        deployablePackages,
+                        registryContract,
+                        metadataUris,
+                        (chunk) => {
+                            // Callback fires in chunk order; the i-th chunk covers
+                            // deployables[deployCursor..+len].
+                            const addrs: Record<string, HexString> = {};
+                            const start = deployCursor;
+                            for (let i = 0; i < chunk.addresses.length; i++) {
+                                const crate = deployableCrates[start + i];
+                                addrs[crate] = chunk.addresses[i] as HexString;
+                                addresses[crate] = chunk.addresses[i] as HexString;
+                            }
+                            deployCursor += chunk.addresses.length;
+                            emit({
+                                type: "deploy-register-done",
+                                addresses: addrs,
+                                txHash: chunk.txHash,
+                                blockHash: chunk.blockHash,
+                                durationMs: Date.now() - deployT0,
                             });
-                        }
-                    }
-                    if (nonCdmPlan) {
-                        for (let i = 0; i < nonCdmToDeploy.length; i++) {
-                            const p = nonCdmPlan.prepared[i];
-                            perContract.push({
-                                crate: nonCdmToDeploy[i],
-                                gasLimit: {
-                                    ref_time: p.gasLimit.ref_time,
-                                    proof_size: p.gasLimit.proof_size,
-                                },
-                                extrinsicWeight: {
-                                    ref_time: p.extrinsicWeight.ref_time,
-                                    proof_size: p.extrinsicWeight.proof_size,
-                                },
-                                storageDeposit: p.storageDeposit,
-                            });
-                        }
-                    }
-                    emit({
-                        type: "deploy-plan",
-                        layer: layerIndex,
-                        crates: toDeploy,
-                        budget: {
-                            ref_time: planBudget.ref_time,
-                            proof_size: planBudget.proof_size,
                         },
-                        perContract,
-                        chunks: [...cdmChunks, ...nonCdmChunks],
-                    });
-                }
-
-                const [cdmDeployRes, nonCdmDeployRes, publishRes] = await Promise.all([
-                    cdmToDeploy.length > 0
-                        ? deployer.deployAndRegisterBatch(
-                              cdmPvmPaths,
-                              cdmPkgs,
-                              registryContract,
-                              cdmMetadataUris,
-                              (chunk) => {
-                                  // Callback fires in chunk order; the i-th
-                                  // chunk covers cdmToDeploy[cdmCursor..+len].
-                                  // chunk.crates holds the cdmPackage names
-                                  // (informational); we resolve crate names
-                                  // through the cursor.
-                                  const addrs: Record<string, HexString> = {};
-                                  const start = cdmCursor;
-                                  for (let i = 0; i < chunk.addresses.length; i++) {
-                                      const crate = cdmToDeploy[start + i];
-                                      addrs[crate] = chunk.addresses[i] as HexString;
-                                      addresses[crate] = chunk.addresses[i] as HexString;
-                                  }
-                                  cdmCursor += chunk.addresses.length;
-                                  emit({
-                                      type: "deploy-register-done",
-                                      addresses: addrs,
-                                      txHash: chunk.txHash,
-                                      blockHash: chunk.blockHash,
-                                      durationMs: Date.now() - deployT0,
-                                  });
-                              },
-                              cdmPlan
-                                  ? { plan: cdmPlan, saltVersions: cdmSaltVersions }
-                                  : undefined,
-                          )
-                        : Promise.resolve(null),
-                    nonCdmToDeploy.length > 0
-                        ? deployer.deployBatch(
-                              nonCdmPvmPaths,
-                              undefined,
-                              (chunk) => {
-                                  // The callback fires in chunk order; the i-th
-                                  // chunk covers indices [cursor, cursor+len).
-                                  // chunk.crates contains cdmPackages (`undefined`
-                                  // here since non-CDM), so resolve crate names
-                                  // through the outer cursor.
-                                  const addrs: Record<string, HexString> = {};
-                                  const start = nonCdmCursor;
-                                  for (let i = 0; i < chunk.addresses.length; i++) {
-                                      const crate = nonCdmToDeploy[start + i];
-                                      addrs[crate] = chunk.addresses[i] as HexString;
-                                      addresses[crate] = chunk.addresses[i] as HexString;
-                                  }
-                                  nonCdmCursor += chunk.addresses.length;
-                                  emit({
-                                      type: "deploy-register-done",
-                                      addresses: addrs,
-                                      txHash: chunk.txHash,
-                                      blockHash: chunk.blockHash,
-                                      durationMs: Date.now() - deployT0,
-                                  });
-                              },
-                              nonCdmPlan ? { plan: nonCdmPlan } : undefined,
-                          )
-                        : Promise.resolve(null),
-                    cdmToDeploy.length > 0
-                        ? publisher.publishBatch(metadataList).then((r) => {
-                              // Verify CIDs match precomputation — any drift
-                              // indicates a code bug or serialization mismatch.
-                              for (let i = 0; i < metadataList.length; i++) {
-                                  if (r.cids[i] !== cidMap[cdmToDeploy[i]]) {
-                                      throw new Error(
-                                          `CID mismatch for ${cdmToDeploy[i]}: expected ${cidMap[cdmToDeploy[i]]}, got ${r.cids[i]}`,
-                                      );
-                                  }
-                              }
-                              return r;
-                          })
-                        : Promise.resolve(null),
+                        { plan, saltVersions, saltScope: opts.registryAddress },
+                    ),
+                    publisher.publishBatch(metadataList).then((r) => {
+                        // Verify CIDs match precomputation — any drift
+                        // indicates a code bug or serialization mismatch.
+                        for (let i = 0; i < metadataList.length; i++) {
+                            if (r.cids[i] !== cidMap[deployableCrates[i]]) {
+                                throw new Error(
+                                    `CID mismatch for ${deployableCrates[i]}: expected ${cidMap[deployableCrates[i]]}, got ${r.cids[i]}`,
+                                );
+                            }
+                        }
+                        return r;
+                    }),
                 ]);
 
-                // Addresses are written into `addresses` inside the onChunk
-                // callbacks above; the aggregate results are just for the
-                // return shape, not for mutating state again here.
-                void cdmDeployRes;
-                void nonCdmDeployRes;
-
-                if (publishRes) {
-                    const cidsOut: Record<string, string> = {};
-                    for (let i = 0; i < cdmToDeploy.length; i++) {
-                        cidsOut[cdmToDeploy[i]] = publishRes.cids[i];
-                    }
-                    emit({
-                        type: "publish-done",
-                        cids: cidsOut,
-                        txHash: publishRes.txHash,
-                        durationMs: Date.now() - publishT0,
-                    });
+                for (let i = 0; i < deployables.length; i++) {
+                    const address = deployRes.addresses[i] as HexString;
+                    addresses[deployableCrates[i]] = address;
+                    writeSolidityImportForDeployable(
+                        opts.rootDir,
+                        deployables[i],
+                        address,
+                        saltVersions[i],
+                    );
                 }
 
+                const cidsOut: Record<string, string> = {};
+                for (let i = 0; i < deployables.length; i++) {
+                    cidsOut[deployableCrates[i]] = publishRes.cids[i];
+                }
+                emit({
+                    type: "publish-done",
+                    cids: cidsOut,
+                    txHash: publishRes.txHash,
+                    durationMs: Date.now() - publishT0,
+                });
+
                 // Mark status
-                for (const crate of toDeploy) {
-                    status.set(crate, {
+                for (const deployable of deployables) {
+                    status.set(deployable.crate, {
                         status: "done",
-                        address: addresses[crate],
-                        cid: cidMap[crate],
-                        cdmPackage: order.cdmPackageMap.get(crate),
+                        address: addresses[deployable.crate],
+                        cid: cidMap[deployable.crate],
+                        cdmPackage: deployable.cdmPackage,
                     });
                 }
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 const affected = layerDeployable.filter((c) => status.get(c)?.status !== "cached");
                 for (const crate of affected) {
+                    const info = build.info.get(crate);
                     failedCrates.add(crate);
+                    build.failed.add(crate);
+                    build.info.set(crate, {
+                        ...(info ?? {
+                            durationMs: 0,
+                            cdmPackage: cdmPackageMap.get(crate),
+                        }),
+                        error: msg,
+                    });
                     status.set(crate, {
                         status: "error",
                         error: msg,
-                        cdmPackage: order.cdmPackageMap.get(crate),
+                        cdmPackage: cdmPackageMap.get(crate),
                     });
                 }
                 emit({
@@ -856,6 +1290,9 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 });
             }
         }
+
+        const buildContractsSummary = summarizeBuildContracts(detected, build, crates);
+        writeManifestFromBuildSummary(opts.rootDir, buildContractsSummary);
 
         const summary: DeploySummary = {
             contracts: crates.map((crate) => {
@@ -918,15 +1355,86 @@ if (import.meta.vitest) {
         computeBulletinStoreCid: vi.fn(async () => "fakeCid123"),
     }));
 
+    vi.mock("@parity/product-sdk-contracts", () => ({
+        createContractFromClient: vi.fn(async () => ({
+            getVersionCount: {
+                query: vi.fn(async () => ({ success: true, value: 0 })),
+            },
+        })),
+    }));
+
+    vi.mock("./deployer", async () => {
+        const actual = await vi.importActual<typeof import("./deployer")>("./deployer");
+        return {
+            ...actual,
+            ContractDeployer: vi.fn().mockImplementation(() => ({
+                planDeploy: vi.fn(async (pvmPaths: string[]) => ({
+                    prepared: pvmPaths.map((_path, index) => ({
+                        address: `0x${String(index + 1).padStart(40, "0")}`,
+                        gasLimit: { ref_time: 1n, proof_size: 1n },
+                        extrinsicWeight: { ref_time: 1n, proof_size: 1n },
+                        storageDeposit: 0n,
+                    })),
+                    budget: { ref_time: 10n, proof_size: 10n },
+                    chunks: [pvmPaths.map((_path, index) => index)],
+                })),
+                deployAndRegisterBatch: vi.fn(
+                    async (
+                        pvmPaths: string[],
+                        _packages: string[],
+                        _registry: unknown,
+                        _metadataUris: string[],
+                        onChunk: (chunk: {
+                            addresses: string[];
+                            txHash: string;
+                            blockHash: string;
+                        }) => void,
+                    ) => {
+                        const addresses = pvmPaths.map(
+                            (_path, index) => `0x${String(index + 1).padStart(40, "0")}`,
+                        );
+                        onChunk({
+                            addresses,
+                            txHash: "0xdeploy",
+                            blockHash: "0xblock",
+                        });
+                        return { addresses };
+                    },
+                ),
+            })),
+        };
+    });
+
+    vi.mock("./publisher", () => ({
+        MetadataPublisher: vi.fn().mockImplementation(() => ({
+            publishBatch: vi.fn(async (metadataList: unknown[]) => ({
+                cids: metadataList.map(() => "fakeCid123"),
+                txHash: "0xpublish",
+            })),
+        })),
+    }));
+
+    vi.mock("./solidity", () => ({
+        buildSolidityToolchain: vi.fn(),
+        detectSolidityBuildTargets: vi.fn(() => []),
+    }));
+
     vi.mock("fs", () => ({
         existsSync: vi.fn(() => true),
+        mkdirSync: vi.fn(),
         readFileSync: vi.fn(() => Buffer.from("[]")),
+        writeFileSync: vi.fn(),
     }));
 
     const { pvmContractBuildAsync: mockBuild } = await import("./builder");
     const { readCdmPackage: mockReadCdm, detectDeploymentOrderLayered: mockDetect } = await import(
         "./detection"
     );
+    const {
+        buildSolidityToolchain: mockBuildSolidity,
+        detectSolidityBuildTargets: mockDetectSolidity,
+    } = await import("./solidity");
+    const { writeFileSync: mockWriteFileSync } = await import("fs");
 
     type CI = ContractInfo;
 
@@ -957,6 +1465,12 @@ if (import.meta.vitest) {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        (mockDetectSolidity as any).mockReturnValue([]);
+        (mockBuildSolidity as any).mockResolvedValue({
+            result: { success: true, stdout: "", stderr: "", durationMs: 10 },
+            artifacts: [],
+            missing: [],
+        });
         (mockBuild as any).mockImplementation(async (_root: string, crateName: string) => ({
             crateName,
             success: true,
@@ -1034,6 +1548,23 @@ if (import.meta.vitest) {
             expect(summary.contracts.map((c) => c.crate)).toEqual(["b"]);
         });
 
+        test("rejects duplicate CDM package names", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder([["a", "b"]], {}, { a: "@example/counter", b: "@example/counter" }),
+            );
+            await expect(buildContracts({ rootDir: "/fake" })).rejects.toThrow(
+                'Duplicate CDM package "@example/counter"',
+            );
+        });
+
+        test("rejects duplicate CDM package names discovered after build", async () => {
+            (mockDetect as any).mockReturnValue(makeOrder([["a", "b"]]));
+            (mockReadCdm as any).mockReturnValue("@example/counter");
+            await expect(buildContracts({ rootDir: "/fake" })).rejects.toThrow(
+                'Duplicate CDM package "@example/counter"',
+            );
+        });
+
         test("features option is forwarded to pvmContractBuildAsync", async () => {
             (mockDetect as any).mockReturnValue(makeOrder([["a"]]));
             await buildContracts({ rootDir: "/fake", features: "my-feature" });
@@ -1056,6 +1587,111 @@ if (import.meta.vitest) {
                 undefined,
                 undefined,
             );
+        });
+
+        test("overwrites local Solidity imports with build stubs before compiling Solidity targets", async () => {
+            (mockDetect as any).mockReturnValue(makeOrder([]));
+            (mockDetectSolidity as any).mockReturnValue([
+                {
+                    name: "@example/counter-a",
+                    displayName: "@example/counter-a",
+                    toolchain: "foundry",
+                    cdmPackage: "@example/counter-a",
+                    description: null,
+                    authors: [],
+                    homepage: null,
+                    repository: null,
+                    readmePath: null,
+                    path: "/fake/contracts",
+                    dependsOnCrates: [],
+                    sourcePath: "/fake/contracts/CounterA.sol",
+                    contractName: "CounterA",
+                },
+            ]);
+            (mockBuildSolidity as any).mockResolvedValue({
+                result: { success: true, stdout: "", stderr: "", durationMs: 10 },
+                artifacts: [
+                    {
+                        target: {
+                            name: "@example/counter-a",
+                            displayName: "@example/counter-a",
+                            toolchain: "foundry",
+                            cdmPackage: "@example/counter-a",
+                            sourcePath: "/fake/contracts/CounterA.sol",
+                            contractName: "CounterA",
+                        },
+                        bytecodePath: "/fake/target/cdm/foundry/counter-a.polkavm",
+                        artifactPath: "/fake/out/CounterA.sol/CounterA.json",
+                        abiPath: "/fake/out/CounterA.sol/CounterA.json",
+                        bytecodeSize: 42,
+                        durationMs: 10,
+                    },
+                ],
+                missing: [],
+            });
+
+            await buildContracts({ rootDir: "/fake" });
+
+            expect(mockWriteFileSync).toHaveBeenCalledWith(
+                "/fake/.cdm/solidity/example/counter-a.sol",
+                expect.stringContaining('import "../../../contracts/CounterA.sol";'),
+            );
+            expect(mockBuildSolidity).toHaveBeenCalledWith(
+                "/fake",
+                "foundry",
+                expect.any(Array),
+                expect.any(Object),
+            );
+        });
+    });
+
+    describe("deployContracts", () => {
+        test("deploys each layer before building its dependents", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder([["a"], ["b"]], { b: ["a"] }, { a: "@example/a", b: "@example/b" }),
+            );
+            (mockReadCdm as any).mockImplementation(
+                (_root: string, crate: string) =>
+                    ({ a: "@example/a", b: "@example/b" })[crate] ?? null,
+            );
+
+            const events: string[] = [];
+            await deployContracts({
+                rootDir: "/fake",
+                client: {
+                    assetHub: {
+                        apis: {
+                            ReviveApi: {
+                                instantiate: vi.fn(async () => ({
+                                    result: {
+                                        success: true,
+                                        value: {
+                                            addr: "0x0000000000000000000000000000000000000001",
+                                        },
+                                    },
+                                })),
+                            },
+                        },
+                    },
+                    bulletin: {},
+                    raw: { assetHub: {}, bulletin: {} },
+                    descriptors: { assetHub: {} },
+                } as any,
+                signer: {} as any,
+                origin: "fake-origin" as any,
+                registryAddress: "0xa7ae171c78f06c248a9b2556c793aa1df5c9173a",
+                onEvent: (event) => {
+                    if (event.type === "build-start") events.push(`build-start:${event.crate}`);
+                    if (event.type === "deploy-register-start") {
+                        events.push(`deploy-start:${event.crates.join(",")}`);
+                    }
+                    if (event.type === "deploy-register-done") {
+                        events.push(`deploy-done:${Object.keys(event.addresses).join(",")}`);
+                    }
+                },
+            });
+
+            expect(events.indexOf("deploy-done:a")).toBeLessThan(events.indexOf("build-start:b"));
         });
     });
 }
