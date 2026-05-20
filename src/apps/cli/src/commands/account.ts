@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { Enum } from "polkadot-api";
 import {
     createCdmChainClient,
     createCdmAssetHubClient,
@@ -15,6 +16,32 @@ const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const link = (label: string, url: string) =>
     supportsHyperlinks.stdout ? `\x1b[4m\x1b]8;;${url}\x07${label}\x1b]8;;\x07\x1b[0m` : url;
+
+type BulletinAuthorizationValue = {
+    extent: {
+        transactions: number;
+        transactions_allowance?: number;
+        bytes: bigint;
+        bytes_allowance?: bigint;
+    };
+};
+
+function getRemainingBulletinAllowance(auth: BulletinAuthorizationValue): {
+    transactions: number;
+    bytes: bigint;
+} {
+    const extent = auth.extent;
+    return {
+        transactions:
+            extent.transactions_allowance === undefined
+                ? Number(extent.transactions)
+                : Number(extent.transactions_allowance) - Number(extent.transactions),
+        bytes:
+            extent.bytes_allowance === undefined
+                ? BigInt(extent.bytes)
+                : BigInt(extent.bytes_allowance) - BigInt(extent.bytes),
+    };
+}
 
 function requireAccount(chainName: string): Account {
     const acc = getAccount(chainName);
@@ -54,22 +81,22 @@ export async function printBalances(chainName: string, acc: Account) {
 
     // Bulletin allowances
     await blClient.getChainSpecData();
-    const auth = await blApi.query.TransactionStorage.Authorizations.getValue({
-        type: "Account",
-        value: acc.address,
-    });
+    const auth = await blApi.query.TransactionStorage.Authorizations.getValue(
+        Enum("Account", acc.address),
+    );
     if (auth) {
-        const mb = (Number(auth.extent.bytes) / 1_000_000).toFixed(1);
+        const allowance = getRemainingBulletinAllowance(auth);
+        const mb = (Number(allowance.bytes) / 1_000_000).toFixed(1);
         const finalizedBlock = await blClient.getFinalizedBlock();
         const currentBlockNumber = finalizedBlock.number;
         const expired = currentBlockNumber >= auth.expiration;
         if (expired) {
             console.log(
-                `  Bulletin    ${red(`${auth.extent.transactions} txns`)}  ${red(`${mb} MB`)}  ${red(`expired at block #${auth.expiration}`)}`,
+                `  Bulletin    ${red(`${allowance.transactions} txns`)}  ${red(`${mb} MB`)}  ${red(`expired at block #${auth.expiration}`)}`,
             );
         } else {
             console.log(
-                `  Bulletin    ${green(`${auth.extent.transactions} txns`)}  ${green(`${mb} MB`)}  ${dim(`expires block #${auth.expiration}`)}`,
+                `  Bulletin    ${green(`${allowance.transactions} txns`)}  ${green(`${mb} MB`)}  ${dim(`expires block #${auth.expiration}`)}`,
             );
         }
     } else {
