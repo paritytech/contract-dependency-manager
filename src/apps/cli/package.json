@@ -20,6 +20,7 @@
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
         "@parity/product-sdk-contracts": "catalog:",
+        "@parity/product-sdk-tx": "catalog:",
         "commander": "catalog:",
         "ink": "catalog:",
         "polkadot-api": "catalog:",

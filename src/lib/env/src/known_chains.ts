@@ -18,10 +18,13 @@ export interface ChainPreset {
     faucets?: readonly ChainFaucet[];
 }
 
-// Keep these aligned with product-sdk's `getChainAPI("paseo")` preset. Product-sdk
-// exports Bulletin RPCs, but not the Asset Hub RPC or HTTP gateway constants.
+// Product SDK exports Bulletin RPCs, but its Asset Hub RPC presets are internal
+// to @parity/product-sdk-chain-client. Keep these CLI fallbacks aligned with
+// the descriptor package's generated .papi wsUrl values.
 const PASEO_ASSET_HUB_URL = "wss://paseo-asset-hub-next-rpc.polkadot.io";
+const PREVIEW_NET_ASSET_HUB_URL = "wss://previewnet.substrate.dev/asset-hub";
 const PASEO_IPFS_GATEWAY_URL = "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs";
+const PREVIEW_NET_IPFS_GATEWAY_URL = "https://previewnet.substrate.dev/ipfs";
 
 const KNOWN_CHAINS = {
     polkadot: {
@@ -37,7 +40,7 @@ const KNOWN_CHAINS = {
         registryAddress: getRegistryAddress("paseo"),
         productSdkEnvironment: "paseo",
         faucets: [
-            { label: "Asset Hub", url: "https://faucet.polkadot.io/" },
+            { label: "Asset Hub", url: "https://faucet.polkadot.io/?parachain=1500" },
             {
                 label: "Bulletin",
                 url: "https://paritytech.github.io/polkadot-bulletin-chain/authorizations?tab=faucet",
@@ -45,11 +48,9 @@ const KNOWN_CHAINS = {
         ],
     },
     "preview-net": {
-        assethubUrl: "wss://previewnet.substrate.dev/asset-hub",
-        // TEMPORARY_PATCH! Preview-net's IPFS gateway does not currently serve Bulletin CIDs,
-        // so CDM stores preview-net metadata on Paseo Bulletin for now.
-        bulletinUrl: BULLETIN_RPCS.paseo[0],
-        ipfsGatewayUrl: PASEO_IPFS_GATEWAY_URL,
+        assethubUrl: PREVIEW_NET_ASSET_HUB_URL,
+        bulletinUrl: BULLETIN_RPCS.previewnet[0],
+        ipfsGatewayUrl: PREVIEW_NET_IPFS_GATEWAY_URL,
         registryAddress: getRegistryAddress("preview-net"),
         productSdkEnvironment: "previewnet",
     },
