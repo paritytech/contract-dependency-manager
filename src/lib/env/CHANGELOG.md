@@ -1,5 +1,18 @@
 # @dotdm/env
 
+## 2.0.0
+
+### Major Changes
+
+- b1a6671: Remove the deprecated `REGISTRY_ADDRESS` export and route registry resolution through `@dotdm/env`'s `getRegistryAddress(name)`.
+
+  `getRegistryAddress()` now defaults to the current Paseo registry, so build/deploy/install paths and lower-level helpers no longer fall back to the old deterministic registry address. Templates and target hashes have been updated to the current registry as well.
+
+### Patch Changes
+
+- Updated dependencies [b1a6671]
+  - @dotdm/utils@0.4.0
+
 ## 1.0.6
 
 ### Patch Changes
