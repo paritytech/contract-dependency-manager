@@ -38,6 +38,30 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
+# macOS IPv6 check
+# PPN's p2p networking hits a polkadot-sdk bug on macOS with IPv6 enabled
+# (https://github.com/paritytech/polkadot-sdk/issues/8918). Warn early so the
+# user can disable IPv6 BEFORE running `cdm network start` and hitting
+# confusing failures.
+if [ "$OS" = "darwin" ]; then
+  ACTIVE_IFACE=$(route -n get default 2>/dev/null | awk '/interface:/{print $2}' || true)
+  if [ -n "$ACTIVE_IFACE" ]; then
+    SERVICE=$(networksetup -listallhardwareports 2>/dev/null | awk -v iface="$ACTIVE_IFACE" 'BEGIN{p=""} /Hardware Port:/{p=$0} $0 ~ "Device: "iface{sub(/Hardware Port: /,"",p); print p; exit}' || true)
+    if [ -n "$SERVICE" ]; then
+      IPV6=$(networksetup -getinfo "$SERVICE" 2>/dev/null | awk -F': ' '/^IPv6:/{print $2}' || true)
+      if [ "$IPV6" != "Off" ] && [ -n "$IPV6" ]; then
+        echo
+        echo "⚠️  macOS IPv6 is enabled on '$SERVICE'. PPN's p2p networking"
+        echo "    fails on macOS with IPv6 on (polkadot-sdk#8918). Disable with:"
+        echo "      sudo networksetup -setv6off \"$SERVICE\""
+        echo "    Re-enable later with:"
+        echo "      sudo networksetup -setv6automatic \"$SERVICE\""
+        echo
+      fi
+    fi
+  fi
+fi
+
 TAG="${VERSION:-${CDM_TAG:-}}"
 if [ -z "$TAG" ]; then
   TAG=$(curl -fsSI -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
@@ -119,6 +143,53 @@ if [ "${CDM_SKIP_SETUP:-0}" != "1" ]; then
     "$CDM_DIR/bin/$BIN" setup --cargo-pvm-contract-ref "$CDM_CARGO_PVM_CONTRACT_REF"
   else
     "$CDM_DIR/bin/$BIN" setup
+  fi
+
+  # Build the ContractRegistry bytecode locally and stash it at ~/.cdm/share/.
+  # `cdm deploy --bootstrap` (and `cdm test`'s auto-bootstrap path) read from
+  # there when the user project doesn't have the contract-registry crates in
+  # its own workspace.
+  #
+  # We shallow-clone the cdm source into ~/.cdm/share/cdm-source/ so the
+  # contract crates have their full Cargo workspace context (they inherit
+  # `version.workspace = true` etc). The clone also serves as a reusable
+  # checkout for future rebuilds.
+  mkdir -p "$CDM_DIR/share"
+  SOURCE_DIR="$CDM_DIR/share/cdm-source"
+  echo "Cloning $REPO @ $TAG for the ContractRegistry source..."
+  rm -rf "$SOURCE_DIR"
+  if git clone --depth 1 --branch "$TAG" "https://github.com/$REPO.git" "$SOURCE_DIR" 2>&1 \
+    || git clone --depth 1 "https://github.com/$REPO.git" "$SOURCE_DIR" 2>&1; then
+    echo "Building ContractRegistry bytecode (this may take a minute)..."
+    if (cd "$SOURCE_DIR" \
+      && cargo pvm-contract build --manifest-path Cargo.toml -p contract-registry \
+      && cargo pvm-contract build --manifest-path Cargo.toml -p contract-registry-proxy); then
+      cp "$SOURCE_DIR/target/release/contract-registry.polkavm" \
+        "$SOURCE_DIR/target/release/contract-registry-proxy.polkavm" \
+        "$CDM_DIR/share/"
+      echo "ContractRegistry built → $CDM_DIR/share/"
+    else
+      echo "Warning: failed to build ContractRegistry."
+      echo "  cdm deploy --bootstrap will fall back to looking for it in your project's target/release/."
+    fi
+  else
+    echo "Warning: failed to clone $REPO. ContractRegistry bytecode will not be available."
+    echo "  cdm deploy --bootstrap will fall back to looking for it in your project's target/release/."
+  fi
+
+  # Install Product Preview Network (PPN) into ~/.cdm/ppn/ so `cdm test` and
+  # `cdm network start` have a local Polkadot ecosystem ready to go. Best-effort:
+  # PPN's installer needs `gh auth login` or GITHUB_TOKEN — skip silently if
+  # missing, the user can run `cdm network start` later to retry.
+  if [ ! -d "$CDM_DIR/ppn" ]; then
+    if { command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; } || [ -n "${GITHUB_TOKEN:-}" ]; then
+      echo "Installing Product Preview Network into $CDM_DIR/ppn..."
+      (cd "$CDM_DIR" && curl -sL https://raw.githubusercontent.com/paritytech/ppn-proxy/main/install.sh | bash) \
+        && echo "PPN installed." \
+        || echo "PPN install failed — run 'cdm network start' later to retry."
+    else
+      echo "Skipping PPN install (needs 'gh auth login' or GITHUB_TOKEN). Run 'cdm network start' later to install on demand."
+    fi
   fi
 fi
 

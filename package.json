@@ -23,7 +23,10 @@
     "compile:all": "pnpm build:ts && pnpm embed:templates && bun build --compile --target=bun-darwin-arm64 src/apps/cli/src/cli.ts --outfile dist/cdm-darwin-arm64 && bun build --compile --target=bun-darwin-x64 src/apps/cli/src/cli.ts --outfile dist/cdm-darwin-x64 && bun build --compile --target=bun-linux-x64 src/apps/cli/src/cli.ts --outfile dist/cdm-linux-x64 && bun build --compile --target=bun-linux-arm64 src/apps/cli/src/cli.ts --outfile dist/cdm-linux-arm64",
     "install:cli": "pnpm compile:cli && mkdir -p ~/.cdm/bin && cp dist/cdm ~/.cdm/bin/cdm",
     "deploy:registry": "pnpm build:registry && turbo build --filter=@parity/cdm-env --filter=@parity/cdm-builder && bun run src/lib/scripts/deploy-registry.ts",
-    "embed:templates": "bun run src/lib/scripts/embed-templates.ts"
+    "embed:templates": "bun run src/lib/scripts/embed-templates.ts",
+    "network:start": "bun run src/apps/cli/src/cli.ts network start",
+    "network:stop": "bun run src/apps/cli/src/cli.ts network stop",
+    "network:status": "bun run src/apps/cli/src/cli.ts network status"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",

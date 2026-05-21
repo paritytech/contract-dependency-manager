@@ -10,6 +10,8 @@ import { accountCommand } from "./commands/account";
 import { setupCommand } from "./commands/setup";
 import { updateCommand } from "./commands/update";
 import { updateCheckCommand } from "./commands/update-check";
+import { testCommand } from "./commands/test";
+import { networkCommand } from "./commands/network";
 import { scheduleUpdateCheck, UPDATE_CHECK_COMMAND, warnIfOutdated } from "./lib/update-check";
 import packageJson from "../package.json";
 
@@ -36,6 +38,8 @@ program.addCommand(accountCommand);
 program.addCommand(setupCommand);
 program.addCommand(updateCommand);
 program.addCommand(updateCheckCommand, { hidden: true });
+program.addCommand(networkCommand);
+program.addCommand(testCommand);
 
 // bun --compile quirk: when run with no user args, argv[2] is set to the
 // program name (the argv[0] used to invoke the binary), which commander then

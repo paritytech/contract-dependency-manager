@@ -26,6 +26,9 @@ ppn/
 
 cdm.local.json
 
+# bun --compile temp artifact (e.g. .<hash>-00000000.bun-build at repo root)
+*.bun-build
+
 .DS_Store
 
 # Frozen CREATE3 artifacts are committed on purpose: their exact bytes are
