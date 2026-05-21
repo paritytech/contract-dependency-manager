@@ -1,7 +1,7 @@
 CLI_DIR = src/apps/cli
 TEMPLATE_DIR = src/templates/shared-counter
 
-.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test e2e-registry clean format format-check format-ts format-rs format-ts-check format-rs-check
+.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test clean format format-check format-ts format-rs format-ts-check format-rs-check
 
 setup:
 	pnpm install
@@ -55,17 +55,6 @@ build-template:
 
 test:
 	pnpm vitest run
-
-# End-to-end registry validation against a transient revive-dev-node.
-# Builds the registry, spins a local node, deploys, runs the round-trip test
-# (publishLatest + every view method + searchContractNames), tears the node
-# down. Requires `revive-dev-node` on $PATH.
-#
-# To run against an existing node instead (e.g. in CI where the node is
-# already up):
-#     EXTERNAL_ASSETHUB_URL=ws://127.0.0.1:9944 make e2e-registry
-e2e-registry: build-registry
-	src/lib/scripts/run-registry-e2e.sh
 
 clean:
 	rm -rf dist/ target/ node_modules/
