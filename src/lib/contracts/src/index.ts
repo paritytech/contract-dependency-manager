@@ -106,6 +106,19 @@ export {
 export { type CdmLocalJson, readCdmLocalJson, resolveFeatures } from "./cdm-local-json";
 
 export {
+    installContracts,
+    type InstallContractsOptions,
+    type InstallEvent,
+    type InstallIpfsGateway,
+    type InstallLibraryRequest,
+    type InstallMetadataResponse,
+    type InstallRequestedVersion,
+    type InstallResult,
+    type InstallSummary,
+    type RegistryContract,
+} from "./install";
+
+export {
     buildContracts,
     deployContracts,
     type BuildContractsOptions,
