@@ -5,13 +5,6 @@ cdm::import!("@example/counter");
 #[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
 mod counter_writer {
     use super::*;
-    use pvm_contract_sdk::CallError;
-
-    pvm_contract_sdk::sol_revert_enum! {
-        pub enum Error {
-            CallError(CallError),
-        }
-    }
 
     pub struct CounterWriter;
 
@@ -21,20 +14,18 @@ mod counter_writer {
 
         /// Increment the shared counter by calling the counter contract via CDM.
         #[pvm_contract_sdk::method]
-        pub fn write_increment(&mut self) -> Result<(), Error> {
+        pub fn write_increment(&mut self) {
             let counter = counter::Counter::cdm_lookup();
-            counter.increment().call(self)?;
-            Ok(())
+            counter.increment().call(self).expect("increment failed");
         }
 
         /// Increment the shared counter N times.
         #[pvm_contract_sdk::method]
-        pub fn write_increment_n(&mut self, n: u32) -> Result<(), Error> {
+        pub fn write_increment_n(&mut self, n: u32) {
             let counter = counter::Counter::cdm_lookup();
             for _ in 0..n {
-                counter.increment().call(self)?;
+                counter.increment().call(self).expect("increment failed");
             }
-            Ok(())
         }
     }
 }
