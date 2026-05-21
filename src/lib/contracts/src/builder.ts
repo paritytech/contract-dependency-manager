@@ -1,6 +1,6 @@
 import { resolve } from "path";
 import { execFileSync, spawn } from "child_process";
-import { REGISTRY_ADDRESS } from "@dotdm/utils";
+import { getRegistryAddress } from "@dotdm/env/registry";
 
 export interface BuildResult {
     crateName: string;
@@ -23,7 +23,7 @@ export function pvmContractBuild(
     rootDir: string,
     crateName: string,
     features?: string,
-    registryAddress: string = REGISTRY_ADDRESS,
+    registryAddress: string = getRegistryAddress(),
 ): void {
     const manifestPath = resolve(rootDir, "Cargo.toml");
     const args = ["pvm-contract", "build", "--manifest-path", manifestPath, "-p", crateName];
@@ -45,7 +45,7 @@ export async function pvmContractBuildAsync(
     crateName: string,
     onProgress?: BuildProgressCallback,
     features?: string,
-    registryAddress: string = REGISTRY_ADDRESS,
+    registryAddress: string = getRegistryAddress(),
 ): Promise<BuildResult> {
     const manifestPath = resolve(rootDir, "Cargo.toml");
 

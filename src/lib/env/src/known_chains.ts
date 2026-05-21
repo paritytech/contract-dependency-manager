@@ -1,5 +1,4 @@
 import { BULLETIN_RPCS } from "@parity/product-sdk-host";
-import { REGISTRY_ADDRESS } from "@dotdm/utils";
 import { getRegistryAddress, type ProductSdkEnvironment } from "./registry";
 
 export interface ChainFaucet {
@@ -31,7 +30,7 @@ const KNOWN_CHAINS = {
         assethubUrl: "wss://polkadot-asset-hub-rpc.polkadot.io",
         bulletinUrl: "wss://polkadot-bulletin-rpc.polkadot.io",
         ipfsGatewayUrl: "https://polkadot-bulletin-rpc.polkadot.io/ipfs",
-        registryAddress: REGISTRY_ADDRESS,
+        registryAddress: getRegistryAddress("polkadot"),
     },
     paseo: {
         assethubUrl: PASEO_ASSET_HUB_URL,
@@ -58,7 +57,7 @@ const KNOWN_CHAINS = {
         assethubUrl: "ws://127.0.0.1:10020",
         bulletinUrl: "ws://127.0.0.1:10030",
         ipfsGatewayUrl: "http://127.0.0.1:8283/ipfs",
-        registryAddress: REGISTRY_ADDRESS,
+        registryAddress: getRegistryAddress("local"),
     },
 } as const satisfies Record<string, ChainPreset>;
 

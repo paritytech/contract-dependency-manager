@@ -7,8 +7,8 @@ import {
     createCdmAssetHubClient,
     connectIpfsGateway,
     getChainPreset,
+    getRegistryAddress,
     DEFAULT_NODE_URL,
-    REGISTRY_ADDRESS,
 } from "@dotdm/env";
 import {
     CONTRACTS_REGISTRY_ABI,
@@ -101,7 +101,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         process.exit(1);
     }
 
-    const registryAddress = opts.registryAddress ?? REGISTRY_ADDRESS;
+    const registryAddress = opts.registryAddress ?? getRegistryAddress(opts.name);
     const targetHash = computeTargetHash(opts.assethubUrl, opts.ipfsGatewayUrl, registryAddress);
 
     // Connect to chain with spinner (matching deploy command style)

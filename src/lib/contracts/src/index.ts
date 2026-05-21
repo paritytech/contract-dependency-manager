@@ -83,7 +83,6 @@ export {
     GAS_LIMIT,
     STORAGE_DEPOSIT_LIMIT,
     CONTRACTS_REGISTRY_CRATE,
-    REGISTRY_ADDRESS,
 } from "@dotdm/utils";
 
 export {
