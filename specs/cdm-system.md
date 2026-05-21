@@ -50,7 +50,7 @@ The metadata blob composition is in the right panel of the publish-pipeline diag
 
 ![ContractRegistry — state machine, storage, queries](./assets/cdm-registry.svg)
 
-The registry is a `pallet-revive` contract on Asset Hub, CREATE2-deployed under `@cdm/registry`. Address is a compile-time constant in `@dotdm/utils` (`REGISTRY_ADDRESS`) — no `--registry-address` flag is needed.
+The registry is a `pallet-revive` contract on Asset Hub, CREATE2-deployed under `@cdm/registry`. Registry addresses are environment-scoped and resolved through `@dotdm/env` (`getRegistryAddress(name)`, defaulting to Paseo); custom targets can still pass `--registry-address` or store `targets[*].registry` in `cdm.json`.
 
 Key invariants:
 

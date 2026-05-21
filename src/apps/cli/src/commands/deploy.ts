@@ -7,11 +7,12 @@ import {
     prepareSignerFromSuri,
     prepareSignerFromMnemonic,
     getChainPreset,
+    getRegistryAddress,
     ss58Address,
     type CdmChainClient,
 } from "@dotdm/env";
 import { getAccount } from "@dotdm/utils/accounts";
-import { ALICE_SS58, CONTRACTS_REGISTRY_PACKAGE, REGISTRY_ADDRESS } from "@dotdm/utils";
+import { ALICE_SS58, CONTRACTS_REGISTRY_PACKAGE } from "@dotdm/utils";
 import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, resolveFeatures } from "@dotdm/contracts";
 import type { HexString } from "polkadot-api";
 import { runDeployWithUI, spinner } from "../lib/ui";
@@ -65,8 +66,8 @@ function resolveSigner(opts: DeployOptions): {
     return { signer: prepareSigner("Alice"), origin: ALICE_SS58 };
 }
 
-function getRegistryAddress(opts: DeployOptions): string {
-    return opts.registryAddress ?? REGISTRY_ADDRESS;
+function resolveRegistryAddress(opts: DeployOptions): string {
+    return opts.registryAddress ?? getRegistryAddress(opts.name);
 }
 
 deploy.action(async (opts: DeployOptions) => {
@@ -142,7 +143,7 @@ async function deployWithRegistry(
         ownsChainClient = true;
     }
 
-    const registryAddress = getRegistryAddress(opts);
+    const registryAddress = resolveRegistryAddress(opts);
     console.log(`\x1b[1mRegistry\x1b[0m   ${registryAddress}\n`);
 
     const { result } = await runDeployWithUI({
@@ -216,7 +217,7 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
 
     // Phase 1 preflight: deploy ContractRegistry only if this signer/bytecode
     // produces the registry address selected for this network/target.
-    const registryAddress = getRegistryAddress(opts);
+    const registryAddress = resolveRegistryAddress(opts);
     const expectedRegistry = await deployer.dryRunDeploy(
         registryPvmPath,
         CONTRACTS_REGISTRY_PACKAGE,

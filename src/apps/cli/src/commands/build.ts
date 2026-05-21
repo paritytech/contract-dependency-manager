@@ -1,7 +1,6 @@
 import { Command } from "commander";
 import { resolve } from "path";
-import { getChainPreset } from "@dotdm/env";
-import { REGISTRY_ADDRESS } from "@dotdm/utils";
+import { getChainPreset, getRegistryAddress } from "@dotdm/env";
 import { readCdmJson, resolveFeatures, resolveTargetRegistryAddress } from "@dotdm/contracts";
 import { runBuildWithUI } from "../lib/ui";
 
@@ -24,12 +23,12 @@ type BuildOptions = {
 function resolveRegistryAddress(rootDir: string, opts: BuildOptions): string {
     if (opts.registryAddress) return opts.registryAddress;
     if (opts.name && opts.name !== "custom") {
-        return getChainPreset(opts.name).registryAddress ?? REGISTRY_ADDRESS;
+        return getChainPreset(opts.name).registryAddress ?? getRegistryAddress(opts.name);
     }
 
     const cdmResult = readCdmJson(rootDir);
     const target = Object.values(cdmResult?.cdmJson.targets ?? {})[0];
-    return target ? resolveTargetRegistryAddress(target) : REGISTRY_ADDRESS;
+    return target ? resolveTargetRegistryAddress(target) : getRegistryAddress();
 }
 
 build.action(async (opts: BuildOptions) => {

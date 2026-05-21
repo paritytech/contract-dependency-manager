@@ -6,7 +6,7 @@ export type {
 export { getChainPreset, isKnownChainPreset } from "./known_chains";
 export type { ProductSdkEnvironment } from "./registry";
 export { getRegistryAddress } from "./registry";
-export { DEFAULT_NODE_URL, REGISTRY_ADDRESS } from "@dotdm/utils";
+export { DEFAULT_NODE_URL } from "@dotdm/utils";
 
 export type {
     AssetHubConnection,

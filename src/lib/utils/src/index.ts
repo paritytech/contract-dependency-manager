@@ -5,6 +5,5 @@ export {
     CONTRACTS_REGISTRY_CRATE,
     CONTRACTS_REGISTRY_PACKAGE,
     DEFAULT_NODE_URL,
-    REGISTRY_ADDRESS,
 } from "./constants";
 export { stringifyBigInt } from "./utils";

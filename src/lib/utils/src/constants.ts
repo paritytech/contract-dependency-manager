@@ -13,9 +13,5 @@ export const CONTRACTS_REGISTRY_CRATE = "contract-registry";
 // deliberately deploying a new registry generation.
 export const CONTRACTS_REGISTRY_PACKAGE = "@cdm/registry.1";
 
-// Universal ContractRegistry address — deterministic via CREATE2.
-// Same address on every chain when deployed by the same key with the same bytecode.
-export const REGISTRY_ADDRESS = "0xae344f7f0f91d3a2176032af2990abcc7606c7d4";
-
 // Default WebSocket URL for local development
 export const DEFAULT_NODE_URL = "ws://127.0.0.1:10020";

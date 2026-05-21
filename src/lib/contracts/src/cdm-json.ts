@@ -1,7 +1,7 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve } from "path";
-import { REGISTRY_ADDRESS } from "@dotdm/utils";
+import { getRegistryAddress } from "@dotdm/env/registry";
 
 export interface CdmJsonTarget {
     "asset-hub": string;
@@ -23,13 +23,13 @@ export interface CdmJson {
 }
 
 export function resolveTargetRegistryAddress(target: CdmJsonTarget): string {
-    return target.registry ?? REGISTRY_ADDRESS;
+    return target.registry ?? getRegistryAddress();
 }
 
 export function computeTargetHash(
     assethubUrl: string,
     ipfsGatewayUrl: string,
-    registryAddress: string = REGISTRY_ADDRESS,
+    registryAddress: string = getRegistryAddress(),
 ): string {
     const input = `${assethubUrl}\n${ipfsGatewayUrl}\n${registryAddress.toLowerCase()}`;
     const hash = blake2b(new TextEncoder().encode(input), { dkLen: 32 });
