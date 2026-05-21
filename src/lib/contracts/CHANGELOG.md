@@ -1,5 +1,11 @@
 # @dotdm/contracts
 
+## 2.2.0
+
+### Minor Changes
+
+- 9635da9: Add a `metadataSigner` deploy option for hosts that use separate Asset Hub and Bulletin signing accounts.
+
 ## 2.1.3
 
 ### Patch Changes
