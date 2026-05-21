@@ -1,7 +1,9 @@
 import { Command } from "commander";
 import { resolve } from "path";
 import { existsSync, writeFileSync } from "fs";
+import { homedir } from "os";
 import {
+    createCdmAssetHubClient,
     createCdmChainClient,
     prepareSigner,
     prepareSignerFromSuri,
@@ -93,12 +95,57 @@ deploy.action(async (opts: DeployOptions) => {
     const rootDir = process.cwd();
     opts.features = resolveFeatures(opts.features, rootDir);
 
+    // Auto-bootstrap on `local`: if the chain doesn't have the registry yet
+    // (fresh PPN data, never deployed), opt the user into bootstrap mode so
+    // they don't have to know about the flag.
+    if (opts.name === "local" && !opts.bootstrap) {
+        const exists = await checkRegistryOnChain(opts.assethubUrl, resolveRegistryAddress(opts));
+        if (!exists) {
+            console.log(
+                "ContractRegistry not found on local chain — auto-bootstrapping. Pass --no-bootstrap to skip.",
+            );
+            opts.bootstrap = true;
+        }
+    }
+
     if (opts.bootstrap) {
         return bootstrapDeploy(rootDir, opts);
     }
 
     await deployWithRegistry(rootDir, opts);
 });
+
+/**
+ * Resolve the path to the ContractRegistry PolkaVM artifact. Looks in the
+ * caller's `target/` first (cdm source repo or any project with a built
+ * registry), then falls back to the user-global stash at
+ * `~/.cdm/share/contract-registry.release.polkavm` which install.sh populates
+ * from the cdm release assets. Returns null if neither exists.
+ */
+function resolveRegistryPvmPath(rootDir: string): string | null {
+    const localPath = resolve(rootDir, `target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`);
+    if (existsSync(localPath)) return localPath;
+    const sharedPath = resolve(homedir(), `.cdm/share/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`);
+    if (existsSync(sharedPath)) return sharedPath;
+    return null;
+}
+
+async function checkRegistryOnChain(
+    assethubUrl: string,
+    registryAddress: string,
+): Promise<boolean> {
+    try {
+        const client = await createCdmAssetHubClient(assethubUrl, "local");
+        await client.raw.assetHub.getChainSpecData();
+        const info = await client.assetHub.query.Revive.AccountInfoOf.getValue(
+            registryAddress as HexString,
+        );
+        client.destroy();
+        return info?.account_type.type === "Contract";
+    } catch {
+        return false;
+    }
+}
 
 /**
  * Build, deploy, and register all CDM contracts against the registry.
@@ -175,11 +222,15 @@ async function deployWithRegistry(
 async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<void> {
     console.log("=== CDM Bootstrap Deploy ===\n");
 
-    const registryPvmPath = resolve(rootDir, `target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`);
-    if (!existsSync(registryPvmPath)) {
-        console.error(`ERROR: ContractRegistry not built: ${registryPvmPath}`);
-        console.error("Build contracts first:");
-        console.error("  cargo pvm-contract build --manifest-path Cargo.toml -p contracts");
+    const registryPvmPath = resolveRegistryPvmPath(rootDir);
+    if (!registryPvmPath) {
+        console.error(
+            `ERROR: ContractRegistry bytecode not found. Looked in:\n` +
+                `  - ${resolve(rootDir, `target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`)}\n` +
+                `  - ${resolve(homedir(), `.cdm/share/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`)}\n` +
+                `Either build it locally (\`make build-registry\` from a cdm checkout) ` +
+                `or re-run install.sh from a cdm release that ships the bytecode.`,
+        );
         process.exit(1);
     }
 

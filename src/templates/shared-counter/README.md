@@ -50,6 +50,17 @@ bun run src/validate.ts
 
 The validation script connects to the local chain, calls `write_increment()` via the writer contract, then reads back the count via the reader contract to verify cross-contract CDM calls work correctly.
 
+### Test against a local network
+
+```bash
+pnpm install
+cdm test
+```
+
+`cdm test` auto-starts the local Polkadot ecosystem (Product Preview Network) if it isn't running, deploys your contracts, populates `cdm.json` via `cdm install`, then runs vitest from `tests/`. See `tests/counter.test.ts` for the sample.
+
+> **If your project is inside the cdm source monorepo for dev testing,** use `pnpm install --ignore-workspace` so the template gets its own `node_modules` instead of being absorbed by the parent workspace. From a standalone scaffolded project it's just `pnpm install`.
+
 ## Directory Structure
 
 ```

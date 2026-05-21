@@ -1,14 +1,24 @@
 CLI_DIR = src/apps/cli
 TEMPLATE_DIR = src/templates/shared-counter
 
-.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test clean format format-check format-ts format-rs format-ts-check format-rs-check
+.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test clean format format-check format-ts format-rs format-ts-check format-rs-check embed-templates start-network stop-network network-status
 
 setup:
 	pnpm install
 	$(MAKE) build-template
 
+# `cdm network` wraps the PPN lifecycle (install + start/stop/status/logs)
+# against a shared install at ~/.cdm/ppn/. These Makefile targets exist for
+# convenience inside this repo; users with installed cdm can call them
+# directly via `cdm network ...` from any project.
 start-network:
-	cd ppn && make start
+	bun run $(CLI_DIR)/src/cli.ts network start
+
+stop-network:
+	bun run $(CLI_DIR)/src/cli.ts network stop
+
+network-status:
+	bun run $(CLI_DIR)/src/cli.ts network status
 
 install: embed-templates
 	pnpm -r build

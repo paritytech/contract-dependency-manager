@@ -25,4 +25,7 @@ ppn/
 
 cdm.local.json
 
+# bun --compile temp artifact (e.g. .<hash>-00000000.bun-build at repo root)
+*.bun-build
+
 .DS_Store
