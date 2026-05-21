@@ -129,6 +129,15 @@ export interface DeployContractsOptions {
     signer: PolkadotSigner;
     origin: SS58String;
     registryAddress: HexString;
+    /**
+     * Signer used for Bulletin metadata publishes. Defaults to `signer`.
+     *
+     * Hosts with separated account semantics, such as playground-cli mobile
+     * sessions, should pass their Bulletin allowance slot signer here while
+     * keeping `signer`/`origin` as the Asset Hub product account that deploys
+     * contracts and publishes registry entries.
+     */
+    metadataSigner?: PolkadotSigner;
 
     // Tuning (reserved for future use by internal tx layers)
     waitFor?: "best-block" | "finalized";
@@ -929,7 +938,9 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
  *  verifies the published CIDs match the precomputed values after the fact.
  *
  * Never opens its own chain connections — the `ChainClient` + signer + origin
- * + registry address must be supplied by the caller.
+ * + registry address must be supplied by the caller. Callers that separate
+ * Asset Hub authority from Bulletin storage allowance can pass
+ * `metadataSigner`; otherwise the deployment signer is reused.
  */
 export async function deployContracts(opts: DeployContractsOptions): Promise<DeploySummary> {
     const t0 = Date.now();
@@ -965,7 +976,11 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         const bulletinClient = opts.client.raw.bulletin;
 
         const deployer = new ContractDeployer(signer, opts.origin, assetHubClient, assetHubApi);
-        const publisher = new MetadataPublisher(signer, bulletinApi, bulletinClient);
+        const publisher = new MetadataPublisher(
+            opts.metadataSigner ?? signer,
+            bulletinApi,
+            bulletinClient,
+        );
         emit({
             type: "phase",
             name: "connecting-registry",
@@ -1434,6 +1449,7 @@ if (import.meta.vitest) {
         buildSolidityToolchain: mockBuildSolidity,
         detectSolidityBuildTargets: mockDetectSolidity,
     } = await import("./solidity");
+    const { MetadataPublisher: mockMetadataPublisher } = await import("./publisher");
     const { writeFileSync: mockWriteFileSync } = await import("fs");
 
     type CI = ContractInfo;
@@ -1480,6 +1496,14 @@ if (import.meta.vitest) {
         }));
         (mockReadCdm as any).mockReturnValue(null);
     });
+
+    function makePolkadotSigner(fill: number): PolkadotSigner {
+        return {
+            publicKey: new Uint8Array(32).fill(fill),
+            signTx: vi.fn(async () => new Uint8Array(65).fill(fill)),
+            signBytes: vi.fn(async () => new Uint8Array(64).fill(fill)),
+        };
+    }
 
     describe("buildContracts", () => {
         test("contracts in same layer build concurrently", async () => {
@@ -1656,6 +1680,8 @@ if (import.meta.vitest) {
             );
 
             const events: string[] = [];
+            const deploySigner = makePolkadotSigner(1);
+            const metadataSigner = makePolkadotSigner(2);
             await deployContracts({
                 rootDir: "/fake",
                 client: {
@@ -1677,9 +1703,10 @@ if (import.meta.vitest) {
                     raw: { assetHub: {}, bulletin: {} },
                     descriptors: { assetHub: {} },
                 } as any,
-                signer: {} as any,
-                origin: "fake-origin" as any,
+                signer: deploySigner,
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                 registryAddress: "0xa7ae171c78f06c248a9b2556c793aa1df5c9173a",
+                metadataSigner,
                 onEvent: (event) => {
                     if (event.type === "build-start") events.push(`build-start:${event.crate}`);
                     if (event.type === "deploy-register-start") {
@@ -1692,6 +1719,11 @@ if (import.meta.vitest) {
             });
 
             expect(events.indexOf("deploy-done:a")).toBeLessThan(events.indexOf("build-start:b"));
+            expect(mockMetadataPublisher).toHaveBeenCalledWith(
+                metadataSigner,
+                expect.anything(),
+                expect.anything(),
+            );
         });
     });
 }

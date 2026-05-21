@@ -1,5 +1,6 @@
 import type { PolkadotClient } from "polkadot-api";
-import { prepareSigner, type CdmBulletinApi } from "@dotdm/env";
+import type { PolkadotSigner } from "polkadot-api";
+import type { CdmBulletinApi } from "@dotdm/env";
 import {
     AsyncBulletinClient,
     BulletinClient,
@@ -25,15 +26,11 @@ import type { Metadata } from "./deployer";
  * fields are returned as empty strings.
  */
 export class MetadataPublisher {
-    public signer: ReturnType<typeof prepareSigner>;
+    public signer: PolkadotSigner;
     public bulletinApi: CdmBulletinApi;
     private bulletin: BulletinClient;
 
-    constructor(
-        signer: ReturnType<typeof prepareSigner>,
-        api: CdmBulletinApi,
-        client: PolkadotClient,
-    ) {
+    constructor(signer: PolkadotSigner, api: CdmBulletinApi, client: PolkadotClient) {
         this.signer = signer;
         this.bulletinApi = api;
         this.bulletin = BulletinClient.from(
