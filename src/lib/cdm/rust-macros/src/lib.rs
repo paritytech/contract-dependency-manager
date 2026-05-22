@@ -159,9 +159,10 @@ pub fn import(input: TokenStream) -> TokenStream {
 
     let (target_hash, version_spec) = &found[0];
 
-    // Resolve CDM root. `CDM_HOME` lets tests stage a fixture directory
-    // without touching the developer's real `~/.cdm`.
-    let cdm_root = match std::env::var_os("CDM_HOME") {
+    // Resolve CDM root. `CDM_ROOT` matches the override the TS side reads
+    // (store.ts, accounts.ts) so both halves of the toolchain agree on
+    // where contracts/ABIs live; defaults to `$HOME/.cdm` otherwise.
+    let cdm_root = match std::env::var_os("CDM_ROOT") {
         Some(p) => PathBuf::from(p),
         None => match home::home_dir() {
             Some(h) => h.join(".cdm"),
