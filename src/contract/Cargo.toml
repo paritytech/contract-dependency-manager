@@ -3,16 +3,11 @@ name = "contract-registry"
 version.workspace = true
 edition.workspace = true
 
-[features]
-abi-gen = ["pvm-contract-sdk/abi-gen"]
-
-[package.metadata.cdm-package]
-name = "@cdm/contract-registry"
-
 [dependencies]
-pvm-contract-sdk.workspace = true
-polkavm-derive.workspace = true
-picoalloc.workspace = true
+pvm_contract = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "charles/cdm-integration" }
+polkavm-derive = "0.31"
+parity-scale-codec = { version = "3.7", default-features = false, features = ["derive"] }
+picoalloc = "5.2"
 
 [lib]
 path = "src/lib.rs"

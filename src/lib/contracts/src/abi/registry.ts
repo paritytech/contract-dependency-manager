@@ -34,14 +34,32 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
         type: "function",
         name: "getAddress",
         inputs: [{ name: "contract_name", type: "string" }],
-        outputs: [{ name: "", type: "address" }],
+        outputs: [
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "address" },
+                ],
+            },
+        ],
         stateMutability: "view",
     },
     {
         type: "function",
         name: "getMetadataUri",
         inputs: [{ name: "contract_name", type: "string" }],
-        outputs: [{ name: "", type: "string" }],
+        outputs: [
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "string" },
+                ],
+            },
+        ],
         stateMutability: "view",
     },
     {
@@ -51,7 +69,16 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
             { name: "contract_name", type: "string" },
             { name: "version", type: "uint32" },
         ],
-        outputs: [{ name: "", type: "address" }],
+        outputs: [
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "address" },
+                ],
+            },
+        ],
         stateMutability: "view",
     },
     {
@@ -61,7 +88,16 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
             { name: "contract_name", type: "string" },
             { name: "version", type: "uint32" },
         ],
-        outputs: [{ name: "", type: "string" }],
+        outputs: [
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "isSome", type: "bool" },
+                    { name: "value", type: "string" },
+                ],
+            },
+        ],
         stateMutability: "view",
     },
     {
@@ -69,27 +105,6 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
         name: "getContractNameAt",
         inputs: [{ name: "index", type: "uint32" }],
         outputs: [{ name: "", type: "string" }],
-        stateMutability: "view",
-    },
-    {
-        type: "function",
-        name: "searchContractNames",
-        inputs: [
-            { name: "prefix", type: "string" },
-            { name: "offset", type: "uint32" },
-            { name: "limit", type: "uint32" },
-        ],
-        outputs: [
-            {
-                name: "",
-                type: "tuple",
-                components: [
-                    { name: "names", type: "string[]" },
-                    { name: "next_offset", type: "uint32" },
-                    { name: "done", type: "bool" },
-                ],
-            },
-        ],
         stateMutability: "view",
     },
     {

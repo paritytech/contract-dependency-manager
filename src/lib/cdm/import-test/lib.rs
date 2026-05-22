@@ -7,21 +7,27 @@
 // $HOME/.cdm/test/contracts/@test/sample/1/abi.json. $HOME is redirected to
 // ./fixtures via .cargo/config.toml, so the macro reads the in-tree fixture.
 //
-// The fixture abi.json includes tuple-bearing function signatures to
-// exercise the codegen paths that fail under Bug 4 upstream. Once the
-// upstream fix lands, `cargo pvm-contract build` against this crate becomes
-// the only automated end-to-end check for the import macro. The harness
-// contract block exists solely to satisfy the PVM bin scaffold (allocator +
-// entry point); the test's signal is whether the build succeeds.
+// `ping_imported` references `.ping().call(self)` to force `cdm::import!` to
+// expand `abi_import!` with `alloc = true`. Reverting the alloc flag (or
+// removing the wrapper module that scopes `extern crate alloc;`) makes
+// `cargo pvm-contract build` fail here.
 
 cdm::import!("@test/sample");
 
 #[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
 mod harness {
+    use super::*;
+
     pub struct Harness {}
 
     impl Harness {
         #[pvm_contract_sdk::constructor]
         pub fn new(&mut self) {}
+
+        #[pvm_contract_sdk::method]
+        pub fn ping_imported(&self) {
+            let sample = sample::Sample::cdm_lookup();
+            sample.ping().call(self).expect("ping failed");
+        }
     }
 }

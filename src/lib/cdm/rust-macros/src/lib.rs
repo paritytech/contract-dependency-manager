@@ -69,6 +69,10 @@ fn to_pascal_case(snake: &str) -> String {
     out
 }
 
+/// Imports a CDM-managed contract by package name.
+///
+/// Expands to `pvm_contract_sdk::abi_import!` with `alloc = true`, which means
+/// the consuming crate must provide a `#[global_allocator]`.
 #[proc_macro]
 pub fn import(input: TokenStream) -> TokenStream {
     let lit: syn::LitStr = match syn::parse(input) {
@@ -155,17 +159,19 @@ pub fn import(input: TokenStream) -> TokenStream {
 
     let (target_hash, version_spec) = &found[0];
 
-    // Resolve home directory
-    let home_dir = match home::home_dir() {
-        Some(h) => h,
-        None => {
-            return syn::Error::new(lit.span(), "Could not determine home directory")
-                .to_compile_error()
-                .into();
-        }
+    // Resolve CDM root. `CDM_HOME` lets tests stage a fixture directory
+    // without touching the developer's real `~/.cdm`.
+    let cdm_root = match std::env::var_os("CDM_HOME") {
+        Some(p) => PathBuf::from(p),
+        None => match home::home_dir() {
+            Some(h) => h.join(".cdm"),
+            None => {
+                return syn::Error::new(lit.span(), "Could not determine home directory")
+                    .to_compile_error()
+                    .into();
+            }
+        },
     };
-
-    let cdm_root = home_dir.join(".cdm");
 
     // Resolve version
     let version: u64 = match version_spec {
@@ -234,16 +240,59 @@ pub fn import(input: TokenStream) -> TokenStream {
     }
 
     let module_name = derive_module_name(&package_name);
-    let module_ident = syn::Ident::new(&module_name, proc_macro2::Span::call_site());
-    let contract_ident = syn::Ident::new(
-        &to_pascal_case(&module_name),
-        proc_macro2::Span::call_site(),
-    );
+    // `derive_module_name` only collapses '/' and '-'; CDM package names may
+    // legally contain other characters (e.g. '.') which are not valid Rust
+    // identifier code points. Validate before constructing `syn::Ident`, which
+    // would otherwise panic during macro expansion instead of surfacing a
+    // diagnostic at the call site.
+    let module_ident = match syn::parse_str::<syn::Ident>(&module_name) {
+        Ok(i) => i,
+        Err(_) => {
+            return syn::Error::new(
+                lit.span(),
+                format!(
+                    "CDM package '{}' produces invalid Rust identifier '{}'; rename or use a CDM-compatible package name.",
+                    package_name, module_name
+                ),
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+    let pascal_name = to_pascal_case(&module_name);
+    let contract_ident = match syn::parse_str::<syn::Ident>(&pascal_name) {
+        Ok(i) => i,
+        Err(_) => {
+            return syn::Error::new(
+                lit.span(),
+                format!(
+                    "CDM package '{}' produces invalid Rust identifier '{}'; rename or use a CDM-compatible package name.",
+                    package_name, pascal_name
+                ),
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
     let abi_path_str = abi_path.to_string_lossy().to_string();
 
+    let import_module_ident = syn::Ident::new(
+        &format!("__cdm_import_{}", module_name),
+        proc_macro2::Span::call_site(),
+    );
+
     quote! {
-        pvm_contract_sdk::abi_import!(#module_ident, #abi_path_str);
-        pvm_cdm::reference!(#module_ident::#contract_ident, #package_name);
+        #[doc(hidden)]
+        mod #import_module_ident {
+            extern crate alloc;
+            pvm_contract_sdk::abi_import! {
+                #![abi_import(alloc = true)]
+                #module_ident,
+                #abi_path_str
+            }
+            pvm_cdm::reference!(#module_ident::#contract_ident, #package_name);
+        }
+        pub use #import_module_ident::*;
     }
     .into()
 }

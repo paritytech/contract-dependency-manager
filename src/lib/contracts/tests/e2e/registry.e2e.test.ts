@@ -129,34 +129,35 @@ describe("registry publishLatest + post-publish queries", () => {
     });
 });
 
-describe("registry searchContractNames (linear-scan prefix match)", () => {
-    function unpackPage(value: unknown): { names: string[]; nextOffset: number; done: boolean } {
-        if (Array.isArray(value)) {
-            return {
-                names: (value[0] as string[]) ?? [],
-                nextOffset: Number(value[1] ?? 0),
-                done: Boolean(value[2]),
-            };
+// The reverted registry has no on-chain prefix search; callers (e.g. the
+// frontend SearchPage) emulate it by combining `getContractCount` with
+// indexed `getContractNameAt(index)` lookups and filtering client-side.
+// These tests cover the same end-to-end contract: iterate the registry
+// and verify a registered name is reachable, while an unrelated needle
+// produces no client-side hits.
+describe("registry indexed iteration (client-side prefix match)", () => {
+    async function collectAllNames(): Promise<string[]> {
+        const countResult = await registry.getContractCount.query();
+        expect(countResult.success).toBe(true);
+        const total = Number(countResult.value ?? 0);
+        const names: string[] = [];
+        for (let i = 0; i < total; i++) {
+            const r = await registry.getContractNameAt.query(i);
+            expect(r.success).toBe(true);
+            names.push(String(r.value ?? ""));
         }
-        const v = value as { names?: string[]; next_offset?: number; done?: boolean };
-        return {
-            names: v.names ?? [],
-            nextOffset: Number(v.next_offset ?? 0),
-            done: Boolean(v.done),
-        };
+        return names;
     }
 
-    test("matching prefix returns the registered name with done=true", async () => {
-        const r = await registry.searchContractNames.query("@test/", 0, 10);
-        expect(r.success).toBe(true);
-        const page = unpackPage(r.value);
-        expect(page.names).toContain(NAME);
-        expect(page.done).toBe(true);
+    test("matching prefix is found when iterating registry indices", async () => {
+        const allNames = await collectAllNames();
+        const matches = allNames.filter((n) => n.startsWith("@test/"));
+        expect(matches).toContain(NAME);
     });
 
-    test("non-matching prefix returns an empty page", async () => {
-        const r = await registry.searchContractNames.query("@nonexistent/", 0, 10);
-        const page = unpackPage(r.value);
-        expect(page.names).toEqual([]);
+    test("non-matching prefix yields no client-side hits", async () => {
+        const allNames = await collectAllNames();
+        const matches = allNames.filter((n) => n.startsWith("@nonexistent/"));
+        expect(matches).toEqual([]);
     });
 });

@@ -148,9 +148,15 @@ export function detectContracts(rootDir: string): ContractInfo[] {
     const meta = getCargoMetadata(rootDir);
     const workspacePkgIds = new Set(meta.workspace_members);
 
-    // Filter to workspace members that are PVM contracts
+    // Filter to workspace members that are PVM contracts AND declare a CDM
+    // package in their Cargo.toml metadata. Crates that pull in
+    // `pvm-contract-sdk` purely as test harnesses (e.g. the in-tree
+    // `cdm-import-test` crate) intentionally omit `[package.metadata.cdm-package]`
+    // and must be skipped — without a CDM package name CDM tooling cannot
+    // publish, register, or otherwise track them anyway.
     const pvmPackages = meta.packages.filter(
-        (pkg) => workspacePkgIds.has(pkg.id) && isPvmContract(pkg),
+        (pkg) =>
+            workspacePkgIds.has(pkg.id) && isPvmContract(pkg) && extractCdmPackage(pkg) !== null,
     );
 
     // Build set of known contract crate names for filtering deps
