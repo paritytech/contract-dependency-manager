@@ -224,6 +224,7 @@ export type DeployEvent =
           durationMs: number;
       }
     | { type: "deploy-register-error"; crates: string[]; error: string }
+    | { type: "deploy-skip"; crate: string; reason: string }
     | { type: "publish-start"; crates: string[] }
     | {
           type: "publish-done";
@@ -240,7 +241,7 @@ export interface DeploySummary {
         cdmPackage?: string;
         address?: HexString;
         cid?: string;
-        status: "done" | "cached" | "error";
+        status: "done" | "cached" | "skipped" | "error";
         error?: string;
     }>;
     totalDurationMs: number;
@@ -796,14 +797,10 @@ function getDeployableContract(
     build: BuildPhaseResult,
     contractMap: Map<string, ContractInfo>,
     crate: string,
-): DeployableContract {
+): DeployableContract | null {
     const info = build.info.get(crate);
     const cdmPackage = info?.cdmPackage ?? contractMap.get(crate)?.cdmPackage;
-    if (!cdmPackage) {
-        throw new Error(
-            `Missing CDM package for ${crate}. Add #[pvm::contract(cdm = "@org/name")] or /// @custom:cdm @org/name.`,
-        );
-    }
+    if (!cdmPackage) return null;
 
     return {
         crate,
@@ -959,7 +956,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
             cdmPackage?: string;
             address?: HexString;
             cid?: string;
-            status: "done" | "cached" | "error";
+            status: "done" | "cached" | "skipped" | "error";
             error?: string;
         }
     >();
@@ -1039,9 +1036,22 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
             if (layerDeployable.length === 0) continue;
 
             try {
-                const deployables = layerDeployable.map((crate) =>
-                    getDeployableContract(build, contractMap, crate),
-                );
+                // Filter out workspace members with no CDM package annotation
+                // (e.g., `contract-registry` itself, build-tool crates). They
+                // built but aren't part of the registered-contract universe.
+                const deployables: DeployableContract[] = [];
+                for (const crate of layerDeployable) {
+                    const d = getDeployableContract(build, contractMap, crate);
+                    if (d) {
+                        deployables.push(d);
+                    } else {
+                        const reason =
+                            "no CDM package annotation — won't be deployed or registered";
+                        emit({ type: "deploy-skip", crate, reason });
+                        status.set(crate, { status: "skipped", error: reason });
+                    }
+                }
+                if (deployables.length === 0) continue;
                 const deployableCrates = deployables.map((contract) => contract.crate);
                 const deployablePackages = deployables.map((contract) => contract.cdmPackage);
 

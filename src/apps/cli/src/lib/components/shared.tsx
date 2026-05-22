@@ -74,6 +74,10 @@ export function Cached() {
     return <Text color="blue">~</Text>;
 }
 
+export function Skipped() {
+    return <Text dimColor>—</Text>;
+}
+
 export function LogTail({
     lines,
     height,

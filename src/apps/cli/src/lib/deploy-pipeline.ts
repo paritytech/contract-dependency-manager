@@ -23,6 +23,7 @@ export type ContractState =
     | "deploying"
     | "registering"
     | "done"
+    | "skipped"
     | "error";
 
 export interface ContractStatus {
@@ -280,6 +281,9 @@ export class PipelineStatusAdapter {
                         registerInProgress: false,
                     });
                 }
+                return;
+            case "deploy-skip":
+                this.update(e.crate, "skipped", { error: e.reason });
                 return;
             case "pipeline-done":
                 if (e.summary.contracts.every((contract) => contract.status !== "error")) {

@@ -6,6 +6,7 @@ import {
     Spinner,
     ProgressBar,
     EmptyBar,
+    Skipped,
     Cell,
     Idle,
     Done,
@@ -118,6 +119,32 @@ function ContractRow({
                 </Cell>
                 <Cell width={COL_ADDR}>
                     {s?.address ? <Text dimColor>{truncateAddress(s.address)}</Text> : <Idle />}
+                </Cell>
+            </Box>
+        );
+    }
+
+    // Skipped state — workspace member without a CDM package annotation.
+    if (state === "skipped") {
+        return (
+            <Box>
+                <Cell width={COL_CONTRACT}>
+                    <Text bold wrap="truncate" dimColor>
+                        {name}
+                    </Text>
+                </Cell>
+                <Cell width={COL_BUILD}>{buildCell}</Cell>
+                <Cell width={COL_PHASE}>
+                    <Skipped />
+                </Cell>
+                <Cell width={COL_PHASE}>
+                    <Skipped />
+                </Cell>
+                <Cell width={COL_PHASE}>
+                    <Skipped />
+                </Cell>
+                <Cell width={COL_ADDR}>
+                    <Skipped />
                 </Cell>
             </Box>
         );
