@@ -38,6 +38,7 @@ import {
     CREATE3_FACTORY_ABI,
     predictRegistryDeploy,
     deployRegistryWithProxy,
+    writeCdmLocalJson,
 } from "@parity/cdm-builder";
 import {
     exportRegistrySnapshot,
@@ -230,6 +231,15 @@ async function finishWithRegistry(address: string, alreadyDeployed: boolean): Pr
         }
         console.log(`CREATE3_FACTORY_ADDR=${expected.factoryAddress}`);
         console.log(`CONTRACTS_REGISTRY_ADDR=${address}`);
+
+        // Persist the local registry address so `cdm build/deploy/install -n
+        // local` and setupForeignContracts resolve it without explicit flags.
+        if (opts.name === "local") {
+            const cdmLocalPath = writeCdmLocalJson(rootDir, {
+                localRegistry: address as `0x${string}`,
+            });
+            console.log(`localRegistry → ${cdmLocalPath}`);
+        }
     } finally {
         chainClient.destroy();
     }

@@ -7,3 +7,4 @@
  */
 export { CONTRACTS_REGISTRY_ABI, CONTRACTS_REGISTRY_PROXY_ABI } from "./abi/registry";
 export { CREATE3_FACTORY_ABI } from "./abi/create3-factory";
+export { type QueryResult, unwrapOption, unwrapQueryOption } from "./query";

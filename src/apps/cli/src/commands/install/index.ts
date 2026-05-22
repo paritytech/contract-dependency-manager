@@ -15,6 +15,7 @@ import {
     CONTRACTS_REGISTRY_ABI,
     hasBuildableSolidityProject,
     readCdmJson,
+    resolveLocalRegistry,
     writeCdmJson,
 } from "@parity/cdm-builder";
 import { spinner } from "../../lib/ui";
@@ -99,7 +100,12 @@ install.action(async (libraries: string[], rawOpts: InstallOptions) => {
         process.exit(1);
     }
 
-    const registryAddress = opts.registryAddress ?? getRegistryAddress(opts.name);
+    // On local, prefer the pinned address from cdm.local.json (what was
+    // actually bootstrapped) over the canonical preset address.
+    const registryAddress =
+        opts.registryAddress ??
+        (opts.name === "local" ? resolveLocalRegistry() : undefined) ??
+        getRegistryAddress(opts.name);
     const artifactsDir = resolve(process.cwd(), ".cdm");
 
     // Connect to chain with spinner (matching deploy command style)

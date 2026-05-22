@@ -1,3 +1,4 @@
+import { unwrapOption } from "@parity/cdm-builder/abi";
 import { stringifyBigInt } from "@parity/cdm-utils";
 import type { Package, AbiEntry } from "./types";
 import type { RegistryContract } from "../utils/contracts";
@@ -7,17 +8,10 @@ export interface ContractPage {
     packages: Package[];
 }
 
-export function unwrapOption<T>(val: unknown): T | undefined {
-    if (val && typeof val === "object" && "isSome" in val) {
-        const opt = val as { isSome: boolean; value: T };
-        return opt.isSome ? opt.value : undefined;
-    }
-    return val as T;
-}
-
 export function registryQueryError(action: string, value: unknown): Error {
     return new Error(`${action}: ${stringifyBigInt(value)}`);
 }
+
 
 export async function queryContractByName(
     registry: RegistryContract,

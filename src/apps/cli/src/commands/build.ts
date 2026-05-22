@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { resolve } from "path";
 import { getChainPreset, getRegistryAddress } from "@parity/cdm-env";
-import { readCdmJson, resolveFeatures } from "@parity/cdm-builder";
+import { readCdmJson, resolveFeatures, resolveLocalRegistry } from "@parity/cdm-builder";
 import { runBuildWithUI } from "../lib/ui";
 
 const build = new Command("build")
@@ -23,6 +23,12 @@ type BuildOptions = {
 function resolveRegistryAddress(rootDir: string, opts: BuildOptions): string {
     warnOnStaleCdmJsonRegistry(rootDir, opts);
     if (opts.registryAddress) return opts.registryAddress;
+    // On local, prefer the pinned address from cdm.local.json (what was
+    // actually bootstrapped) over the canonical preset address.
+    if (opts.name === "local") {
+        const local = resolveLocalRegistry(rootDir);
+        if (local) return local;
+    }
     if (opts.name && opts.name !== "custom") {
         return getChainPreset(opts.name).registryAddress ?? getRegistryAddress(opts.name);
     }

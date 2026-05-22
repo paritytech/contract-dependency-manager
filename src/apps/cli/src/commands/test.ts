@@ -3,6 +3,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { ensurePpnInstalled, isLocalNetworkUp, waitForLocalNetwork } from "./network";
+import { cdmInvocation } from "../lib/cdm-invocation";
+
+/** Convention: vitest projects named this run the chain-dependent suite. */
+const DEFAULT_VITEST_PROJECT = "contract";
+/** Sentinel value for `--project` that disables filtering and runs every project. */
+const ALL_PROJECTS = "all";
 
 /**
  * `cdm test` — auto-orchestrates a deploy + install + vitest cycle against the
@@ -16,12 +22,14 @@ import { ensurePpnInstalled, isLocalNetworkUp, waitForLocalNetwork } from "./net
  *   →  Builds + deploys workspace contracts.
  *   →  Installs ABIs into cdm.json so vitest can import them via
  *      `@parity/product-sdk-contracts.ContractManager`.
- *   →  Runs vitest.
+ *   →  Runs vitest, filtered to the project named "contract" by default.
+ *      Pass `--project all` to run every vitest project instead.
  *
  * Skip flags exist for iterating on subsets:
  *   --skip-deploy   reuse the on-chain deployment from a previous run
  *   --skip-install  reuse cdm.json from a previous run
  *   --skip-vitest   only deploy + install, no tests
+ *   --project NAME  vitest project to run; pass "all" to run them all
  */
 const test = new Command("test")
     .description("Deploy contracts to a local network, install ABIs into cdm.json, and run vitest.")
@@ -35,6 +43,11 @@ const test = new Command("test")
     )
     .option("--skip-install", "Skip the install step (use cached cdm.json)", false)
     .option("--skip-vitest", "Only deploy + install, don't run tests", false)
+    .option(
+        "--project <name>",
+        `Vitest project to run; pass "${ALL_PROJECTS}" for every project`,
+        DEFAULT_VITEST_PROJECT,
+    )
     .option("--no-auto-network", "Don't auto-start the local network if it isn't up (fail instead)")
     .action(async (opts: TestOptions) => {
         const rootDir = process.cwd();
@@ -64,7 +77,7 @@ const test = new Command("test")
         }
 
         if (!opts.skipVitest) {
-            runVitest();
+            runVitest(opts.project);
         }
     });
 
@@ -75,6 +88,7 @@ type TestOptions = {
     skipDeploy: boolean;
     skipInstall: boolean;
     skipVitest: boolean;
+    project: string;
     autoNetwork?: boolean;
 };
 
@@ -122,24 +136,15 @@ function runCdm(args: string[]): void {
     if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-function runVitest(): void {
-    const result = spawnSync("npx", ["--no-install", "vitest", "run"], { stdio: "inherit" });
+function runVitest(project: string): void {
+    const args = ["--no-install", "vitest", "run"];
+    if (project !== ALL_PROJECTS) args.push("--project", project);
+    const result = spawnSync("npx", args, { stdio: "inherit" });
     if (result.error || result.status === null) {
         console.error("Failed to run vitest. Ensure it is installed in the workspace.");
         process.exit(1);
     }
     process.exit(result.status);
-}
-
-// Re-invoke the cdm binary that's running this process. In compiled mode
-// `process.execPath` is the cdm binary; in dev mode it's bun and argv[1] is
-// the cli.ts entry script.
-function cdmInvocation(): { cmd: string; baseArgs: string[] } {
-    const entry = process.argv[1];
-    const isDev = entry?.endsWith(".ts") === true;
-    return isDev
-        ? { cmd: process.execPath, baseArgs: [entry!] }
-        : { cmd: process.execPath, baseArgs: [] };
 }
 
 export const testCommand = test;

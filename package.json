@@ -26,7 +26,8 @@
     "embed:templates": "bun run src/lib/scripts/embed-templates.ts",
     "network:start": "bun run src/apps/cli/src/cli.ts network start",
     "network:stop": "bun run src/apps/cli/src/cli.ts network stop",
-    "network:status": "bun run src/apps/cli/src/cli.ts network status"
+    "network:status": "bun run src/apps/cli/src/cli.ts network status",
+    "smoke": "turbo build --filter=@parity/cdm-env --filter=@parity/cdm-builder --filter=@parity/cdm-codegen && bun run src/lib/scripts/smoke-foreign-contracts.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",

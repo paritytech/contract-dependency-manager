@@ -105,6 +105,8 @@ export { CONTRACTS_REGISTRY_ABI, CONTRACTS_REGISTRY_PROXY_ABI } from "./abi/regi
 
 export { CREATE3_FACTORY_ABI } from "./abi/create3-factory";
 
+export { type QueryResult, unwrapOption, unwrapQueryOption } from "./query";
+
 export {
     GAS_LIMIT,
     STORAGE_DEPOSIT_LIMIT,
@@ -128,7 +130,13 @@ export {
     writeCdmJson,
 } from "./cdm-json";
 
-export { type CdmLocalJson, readCdmLocalJson, resolveFeatures } from "./cdm-local-json";
+export {
+    type CdmLocalJson,
+    readCdmLocalJson,
+    resolveFeatures,
+    resolveLocalRegistry,
+    writeCdmLocalJson,
+} from "./cdm-local-json";
 
 export {
     installContracts,
