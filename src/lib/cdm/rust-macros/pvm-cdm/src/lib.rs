@@ -11,7 +11,7 @@
 //!
 //! ```toml
 //! [package.metadata.cdm]
-//! package = "@example/hello-world"
+//! name = "@example/hello-world"
 //! ```
 //!
 //! No attribute on the `#[contract]` macro, no ELF symbol, no SDK changes.

@@ -118,7 +118,7 @@ function isPvmContract(pkg: CargoPackage): boolean {
  * Read CDM package name from a contract's Cargo.toml metadata.
  *
  * The expected shape is:
- *   [package.metadata.cdm-package]
+ *   [package.metadata.cdm]
  *   name = "@scope/contract"
  *
  * The pre-sm/mut SDK extracted this from a `__PVM_CDM` ELF symbol planted by
@@ -129,7 +129,7 @@ function isPvmContract(pkg: CargoPackage): boolean {
 function extractCdmPackage(pkg: CargoPackage): string | null {
     const meta = pkg.metadata;
     if (!meta || typeof meta !== "object") return null;
-    const cdm = (meta as Record<string, unknown>)["cdm-package"];
+    const cdm = (meta as Record<string, unknown>).cdm;
     if (!cdm || typeof cdm !== "object") return null;
     const name = (cdm as Record<string, unknown>).name;
     return typeof name === "string" ? name : null;
@@ -142,7 +142,7 @@ function extractCdmPackage(pkg: CargoPackage): string | null {
  * - Workspace members come from cargo metadata (not recursive file scanning)
  * - PVM contract detection uses resolved dependency graph (not string matching)
  * - Inter-contract dependencies come from Cargo.toml (not regex on source)
- * - CDM package names come from `[package.metadata.cdm-package]` in Cargo.toml
+ * - CDM package names come from `[package.metadata.cdm]` in Cargo.toml
  */
 export function detectContracts(rootDir: string): ContractInfo[] {
     const meta = getCargoMetadata(rootDir);
@@ -151,7 +151,7 @@ export function detectContracts(rootDir: string): ContractInfo[] {
     // Filter to workspace members that are PVM contracts AND declare a CDM
     // package in their Cargo.toml metadata. Crates that pull in
     // `pvm-contract-sdk` purely as test harnesses (e.g. the in-tree
-    // `cdm-import-test` crate) intentionally omit `[package.metadata.cdm-package]`
+    // `cdm-import-test` crate) intentionally omit `[package.metadata.cdm]`
     // and must be skipped — without a CDM package name CDM tooling cannot
     // publish, register, or otherwise track them anyway.
     const pvmPackages = meta.packages.filter(

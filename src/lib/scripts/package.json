@@ -10,8 +10,7 @@
     "dependencies": {
         "@dotdm/contracts": "workspace:*",
         "@dotdm/env": "workspace:*",
-        "@dotdm/utils": "workspace:*",
-        "@parity/product-sdk-contracts": "catalog:"
+        "@dotdm/utils": "workspace:*"
     },
     "devDependencies": {
         "@types/bun": "catalog:",

@@ -30,10 +30,10 @@ describe("detection via cargo metadata", () => {
         expect(order.crateNames.length).toBe(3);
     });
 
-    test("CDM package names come from [package.metadata.cdm-package] in Cargo.toml", () => {
+    test("CDM package names come from [package.metadata.cdm] in Cargo.toml", () => {
         // After the new SDK migration, cdmPackage is resolved at detection
-        // time from `[package.metadata.cdm-package]` (surfaced by `cargo
-        // metadata`), not from a post-build `.cdm.json` artifact.
+        // time from `[package.metadata.cdm]` (surfaced by `cargo metadata`),
+        // not from a post-build `.cdm.json` artifact.
         const contracts = detectContracts(TEMPLATE_DIR);
         const byName = new Map(contracts.map((c) => [c.name, c.cdmPackage]));
         expect(byName.get("counter")).toBe("@example/counter");
@@ -42,7 +42,7 @@ describe("detection via cargo metadata", () => {
     });
 });
 
-describe("detection skips PVM crates without cdm-package metadata", () => {
+describe("detection skips PVM crates without cdm metadata", () => {
     let tmpRoot: string | null = null;
 
     afterEach(() => {
@@ -50,12 +50,12 @@ describe("detection skips PVM crates without cdm-package metadata", () => {
         tmpRoot = null;
     });
 
-    test("crate with pvm-contract-sdk + bin but no cdm-package metadata is excluded", () => {
+    test("crate with pvm-contract-sdk + bin but no cdm metadata is excluded", () => {
         // Build a minimal Cargo workspace with two members:
-        //   - `good`: declares [package.metadata.cdm-package], should be detected
+        //   - `good`: declares [package.metadata.cdm], should be detected
         //   - `harness`: depends on pvm-contract-sdk with a [[bin]] target but
-        //     has no cdm-package metadata — modelling cdm-import-test in this
-        //     repo. Detection must silently skip it.
+        //     has no cdm metadata — modelling cdm-import-test in this repo.
+        //     Detection must silently skip it.
         tmpRoot = mkdtempSync(join(tmpdir(), "cdm-detection-skip-"));
 
         writeFileSync(
@@ -101,7 +101,7 @@ describe("detection skips PVM crates without cdm-package metadata", () => {
                 'version = "0.1.0"',
                 'edition = "2021"',
                 "",
-                "[package.metadata.cdm-package]",
+                "[package.metadata.cdm]",
                 'name = "@test/good"',
                 "",
                 "[[bin]]",
