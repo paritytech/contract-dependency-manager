@@ -24,7 +24,6 @@ const NAME = "@test/roundtrip";
 const ADDR = "0x1111111111111111111111111111111111111111" as HexString;
 // 59-byte URI exercises the spilled-chunks (long-form) Solidity string layout.
 const URI = "ipfs://bafy2bzaceblahblahQmExampleLongCidExercisingSpilledChunks";
-const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
 
 let node: NodeHandle;
 let chainClient: CdmChainClient;
@@ -33,6 +32,18 @@ let registry: any;
 
 function lc(v: unknown): string {
     return String(v).toLowerCase();
+}
+
+// The reverted registry returns option-shaped tuples `{ isSome, value }`
+// for nullable lookups (getAddress, getMetadataUri, and the *AtVersion
+// variants). Mirror the unwrap helper used by the CLI install pipeline and
+// the frontend so tests assert against the inner value directly.
+function unwrapOption<T>(val: unknown): { isSome: boolean; value: T | undefined } {
+    if (val && typeof val === "object" && "isSome" in val) {
+        const opt = val as { isSome: boolean; value: T };
+        return { isSome: opt.isSome, value: opt.isSome ? opt.value : undefined };
+    }
+    return { isSome: false, value: undefined };
 }
 
 beforeAll(async () => {
@@ -63,16 +74,16 @@ describe("registry pre-publish (empty state)", () => {
         expect(r.value).toBe(0);
     });
 
-    test("getAddress of an unregistered name returns Address::ZERO", async () => {
+    test("getAddress of an unregistered name returns None", async () => {
         const r = await registry.getAddress.query(NAME);
         expect(r.success).toBe(true);
-        expect(lc(r.value)).toBe(ZERO_ADDR);
+        expect(unwrapOption(r.value).isSome).toBe(false);
     });
 
-    test("getMetadataUri of an unregistered name returns empty string", async () => {
+    test("getMetadataUri of an unregistered name returns None", async () => {
         const r = await registry.getMetadataUri.query(NAME);
         expect(r.success).toBe(true);
-        expect(r.value).toBe("");
+        expect(unwrapOption(r.value).isSome).toBe(false);
     });
 
     test("getContractCount is 0", async () => {
@@ -94,22 +105,30 @@ describe("registry publishLatest + post-publish queries", () => {
 
     test("getAddress returns the published address", async () => {
         const r = await registry.getAddress.query(NAME);
-        expect(lc(r.value)).toBe(lc(ADDR));
+        const opt = unwrapOption<string>(r.value);
+        expect(opt.isSome).toBe(true);
+        expect(lc(opt.value)).toBe(lc(ADDR));
     });
 
     test("getMetadataUri returns the long-form URI (exercises spilled chunks)", async () => {
         const r = await registry.getMetadataUri.query(NAME);
-        expect(r.value).toBe(URI);
+        const opt = unwrapOption<string>(r.value);
+        expect(opt.isSome).toBe(true);
+        expect(opt.value).toBe(URI);
     });
 
     test("getAddressAtVersion(0) matches the latest address", async () => {
         const r = await registry.getAddressAtVersion.query(NAME, 0);
-        expect(lc(r.value)).toBe(lc(ADDR));
+        const opt = unwrapOption<string>(r.value);
+        expect(opt.isSome).toBe(true);
+        expect(lc(opt.value)).toBe(lc(ADDR));
     });
 
     test("getMetadataUriAtVersion(0) matches the latest URI", async () => {
         const r = await registry.getMetadataUriAtVersion.query(NAME, 0);
-        expect(r.value).toBe(URI);
+        const opt = unwrapOption<string>(r.value);
+        expect(opt.isSome).toBe(true);
+        expect(opt.value).toBe(URI);
     });
 
     test("getContractNameAt(0) returns the registered name", async () => {
@@ -118,6 +137,7 @@ describe("registry publishLatest + post-publish queries", () => {
     });
 
     test("getOwner returns a non-zero address (the signer's mapped EVM addr)", async () => {
+        const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
         const r = await registry.getOwner.query(NAME);
         expect(typeof r.value).toBe("string");
         expect(lc(r.value)).not.toBe(ZERO_ADDR);
@@ -129,35 +149,43 @@ describe("registry publishLatest + post-publish queries", () => {
     });
 });
 
-// The reverted registry has no on-chain prefix search; callers (e.g. the
-// frontend SearchPage) emulate it by combining `getContractCount` with
-// indexed `getContractNameAt(index)` lookups and filtering client-side.
-// These tests cover the same end-to-end contract: iterate the registry
-// and verify a registered name is reachable, while an unrelated needle
-// produces no client-side hits.
-describe("registry indexed iteration (client-side prefix match)", () => {
-    async function collectAllNames(): Promise<string[]> {
-        const countResult = await registry.getContractCount.query();
-        expect(countResult.success).toBe(true);
-        const total = Number(countResult.value ?? 0);
-        const names: string[] = [];
-        for (let i = 0; i < total; i++) {
-            const r = await registry.getContractNameAt.query(i);
-            expect(r.success).toBe(true);
-            names.push(String(r.value ?? ""));
+// On-chain prefix search backed by the registry's `OrderedIndex`. The page
+// shape is `(names, next_offset, done)`; ink decodes the tuple either as an
+// array or as a struct depending on codegen, so the harness normalizes both.
+describe("registry searchContractNames", () => {
+    function parsePage(value: unknown): { names: string[]; nextOffset: number; done: boolean } {
+        if (Array.isArray(value)) {
+            return {
+                names: Array.isArray(value[0]) ? (value[0] as string[]) : [],
+                nextOffset: Number(value[1] ?? 0),
+                done: Boolean(value[2]),
+            };
         }
-        return names;
+        const page = (value ?? {}) as {
+            names?: unknown;
+            next_offset?: unknown;
+            nextOffset?: unknown;
+            done?: unknown;
+        };
+        return {
+            names: Array.isArray(page.names) ? (page.names as string[]) : [],
+            nextOffset: Number(page.next_offset ?? page.nextOffset ?? 0),
+            done: Boolean(page.done),
+        };
     }
 
-    test("matching prefix is found when iterating registry indices", async () => {
-        const allNames = await collectAllNames();
-        const matches = allNames.filter((n) => n.startsWith("@test/"));
-        expect(matches).toContain(NAME);
+    test("matching prefix returns the registered name", async () => {
+        const r = await registry.searchContractNames.query("@test/", 0, 10);
+        expect(r.success).toBe(true);
+        const page = parsePage(r.value);
+        expect(page.names).toContain(NAME);
     });
 
-    test("non-matching prefix yields no client-side hits", async () => {
-        const allNames = await collectAllNames();
-        const matches = allNames.filter((n) => n.startsWith("@nonexistent/"));
-        expect(matches).toEqual([]);
+    test("non-matching prefix returns an empty page", async () => {
+        const r = await registry.searchContractNames.query("@nonexistent/", 0, 10);
+        expect(r.success).toBe(true);
+        const page = parsePage(r.value);
+        expect(page.names).toEqual([]);
+        expect(page.done).toBe(true);
     });
 });

@@ -32,7 +32,10 @@ const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // src/lib/contracts/tests/e2e -> repo root is 5 levels up
 const ROOT_DIR = resolve(__dirname, "../../../../..");
-const REGISTRY_PVM = resolve(ROOT_DIR, "target/release/contract-registry.polkavm");
+// Old-SDK cargo-pvm-contract writes the registry binary directly under
+// `target/`, not under `target/release/`. Keep this aligned with the path
+// `deploy-registry.ts` reads from.
+const REGISTRY_PVM = resolve(ROOT_DIR, "target/contract-registry.release.polkavm");
 
 // Per-process port counter. Different vitest workers would collide; we don't
 // fan out e2e suites across workers today (vitest.e2e.config.ts pins

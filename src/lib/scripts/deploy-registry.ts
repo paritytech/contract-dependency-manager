@@ -46,7 +46,7 @@ if (!assethubUrl) {
 }
 
 const rootDir = resolve(import.meta.dir, "../../..");
-const pvmPath = resolve(rootDir, `target/release/${CONTRACTS_REGISTRY_CRATE}.polkavm`);
+const pvmPath = resolve(rootDir, `target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`);
 
 if (!existsSync(pvmPath)) {
     console.error(`Registry not built: ${pvmPath}`);

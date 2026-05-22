@@ -5,7 +5,7 @@ import type { AbiEntry } from "@parity/product-sdk-contracts";
  *
  * Source of truth: `src/contract/src/lib.rs` compiled to PolkaVM; this array
  * mirrors the Solidity-ABI export produced by `cargo pvm-contract build`
- * (`target/release/contract-registry.abi.json`). Keep it bit-for-bit identical
+ * (`target/contract-registry.release.abi.json`). Keep it bit-for-bit identical
  * to the on-chain metadata — editing this file by hand will desync it from
  * the registry deployed on every network.
  *
@@ -105,6 +105,27 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
         name: "getContractNameAt",
         inputs: [{ name: "index", type: "uint32" }],
         outputs: [{ name: "", type: "string" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "searchContractNames",
+        inputs: [
+            { name: "prefix", type: "string" },
+            { name: "offset", type: "uint32" },
+            { name: "limit", type: "uint32" },
+        ],
+        outputs: [
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "names", type: "string[]" },
+                    { name: "next_offset", type: "uint32" },
+                    { name: "done", type: "bool" },
+                ],
+            },
+        ],
         stateMutability: "view",
     },
     {

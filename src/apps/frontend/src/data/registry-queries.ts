@@ -40,48 +40,41 @@ export async function queryContractByName(
     };
 }
 
-// The reverted on-chain registry has no prefix-search method, only indexed
-// iteration via `getContractCount` + `getContractNameAt(index)`. We emulate the
-// previous paged-search surface by client-side filtering: walk registry indices
-// starting at `offset`, lower-case-substring-match each name against `prefix`,
-// and collect up to `limit` matches before returning. `nextOffset` is the next
-// raw registry index to resume from (so it advances by however many indices we
-// scanned, not by how many matches we returned); `done` flips to true once we
-// reach the end of the registry list.
+function parseSearchPage(value: unknown): ContractNameSearchPage {
+    if (Array.isArray(value)) {
+        return {
+            names: Array.isArray(value[0]) ? value[0] : [],
+            nextOffset: Number(value[1] ?? 0),
+            done: Boolean(value[2]),
+        };
+    }
+
+    if (value && typeof value === "object") {
+        const page = value as {
+            names?: unknown;
+            next_offset?: unknown;
+            nextOffset?: unknown;
+            done?: unknown;
+        };
+        return {
+            names: Array.isArray(page.names) ? (page.names as string[]) : [],
+            nextOffset: Number(page.next_offset ?? page.nextOffset ?? 0),
+            done: Boolean(page.done),
+        };
+    }
+
+    return { names: [], nextOffset: 0, done: true };
+}
+
 export async function queryContractNamesByPrefix(
     registry: RegistryContract,
     prefix: string,
     offset: number,
     limit: number,
 ): Promise<ContractNameSearchPage> {
-    const countResult = await registry.getContractCount.query();
-    if (!countResult.success) throw new Error("Failed to query contract count");
-    const total = Number(countResult.value ?? 0);
-
-    if (offset >= total) {
-        return { names: [], nextOffset: total, done: true };
-    }
-
-    const needle = prefix.toLowerCase();
-    const names: string[] = [];
-    let cursor = offset;
-
-    while (cursor < total && names.length < limit) {
-        const nameResult = await registry.getContractNameAt.query(cursor);
-        cursor += 1;
-        if (!nameResult.success) continue;
-        const name = String(nameResult.value ?? "");
-        if (!name) continue;
-        if (needle === "" || name.toLowerCase().includes(needle)) {
-            names.push(name);
-        }
-    }
-
-    return {
-        names,
-        nextOffset: cursor,
-        done: cursor >= total,
-    };
+    const result = await registry.searchContractNames.query(prefix, offset, limit);
+    if (!result.success) throw new Error("Failed to search contract names");
+    return parseSearchPage(result.value);
 }
 
 export function metadataCidFromUri(uri: string | undefined): string | undefined {
