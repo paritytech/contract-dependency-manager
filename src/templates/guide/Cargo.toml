@@ -9,10 +9,8 @@ homepage = "https://polkadot.com/"
 edition = "2024"
 
 [workspace.dependencies]
-# TODO: switch branch to "main" before merging PR #16
-cdm = { git = "https://github.com/paritytech/contract-dependency-manager", branch = "sm/new-sdk" }
+cdm = { git = "https://github.com/paritytech/contract-dependency-manager", branch = "main" }
 pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "sm/cdm", features = ["alloc"] }
-# TODO: switch branch to "main" before merging PR #16
-pvm-cdm = { git = "https://github.com/paritytech/contract-dependency-manager", branch = "sm/new-sdk" }
+pvm-cdm = { git = "https://github.com/paritytech/contract-dependency-manager", branch = "main" }
 polkavm-derive = "0.31"
 picoalloc = "5.2"
