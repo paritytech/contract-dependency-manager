@@ -77,6 +77,8 @@ export { MetadataPublisher } from "./publisher";
 
 export { computeCid } from "./cid";
 
+export { type QueryResult, unwrapOption, unwrapQueryOption } from "./query";
+
 export { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
 
 export {
@@ -103,7 +105,13 @@ export {
     writeCdmJson,
 } from "./cdm-json";
 
-export { type CdmLocalJson, readCdmLocalJson, resolveFeatures } from "./cdm-local-json";
+export {
+    type CdmLocalJson,
+    readCdmLocalJson,
+    resolveFeatures,
+    resolveLocalRegistry,
+    writeCdmLocalJson,
+} from "./cdm-local-json";
 
 export {
     buildContracts,

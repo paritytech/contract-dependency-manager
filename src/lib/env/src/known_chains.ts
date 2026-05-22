@@ -57,7 +57,9 @@ const KNOWN_CHAINS = {
         assethubUrl: "ws://127.0.0.1:10020",
         bulletinUrl: "ws://127.0.0.1:10030",
         ipfsGatewayUrl: "http://127.0.0.1:8283/ipfs",
-        registryAddress: getRegistryAddress("local"),
+        // No canonical registry address: local toolchain bytecode lands at
+        // whatever CREATE2 produces. Callers read `localRegistry` from
+        // cdm.local.json instead, written by `cdm deploy --bootstrap -n local`.
     },
 } as const satisfies Record<string, ChainPreset>;
 

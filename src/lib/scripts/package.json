@@ -8,9 +8,11 @@
         "clean": "echo 'Nothing to clean'"
     },
     "dependencies": {
+        "@dotdm/cdm": "workspace:*",
         "@dotdm/contracts": "workspace:*",
         "@dotdm/env": "workspace:*",
-        "@dotdm/utils": "workspace:*"
+        "@dotdm/utils": "workspace:*",
+        "@parity/product-sdk-contracts": "catalog:"
     },
     "devDependencies": {
         "@types/bun": "catalog:",

@@ -1,7 +1,7 @@
 CLI_DIR = src/apps/cli
 TEMPLATE_DIR = src/templates/shared-counter
 
-.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test clean format format-check format-ts format-rs format-ts-check format-rs-check embed-templates start-network stop-network network-status
+.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test smoke clean format format-check format-ts format-rs format-ts-check format-rs-check embed-templates start-network stop-network network-status
 
 setup:
 	pnpm install
@@ -65,6 +65,15 @@ build-template:
 
 test:
 	pnpm vitest run
+
+# Integration smoke for setupForeignContracts: pulls @polkadot/contexts from
+# live paseo and redeploys onto local PPN. Requires PPN running (`cdm network
+# start`) and network access. Not in `make test` because it hits real chains.
+smoke:
+	pnpm --filter @dotdm/env build
+	pnpm --filter @dotdm/contracts build
+	pnpm --filter @dotdm/cdm build
+	bun run src/lib/scripts/smoke-foreign-contracts.ts
 
 clean:
 	rm -rf dist/ target/ node_modules/

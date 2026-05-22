@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink";
 import type { Contract, ContractDef } from "@parity/product-sdk-contracts";
-import { type AbiEntry, saveContract } from "@dotdm/contracts";
+import { type AbiEntry, saveContract, unwrapOption } from "@dotdm/contracts";
 import { InstallTable } from "./components/InstallTable";
 
 export type InstallState = "waiting" | "querying" | "fetching" | "done" | "error";
@@ -49,14 +49,6 @@ function updateStatus(
 ): void {
     const current = statuses.get(library)!;
     statuses.set(library, { ...current, state, ...extra });
-}
-
-function unwrapOption<T>(val: unknown): T | undefined {
-    if (val && typeof val === "object" && "isSome" in val) {
-        const opt = val as { isSome: boolean; value: T };
-        return opt.isSome ? opt.value : undefined;
-    }
-    return val as T | undefined;
 }
 
 async function installOneWithStatus(

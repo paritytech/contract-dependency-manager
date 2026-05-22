@@ -1,7 +1,12 @@
 import { Command } from "commander";
 import { resolve } from "path";
 import { getChainPreset, getRegistryAddress } from "@dotdm/env";
-import { readCdmJson, resolveFeatures, resolveTargetRegistryAddress } from "@dotdm/contracts";
+import {
+    readCdmJson,
+    resolveFeatures,
+    resolveLocalRegistry,
+    resolveTargetRegistryAddress,
+} from "@dotdm/contracts";
 import { runBuildWithUI } from "../lib/ui";
 
 const build = new Command("build")
@@ -22,6 +27,16 @@ type BuildOptions = {
 
 function resolveRegistryAddress(rootDir: string, opts: BuildOptions): string {
     if (opts.registryAddress) return opts.registryAddress;
+    if (opts.name === "local") {
+        const local = resolveLocalRegistry(rootDir);
+        if (!local) {
+            console.error(
+                "Error: local registry not bootstrapped. Run `cdm deploy --bootstrap -n local` first, or pass --registry-address.",
+            );
+            process.exit(1);
+        }
+        return local;
+    }
     if (opts.name && opts.name !== "custom") {
         return getChainPreset(opts.name).registryAddress ?? getRegistryAddress(opts.name);
     }

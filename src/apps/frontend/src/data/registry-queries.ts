@@ -1,3 +1,4 @@
+import { unwrapOption } from "@dotdm/contracts/abi";
 import type { Package, AbiEntry } from "./types";
 import type { RegistryContract } from "../context/network-context";
 
@@ -5,14 +6,6 @@ export interface ContractNameSearchPage {
     names: string[];
     nextOffset: number;
     done: boolean;
-}
-
-export function unwrapOption<T>(val: unknown): T | undefined {
-    if (val && typeof val === "object" && "isSome" in val) {
-        const opt = val as { isSome: boolean; value: T };
-        return opt.isSome ? opt.value : undefined;
-    }
-    return val as T;
 }
 
 export async function queryContractByName(

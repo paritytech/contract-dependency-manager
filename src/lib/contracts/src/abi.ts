@@ -6,3 +6,4 @@
  * etc.) into frontend bundles.
  */
 export { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
+export { type QueryResult, unwrapOption, unwrapQueryOption } from "./query";

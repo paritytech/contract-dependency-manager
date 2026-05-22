@@ -15,6 +15,7 @@ import {
     computeTargetHash,
     hasBuildableSolidityProject,
     readCdmJson,
+    resolveLocalRegistry,
     resolveTargetRegistryAddress,
     writeCdmJson,
 } from "@dotdm/contracts";
@@ -101,7 +102,19 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         process.exit(1);
     }
 
-    const registryAddress = opts.registryAddress ?? getRegistryAddress(opts.name);
+    // Local has no canonical preset address; fall back to cdm.local.json. For
+    // non-local, use the canonical preset address.
+    const registryAddress =
+        opts.registryAddress ??
+        (opts.name === "local" ? resolveLocalRegistry() : undefined) ??
+        getRegistryAddress(opts.name);
+    if (!registryAddress) {
+        console.error(
+            "Error: no registry address available. Pass --registry-address, or run " +
+                "`cdm deploy --bootstrap -n local` first for local installs.",
+        );
+        process.exit(1);
+    }
     const targetHash = computeTargetHash(opts.assethubUrl, opts.ipfsGatewayUrl, registryAddress);
 
     // Connect to chain with spinner (matching deploy command style)

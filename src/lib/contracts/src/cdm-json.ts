@@ -1,6 +1,6 @@
 import { blake2b } from "@noble/hashes/blake2.js";
-import { readFileSync, writeFileSync, existsSync } from "fs";
-import { resolve } from "path";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { getRegistryAddress } from "@dotdm/env/registry";
 
 export interface CdmJsonTarget {

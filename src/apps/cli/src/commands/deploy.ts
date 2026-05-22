@@ -15,7 +15,13 @@ import {
 } from "@dotdm/env";
 import { getAccount } from "@dotdm/utils/accounts";
 import { ALICE_SS58, CONTRACTS_REGISTRY_PACKAGE } from "@dotdm/utils";
-import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, resolveFeatures } from "@dotdm/contracts";
+import {
+    ContractDeployer,
+    CONTRACTS_REGISTRY_CRATE,
+    resolveFeatures,
+    resolveLocalRegistry,
+    writeCdmLocalJson,
+} from "@dotdm/contracts";
 import type { HexString } from "polkadot-api";
 import { runDeployWithUI, spinner } from "../lib/ui";
 
@@ -68,8 +74,17 @@ function resolveSigner(opts: DeployOptions): {
     return { signer: prepareSigner("Alice"), origin: ALICE_SS58 };
 }
 
-function resolveRegistryAddress(opts: DeployOptions): string {
-    return opts.registryAddress ?? getRegistryAddress(opts.name);
+/**
+ * Resolve the registry address for a deploy. For local, prefers cdm.local.json
+ * (written by `cdm deploy --bootstrap -n local`); returns undefined when the
+ * local registry hasn't been bootstrapped yet so callers can trigger bootstrap
+ * or fail with a clear message. For non-local, falls back to the canonical
+ * preset address.
+ */
+function resolveRegistryAddress(opts: DeployOptions, rootDir: string): string | undefined {
+    if (opts.registryAddress) return opts.registryAddress;
+    if (opts.name === "local") return resolveLocalRegistry(rootDir);
+    return getRegistryAddress(opts.name);
 }
 
 deploy.action(async (opts: DeployOptions) => {
@@ -95,12 +110,17 @@ deploy.action(async (opts: DeployOptions) => {
     const rootDir = process.cwd();
     opts.features = resolveFeatures(opts.features, rootDir);
 
-    // Auto-bootstrap on `local`: if the chain doesn't have the registry yet
-    // (fresh PPN data, never deployed), opt the user into bootstrap mode so
-    // they don't have to know about the flag.
+    const registryAddress = resolveRegistryAddress(opts, rootDir);
+
+    // Auto-bootstrap on `local`: flip to bootstrap mode when there's no pinned
+    // registry yet, or the pinned address isn't on chain (fresh PPN data).
     if (opts.name === "local" && !opts.bootstrap) {
-        const exists = await checkRegistryOnChain(opts.assethubUrl, resolveRegistryAddress(opts));
-        if (!exists) {
+        if (!registryAddress) {
+            console.log(
+                "Local registry not bootstrapped yet — auto-bootstrapping. Pass --no-bootstrap to skip.",
+            );
+            opts.bootstrap = true;
+        } else if (!(await checkRegistryOnChain(opts.assethubUrl, registryAddress))) {
             console.log(
                 "ContractRegistry not found on local chain — auto-bootstrapping. Pass --no-bootstrap to skip.",
             );
@@ -109,10 +129,18 @@ deploy.action(async (opts: DeployOptions) => {
     }
 
     if (opts.bootstrap) {
-        return bootstrapDeploy(rootDir, opts);
+        return bootstrapDeploy(rootDir, opts, registryAddress);
     }
 
-    await deployWithRegistry(rootDir, opts);
+    if (!registryAddress) {
+        console.error(
+            "Error: no registry address available. Run `cdm deploy --bootstrap -n local` first, " +
+                "or pass --registry-address.",
+        );
+        process.exit(1);
+    }
+
+    await deployWithRegistry(rootDir, opts, registryAddress);
 });
 
 /**
@@ -155,6 +183,7 @@ async function checkRegistryOnChain(
 async function deployWithRegistry(
     rootDir: string,
     opts: DeployOptions,
+    registryAddress: string,
     existingConnection?: {
         signer: ReturnType<typeof prepareSigner>;
         origin: string;
@@ -190,7 +219,6 @@ async function deployWithRegistry(
         ownsChainClient = true;
     }
 
-    const registryAddress = resolveRegistryAddress(opts);
     console.log(`\x1b[1mRegistry\x1b[0m   ${registryAddress}\n`);
 
     const { result } = await runDeployWithUI({
@@ -218,8 +246,18 @@ async function deployWithRegistry(
 
 /**
  * Bootstrap deploy: deploy ContractRegistry first, then everything else.
+ *
+ * `configuredRegistry` is the pre-resolved target address: either the user's
+ * `--registry-address`, the canonical preset address (non-local), or the
+ * `localRegistry` from a prior `cdm.local.json` (local re-bootstrap). When
+ * undefined (fresh local bootstrap with no override) we accept whatever
+ * CREATE2 produces; otherwise we refuse to deploy a mismatch.
  */
-async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<void> {
+async function bootstrapDeploy(
+    rootDir: string,
+    opts: DeployOptions,
+    configuredRegistry: string | undefined,
+): Promise<void> {
     console.log("=== CDM Bootstrap Deploy ===\n");
 
     const registryPvmPath = resolveRegistryPvmPath(rootDir);
@@ -266,16 +304,21 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
         console.log("  Account already mapped\n");
     }
 
-    // Phase 1 preflight: deploy ContractRegistry only if this signer/bytecode
-    // produces the registry address selected for this network/target.
-    const registryAddress = resolveRegistryAddress(opts);
     const expectedRegistry = await deployer.dryRunDeploy(
         registryPvmPath,
         CONTRACTS_REGISTRY_PACKAGE,
     );
-    if (expectedRegistry.address.toLowerCase() !== registryAddress.toLowerCase()) {
+    // For non-local (or local with an explicit/pinned target), reject a
+    // signer+bytecode that would land at a different address — most likely a
+    // wrong account or stale bytecode.
+    const shouldEnforceMatch = opts.name !== "local" || Boolean(opts.registryAddress);
+    if (
+        shouldEnforceMatch &&
+        configuredRegistry &&
+        expectedRegistry.address.toLowerCase() !== configuredRegistry.toLowerCase()
+    ) {
         console.error(
-            `ERROR: ContractRegistry bootstrap would deploy ${expectedRegistry.address}, but the selected target uses ${registryAddress}.`,
+            `ERROR: ContractRegistry bootstrap would deploy ${expectedRegistry.address}, but the selected target uses ${configuredRegistry}.`,
         );
         console.error(
             "Use the matching deployer/bytecode for this target, or pass --registry-address for a separate registry target.",
@@ -284,17 +327,24 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
         process.exit(1);
     }
 
-    // Phase 1: Deploy ContractRegistry (CREATE2 for deterministic address)
     console.log("Deploying ContractRegistry...");
     const { address: registryAddr } = await deployer.deploy(
         registryPvmPath,
         CONTRACTS_REGISTRY_PACKAGE,
     );
     console.log(`  ContractRegistry: ${registryAddr}\n`);
-    opts.registryAddress = registryAddr;
 
-    // Phase 2+3: Build and deploy all CDM contracts (reuses the existing chain client)
-    const addresses = await deployWithRegistry(rootDir, opts, {
+    // Persist the bootstrapped local-registry address so subsequent commands
+    // (`cdm build/deploy/install -n local`, setupForeignContracts) can resolve
+    // it without an explicit flag.
+    if (opts.name === "local") {
+        const cdmLocalPath = writeCdmLocalJson(rootDir, {
+            localRegistry: registryAddr as `0x${string}`,
+        });
+        console.log(`  localRegistry → ${cdmLocalPath}\n`);
+    }
+
+    const addresses = await deployWithRegistry(rootDir, opts, registryAddr, {
         signer,
         origin,
         chainClient,

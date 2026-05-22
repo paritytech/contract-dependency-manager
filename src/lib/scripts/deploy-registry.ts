@@ -21,7 +21,12 @@ import {
 } from "@dotdm/env";
 import { CONTRACTS_REGISTRY_PACKAGE } from "@dotdm/utils";
 import { getAccount } from "@dotdm/utils/accounts";
-import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@dotdm/contracts";
+import {
+    ContractDeployer,
+    CONTRACTS_REGISTRY_CRATE,
+    resolveLocalRegistry,
+    writeCdmLocalJson,
+} from "@dotdm/contracts";
 
 const { values: opts } = parseArgs({
     args: process.argv.slice(2),
@@ -38,14 +43,20 @@ let assethubUrl = opts["assethub-url"];
 if (opts.name) {
     assethubUrl = assethubUrl ?? preset?.assethubUrl;
 }
-const selectedRegistryAddress = opts["registry-address"] ?? preset?.registryAddress;
-const hasExplicitRegistryAddress = Boolean(opts["registry-address"]);
 if (!assethubUrl) {
     console.error("Error: --assethub-url or --name is required");
     process.exit(1);
 }
 
 const rootDir = resolve(import.meta.dir, "../../..");
+// Local has no canonical registryAddress in the preset; fall back to
+// cdm.local.json so re-runs of this script use the previously bootstrapped
+// address rather than blindly redeploying.
+const selectedRegistryAddress =
+    opts["registry-address"] ??
+    preset?.registryAddress ??
+    (opts.name === "local" ? resolveLocalRegistry(rootDir) : undefined);
+const hasExplicitRegistryAddress = Boolean(opts["registry-address"]);
 const pvmPath = resolve(rootDir, `target/${CONTRACTS_REGISTRY_CRATE}.release.polkavm`);
 
 if (!existsSync(pvmPath)) {
@@ -141,5 +152,12 @@ if (
 console.log(`Deploying ContractRegistry (CREATE2 salt: "${CONTRACTS_REGISTRY_PACKAGE}")...`);
 const { address } = await deployer.deploy(pvmPath, CONTRACTS_REGISTRY_PACKAGE);
 console.log(`\nCONTRACTS_REGISTRY_ADDR=${address}`);
+
+if (opts.name === "local") {
+    const cdmLocalPath = writeCdmLocalJson(rootDir, {
+        localRegistry: address as `0x${string}`,
+    });
+    console.log(`localRegistry → ${cdmLocalPath}`);
+}
 
 chainClient.destroy();

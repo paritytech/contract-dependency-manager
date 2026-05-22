@@ -4,8 +4,8 @@ import { createConnection } from "node:net";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { createCdmAssetHubClient, getChainPreset, getRegistryAddress } from "@dotdm/env";
-import type { SizedHex } from "@dotdm/contracts";
+import { createCdmAssetHubClient, getChainPreset } from "@dotdm/env";
+import { resolveLocalRegistry, type SizedHex } from "@dotdm/contracts";
 
 const PPN_DIR = resolve(homedir(), ".cdm/ppn");
 const PPN_PROXY_INSTALL_URL =
@@ -87,19 +87,25 @@ network
             return;
         }
         const preset = getChainPreset("local");
-        const registryAddress = getRegistryAddress("local");
+        const registryAddress = resolveLocalRegistry();
         try {
             const client = await createCdmAssetHubClient(preset.assethubUrl, "local");
             await client.raw.assetHub.getChainSpecData();
             const blockNumber = await client.assetHub.query.System.Number.getValue();
-            const info = await client.assetHub.query.Revive.AccountInfoOf.getValue(
-                registryAddress as SizedHex<20>,
-            );
-            const registryDeployed = info?.account_type.type === "Contract";
             console.log(`Asset Hub head:   #${blockNumber}`);
-            console.log(
-                `Registry:         ${registryAddress} ${registryDeployed ? "deployed ✓" : "not deployed (cdm test will auto-bootstrap)"}`,
-            );
+            if (!registryAddress) {
+                console.log(
+                    "Registry:         not bootstrapped (cdm deploy --bootstrap -n local will bootstrap)",
+                );
+            } else {
+                const info = await client.assetHub.query.Revive.AccountInfoOf.getValue(
+                    registryAddress as SizedHex<20>,
+                );
+                const registryDeployed = info?.account_type.type === "Contract";
+                console.log(
+                    `Registry:         ${registryAddress} ${registryDeployed ? "deployed ✓" : "not on chain (cdm test will auto-bootstrap)"}`,
+                );
+            }
             client.destroy();
         } catch (err) {
             console.log(
