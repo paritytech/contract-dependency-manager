@@ -1,7 +1,7 @@
 CLI_DIR = src/apps/cli
 TEMPLATE_DIR = src/templates/shared-counter
 
-.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test clean format format-check format-ts format-rs format-ts-check format-rs-check
+.PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test test-macro clean format format-check format-ts format-rs format-ts-check format-rs-check
 
 setup:
 	pnpm install
@@ -53,8 +53,15 @@ build-template:
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter_reader
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter_writer
 
-test:
+test: test-macro
 	pnpm vitest run
+
+# Compiles the in-tree `cdm::import!` consumer (src/lib/cdm/import-test) to
+# PolkaVM. A failure here means the macro is emitting code that doesn't type-
+# check against `pvm_contract_sdk::abi_import!` — see PR #16 for the bug class
+# this guards against.
+test-macro:
+	cargo pvm-contract build --manifest-path $(CURDIR)/src/lib/cdm/import-test/Cargo.toml
 
 clean:
 	rm -rf dist/ target/ node_modules/

@@ -1,32 +1,29 @@
-#![no_main]
-#![no_std]
+#![cfg_attr(not(feature = "abi-gen"), no_main, no_std)]
 
-use pvm::storage::Lazy;
-use pvm_contract as pvm;
-
-#[pvm::storage]
-struct Storage {
-    count: u32,
-}
-
-#[pvm::contract(cdm = "@example/counter")]
+#[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
 mod counter {
-    use super::*;
+    use pvm_contract_sdk::Lazy;
 
-    #[pvm::constructor]
-    pub fn new() -> Result<(), Error> {
-        Storage::count().set(&0);
-        Ok(())
+    pub struct Counter {
+        #[slot(0)]
+        count: Lazy<u32>,
     }
 
-    #[pvm::method]
-    pub fn increment() {
-        let current = Storage::count().get().unwrap_or(0);
-        Storage::count().set(&(current + 1));
-    }
+    impl Counter {
+        #[pvm_contract_sdk::constructor]
+        pub fn new(&mut self) {
+            self.count.set(&0);
+        }
 
-    #[pvm::method]
-    pub fn get_count() -> u32 {
-        Storage::count().get().unwrap_or(0)
+        #[pvm_contract_sdk::method]
+        pub fn increment(&mut self) {
+            let current = self.count.get();
+            self.count.set(&(current + 1));
+        }
+
+        #[pvm_contract_sdk::method]
+        pub fn get_count(&self) -> u32 {
+            self.count.get()
+        }
     }
 }

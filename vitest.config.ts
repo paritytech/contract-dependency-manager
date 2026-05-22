@@ -10,6 +10,7 @@ export default defineConfig({
 			"**/dist/**",
 			"src/apps/frontend/**",
 			"src/templates/**",
+			"src/**/tests/e2e/**",
 		],
 		reporters: "verbose",
 		environment: "node",

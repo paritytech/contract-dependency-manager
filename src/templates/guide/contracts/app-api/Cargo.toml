@@ -13,10 +13,13 @@ path = "lib.rs"
 name = "app-api"
 path = "lib.rs"
 
+[features]
+abi-gen = ["pvm-contract-sdk/abi-gen"]
+
+[package.metadata.cdm]
+name = "@example/app-api"
+
 [dependencies]
-cdm = { workspace = true }
-pvm_contract = { workspace = true }
+pvm-contract-sdk = { workspace = true }
 polkavm-derive = { workspace = true }
-parity-scale-codec = { workspace = true }
 picoalloc = { workspace = true }
-support_contract = { path = "../support_contract" }

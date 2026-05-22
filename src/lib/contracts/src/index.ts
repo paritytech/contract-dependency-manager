@@ -10,7 +10,6 @@ export {
     createCrateToPackageMap,
     detectDeploymentOrder,
     detectDeploymentOrderLayered,
-    readCdmPackage,
     getGitRemoteUrl,
     readReadmeContent,
 } from "./detection";

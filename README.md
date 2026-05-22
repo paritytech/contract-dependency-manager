@@ -277,7 +277,12 @@ bun run src/apps/cli/src/cli.ts --help
 make frontend
 
 # Run tests
-make test
+make test                # unit tests only (fast)
+pnpm test:e2e            # end-to-end: spawns revive-dev-node, deploys
+                         # the registry, exercises every method.
+                         # Requires `revive-dev-node` and `bun` on $PATH:
+                         #   cargo install --git https://github.com/paritytech/polkadot-sdk --bin revive-dev-node
+                         #   curl -fsSL https://bun.sh/install | bash
 
 # Build native binary
 make compile

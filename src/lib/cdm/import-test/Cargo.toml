@@ -1,25 +1,19 @@
 [package]
-name = "instagram"
+name = "cdm-import-test"
 version.workspace = true
 edition.workspace = true
-description = "Minimal on-chain Instagram — posts indexed by (user, index)"
-authors.workspace = true
-homepage.workspace = true
-
-[lib]
-path = "lib.rs"
+publish = false
 
 [[bin]]
-name = "instagram"
+name = "cdm-import-test"
 path = "lib.rs"
 
 [features]
 abi-gen = ["pvm-contract-sdk/abi-gen"]
 
-[package.metadata.cdm]
-name = "@example/instagram"
-
 [dependencies]
+cdm = { workspace = true }
 pvm-contract-sdk = { workspace = true }
+pvm-cdm = { workspace = true }
 polkavm-derive = { workspace = true }
 picoalloc = { workspace = true }

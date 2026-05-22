@@ -1,21 +1,22 @@
-#![no_main]
-#![no_std]
+#![cfg_attr(not(feature = "abi-gen"), no_main, no_std)]
 
-use pvm_contract as pvm;
+cdm::import!("@example/app-api");
 
-#[pvm::contract(cdm = "@example/counter-reader")]
-mod counter_reader {
+#[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
+mod support_contract {
     use super::*;
 
-    #[pvm::constructor]
-    pub fn new() -> Result<(), Error> {
-        Ok(())
-    }
+    pub struct SupportContract;
 
-    /// Read the current count from the shared counter contract via CDM
-    #[pvm::method]
-    pub fn read_count() -> u32 {
-        let counter = counter::cdm_reference();
-        counter.get_count().expect("get_count failed")
+    impl SupportContract {
+        #[pvm_contract_sdk::constructor]
+        pub fn new(&mut self) {}
+
+        /// Read the current count from the app-api contract via CDM.
+        #[pvm_contract_sdk::method]
+        pub fn read_count(&self) -> u32 {
+            let api = app_api::AppApi::cdm_lookup();
+            api.get_count().call(self).expect("get_count failed")
+        }
     }
 }
