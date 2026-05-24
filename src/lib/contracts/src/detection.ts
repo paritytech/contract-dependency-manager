@@ -119,20 +119,22 @@ function isPvmContract(pkg: CargoPackage): boolean {
  *
  * The expected shape is:
  *   [package.metadata.cdm]
- *   name = "@scope/contract"
+ *   package = "@scope/contract"
  *
  * The pre-sm/mut SDK extracted this from a `__PVM_CDM` ELF symbol planted by
  * `#[pvm::contract(cdm = "...")]`. The new SDK's `#[contract]` macro doesn't
  * accept that argument, so the canonical source is now Cargo.toml metadata,
- * which `cargo metadata` already surfaces.
+ * which `cargo metadata` already surfaces. `name` is accepted as a legacy
+ * alias for templates created during the migration.
  */
 function extractCdmPackage(pkg: CargoPackage): string | null {
     const meta = pkg.metadata;
     if (!meta || typeof meta !== "object") return null;
     const cdm = (meta as Record<string, unknown>).cdm;
     if (!cdm || typeof cdm !== "object") return null;
-    const name = (cdm as Record<string, unknown>).name;
-    return typeof name === "string" ? name : null;
+    const cdmMeta = cdm as Record<string, unknown>;
+    const packageName = cdmMeta.package ?? cdmMeta.name;
+    return typeof packageName === "string" ? packageName : null;
 }
 
 /**

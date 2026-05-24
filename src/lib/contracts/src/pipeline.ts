@@ -777,7 +777,7 @@ function getDeployableContract(
     const cdmPackage = info?.cdmPackage ?? contractMap.get(crate)?.cdmPackage;
     if (!cdmPackage) {
         throw new Error(
-            `Missing CDM package for ${crate}. Add #[pvm::contract(cdm = "@org/name")] or /// @custom:cdm @org/name.`,
+            `Missing CDM package for ${crate}. Add [package.metadata.cdm] package = "@org/name" to Cargo.toml or /// @custom:cdm @org/name to Solidity.`,
         );
     }
 

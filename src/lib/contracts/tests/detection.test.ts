@@ -102,7 +102,7 @@ describe("detection skips PVM crates without cdm metadata", () => {
                 'edition = "2021"',
                 "",
                 "[package.metadata.cdm]",
-                'name = "@test/good"',
+                'package = "@test/good"',
                 "",
                 "[[bin]]",
                 'name = "good"',
@@ -140,5 +140,59 @@ describe("detection skips PVM crates without cdm metadata", () => {
         const names = contracts.map((c) => c.name).sort();
         expect(names).toEqual(["good"]);
         expect(contracts[0].cdmPackage).toBe("@test/good");
+    });
+
+    test("accepts legacy [package.metadata.cdm].name during migration", () => {
+        tmpRoot = mkdtempSync(join(tmpdir(), "cdm-detection-legacy-name-"));
+
+        writeFileSync(
+            join(tmpRoot, "Cargo.toml"),
+            ["[workspace]", 'resolver = "2"', 'members = ["legacy"]', ""].join("\n"),
+        );
+
+        const sdkStub = join(tmpRoot, "pvm-contract-sdk-stub");
+        mkdirSync(join(sdkStub, "src"), { recursive: true });
+        writeFileSync(
+            join(sdkStub, "Cargo.toml"),
+            [
+                "[package]",
+                'name = "pvm-contract-sdk"',
+                'version = "0.0.1"',
+                'edition = "2021"',
+                "",
+                "[lib]",
+                'path = "src/lib.rs"',
+                "",
+            ].join("\n"),
+        );
+        writeFileSync(join(sdkStub, "src", "lib.rs"), "");
+
+        const legacyDir = join(tmpRoot, "legacy");
+        mkdirSync(join(legacyDir, "src"), { recursive: true });
+        writeFileSync(
+            join(legacyDir, "Cargo.toml"),
+            [
+                "[package]",
+                'name = "legacy"',
+                'version = "0.1.0"',
+                'edition = "2021"',
+                "",
+                "[package.metadata.cdm]",
+                'name = "@test/legacy"',
+                "",
+                "[[bin]]",
+                'name = "legacy"',
+                'path = "src/main.rs"',
+                "",
+                "[dependencies]",
+                'pvm-contract-sdk = { path = "../pvm-contract-sdk-stub" }',
+                "",
+            ].join("\n"),
+        );
+        writeFileSync(join(legacyDir, "src", "main.rs"), "fn main() {}\n");
+
+        const contracts = detectContracts(tmpRoot);
+        expect(contracts.map((c) => c.name)).toEqual(["legacy"]);
+        expect(contracts[0].cdmPackage).toBe("@test/legacy");
     });
 });

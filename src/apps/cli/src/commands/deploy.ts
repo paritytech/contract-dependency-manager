@@ -179,7 +179,9 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     if (!existsSync(registryPvmPath)) {
         console.error(`ERROR: ContractRegistry not built: ${registryPvmPath}`);
         console.error("Build contracts first:");
-        console.error("  cargo pvm-contract build --manifest-path Cargo.toml -p contracts");
+        console.error(
+            `  cargo pvm-contract build --manifest-path Cargo.toml -p ${CONTRACTS_REGISTRY_CRATE}`,
+        );
         process.exit(1);
     }
 
