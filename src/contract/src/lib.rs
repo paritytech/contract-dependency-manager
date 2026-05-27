@@ -41,6 +41,21 @@ pub struct ContractNameSearchPage {
     pub done: bool,
 }
 
+#[derive(Default, pvm::SolAbi)]
+pub struct ContractEntry {
+    pub name: String,
+    pub version: Version,
+    pub address: Address,
+    pub metadata_uri: String,
+    pub owner: Address,
+}
+
+#[derive(Default, pvm::SolAbi)]
+pub struct ContractPage {
+    pub total: u32,
+    pub entries: alloc::vec::Vec<ContractEntry>,
+}
+
 fn validate_contract_name(contract_name: &String) {
     if contract_name.is_empty() {
         revert(b"ContractNameEmpty");
@@ -88,6 +103,26 @@ fn prefix_upper_bound(prefix: &String) -> Option<String> {
     } else {
         None
     }
+}
+
+fn latest_contract_entry(contract_name: String) -> Option<ContractEntry> {
+    let info = Storage::info().get(&contract_name)?;
+    if info.version_count == 0 {
+        return None;
+    }
+
+    let version = info.version_count.saturating_sub(1);
+    let key = (contract_name.clone(), version);
+    let address = Storage::published_address().get(&key)?;
+    let metadata_uri = Storage::published_metadata_uri().get(&key)?;
+
+    Some(ContractEntry {
+        name: contract_name,
+        version,
+        address,
+        metadata_uri,
+        owner: info.owner,
+    })
 }
 
 #[pvm::storage]
@@ -206,6 +241,39 @@ mod contract_registry {
     #[pvm::method]
     pub fn get_contract_name_at(index: u32) -> String {
         Storage::contract_name_at().get(&index).unwrap_or_default()
+    }
+
+    /// Get a page of latest contract entries by append-only registry index.
+    #[pvm::method]
+    pub fn get_contracts(start: u32, count: u32) -> ContractPage {
+        let total = Storage::contract_name_count().get().unwrap_or(0);
+        let cap = if count > MAX_SEARCH_LIMIT {
+            MAX_SEARCH_LIMIT
+        } else {
+            count
+        };
+        let mut entries: alloc::vec::Vec<ContractEntry> = alloc::vec::Vec::new();
+
+        if total > 0 && start < total && cap > 0 {
+            let mut scanned = 0u32;
+
+            loop {
+                let index = start.saturating_add(scanned);
+                if scanned >= cap || index >= total {
+                    break;
+                }
+
+                if let Some(name) = Storage::contract_name_at().get(&index) {
+                    if let Some(entry) = latest_contract_entry(name) {
+                        entries.push(entry);
+                    }
+                }
+
+                scanned = scanned.saturating_add(1);
+            }
+        }
+
+        ContractPage { total, entries }
     }
 
     /// Search registered contract names by prefix.

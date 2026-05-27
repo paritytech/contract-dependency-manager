@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNetwork } from "../context/useNetwork";
 import { queryBulletinJson } from "../data/bulletin-client";
 import type { Package } from "../data/types";
-import { queryContractByName, parseMetadata, metadataCidFromUri } from "../data/registry-queries";
+import { queryContractsPage, parseMetadata, metadataCidFromUri } from "../data/registry-queries";
 import { withTimeout } from "../data/timeout";
 import { useInfiniteLoad } from "./useInfiniteLoad";
 
@@ -33,22 +33,11 @@ export function useRegistry() {
         async (start: number, count: number) => {
             if (!registry) throw new Error("Registry not connected");
 
-            const packages: Package[] = [];
-            for (let i = start; i < start + count; i++) {
-                const nameResult = await withTimeout(
-                    registry.getContractNameAt.query(i),
-                    `Registry name query timed out on ${networkConfig.label}.`,
-                );
-                if (!nameResult.success) continue;
-                const name = nameResult.value as string;
-
-                const pkg = await withTimeout(
-                    queryContractByName(registry, name),
-                    `Registry package query timed out for ${name}.`,
-                );
-                if (pkg) packages.push(pkg);
-            }
-            return packages;
+            const page = await withTimeout(
+                queryContractsPage(registry, start, count),
+                `Registry package page query timed out on ${networkConfig.label}.`,
+            );
+            return page.packages;
         },
         [networkConfig.label, registry],
     );
