@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI = join(__dirname, "../src/cli.ts");
-const packageJson = JSON.parse(
-    readFileSync(join(__dirname, "../package.json"), "utf-8"),
-) as { version: string };
+const packageJson = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8")) as {
+    version: string;
+};
 
 describe("CLI commands", () => {
     test("cdm --version shows the package version", () => {
