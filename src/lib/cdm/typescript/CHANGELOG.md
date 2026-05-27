@@ -1,5 +1,13 @@
 # @dotdm/cdm
 
+## 0.6.14
+
+### Patch Changes
+
+- Updated dependencies [002400b]
+  - @dotdm/env@2.0.1
+  - @dotdm/contracts@3.1.1
+
 ## 0.6.13
 
 ### Patch Changes
