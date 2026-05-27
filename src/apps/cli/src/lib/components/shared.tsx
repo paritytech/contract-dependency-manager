@@ -35,7 +35,8 @@ export function ProgressBar({
      * fraction. Used after build completion to surface the .polkavm size. */
     sizeBytes?: number;
 }) {
-    const filled = total > 0 ? Math.round((compiled / total) * BAR_WIDTH) : 0;
+    const ratio = total > 0 ? Math.min(1, Math.max(0, compiled / total)) : 0;
+    const filled = Math.round(ratio * BAR_WIDTH);
     const tail = sizeBytes && sizeBytes > 0 ? formatBytes(sizeBytes) : `${compiled}/${total}`;
     return (
         <Text>

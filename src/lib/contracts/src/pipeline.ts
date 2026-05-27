@@ -91,7 +91,7 @@ export type BuildEvent =
     | { type: "detect"; contracts: ContractInfo[]; layers: string[][] }
     | { type: "log"; line: string; source?: string }
     | { type: "build-start"; crate: string }
-    | { type: "build-progress"; crate: string; compiled: number; total: number }
+    | { type: "build-progress"; crate: string; compiled: number; total?: number }
     | { type: "build-done"; crate: string; durationMs: number; bytecodeSize: number }
     | { type: "build-error"; crate: string; error: string }
     | { type: "pipeline-done"; summary: BuildSummary }
@@ -150,7 +150,7 @@ export type DeployEvent =
     | { type: "detect"; contracts: ContractInfo[]; layers: string[][] }
     | { type: "log"; line: string; source?: string }
     | { type: "build-start"; crate: string }
-    | { type: "build-progress"; crate: string; compiled: number; total: number }
+    | { type: "build-progress"; crate: string; compiled: number; total?: number }
     | { type: "build-done"; crate: string; durationMs: number; bytecodeSize: number }
     | { type: "build-error"; crate: string; error: string }
     | { type: "check-cached"; crate: string; address: HexString }

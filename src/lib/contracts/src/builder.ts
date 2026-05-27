@@ -12,7 +12,7 @@ export interface BuildResult {
 
 export type BuildProgressCallback = (
     processed: number,
-    total: number,
+    total: number | undefined,
     currentCrate: string,
 ) => void;
 
@@ -69,41 +69,51 @@ export async function pvmContractBuildAsync(
             CONTRACTS_REGISTRY_ADDR: registryAddress,
         };
 
+        let stdout = "";
+        let stderr = "";
+        let compilerMessages = "";
+        let artifactsSeen = 0;
+        let total: number | undefined;
+        let stdoutLineBuffer = "";
+
         const child = spawn("cargo", args, {
             cwd: rootDir,
             env,
             stdio: ["pipe", "pipe", "pipe"],
         });
 
-        let stdout = "";
-        let stderr = "";
-        let compilerMessages = "";
-        let artifactsSeen = 0;
-        let total = 0;
+        const handleStdoutLine = (line: string) => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
+            try {
+                const msg = JSON.parse(trimmed);
+                const cpcBuildPlan =
+                    msg.reason === "cargo-pvm-contract-build-plan" &&
+                    msg.unit === "compiler-artifact";
+                const legacyBuildPlan = msg.reason === "build-plan";
+                if ((cpcBuildPlan || legacyBuildPlan) && typeof msg.total === "number") {
+                    total = msg.total > 0 ? msg.total : undefined;
+                    onProgress?.(artifactsSeen, total, crateName);
+                } else if (msg.reason === "compiler-artifact") {
+                    artifactsSeen++;
+                    const name = msg.target?.name ?? "unknown";
+                    onProgress?.(artifactsSeen, total, name);
+                } else if (msg.reason === "compiler-message" && msg.message?.rendered) {
+                    compilerMessages += msg.message.rendered;
+                }
+            } catch {
+                // Not JSON, ignore
+            }
+        };
 
         child.stdout.on("data", (data: Buffer) => {
             const text = data.toString();
             stdout += text;
+            stdoutLineBuffer += text;
 
-            for (const line of text.split("\n")) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                try {
-                    const msg = JSON.parse(trimmed);
-                    if (msg.reason === "build-plan") {
-                        // Emitted by cargo-pvm-contract before build starts
-                        total = msg.total ?? 0;
-                    } else if (msg.reason === "compiler-artifact") {
-                        artifactsSeen++;
-                        const name = msg.target?.name ?? "unknown";
-                        onProgress?.(artifactsSeen, total, name);
-                    } else if (msg.reason === "compiler-message" && msg.message?.rendered) {
-                        compilerMessages += msg.message.rendered;
-                    }
-                } catch {
-                    // Not JSON, ignore
-                }
-            }
+            const lines = stdoutLineBuffer.split("\n");
+            stdoutLineBuffer = lines.pop() ?? "";
+            for (const line of lines) handleStdoutLine(line);
         });
 
         child.stderr.on("data", (data: Buffer) => {
@@ -112,6 +122,9 @@ export async function pvmContractBuildAsync(
         });
 
         child.on("close", (code) => {
+            handleStdoutLine(stdoutLineBuffer);
+            stdoutLineBuffer = "";
+
             const fullStderr = compilerMessages ? compilerMessages + stderr : stderr;
             done({
                 crateName,
