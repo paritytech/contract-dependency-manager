@@ -1,5 +1,11 @@
 # @dotdm/contracts
 
+## 3.1.0
+
+### Minor Changes
+
+- 6339b1a: Expose a reusable `installContracts` pipeline from `@dotdm/contracts` and refactor the CLI install UI to consume install events instead of owning registry query and metadata persistence logic.
+
 ## 3.0.0
 
 ### Major Changes

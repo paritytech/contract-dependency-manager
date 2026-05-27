@@ -1,0 +1,46 @@
+[
+    {
+        "type": "constructor",
+        "inputs": [],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
+        "name": "ping",
+        "inputs": [],
+        "outputs": [],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "tryGetValue",
+        "inputs": [],
+        "outputs": [
+            {
+                "name": "",
+                "type": "tuple",
+                "components": [
+                    { "name": "ok", "type": "bool" },
+                    { "name": "value", "type": "uint64" }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "trySetValue",
+        "inputs": [
+            {
+                "name": "result",
+                "type": "tuple",
+                "components": [
+                    { "name": "ok", "type": "bool" },
+                    { "name": "value", "type": "uint64" }
+                ]
+            }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+    }
+]

@@ -4,9 +4,13 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-pvm_contract.workspace = true
+# pvm_contract + parity-scale-codec are kept registry-local (not in the
+# workspace catalog) because the rest of the workspace has migrated to the
+# new SDK; only this contract still uses the older `charles/cdm-integration`
+# source with its SCALE-based storage primitives.
+pvm_contract = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "charles/cdm-integration" }
+parity-scale-codec = { version = "3.7", default-features = false, features = ["derive"] }
 polkavm-derive.workspace = true
-parity-scale-codec.workspace = true
 picoalloc.workspace = true
 
 [lib]

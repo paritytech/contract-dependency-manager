@@ -1,0 +1,14 @@
+{
+    "targets": {
+        "test": {
+            "asset-hub": "wss://example.invalid",
+            "bulletin": "wss://example.invalid",
+            "registry": null
+        }
+    },
+    "dependencies": {
+        "test": {
+            "@test/sample": 1
+        }
+    }
+}

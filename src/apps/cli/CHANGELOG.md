@@ -1,5 +1,14 @@
 # @dotdm/cli
 
+## 0.8.15
+
+### Patch Changes
+
+- 6339b1a: Expose a reusable `installContracts` pipeline from `@dotdm/contracts` and refactor the CLI install UI to consume install events instead of owning registry query and metadata persistence logic.
+- Updated dependencies [6339b1a]
+  - @dotdm/contracts@3.1.0
+  - @dotdm/cdm@0.6.13
+
 ## 0.8.14
 
 ### Patch Changes

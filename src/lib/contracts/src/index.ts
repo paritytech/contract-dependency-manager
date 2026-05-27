@@ -10,7 +10,6 @@ export {
     createCrateToPackageMap,
     detectDeploymentOrder,
     detectDeploymentOrderLayered,
-    readCdmPackage,
     getGitRemoteUrl,
     readReadmeContent,
 } from "./detection";
@@ -112,6 +111,19 @@ export {
     resolveLocalRegistry,
     writeCdmLocalJson,
 } from "./cdm-local-json";
+
+export {
+    installContracts,
+    type InstallContractsOptions,
+    type InstallEvent,
+    type InstallIpfsGateway,
+    type InstallLibraryRequest,
+    type InstallMetadataResponse,
+    type InstallRequestedVersion,
+    type InstallResult,
+    type InstallSummary,
+    type RegistryContract,
+} from "./install";
 
 export {
     buildContracts,

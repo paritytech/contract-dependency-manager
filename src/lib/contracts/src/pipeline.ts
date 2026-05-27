@@ -18,7 +18,6 @@ import {
     buildDependencyGraph,
     detectDeploymentOrderLayered,
     getGitRemoteUrl,
-    readCdmPackage,
     readReadmeContent,
     toposortLayers,
 } from "./detection";
@@ -302,21 +301,6 @@ function assertUniqueCdmPackages(contracts: ContractInfo[]): void {
     }
 }
 
-function assertUniqueBuiltCdmPackages(build: BuildPhaseResult): void {
-    const seen = new Map<string, string>();
-    for (const [crate, info] of build.info) {
-        if (build.failed.has(crate) || !info.cdmPackage) continue;
-
-        const previous = seen.get(info.cdmPackage);
-        if (previous) {
-            throw new Error(
-                `Duplicate CDM package "${info.cdmPackage}" declared by ${previous} and ${crate}`,
-            );
-        }
-        seen.set(info.cdmPackage, crate);
-    }
-}
-
 /**
  * Detect every buildable contract target in the workspace and normalize all
  * dependency edges into crate/target names. Rust contributes Cargo dependency
@@ -437,7 +421,7 @@ async function buildRustTargets(
 
     for (const result of results) {
         if (result.success) {
-            const pvmPath = resolve(rootDir, `target/${result.crateName}.release.polkavm`);
+            const pvmPath = resolve(rootDir, `target/release/${result.crateName}.polkavm`);
             let bytecodeSize: number | undefined;
             try {
                 bytecodeSize = readFileSync(pvmPath).length;
@@ -446,20 +430,13 @@ async function buildRustTargets(
             }
 
             const contract = detected.contractMap.get(result.crateName);
-            const cdmPackage =
-                readCdmPackage(rootDir, result.crateName) ??
-                detected.cdmPackageMap.get(result.crateName) ??
-                null;
-            if (cdmPackage) {
-                detected.cdmPackageMap.set(result.crateName, cdmPackage);
-                if (contract) contract.cdmPackage = cdmPackage;
-            }
+            const cdmPackage = detected.cdmPackageMap.get(result.crateName) ?? null;
 
             build.successful.push(result.crateName);
             build.info.set(result.crateName, {
                 durationMs: result.durationMs,
                 pvmPath,
-                abiPath: resolve(rootDir, `target/${result.crateName}.release.abi.json`),
+                abiPath: resolve(rootDir, `target/release/${result.crateName}.abi.json`),
                 toolchain: "rust",
                 displayName: cdmPackage ?? contract?.displayName ?? result.crateName,
                 sourcePath: contract?.path,
@@ -690,7 +667,6 @@ async function runDetectedBuild(
         await onLayerBuilt?.({ layerIndex, layer, builtCrates, build });
     }
 
-    assertUniqueBuiltCdmPackages(build);
     return { build, crates };
 }
 
@@ -1014,7 +990,6 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 opts.features,
                 opts.registryAddress,
             );
-            assertUniqueBuiltCdmPackages(build);
             ({ contractMap, cdmPackageMap } = buildContractIndexes(opts.rootDir, detected, build));
 
             for (const crate of layer) {
@@ -1370,7 +1345,6 @@ if (import.meta.vitest) {
         return {
             ...actual,
             detectDeploymentOrderLayered: vi.fn(),
-            readCdmPackage: vi.fn(() => null),
             getGitRemoteUrl: vi.fn(() => "https://github.com/test/repo"),
             readReadmeContent: vi.fn(() => ""),
         };
@@ -1452,9 +1426,7 @@ if (import.meta.vitest) {
     }));
 
     const { pvmContractBuildAsync: mockBuild } = await import("./builder");
-    const { readCdmPackage: mockReadCdm, detectDeploymentOrderLayered: mockDetect } = await import(
-        "./detection"
-    );
+    const { detectDeploymentOrderLayered: mockDetect } = await import("./detection");
     const {
         buildSolidityToolchain: mockBuildSolidity,
         detectSolidityBuildTargets: mockDetectSolidity,
@@ -1504,7 +1476,6 @@ if (import.meta.vitest) {
             stderr: "",
             durationMs: 100,
         }));
-        (mockReadCdm as any).mockReturnValue(null);
     });
 
     function makePolkadotSigner(fill: number): PolkadotSigner {
@@ -1586,14 +1557,6 @@ if (import.meta.vitest) {
             (mockDetect as any).mockReturnValue(
                 makeOrder([["a", "b"]], {}, { a: "@example/counter", b: "@example/counter" }),
             );
-            await expect(buildContracts({ rootDir: "/fake" })).rejects.toThrow(
-                'Duplicate CDM package "@example/counter"',
-            );
-        });
-
-        test("rejects duplicate CDM package names discovered after build", async () => {
-            (mockDetect as any).mockReturnValue(makeOrder([["a", "b"]]));
-            (mockReadCdm as any).mockReturnValue("@example/counter");
             await expect(buildContracts({ rootDir: "/fake" })).rejects.toThrow(
                 'Duplicate CDM package "@example/counter"',
             );
@@ -1683,10 +1646,6 @@ if (import.meta.vitest) {
         test("deploys each layer before building its dependents", async () => {
             (mockDetect as any).mockReturnValue(
                 makeOrder([["a"], ["b"]], { b: ["a"] }, { a: "@example/a", b: "@example/b" }),
-            );
-            (mockReadCdm as any).mockImplementation(
-                (_root: string, crate: string) =>
-                    ({ a: "@example/a", b: "@example/b" })[crate] ?? null,
             );
 
             const events: string[] = [];
