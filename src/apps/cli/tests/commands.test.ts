@@ -1,14 +1,22 @@
 import { describe, test, expect } from "vitest";
 import { execSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI = join(__dirname, "../src/cli.ts");
+const packageJson = JSON.parse(
+    readFileSync(join(__dirname, "../package.json"), "utf-8"),
+) as { version: string };
 
 describe("CLI commands", () => {
+    test("cdm --version shows the package version", () => {
+        const output = execSync(`bun run ${CLI} --version`).toString().trim();
+        expect(output).toBe(packageJson.version);
+    });
+
     test("cdm --help shows all commands", () => {
         const output = execSync(`bun run ${CLI} --help`).toString();
         expect(output).toContain("build");
