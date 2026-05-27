@@ -5,7 +5,6 @@ import {
     type CdmJsonTarget,
 } from "@parity/product-sdk-contracts";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
-import { previewnet_asset_hub } from "@parity/product-sdk-descriptors/previewnet-asset-hub";
 import { createDevSigner, getDevPublicKey } from "@parity/product-sdk-tx";
 import { ss58Address } from "@polkadot-labs/hdkd-helpers";
 import { createClient, type ChainDefinition, type SS58String } from "polkadot-api";
@@ -22,12 +21,8 @@ function getTarget(config: CdmJson): CdmJsonTarget {
     return target;
 }
 
-function isPreviewnet(target: CdmJsonTarget): boolean {
-    return target["asset-hub"].includes("previewnet");
-}
-
-function descriptorFor(target: CdmJsonTarget): ChainDefinition {
-    return isPreviewnet(target) ? previewnet_asset_hub : paseo_asset_hub;
+function descriptorFor(_target: CdmJsonTarget): ChainDefinition {
+    return paseo_asset_hub;
 }
 
 // --- Setup signer (Alice) ---

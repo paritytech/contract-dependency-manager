@@ -227,7 +227,7 @@ Build all contracts with the selected ContractRegistry address baked in.
 ```bash
 cdm build
 cdm build --contracts counter counter_writer
-cdm build -n preview-net
+cdm build -n paseo
 cdm build --root /path/to/workspace
 ```
 
@@ -237,12 +237,11 @@ Build, deploy, publish metadata, and register all workspace contracts.
 
 ```bash
 cdm deploy -n paseo
-cdm deploy -n preview-net
 cdm deploy -n paseo --suri //Bob
 cdm deploy --registry-address 0x... --assethub-url wss://... --bulletin-url wss://...
 ```
 
-Supported deploy presets are `paseo`, `preview-net`, and `local`. The `paseo` preset points at Paseo v2.
+Supported deploy presets are `paseo` and `local`. Use explicit URLs with `--assethub-url`, `--bulletin-url`, and `--registry-address` for custom networks. The `paseo` preset points at Paseo v2.
 
 ### `cdm install -n <chain> <library>`
 
@@ -250,7 +249,6 @@ Install published contracts for Rust imports, Solidity imports, and product-sdk 
 
 ```bash
 cdm i -n paseo @polkadot/contexts @polkadot/profiles
-cdm i -n preview-net @yourorg/package
 cdm i -n paseo @yourorg/package:3
 ```
 

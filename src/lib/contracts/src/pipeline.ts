@@ -69,7 +69,7 @@ async function queryRegistryVersionCounts(
 /**
  * `deployContracts` expects a chain-client-shaped object that provides both
  * `assetHub` and `bulletin` keys, typed against product-sdk descriptors so callers
- * (e.g., product-sdk's `getChainAPI("paseo" | "previewnet")`) can pass
+ * (e.g., product-sdk's `getChainAPI("paseo")`) can pass
  * their own clients in without any cast.
  */
 export type PipelineChainClient = CdmChainClient;
