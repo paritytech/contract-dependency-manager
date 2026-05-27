@@ -1,7 +1,7 @@
 export type ProductSdkEnvironment = "paseo" | "previewnet";
 
-const PASEO_V2_REGISTRY_ADDRESS = "0xa7ae171c78f06c248a9b2556c793aa1df5c9173a";
-const PREVIEW_NET_REGISTRY_ADDRESS = "0xa7ae171c78f06c248a9b2556c793aa1df5c9173a";
+const PASEO_V2_REGISTRY_ADDRESS = "0x7503d0ab3134d680ad0ca2bbf69b5d45e8ec5833";
+const PREVIEW_NET_REGISTRY_ADDRESS = "0x7503d0ab3134d680ad0ca2bbf69b5d45e8ec5833";
 
 export function getRegistryAddress(name = "paseo"): string {
     if (name === "paseo" || name === "paseo-next-v2" || name === "paseo-v2") {

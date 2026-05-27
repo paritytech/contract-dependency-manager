@@ -1664,7 +1664,7 @@ if (import.meta.vitest) {
                 } as any,
                 signer: deploySigner,
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
-                registryAddress: "0xa7ae171c78f06c248a9b2556c793aa1df5c9173a",
+                registryAddress: "0x7503d0ab3134d680ad0ca2bbf69b5d45e8ec5833",
                 metadataSigner,
                 onEvent: (event) => {
                     if (event.type === "build-start") events.push(`build-start:${event.crate}`);

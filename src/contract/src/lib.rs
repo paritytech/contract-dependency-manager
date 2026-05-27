@@ -48,9 +48,31 @@ fn validate_contract_name(contract_name: &String) {
     if contract_name.as_bytes().len() > MAX_CONTRACT_NAME_LEN {
         revert(b"ContractNameTooLong");
     }
-    if !contract_name.is_ascii() {
+    let bytes = contract_name.as_bytes();
+    if !contract_name.is_ascii() || bytes.first() != Some(&b'@') {
         revert(b"ContractNameInvalid");
     }
+
+    let mut slash_idx: Option<usize> = None;
+    for (idx, byte) in bytes.iter().copied().enumerate().skip(1) {
+        if byte == b'/' {
+            if slash_idx.is_some() {
+                revert(b"ContractNameInvalid");
+            }
+            slash_idx = Some(idx);
+        } else if !is_package_name_char(byte) {
+            revert(b"ContractNameInvalid");
+        }
+    }
+
+    match slash_idx {
+        Some(idx) if idx > 1 && idx + 1 < bytes.len() => {}
+        _ => revert(b"ContractNameInvalid"),
+    }
+}
+
+fn is_package_name_char(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
 }
 
 fn prefix_upper_bound(prefix: &String) -> Option<String> {
@@ -213,12 +235,12 @@ mod contract_registry {
             None => Bound::Unbounded,
         };
 
-        let hits = Storage::contract_name_index().range(
-            Bound::Included(&prefix),
-            to,
-            offset as u64,
-            cap as u64,
-        );
+        let index = Storage::contract_name_index();
+        let start_rank = index.rank_of_key(&prefix).saturating_add(offset as u64);
+        let hits = match index.select(start_rank) {
+            Some((start, _)) => index.range(Bound::Included(&start), to, 0, cap as u64),
+            None => alloc::vec::Vec::new(),
+        };
         let returned = hits.len() as u32;
         let names = hits.into_iter().map(|(name, _)| name).collect();
 
