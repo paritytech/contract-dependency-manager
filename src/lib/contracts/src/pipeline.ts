@@ -69,7 +69,7 @@ async function queryRegistryVersionCounts(
 /**
  * `deployContracts` expects a chain-client-shaped object that provides both
  * `assetHub` and `bulletin` keys, typed against product-sdk descriptors so callers
- * (e.g., product-sdk's `getChainAPI("paseo" | "previewnet")`) can pass
+ * (e.g., product-sdk's `getChainAPI("paseo")`) can pass
  * their own clients in without any cast.
  */
 export type PipelineChainClient = CdmChainClient;
@@ -1664,7 +1664,7 @@ if (import.meta.vitest) {
                 } as any,
                 signer: deploySigner,
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
-                registryAddress: "0xa7ae171c78f06c248a9b2556c793aa1df5c9173a",
+                registryAddress: "0xf62c2ece29cd8df2e10040ecfa5a894a5c5d9cb0",
                 metadataSigner,
                 onEvent: (event) => {
                     if (event.type === "build-start") events.push(`build-start:${event.crate}`);

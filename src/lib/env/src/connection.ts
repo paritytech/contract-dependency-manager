@@ -7,9 +7,7 @@ import {
 import { getWsProvider } from "polkadot-api/ws";
 import { polkadot_asset_hub } from "@parity/product-sdk-descriptors/polkadot-asset-hub";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
-import { previewnet_asset_hub } from "@parity/product-sdk-descriptors/previewnet-asset-hub";
 import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
-import { previewnet_bulletin } from "@parity/product-sdk-descriptors/previewnet-bulletin";
 import { getChainPreset, normalizeChainName, type KnownChainName } from "./known_chains";
 
 export type CdmDirectChainClient<TChains extends Record<string, ChainDefinition>> = {
@@ -20,9 +18,9 @@ export type CdmDirectChainClient<TChains extends Record<string, ChainDefinition>
     destroy: () => void;
 };
 
-export type CdmDeployAssetHubDescriptor = typeof paseo_asset_hub | typeof previewnet_asset_hub;
+export type CdmDeployAssetHubDescriptor = typeof paseo_asset_hub;
 export type CdmAssetHubDescriptor = CdmDeployAssetHubDescriptor | typeof polkadot_asset_hub;
-export type CdmBulletinDescriptor = typeof paseo_bulletin | typeof previewnet_bulletin;
+export type CdmBulletinDescriptor = typeof paseo_bulletin;
 
 export type CdmDeployAssetHubApi = TypedApi<CdmDeployAssetHubDescriptor>;
 export type CdmAssetHubApi = TypedApi<CdmAssetHubDescriptor>;
@@ -70,14 +68,12 @@ export interface CdmChainEndpoints {
 
 const DEPLOY_CHAIN_DESCRIPTORS = {
     paseo: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
-    "preview-net": { assetHub: previewnet_asset_hub, bulletin: previewnet_bulletin },
     local: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
 } as const;
 
 const ASSET_HUB_DESCRIPTORS = {
     polkadot: polkadot_asset_hub,
     paseo: paseo_asset_hub,
-    "preview-net": previewnet_asset_hub,
     local: paseo_asset_hub,
 } as const;
 
@@ -85,7 +81,7 @@ function resolveExplicitChainName(chainName: string): KnownChainName | "custom" 
     const normalized = normalizeChainName(chainName);
     if (!normalized) {
         throw new Error(
-            `Unknown chain "${chainName}". Valid names: polkadot, paseo, preview-net, local, custom`,
+            `Unknown chain "${chainName}". Valid names: polkadot, paseo, local, custom`,
         );
     }
     return normalized;
@@ -101,7 +97,7 @@ function resolveDeployDescriptors(chainName: string | undefined) {
     const descriptorChain = normalized && normalized !== "custom" ? normalized : "paseo";
     if (descriptorChain === "polkadot") {
         throw new Error(
-            'CDM deploy connections are only available for "paseo", "preview-net", and "local"; product-sdk does not publish a Polkadot Bulletin descriptor yet.',
+            'CDM deploy connections are only available for "paseo" and "local"; product-sdk does not publish a Polkadot Bulletin descriptor yet.',
         );
     }
 
@@ -111,10 +107,10 @@ function resolveDeployDescriptors(chainName: string | undefined) {
 /**
  * Connect to both Asset Hub and Bulletin over direct WebSocket RPC.
  *
- * Accepts either a supported deploy chain name (`"paseo"`, `"preview-net"`,
- * `"local"`) resolved through `getChainPreset`, or explicit URLs. Polkadot
- * remains available for Asset-Hub-only install reads, but product-sdk does
- * not publish a Polkadot Bulletin descriptor yet.
+ * Accepts either a supported deploy chain name (`"paseo"` or `"local"`)
+ * resolved through `getChainPreset`, or explicit URLs. Polkadot remains
+ * available for Asset-Hub-only install reads, but product-sdk does not publish
+ * a Polkadot Bulletin descriptor yet.
  *
  * The returned object matches product-sdk's `ChainClient` shape closely enough
  * for callers to pass either one into CDM APIs. CDM builds this locally because
@@ -167,8 +163,8 @@ function joinGatewayUrl(url: string, cid: string): string {
  * factory for convenience.
  *
  * Product SDK's Bulletin read helpers go through the host preimage
- * subscription and do not cover CDM's custom gateway URLs (local,
- * preview-net). Keep this thin wrapper for install flows.
+ * subscription and do not cover CDM's custom gateway URLs (local/custom).
+ * Keep this thin wrapper for install flows.
  */
 export function connectIpfsGateway(url: string): IpfsGateway {
     return {
@@ -210,11 +206,10 @@ function createDirectChainClient<const TChains extends Record<string, ChainDefin
 if (import.meta.vitest) {
     const { test, expect } = import.meta.vitest;
 
-    test("preview-net deploy connections use previewnet descriptors", () => {
-        const descriptors = resolveDeployDescriptors("preview-net");
+    test("local deploy connections use paseo descriptors", () => {
+        const descriptors = resolveDeployDescriptors("local");
 
-        expect(descriptors.assetHub).toBe(previewnet_asset_hub);
-        expect(descriptors.bulletin).toBe(previewnet_bulletin);
-        expect(descriptors.bulletin).not.toBe(paseo_bulletin);
+        expect(descriptors.assetHub).toBe(paseo_asset_hub);
+        expect(descriptors.bulletin).toBe(paseo_bulletin);
     });
 }

@@ -147,6 +147,39 @@ describe("registry publishLatest + post-publish queries", () => {
         const r = await registry.getContractCount.query();
         expect(r.value).toBe(1);
     });
+
+    test("getContracts returns latest package details in one page", async () => {
+        const r = await registry.getContracts.query(0, 10);
+        expect(r.success).toBe(true);
+
+        const value = r.value;
+        const entries = Array.isArray(value)
+            ? value[1]
+            : (value as { entries?: unknown } | undefined)?.entries;
+        expect(Array.isArray(entries)).toBe(true);
+
+        const entry = (entries as unknown[]).find((candidate) => {
+            if (Array.isArray(candidate)) return candidate[0] === NAME;
+            return (candidate as { name?: unknown }).name === NAME;
+        });
+        expect(entry).toBeDefined();
+
+        if (Array.isArray(entry)) {
+            expect(entry[1]).toBe(0);
+            expect(lc(entry[2])).toBe(lc(ADDR));
+            expect(entry[3]).toBe(URI);
+        } else {
+            const row = entry as {
+                version?: unknown;
+                address?: unknown;
+                metadata_uri?: unknown;
+                metadataUri?: unknown;
+            };
+            expect(Number(row.version)).toBe(0);
+            expect(lc(row.address)).toBe(lc(ADDR));
+            expect(row.metadata_uri ?? row.metadataUri).toBe(URI);
+        }
+    });
 });
 
 // On-chain prefix search backed by the registry's `OrderedIndex`. The page

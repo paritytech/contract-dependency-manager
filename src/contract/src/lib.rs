@@ -41,6 +41,21 @@ pub struct ContractNameSearchPage {
     pub done: bool,
 }
 
+#[derive(Default, pvm::SolAbi)]
+pub struct ContractEntry {
+    pub name: String,
+    pub version: Version,
+    pub address: Address,
+    pub metadata_uri: String,
+    pub owner: Address,
+}
+
+#[derive(Default, pvm::SolAbi)]
+pub struct ContractPage {
+    pub total: u32,
+    pub entries: alloc::vec::Vec<ContractEntry>,
+}
+
 fn validate_contract_name(contract_name: &String) {
     if contract_name.is_empty() {
         revert(b"ContractNameEmpty");
@@ -48,9 +63,31 @@ fn validate_contract_name(contract_name: &String) {
     if contract_name.as_bytes().len() > MAX_CONTRACT_NAME_LEN {
         revert(b"ContractNameTooLong");
     }
-    if !contract_name.is_ascii() {
+    let bytes = contract_name.as_bytes();
+    if !contract_name.is_ascii() || bytes.first() != Some(&b'@') {
         revert(b"ContractNameInvalid");
     }
+
+    let mut slash_idx: Option<usize> = None;
+    for (idx, byte) in bytes.iter().copied().enumerate().skip(1) {
+        if byte == b'/' {
+            if slash_idx.is_some() {
+                revert(b"ContractNameInvalid");
+            }
+            slash_idx = Some(idx);
+        } else if !is_package_name_char(byte) {
+            revert(b"ContractNameInvalid");
+        }
+    }
+
+    match slash_idx {
+        Some(idx) if idx > 1 && idx + 1 < bytes.len() => {}
+        _ => revert(b"ContractNameInvalid"),
+    }
+}
+
+fn is_package_name_char(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
 }
 
 fn prefix_upper_bound(prefix: &String) -> Option<String> {
@@ -66,6 +103,26 @@ fn prefix_upper_bound(prefix: &String) -> Option<String> {
     } else {
         None
     }
+}
+
+fn latest_contract_entry(contract_name: String) -> Option<ContractEntry> {
+    let info = Storage::info().get(&contract_name)?;
+    if info.version_count == 0 {
+        return None;
+    }
+
+    let version = info.version_count.saturating_sub(1);
+    let key = (contract_name.clone(), version);
+    let address = Storage::published_address().get(&key)?;
+    let metadata_uri = Storage::published_metadata_uri().get(&key)?;
+
+    Some(ContractEntry {
+        name: contract_name,
+        version,
+        address,
+        metadata_uri,
+        owner: info.owner,
+    })
 }
 
 #[pvm::storage]
@@ -186,6 +243,39 @@ mod contract_registry {
         Storage::contract_name_at().get(&index).unwrap_or_default()
     }
 
+    /// Get a page of latest contract entries by append-only registry index.
+    #[pvm::method]
+    pub fn get_contracts(start: u32, count: u32) -> ContractPage {
+        let total = Storage::contract_name_count().get().unwrap_or(0);
+        let cap = if count > MAX_SEARCH_LIMIT {
+            MAX_SEARCH_LIMIT
+        } else {
+            count
+        };
+        let mut entries: alloc::vec::Vec<ContractEntry> = alloc::vec::Vec::new();
+
+        if total > 0 && start < total && cap > 0 {
+            let mut scanned = 0u32;
+
+            loop {
+                let index = start.saturating_add(scanned);
+                if scanned >= cap || index >= total {
+                    break;
+                }
+
+                if let Some(name) = Storage::contract_name_at().get(&index) {
+                    if let Some(entry) = latest_contract_entry(name) {
+                        entries.push(entry);
+                    }
+                }
+
+                scanned = scanned.saturating_add(1);
+            }
+        }
+
+        ContractPage { total, entries }
+    }
+
     /// Search registered contract names by prefix.
     #[pvm::method]
     pub fn search_contract_names(
@@ -213,12 +303,12 @@ mod contract_registry {
             None => Bound::Unbounded,
         };
 
-        let hits = Storage::contract_name_index().range(
-            Bound::Included(&prefix),
-            to,
-            offset as u64,
-            cap as u64,
-        );
+        let index = Storage::contract_name_index();
+        let start_rank = index.rank_of_key(&prefix).saturating_add(offset as u64);
+        let hits = match index.select(start_rank) {
+            Some((start, _)) => index.range(Bound::Included(&start), to, 0, cap as u64),
+            None => alloc::vec::Vec::new(),
+        };
         let returned = hits.len() as u32;
         let names = hits.into_iter().map(|(name, _)| name).collect();
 

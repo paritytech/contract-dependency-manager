@@ -21,9 +21,7 @@ export interface ChainPreset {
 // to @parity/product-sdk-chain-client. Keep these CLI fallbacks aligned with
 // the descriptor package's generated .papi wsUrl values.
 const PASEO_ASSET_HUB_URL = "wss://paseo-asset-hub-next-rpc.polkadot.io";
-const PREVIEW_NET_ASSET_HUB_URL = "wss://previewnet.substrate.dev/asset-hub";
 const PASEO_IPFS_GATEWAY_URL = "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs";
-const PREVIEW_NET_IPFS_GATEWAY_URL = "https://previewnet.substrate.dev/ipfs";
 
 const KNOWN_CHAINS = {
     polkadot: {
@@ -46,13 +44,6 @@ const KNOWN_CHAINS = {
             },
         ],
     },
-    "preview-net": {
-        assethubUrl: PREVIEW_NET_ASSET_HUB_URL,
-        bulletinUrl: BULLETIN_RPCS.previewnet[0],
-        ipfsGatewayUrl: PREVIEW_NET_IPFS_GATEWAY_URL,
-        registryAddress: getRegistryAddress("preview-net"),
-        productSdkEnvironment: "previewnet",
-    },
     local: {
         assethubUrl: "ws://127.0.0.1:10020",
         bulletinUrl: "ws://127.0.0.1:10030",
@@ -64,9 +55,8 @@ const KNOWN_CHAINS = {
 export type KnownChainName = keyof typeof KNOWN_CHAINS;
 
 export function normalizeChainName(name: string): KnownChainName | "custom" | undefined {
-    if (name === "previewnet") return "preview-net";
     if (name === "paseo-next-v2" || name === "paseo-v2") return "paseo";
-    if (name === "preview-net" || name === "paseo" || name === "polkadot" || name === "local") {
+    if (name === "paseo" || name === "polkadot" || name === "local") {
         return name;
     }
     if (name === "custom") return "custom";

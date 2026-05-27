@@ -7,13 +7,14 @@ import { installCommand } from "./commands/install";
 import { templateCommand } from "./commands/template";
 import { initCommand } from "./commands/init";
 import { accountCommand } from "./commands/account";
+import packageJson from "../package.json";
 
 const program = new Command();
 
 program
     .name("cdm")
     .description("Contract Dependency Manager for PVM smart contracts")
-    .version("0.1.0");
+    .version(packageJson.version);
 
 program.addCommand(buildCommand);
 program.addCommand(deployCommand);
