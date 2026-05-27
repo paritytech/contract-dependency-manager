@@ -484,11 +484,8 @@ export class ContractDeployer {
                     );
                 }
                 const chunkAddrs = instantiated.map(
-                    (
-                        e: ReturnType<
-                            typeof this.api.event.Revive.Instantiated.filter
-                        >[number],
-                    ) => e.payload.contract,
+                    (e: ReturnType<typeof this.api.event.Revive.Instantiated.filter>[number]) =>
+                        e.payload.contract,
                 );
                 for (let j = 0; j < idxs.length; j++) {
                     addresses[idxs[j]] = chunkAddrs[j];
