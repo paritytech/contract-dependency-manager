@@ -88,29 +88,39 @@ network
         }
         const preset = getChainPreset("local");
         const registryAddress = resolveLocalRegistry();
+        console.log(`\nQuerying ${preset.assethubUrl} (fetching metadata)...`);
+        let client: Awaited<ReturnType<typeof createCdmAssetHubClient>> | undefined;
         try {
-            const client = await createCdmAssetHubClient(preset.assethubUrl, "local");
-            await client.raw.assetHub.getChainSpecData();
-            const blockNumber = await client.assetHub.query.System.Number.getValue();
+            client = await createCdmAssetHubClient(preset.assethubUrl, "local");
+            const blockNumber = await withTimeout(
+                client.assetHub.query.System.Number.getValue(),
+                30_000,
+                "Asset Hub query",
+            );
             console.log(`Asset Hub head:   #${blockNumber}`);
             if (!registryAddress) {
                 console.log(
                     "Registry:         not bootstrapped (cdm deploy --bootstrap -n local will bootstrap)",
                 );
             } else {
-                const info = await client.assetHub.query.Revive.AccountInfoOf.getValue(
-                    registryAddress as SizedHex<20>,
+                const info = await withTimeout(
+                    client.assetHub.query.Revive.AccountInfoOf.getValue(
+                        registryAddress as SizedHex<20>,
+                    ),
+                    10_000,
+                    "Registry lookup",
                 );
                 const registryDeployed = info?.account_type.type === "Contract";
                 console.log(
                     `Registry:         ${registryAddress} ${registryDeployed ? "deployed ✓" : "not on chain (cdm test will auto-bootstrap)"}`,
                 );
             }
-            client.destroy();
         } catch (err) {
             console.log(
                 `Could not query Asset Hub: ${err instanceof Error ? err.message : String(err)}`,
             );
+        } finally {
+            client?.destroy();
         }
     });
 
@@ -234,6 +244,18 @@ function refuseIfMacOsIpv6On(ignore: boolean): void {
             `  cdm network start --ignore-ipv6\n`,
     );
     process.exit(1);
+}
+
+async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    });
+    try {
+        return await Promise.race([p, timeout]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
 }
 
 function tcpProbe(port: number, host = "127.0.0.1", timeoutMs = 500): Promise<boolean> {
