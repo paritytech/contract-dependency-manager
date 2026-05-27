@@ -13,4 +13,4 @@ The base counter contract that owns shared on-chain state. Other contracts inter
 
 ## CDM Package
 
-Published as `@example/counter`. Other contracts can depend on this package to call its methods via `counter::cdm_reference()`.
+Published as `@example/counter`. Other contracts can import this package with `cdm::import!("@example/counter")` and call it via `counter::Counter::cdm_lookup()`.

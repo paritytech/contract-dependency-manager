@@ -91,7 +91,7 @@ export type BuildEvent =
     | { type: "detect"; contracts: ContractInfo[]; layers: string[][] }
     | { type: "log"; line: string; source?: string }
     | { type: "build-start"; crate: string }
-    | { type: "build-progress"; crate: string; compiled: number; total: number }
+    | { type: "build-progress"; crate: string; compiled: number; total?: number }
     | { type: "build-done"; crate: string; durationMs: number; bytecodeSize: number }
     | { type: "build-error"; crate: string; error: string }
     | { type: "pipeline-done"; summary: BuildSummary }
@@ -150,7 +150,7 @@ export type DeployEvent =
     | { type: "detect"; contracts: ContractInfo[]; layers: string[][] }
     | { type: "log"; line: string; source?: string }
     | { type: "build-start"; crate: string }
-    | { type: "build-progress"; crate: string; compiled: number; total: number }
+    | { type: "build-progress"; crate: string; compiled: number; total?: number }
     | { type: "build-done"; crate: string; durationMs: number; bytecodeSize: number }
     | { type: "build-error"; crate: string; error: string }
     | { type: "check-cached"; crate: string; address: HexString }
@@ -777,7 +777,7 @@ function getDeployableContract(
     const cdmPackage = info?.cdmPackage ?? contractMap.get(crate)?.cdmPackage;
     if (!cdmPackage) {
         throw new Error(
-            `Missing CDM package for ${crate}. Add #[pvm::contract(cdm = "@org/name")] or /// @custom:cdm @org/name.`,
+            `Missing CDM package for ${crate}. Add [package.metadata.cdm] package = "@org/name" to Cargo.toml or /// @custom:cdm @org/name to Solidity.`,
         );
     }
 

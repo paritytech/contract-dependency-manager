@@ -10,7 +10,7 @@
 
 ![CDM system map](./assets/cdm-system-map.svg)
 
-A CDM package name is a globally unique identifier resolved by an on-chain registry. Rust contracts declare it with `#[pvm::contract(cdm = "@org/name")]`; Solidity contracts declare it with `/// @custom:cdm @org/name`. Contracts publish `(name → address, name → metadataCid)` on Asset Hub; metadata blobs live on Bulletin (content-addressed, retrievable via IPFS gateway). Consumers install a frozen snapshot of `(ABI, address, version)` to `~/.cdm/`, after which Rust contracts use `cdm::import!()` and TypeScript apps use `@parity/product-sdk-contracts`.
+A CDM package name is a globally unique identifier resolved by an on-chain registry. Rust contracts declare it in Cargo metadata (`[package.metadata.cdm] package = "@org/name"`); Solidity contracts declare it with `/// @custom:cdm @org/name`. Contracts publish `(name → address, name → metadataCid)` on Asset Hub; metadata blobs live on Bulletin (content-addressed, retrievable via IPFS gateway). Consumers install a frozen snapshot of `(ABI, address, version)` to `~/.cdm/`, after which Rust contracts use `cdm::import!()` and TypeScript apps use `@parity/product-sdk-contracts`.
 
 ## Toolchain matrix
 
@@ -31,7 +31,7 @@ Current Solidity conventions:
 
 Three stages:
 
-- **① BUILD** — detect toolchain from workspace markers; invoke its native build; normalize the output into a unified internal shape `{ bytecode, cdmPackage, abi, deps, metadataFields }`. Cargo metadata + `__PVM_CDM` ELF symbol give Rust this for free.
+- **① BUILD** — detect toolchain from workspace markers; invoke its native build; normalize the output into a unified internal shape `{ bytecode, cdmPackage, abi, deps, metadataFields }`. Cargo metadata gives Rust package identity and local dependency edges directly.
 - **② PLAN** — `detect + toposort` produces deployment layers; each contract is dry-run for weight; contracts are greedy-packed into chunks fitting `System.BlockWeights.normal.max_extrinsic`; CREATE2 addresses are pre-computed.
 - **③ SUBMIT** — per chunk: first upload metadata blobs to Bulletin (sequential per Bulletin's nonce ordering, returns CIDs), then a single `Utility.batch_all` atomically issues `Revive.instantiate_with_code` and `Registry.publish_latest(name, addr, cid)`. Atomic within a chunk; chunks across are non-atomic by design.
 
@@ -84,20 +84,24 @@ Address resolution happens **at runtime** for Rust contracts (registry call from
 ```rust
 cdm::import!("@org/foo");
 
-#[pvm::contract(cdm = "@myorg/forum")]
+#[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
 mod forum {
     use super::*;
 
-    #[pvm::method]
-    pub fn call_foo(&mut self) {
-        // Resolves @org/foo's address via Registry.get_address at runtime.
-        let f = foo::cdm_reference();
-        f.do_something().expect("call failed");
+    pub struct Forum;
+
+    impl Forum {
+        #[pvm_contract_sdk::method]
+        pub fn call_foo(&self) {
+            // Resolves @org/foo's address via Registry.get_address at runtime.
+            let f = foo::Foo::cdm_lookup();
+            f.do_something().call(self).expect("call failed");
+        }
     }
 }
 ```
 
-The `cdm::import!()` proc-macro reads `cdm.json` + `~/.cdm/<targetHash>/contracts/<pkg>/<v>/abi.json` at compile time and generates the `foo` module. `cdm_reference()` performs the registry read at runtime.
+The `cdm::import!()` proc-macro first checks Cargo metadata for a local workspace member with matching `[package.metadata.cdm] package`, and otherwise reads `cdm.json` + `~/.cdm/<targetHash>/contracts/<pkg>/<v>/abi.json` at compile time. `cdm_lookup()` performs the registry read at runtime.
 
 ### TypeScript app
 

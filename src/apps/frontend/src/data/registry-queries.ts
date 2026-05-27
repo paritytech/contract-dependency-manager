@@ -27,10 +27,11 @@ export async function queryContractByName(
 
     const versionCount = versionResult.success ? (versionResult.value as number) : 0;
     if (versionCount === 0) return null;
+    const latestVersion = versionCount - 1;
 
     return {
         name,
-        version: String(versionCount),
+        version: String(latestVersion),
         weeklyCalls: 0,
         address: addressResult.success ? unwrapOption<string>(addressResult.value) : undefined,
         metadataUri: metadataResult.success

@@ -2,8 +2,9 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[allow(dead_code)]
 #[derive(serde::Deserialize)]
@@ -28,6 +29,29 @@ struct CdmJson {
     dependencies: HashMap<String, HashMap<String, VersionSpec>>,
 }
 
+#[derive(serde::Deserialize)]
+struct CargoMetadata {
+    packages: Vec<CargoPackage>,
+    workspace_members: Vec<String>,
+    target_directory: PathBuf,
+}
+
+#[derive(serde::Deserialize)]
+struct CargoPackage {
+    id: String,
+    name: String,
+    manifest_path: PathBuf,
+    #[serde(default)]
+    metadata: serde_json::Value,
+    targets: Vec<CargoTarget>,
+}
+
+#[derive(serde::Deserialize)]
+struct CargoTarget {
+    name: String,
+    kind: Vec<String>,
+}
+
 fn find_cdm_json(start: &Path) -> Option<PathBuf> {
     let mut dir = start.to_path_buf();
     loop {
@@ -38,6 +62,271 @@ fn find_cdm_json(start: &Path) -> Option<PathBuf> {
         if !dir.pop() {
             return None;
         }
+    }
+}
+
+fn cdm_package_from_cargo_metadata(metadata: &serde_json::Value) -> Option<&str> {
+    let cdm = metadata.get("cdm")?.as_object()?;
+    cdm.get("package")
+        .or_else(|| cdm.get("name"))
+        .and_then(|value| value.as_str())
+}
+
+fn load_cargo_metadata(manifest_dir: &Path) -> Result<CargoMetadata, String> {
+    let manifest_path = manifest_dir.join("Cargo.toml");
+    let output = Command::new("cargo")
+        .arg("metadata")
+        .arg("--format-version")
+        .arg("1")
+        .arg("--manifest-path")
+        .arg(&manifest_path)
+        .arg("--no-deps")
+        .current_dir(manifest_dir)
+        .output()
+        .map_err(|e| format!("Failed to invoke `cargo metadata`: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "`cargo metadata` failed for {}:\n{}",
+            manifest_path.display(),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse `cargo metadata` output: {}", e))
+}
+
+fn push_unique(values: &mut Vec<String>, value: &str) {
+    if !values.iter().any(|existing| existing == value) {
+        values.push(value.to_string());
+    }
+}
+
+fn abi_path_candidates(target_dir: &Path, package: &CargoPackage) -> Vec<PathBuf> {
+    let mut names = Vec::new();
+    for target in package
+        .targets
+        .iter()
+        .filter(|target| target.kind.iter().any(|kind| kind == "bin"))
+    {
+        push_unique(&mut names, &target.name);
+        push_unique(&mut names, &target.name.replace('-', "_"));
+    }
+    push_unique(&mut names, &package.name);
+    push_unique(&mut names, &package.name.replace('-', "_"));
+
+    let mut candidates = Vec::new();
+    for name in names {
+        for profile in ["release", "debug"] {
+            candidates.push(target_dir.join(profile).join(format!("{}.abi.json", name)));
+            candidates.push(target_dir.join(format!("{}.{}.abi.json", name, profile)));
+        }
+        candidates.push(target_dir.join(format!("{}.abi.json", name)));
+    }
+    candidates
+}
+
+fn resolve_local_abi(package_name: &str, manifest_dir: &Path) -> Result<Option<PathBuf>, String> {
+    let metadata = load_cargo_metadata(manifest_dir)?;
+    let workspace_members: HashSet<&str> = metadata
+        .workspace_members
+        .iter()
+        .map(|member| member.as_str())
+        .collect();
+
+    let matches: Vec<&CargoPackage> = metadata
+        .packages
+        .iter()
+        .filter(|package| workspace_members.contains(package.id.as_str()))
+        .filter(|package| cdm_package_from_cargo_metadata(&package.metadata) == Some(package_name))
+        .collect();
+
+    match matches.as_slice() {
+        [] => Ok(None),
+        [package] => {
+            let candidates = abi_path_candidates(&metadata.target_directory, package);
+            if let Some(path) = candidates.iter().find(|path| path.exists()) {
+                return Ok(Some(path.clone()));
+            }
+
+            let searched = candidates
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join("\n  ");
+            Err(format!(
+                "Found local CDM package '{}' in {}, but no ABI artifact was found.\n\
+                 Build the dependency first with `cdm build` or `cargo pvm-contract build --manifest-path {} -p {}`.\n\
+                 Searched:\n  {}",
+                package_name,
+                package.manifest_path.display(),
+                manifest_dir.join("Cargo.toml").display(),
+                package.name,
+                searched
+            ))
+        }
+        _ => {
+            let manifests = matches
+                .iter()
+                .map(|package| package.manifest_path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(format!(
+                "CDM package '{}' is declared by multiple workspace members: {}",
+                package_name, manifests
+            ))
+        }
+    }
+}
+
+fn resolve_installed_abi(
+    package_name: &str,
+    start: &Path,
+    manifest_dir: &str,
+) -> Result<PathBuf, String> {
+    let cdm_json_path = find_cdm_json(start).ok_or_else(|| {
+        format!(
+            "cdm.json not found. Run 'cdm install' to create one. Searched from: {}",
+            manifest_dir
+        )
+    })?;
+
+    let content = std::fs::read_to_string(&cdm_json_path)
+        .map_err(|e| format!("Failed to read {}: {}", cdm_json_path.display(), e))?;
+    let cdm: CdmJson = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse {}: {}", cdm_json_path.display(), e))?;
+
+    let mut found: Vec<(String, &VersionSpec)> = Vec::new();
+    for (hash, deps) in &cdm.dependencies {
+        if let Some(version) = deps.get(package_name) {
+            found.push((hash.clone(), version));
+        }
+    }
+
+    if found.is_empty() {
+        return Err(format!(
+            "Package '{}' not found in cdm.json dependencies. Run 'cdm install {}' first.",
+            package_name, package_name
+        ));
+    }
+
+    if found.len() > 1 {
+        let hashes: Vec<&str> = found.iter().map(|(h, _)| h.as_str()).collect();
+        return Err(format!(
+            "Package '{}' found in multiple targets: [{}]. Target disambiguation is not yet supported.",
+            package_name,
+            hashes.join(", ")
+        ));
+    }
+
+    let (target_hash, version_spec) = &found[0];
+
+    let cdm_root = match std::env::var_os("CDM_ROOT") {
+        Some(p) => PathBuf::from(p),
+        None => match home::home_dir() {
+            Some(h) => h.join(".cdm"),
+            None => return Err("Could not determine home directory".to_string()),
+        },
+    };
+
+    let version: u64 = match version_spec {
+        VersionSpec::Pinned(v) => *v,
+        VersionSpec::Latest(_) => {
+            let latest_link = cdm_root
+                .join(target_hash)
+                .join("contracts")
+                .join(package_name)
+                .join("latest");
+            let target = std::fs::read_link(&latest_link).map_err(|e| {
+                format!(
+                    "Could not read latest symlink at {}: {}. Run 'cdm install {}' first.",
+                    latest_link.display(),
+                    e,
+                    package_name
+                )
+            })?;
+            let version_str = target.to_string_lossy();
+            version_str.parse::<u64>().map_err(|_| {
+                format!(
+                    "Could not parse version from latest symlink at {}. Target: {}",
+                    latest_link.display(),
+                    version_str
+                )
+            })?
+        }
+    };
+
+    let abi_path = cdm_root
+        .join(target_hash)
+        .join("contracts")
+        .join(package_name)
+        .join(version.to_string())
+        .join("abi.json");
+
+    if !abi_path.exists() {
+        return Err(format!(
+            "ABI file not found at {}. Run 'cdm install {}' to download it.",
+            abi_path.display(),
+            package_name
+        ));
+    }
+
+    Ok(abi_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn cdm_package_prefers_package_key_and_accepts_legacy_name() {
+        let current = json!({
+            "cdm": {
+                "package": "@test/current",
+                "name": "@test/legacy"
+            }
+        });
+        let legacy = json!({
+            "cdm": {
+                "name": "@test/legacy"
+            }
+        });
+
+        assert_eq!(
+            cdm_package_from_cargo_metadata(&current),
+            Some("@test/current")
+        );
+        assert_eq!(
+            cdm_package_from_cargo_metadata(&legacy),
+            Some("@test/legacy")
+        );
+    }
+
+    #[test]
+    fn abi_candidates_cover_new_and_legacy_cargo_pvm_contract_layouts() {
+        let package = CargoPackage {
+            id: "path+file:///workspace/provider#counter-reader@0.1.0".to_string(),
+            name: "counter-reader".to_string(),
+            manifest_path: PathBuf::from("/workspace/provider/Cargo.toml"),
+            metadata: json!({}),
+            targets: vec![CargoTarget {
+                name: "counter-reader".to_string(),
+                kind: vec!["bin".to_string()],
+            }],
+        };
+
+        let candidates = abi_path_candidates(Path::new("/workspace/target"), &package);
+        assert!(candidates.contains(&PathBuf::from(
+            "/workspace/target/release/counter-reader.abi.json"
+        )));
+        assert!(candidates.contains(&PathBuf::from(
+            "/workspace/target/release/counter_reader.abi.json"
+        )));
+        assert!(candidates.contains(&PathBuf::from(
+            "/workspace/target/counter-reader.release.abi.json"
+        )));
     }
 }
 
@@ -81,164 +370,17 @@ pub fn import(input: TokenStream) -> TokenStream {
     };
     let package_name = lit.value();
 
-    // Find cdm.json
+    // Prefer workspace-local CDM packages, then fall back to installed ABIs.
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
     let start = Path::new(&manifest_dir);
-    let cdm_json_path = match find_cdm_json(start) {
-        Some(p) => p,
-        None => {
-            return syn::Error::new(
-                lit.span(),
-                format!(
-                    "cdm.json not found. Run 'cdm install' to create one. Searched from: {}",
-                    manifest_dir
-                ),
-            )
-            .to_compile_error()
-            .into();
-        }
-    };
-
-    // Parse cdm.json
-    let content = match std::fs::read_to_string(&cdm_json_path) {
-        Ok(c) => c,
-        Err(e) => {
-            return syn::Error::new(
-                lit.span(),
-                format!("Failed to read {}: {}", cdm_json_path.display(), e),
-            )
-            .to_compile_error()
-            .into();
-        }
-    };
-    let cdm: CdmJson = match serde_json::from_str(&content) {
-        Ok(c) => c,
-        Err(e) => {
-            return syn::Error::new(
-                lit.span(),
-                format!("Failed to parse {}: {}", cdm_json_path.display(), e),
-            )
-            .to_compile_error()
-            .into();
-        }
-    };
-
-    // Find the package across all targets
-    let mut found: Vec<(String, &VersionSpec)> = Vec::new();
-    for (hash, deps) in &cdm.dependencies {
-        if let Some(version) = deps.get(&package_name) {
-            found.push((hash.clone(), version));
-        }
-    }
-
-    if found.is_empty() {
-        return syn::Error::new(
-            lit.span(),
-            format!(
-                "Package '{}' not found in cdm.json dependencies. Run 'cdm install {}' first.",
-                package_name, package_name
-            ),
-        )
-        .to_compile_error()
-        .into();
-    }
-
-    if found.len() > 1 {
-        let hashes: Vec<&str> = found.iter().map(|(h, _)| h.as_str()).collect();
-        return syn::Error::new(
-            lit.span(),
-            format!(
-                "Package '{}' found in multiple targets: [{}]. Target disambiguation is not yet supported.",
-                package_name,
-                hashes.join(", ")
-            ),
-        )
-        .to_compile_error()
-        .into();
-    }
-
-    let (target_hash, version_spec) = &found[0];
-
-    // Resolve CDM root. `CDM_ROOT` matches the override the TS side reads
-    // (store.ts, accounts.ts) so both halves of the toolchain agree on
-    // where contracts/ABIs live; defaults to `$HOME/.cdm` otherwise.
-    let cdm_root = match std::env::var_os("CDM_ROOT") {
-        Some(p) => PathBuf::from(p),
-        None => match home::home_dir() {
-            Some(h) => h.join(".cdm"),
-            None => {
-                return syn::Error::new(lit.span(), "Could not determine home directory")
-                    .to_compile_error()
-                    .into();
-            }
+    let abi_path = match resolve_local_abi(&package_name, start) {
+        Ok(Some(path)) => path,
+        Ok(None) => match resolve_installed_abi(&package_name, start, &manifest_dir) {
+            Ok(path) => path,
+            Err(e) => return syn::Error::new(lit.span(), e).to_compile_error().into(),
         },
+        Err(e) => return syn::Error::new(lit.span(), e).to_compile_error().into(),
     };
-
-    // Resolve version
-    let version: u64 = match version_spec {
-        VersionSpec::Pinned(v) => *v,
-        VersionSpec::Latest(_) => {
-            let latest_link = cdm_root
-                .join(target_hash)
-                .join("contracts")
-                .join(&package_name)
-                .join("latest");
-            match std::fs::read_link(&latest_link) {
-                Ok(target) => {
-                    let version_str = target.to_string_lossy();
-                    match version_str.parse::<u64>() {
-                        Ok(v) => v,
-                        Err(_) => {
-                            return syn::Error::new(
-                                lit.span(),
-                                format!(
-                                    "Could not parse version from latest symlink at {}. Target: {}",
-                                    latest_link.display(),
-                                    version_str
-                                ),
-                            )
-                            .to_compile_error()
-                            .into();
-                        }
-                    }
-                }
-                Err(e) => {
-                    return syn::Error::new(
-                        lit.span(),
-                        format!(
-                            "Could not read latest symlink at {}: {}. Run 'cdm install {}' first.",
-                            latest_link.display(),
-                            e,
-                            package_name
-                        ),
-                    )
-                    .to_compile_error()
-                    .into();
-                }
-            }
-        }
-    };
-
-    // Construct ABI path
-    let abi_path = cdm_root
-        .join(target_hash)
-        .join("contracts")
-        .join(&package_name)
-        .join(version.to_string())
-        .join("abi.json");
-
-    if !abi_path.exists() {
-        return syn::Error::new(
-            lit.span(),
-            format!(
-                "ABI file not found at {}. Run 'cdm install {}' to download it.",
-                abi_path.display(),
-                package_name
-            ),
-        )
-        .to_compile_error()
-        .into();
-    }
 
     let module_name = derive_module_name(&package_name);
     // `derive_module_name` only collapses '/' and '-'; CDM package names may

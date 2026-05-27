@@ -15,7 +15,7 @@ Depends on `counter` via CDM. Calls `counter.get_count()` to read the shared sta
 
 ## How It Works
 
-The `counter-writer` and `counter-reader` contracts declare a CDM dependency on the `counter` contract. At deploy time, CDM resolves these dependencies and wires up cross-contract references so that `counter::cdm_reference()` returns a handle to the deployed counter instance.
+The `counter-writer` and `counter-reader` contracts import the `counter` ABI with `cdm::import!("@example/counter")`. At compile time, CDM resolves the local workspace ABI through Cargo metadata; at runtime, `counter::Counter::cdm_lookup()` returns a handle to the deployed counter instance through the registry.
 
 ```
 counter-writer --calls--> counter <--calls-- counter-reader
