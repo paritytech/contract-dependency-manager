@@ -25,6 +25,7 @@ import {
     resolveFeatures,
     resolveLocalRegistry,
     writeCdmLocalJson,
+    writeGlobalLocalRegistry,
 } from "@parity/cdm-builder";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
 import type { HexString } from "polkadot-api";
@@ -378,7 +379,9 @@ async function bootstrapDeploy(
         const cdmLocalPath = writeCdmLocalJson(rootDir, {
             localRegistry: registryAddr as `0x${string}`,
         });
-        console.log(`  localRegistry → ${cdmLocalPath}\n`);
+        const globalPath = writeGlobalLocalRegistry(registryAddr as `0x${string}`);
+        console.log(`  localRegistry → ${cdmLocalPath}`);
+        console.log(`  localRegistry → ${globalPath}\n`);
     }
 
     const addresses = await deployWithRegistry(rootDir, opts, registryAddr, {
