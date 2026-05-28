@@ -110,6 +110,7 @@ export {
     resolveFeatures,
     resolveLocalRegistry,
     writeCdmLocalJson,
+    writeGlobalLocalRegistry,
 } from "./cdm-local-json";
 
 export {
