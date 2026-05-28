@@ -254,6 +254,43 @@ cdm i -n paseo @yourorg/package:3
 
 `cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates `cdm.json`, installs ABIs under `~/.cdm`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`.
 
+### `cdm test`
+
+Deploy contracts to a local network, install their ABIs into `cdm.json`, and run vitest. The happy path is a single command from any CDM project:
+
+```bash
+cdm test                  # deploy + install + run chain-dependent tests
+cdm test --skip-deploy    # reuse current on-chain state
+cdm test --skip-install   # reuse cached cdm.json
+cdm test --skip-vitest    # only set up the chain, don't run tests
+```
+
+By default only **chain-dependent** vitest tests run — those grouped under a vitest project named `"contract"` in your `vitest.config.ts`. Unit/component suites that don't talk to a chain are skipped, since they don't need the deploy+install cycle and run faster via `pnpm test`.
+
+```bash
+cdm test --project all      # run every vitest project (unit + contract + ...)
+cdm test --project e2e      # pick a different project by name
+```
+
+Recommended `vitest.config.ts` shape for opting in:
+
+```ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    projects: [
+      { test: { name: "unit",     include: ["src/**/*.test.{ts,tsx}"] } },
+      { test: { name: "contract", include: ["tests/contract/**/*.test.ts"] } },
+    ],
+  },
+});
+```
+
+If your project doesn't use vitest's `projects` feature, pass `--project all` or `--project <your-project-name>`.
+
+`cdm test` auto-starts PPN (the local Product Preview Network) if it's not already up; use `--no-auto-network` to fail instead of starting it.
+
 ### `cdm template [name]`
 
 Scaffold an example project into `./<template-name>` by default. Pass a target directory to override it; use `.` to scaffold into the current directory.
