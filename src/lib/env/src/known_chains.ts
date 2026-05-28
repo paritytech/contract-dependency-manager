@@ -76,3 +76,10 @@ export function getChainPreset(name: string): ChainPreset {
     }
     return preset;
 }
+
+export function findKnownChainByAssetHubUrl(url: string): KnownChainName | undefined {
+    const normalizedUrl = url.replace(/\/+$/, "");
+    return Object.entries(KNOWN_CHAINS).find(
+        ([, preset]) => preset.assethubUrl.replace(/\/+$/, "") === normalizedUrl,
+    )?.[0] as KnownChainName | undefined;
+}
