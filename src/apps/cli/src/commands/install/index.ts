@@ -84,9 +84,11 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         opts.registryAddress = opts.registryAddress ?? preset.registryAddress;
     }
 
-    // If still missing connection info, populate from cdm.json targets
+    // If no chain was explicitly selected, fall back to cdm.json's first
+    // target for connection info. `-n` is the stronger signal: when it's set,
+    // we keep the preset values even if cdm.json points elsewhere.
     const targetEntries = Object.entries(cdmJson.targets);
-    if (targetEntries.length > 0) {
+    if (!opts.name && targetEntries.length > 0) {
         const [, target] = targetEntries[0];
         if (opts.assethubUrl === DEFAULT_NODE_URL) {
             opts.assethubUrl = target["asset-hub"];
