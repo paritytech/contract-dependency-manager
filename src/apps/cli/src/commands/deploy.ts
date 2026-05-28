@@ -21,6 +21,7 @@ import {
     resolveFeatures,
     resolveLocalRegistry,
     writeCdmLocalJson,
+    writeGlobalLocalRegistry,
 } from "@dotdm/contracts";
 import type { HexString } from "polkadot-api";
 import { runDeployWithUI, spinner } from "../lib/ui";
@@ -304,10 +305,26 @@ async function bootstrapDeploy(
         console.log("  Account already mapped\n");
     }
 
-    const expectedRegistry = await deployer.dryRunDeploy(
-        registryPvmPath,
-        CONTRACTS_REGISTRY_PACKAGE,
-    );
+    let expectedRegistry: Awaited<ReturnType<typeof deployer.dryRunDeploy>>;
+    try {
+        expectedRegistry = await deployer.dryRunDeploy(registryPvmPath, CONTRACTS_REGISTRY_PACKAGE);
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("DuplicateContract")) {
+            console.error(
+                "ERROR: ContractRegistry already exists on chain at the CREATE2 address but\n" +
+                    "no local cache pointed at it (~/.cdm/local-registry is missing and the\n" +
+                    "project has no cdm.local.json). Recover by either:\n" +
+                    "  - restarting the local chain to wipe state: cdm network stop && cdm network start --fresh\n" +
+                    "  - or asking whoever last bootstrapped to share their registry address and\n" +
+                    '    writing it to cdm.local.json as {"localRegistry": "0x…"}',
+            );
+        } else {
+            console.error(msg);
+        }
+        chainClient.destroy();
+        process.exit(1);
+    }
     // For non-local (or local with an explicit/pinned target), reject a
     // signer+bytecode that would land at a different address — most likely a
     // wrong account or stale bytecode.
@@ -341,7 +358,9 @@ async function bootstrapDeploy(
         const cdmLocalPath = writeCdmLocalJson(rootDir, {
             localRegistry: registryAddr as `0x${string}`,
         });
-        console.log(`  localRegistry → ${cdmLocalPath}\n`);
+        const globalPath = writeGlobalLocalRegistry(registryAddr as `0x${string}`);
+        console.log(`  localRegistry → ${cdmLocalPath}`);
+        console.log(`  localRegistry → ${globalPath}\n`);
     }
 
     const addresses = await deployWithRegistry(rootDir, opts, registryAddr, {
