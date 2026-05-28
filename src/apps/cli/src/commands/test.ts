@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { ensurePpnInstalled, isLocalNetworkUp, waitForLocalNetwork } from "./network";
+import { cdmInvocation } from "../lib/cdm-invocation";
 
 /**
  * `cdm test` — auto-orchestrates a deploy + install + vitest cycle against the
@@ -129,17 +130,6 @@ function runVitest(): void {
         process.exit(1);
     }
     process.exit(result.status);
-}
-
-// Re-invoke the cdm binary that's running this process. In compiled mode
-// `process.execPath` is the cdm binary; in dev mode it's bun and argv[1] is
-// the cli.ts entry script.
-function cdmInvocation(): { cmd: string; baseArgs: string[] } {
-    const entry = process.argv[1];
-    const isDev = entry?.endsWith(".ts") === true;
-    return isDev
-        ? { cmd: process.execPath, baseArgs: [entry!] }
-        : { cmd: process.execPath, baseArgs: [] };
 }
 
 export const testCommand = test;

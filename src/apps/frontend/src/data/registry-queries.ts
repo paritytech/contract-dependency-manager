@@ -13,7 +13,6 @@ export interface ContractPage {
     packages: Package[];
 }
 
-
 export async function queryContractByName(
     registry: RegistryContract,
     name: string,
