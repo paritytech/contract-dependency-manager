@@ -10,13 +10,13 @@ catalog:
   polkadot-api: ^2.1.2
   "@polkadot-api/sdk-ink": ^0.7.0
   "@parity/bulletin-sdk": ^0.3.0
-  "@parity/product-sdk-bulletin": ^0.4.1
-  "@parity/product-sdk-chain-client": ^0.4.1
-  "@parity/product-sdk-contracts": ^0.5.0
-  "@parity/product-sdk-descriptors": ^0.4.0
-  "@parity/product-sdk-host": ^0.3.0
+  "@parity/product-sdk-bulletin": ^0.4.2
+  "@parity/product-sdk-chain-client": ^0.5.0
+  "@parity/product-sdk-contracts": ^0.6.0
+  "@parity/product-sdk-descriptors": ^0.5.0
+  "@parity/product-sdk-host": ^0.5.0
   "@parity/product-sdk-keys": ^0.2.0
-  "@parity/product-sdk-tx": ^0.2.3
+  "@parity/product-sdk-tx": ^0.2.5
   "@polkadot-api/smoldot": ^0.4.2
   "@polkadot-api/cli": ^0.21.1
   "@polkadot-labs/hdkd": ^0.0.26

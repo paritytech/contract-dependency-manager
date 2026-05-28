@@ -9,6 +9,7 @@ import {
     getChainPreset,
     getRegistryAddress,
     DEFAULT_NODE_URL,
+    resolveQueryOrigin,
 } from "@dotdm/env";
 import {
     CONTRACTS_REGISTRY_ABI,
@@ -19,7 +20,6 @@ import {
     resolveTargetRegistryAddress,
     writeCdmJson,
 } from "@dotdm/contracts";
-import { ALICE_SS58 } from "@dotdm/utils";
 import { spinner } from "../../lib/ui";
 import { runInstallWithUI } from "../../lib/install-pipeline";
 import type { InstallResult } from "../../lib/install-pipeline";
@@ -59,7 +59,7 @@ const install = new Command("install")
         'CDM libraries (e.g., "@polkadot/reputation" or "@polkadot/reputation:3"). Omit to install all from cdm.json.',
     )
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain", DEFAULT_NODE_URL)
-    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, preview-net, local)")
+    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, local)")
     .option("--ipfs-gateway-url <url>", "IPFS gateway URL for fetching metadata")
     .option("--registry-address <address>", "Registry contract address");
 
@@ -128,7 +128,12 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         chainClient.descriptors.assetHub,
         registryAddress as HexString,
         CONTRACTS_REGISTRY_ABI,
-        { defaultOrigin: ALICE_SS58 },
+        {
+            defaultOrigin: resolveQueryOrigin({
+                chainName: opts.name,
+                assethubUrl: opts.assethubUrl,
+            }),
+        },
     );
     const ipfs = connectIpfsGateway(opts.ipfsGatewayUrl);
 

@@ -9,12 +9,15 @@ export function handleExternalClick(e: React.MouseEvent<HTMLAnchorElement>) {
     const url = e.currentTarget.href;
     e.preventDefault();
     getTruApi()
-        .then((truApi) => {
+        .then(async (truApi) => {
             if (truApi) {
-                return truApi.navigateTo({ tag: "v1", value: url });
+                const result = await truApi.navigateTo({ tag: "v1", value: url });
+                if (result.isErr()) {
+                    window.open(url, "_blank", "noopener,noreferrer");
+                }
+                return;
             }
             window.open(url, "_blank", "noopener,noreferrer");
-            return null;
         })
         .catch(() => {
             window.open(url, "_blank", "noopener,noreferrer");

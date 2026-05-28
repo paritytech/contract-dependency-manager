@@ -1,7 +1,7 @@
 import type { AbiEntry } from "@parity/product-sdk-contracts";
 
 /**
- * ABI for the ContractRegistry ink contract.
+ * ABI for the ContractRegistry contract.
  *
  * Source of truth: `src/contract/src/lib.rs` compiled to PolkaVM; this array
  * mirrors the Solidity-ABI export produced by `cargo pvm-contract build`
@@ -105,6 +105,35 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
         name: "getContractNameAt",
         inputs: [{ name: "index", type: "uint32" }],
         outputs: [{ name: "", type: "string" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getContracts",
+        inputs: [
+            { name: "start", type: "uint32" },
+            { name: "count", type: "uint32" },
+        ],
+        outputs: [
+            {
+                name: "",
+                type: "tuple",
+                components: [
+                    { name: "total", type: "uint32" },
+                    {
+                        name: "entries",
+                        type: "tuple[]",
+                        components: [
+                            { name: "name", type: "string" },
+                            { name: "version", type: "uint32" },
+                            { name: "address", type: "address" },
+                            { name: "metadata_uri", type: "string" },
+                            { name: "owner", type: "address" },
+                        ],
+                    },
+                ],
+            },
+        ],
         stateMutability: "view",
     },
     {

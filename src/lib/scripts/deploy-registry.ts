@@ -5,7 +5,7 @@
  * Usage:
  *   bun run src/lib/scripts/deploy-registry.ts --name local
  *   bun run src/lib/scripts/deploy-registry.ts --assethub-url ws://127.0.0.1:10020
- *   bun run src/lib/scripts/deploy-registry.ts --name preview-net
+ *   bun run src/lib/scripts/deploy-registry.ts --name local
  *   bun run src/lib/scripts/deploy-registry.ts --assethub-url wss://... --registry-address 0x...
  */
 import { resolve } from "path";

@@ -8,6 +8,12 @@ export interface ContractNameSearchPage {
     done: boolean;
 }
 
+export interface ContractPage {
+    total: number;
+    packages: Package[];
+}
+
+
 export async function queryContractByName(
     registry: RegistryContract,
     name: string,
@@ -20,10 +26,11 @@ export async function queryContractByName(
 
     const versionCount = versionResult.success ? (versionResult.value as number) : 0;
     if (versionCount === 0) return null;
+    const latestVersion = versionCount - 1;
 
     return {
         name,
-        version: String(versionCount),
+        version: String(latestVersion),
         weeklyCalls: 0,
         address: addressResult.success ? unwrapOption<string>(addressResult.value) : undefined,
         metadataUri: metadataResult.success
@@ -31,6 +38,70 @@ export async function queryContractByName(
             : undefined,
         metadataLoaded: false,
     };
+}
+
+function parseContractEntry(value: unknown): Package | null {
+    let name: unknown;
+    let version: unknown;
+    let address: unknown;
+    let metadataUri: unknown;
+
+    if (Array.isArray(value)) {
+        [name, version, address, metadataUri] = value;
+    } else if (value && typeof value === "object") {
+        const entry = value as {
+            name?: unknown;
+            version?: unknown;
+            address?: unknown;
+            metadata_uri?: unknown;
+            metadataUri?: unknown;
+        };
+        name = entry.name;
+        version = entry.version;
+        address = entry.address;
+        metadataUri = entry.metadata_uri ?? entry.metadataUri;
+    }
+
+    if (typeof name !== "string") return null;
+
+    return {
+        name,
+        version: String(Number(version ?? 0)),
+        weeklyCalls: 0,
+        address: typeof address === "string" ? address : undefined,
+        metadataUri: typeof metadataUri === "string" ? metadataUri : undefined,
+        metadataLoaded: false,
+    };
+}
+
+function parseContractPage(value: unknown): ContractPage {
+    let total: unknown;
+    let entries: unknown;
+
+    if (Array.isArray(value)) {
+        [total, entries] = value;
+    } else if (value && typeof value === "object") {
+        const page = value as { total?: unknown; entries?: unknown };
+        total = page.total;
+        entries = page.entries;
+    }
+
+    return {
+        total: Number(total ?? 0),
+        packages: Array.isArray(entries)
+            ? entries.map(parseContractEntry).filter((pkg): pkg is Package => pkg !== null)
+            : [],
+    };
+}
+
+export async function queryContractsPage(
+    registry: RegistryContract,
+    start: number,
+    count: number,
+): Promise<ContractPage> {
+    const result = await registry.getContracts.query(start, count);
+    if (!result.success) throw new Error("Failed to query contract page");
+    return parseContractPage(result.value);
 }
 
 function parseSearchPage(value: unknown): ContractNameSearchPage {

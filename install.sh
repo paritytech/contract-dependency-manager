@@ -61,13 +61,13 @@ ln -sf "$CDM_DIR/bin/$BIN" "$HOME/.local/bin/$BIN"
 
 echo "Installed $BIN ($OS/$ARCH) from $TAG -> $CDM_DIR/bin/$BIN"
 
-# 5) Install cargo-pvm-contract from the cdm-integration branch
+# 5) Install cargo-pvm-contract from the new CDM SDK/storage branch
 #    The repo's .cargo/config.toml sets a PolkaVM RISC-V default target, so we must
 #    explicitly pass --target for the host platform to build the CLI tool for the host.
 HOST_TARGET=$(rustc -vV | grep '^host:' | cut -d' ' -f2)
 echo "Installing cargo-pvm-contract..."
 rm -rf /tmp/cargo-pvm-contract
-if git clone -b charles/cdm-integration https://github.com/paritytech/cargo-pvm-contract.git /tmp/cargo-pvm-contract 2>&1; then
+if git clone -b sm/cdm https://github.com/paritytech/cargo-pvm-contract.git /tmp/cargo-pvm-contract 2>&1; then
   if cargo install --force --locked --target "$HOST_TARGET" --path /tmp/cargo-pvm-contract/crates/cargo-pvm-contract; then
     echo "cargo-pvm-contract installed."
   else

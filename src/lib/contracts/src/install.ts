@@ -2,6 +2,7 @@ import type { Contract, ContractDef } from "@parity/product-sdk-contracts";
 import { mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { stringifyBigInt } from "@dotdm/utils";
 import type { AbiEntry } from "./deployer";
 import { saveContract } from "./store";
 
@@ -83,6 +84,10 @@ function metadataObject(value: unknown, library: string): Record<string, unknown
     return value as Record<string, unknown>;
 }
 
+function queryFailure(action: string, library: string, value: unknown): Error {
+    return new Error(`${action} for "${library}": ${stringifyBigInt(value)}`);
+}
+
 async function queryLatest(
     library: string,
     registry: RegistryContract,
@@ -96,11 +101,10 @@ async function queryLatest(
         }
         throw err;
     }
-    if (
-        !versionResult.success ||
-        typeof versionResult.value !== "number" ||
-        versionResult.value === 0
-    ) {
+    if (!versionResult.success) {
+        throw queryFailure("Failed to query registry version count", library, versionResult.value);
+    }
+    if (typeof versionResult.value !== "number" || versionResult.value === 0) {
         throw new Error(`Contract "${library}" not found in registry`);
     }
     const version = versionResult.value - 1;
@@ -115,7 +119,7 @@ async function queryLatest(
         throw err;
     }
     if (!metaResult.success) {
-        throw new Error(`Failed to query metadata URI for "${library}"`);
+        throw queryFailure("Failed to query metadata URI", library, metaResult.value);
     }
     const metadataCid = unwrapOption<string>(metaResult.value) ?? "";
     if (!metadataCid) {
@@ -131,9 +135,10 @@ async function queryLatest(
         }
         throw err;
     }
-    const contractAddress = addrResult.success
-        ? (unwrapOption<string>(addrResult.value) ?? "")
-        : "";
+    if (!addrResult.success) {
+        throw queryFailure("Failed to query address", library, addrResult.value);
+    }
+    const contractAddress = unwrapOption<string>(addrResult.value) ?? "";
 
     return { version, metadataCid, contractAddress };
 }
@@ -153,8 +158,10 @@ async function queryVersion(
         throw err;
     }
     if (!metaResult.success) {
-        throw new Error(
-            `Failed to query metadata URI for "${library}" version ${requestedVersion}`,
+        throw queryFailure(
+            `Failed to query metadata URI for version ${requestedVersion}`,
+            library,
+            metaResult.value,
         );
     }
     const metadataCid = unwrapOption<string>(metaResult.value) ?? "";
@@ -173,9 +180,14 @@ async function queryVersion(
         }
         throw err;
     }
-    const contractAddress = addrResult.success
-        ? (unwrapOption<string>(addrResult.value) ?? "")
-        : "";
+    if (!addrResult.success) {
+        throw queryFailure(
+            `Failed to query address for version ${requestedVersion}`,
+            library,
+            addrResult.value,
+        );
+    }
+    const contractAddress = unwrapOption<string>(addrResult.value) ?? "";
 
     return { version: requestedVersion, metadataCid, contractAddress };
 }
@@ -383,6 +395,41 @@ if (import.meta.vitest) {
                     library: "@example/missing",
                     error: 'No ABI found in metadata for "@example/missing"',
                 });
+            } finally {
+                rmSync(root, { recursive: true, force: true });
+            }
+        });
+
+        test("preserves failed registry query reasons", async () => {
+            const root = mkdtempSync(join(tmpdir(), "cdm-install-"));
+            process.env.CDM_ROOT = root;
+
+            try {
+                const summary = await installContracts({
+                    libraries: [{ library: "@example/counter", requestedVersion: "latest" }],
+                    registry: {
+                        getVersionCount: {
+                            query: async () => ({
+                                success: false,
+                                value: {
+                                    type: "Module",
+                                    value: {
+                                        type: "Revive",
+                                        value: { type: "AccountUnmapped" },
+                                    },
+                                },
+                            }),
+                        },
+                    } as unknown as RegistryContract,
+                    ipfs: fakeIpfs(),
+                    targetHash: "target123",
+                });
+
+                expect(summary.success).toBe(false);
+                expect(summary.errors[0].error).toContain(
+                    'Failed to query registry version count for "@example/counter"',
+                );
+                expect(summary.errors[0].error).toContain("AccountUnmapped");
             } finally {
                 rmSync(root, { recursive: true, force: true });
             }

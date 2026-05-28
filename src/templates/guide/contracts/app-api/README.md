@@ -1,6 +1,6 @@
-# Counter
+# App API
 
-The base counter contract that owns shared on-chain state. Other contracts interact with it via CDM cross-contract references.
+The app API contract owns shared on-chain state. Other contracts interact with it via CDM cross-contract references.
 
 ## Methods
 
@@ -13,4 +13,4 @@ The base counter contract that owns shared on-chain state. Other contracts inter
 
 ## CDM Package
 
-Published as `@example/counter`. Other contracts can depend on this package to call its methods via `counter::cdm_reference()`.
+Published as `@example/app-api`. Other contracts can import this package with `cdm::import!("@example/app-api")` and call it via `app_api::AppApi::cdm_lookup()`.

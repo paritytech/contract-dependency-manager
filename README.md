@@ -26,7 +26,7 @@ cdm account map -n paseo
 cdm deploy -n paseo
 ```
 
-Before deploying a template, change every `#[pvm::contract(cdm = "@example/...")]` namespace to one you own, such as `@myteam/counter`. Package names are global per registry target.
+Before deploying a template, change every `[package.metadata.cdm] package = "@example/..."` namespace in the contracts' `Cargo.toml` files to one you own, such as `@myteam/counter`. Package names are global per registry target.
 
 ## CDM And Product SDK
 
@@ -50,16 +50,27 @@ Use product-sdk in apps and frontends:
 
 ## Writing CDM Contracts
 
-Annotate each contract with a CDM package name:
+Declare each Rust contract's CDM package name in `Cargo.toml`:
+
+```toml
+[package.metadata.cdm]
+package = "@yourorg/mycontract"
+```
+
+Then define the contract with the `pvm_contract_sdk` macros:
 
 ```rust
-#[pvm::contract(cdm = "@yourorg/mycontract")]
+#[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
 mod mycontract {
-    #[pvm::constructor]
-    pub fn new() -> Result<(), Error> { Ok(()) }
+    pub struct MyContract;
 
-    #[pvm::method]
-    pub fn do_something() -> u32 { 42 }
+    impl MyContract {
+        #[pvm_contract_sdk::constructor]
+        pub fn new(&mut self) {}
+
+        #[pvm_contract_sdk::method]
+        pub fn do_something(&self) -> u32 { 42 }
+    }
 }
 ```
 
@@ -68,13 +79,11 @@ To call another CDM contract from Rust:
 ```rust
 cdm::import!("@someorg/other-contract");
 
-let other = other_contract::cdm_reference();
-if let Err(_) = other.do_something() {
-    common::revert(b"OtherCallFailed");
-}
+let other = other_contract::OtherContract::cdm_lookup();
+other.do_something().call(self).expect("OtherCallFailed");
 ```
 
-For external packages, run `cdm i -n paseo @someorg/other-contract` first. The import macro reads `cdm.json`, resolves the installed ABI in `~/.cdm`, and generates the same typed reference shape as a same-workspace Cargo dependency.
+For workspace-local packages, `cdm::import!` resolves the ABI through Cargo metadata when the provider crate declares the matching `[package.metadata.cdm] package`. For external packages, run `cdm i -n paseo @someorg/other-contract` first; the macro falls back to `cdm.json` and the installed ABI in `~/.cdm`.
 
 Solidity contracts use NatSpec for their own CDM package name:
 
@@ -218,7 +227,7 @@ Build all contracts with the selected ContractRegistry address baked in.
 ```bash
 cdm build
 cdm build --contracts counter counter_writer
-cdm build -n preview-net
+cdm build -n paseo
 cdm build --root /path/to/workspace
 ```
 
@@ -228,12 +237,11 @@ Build, deploy, publish metadata, and register all workspace contracts.
 
 ```bash
 cdm deploy -n paseo
-cdm deploy -n preview-net
 cdm deploy -n paseo --suri //Bob
 cdm deploy --registry-address 0x... --assethub-url wss://... --bulletin-url wss://...
 ```
 
-Supported deploy presets are `paseo`, `preview-net`, and `local`. The `paseo` preset points at Paseo v2.
+Supported deploy presets are `paseo` and `local`. Use explicit URLs with `--assethub-url`, `--bulletin-url`, and `--registry-address` for custom networks. The `paseo` preset points at Paseo v2.
 
 ### `cdm install -n <chain> <library>`
 
@@ -241,7 +249,6 @@ Install published contracts for Rust imports, Solidity imports, and product-sdk 
 
 ```bash
 cdm i -n paseo @polkadot/contexts @polkadot/profiles
-cdm i -n preview-net @yourorg/package
 cdm i -n paseo @yourorg/package:3
 ```
 

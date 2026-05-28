@@ -30,6 +30,7 @@ function errorPhase(s: ContractStatus): "build" | "deploy" | "metadata" | "regis
     if (s.address && s.publishTxHash) return "register";
     // Deploy completed but publish didn't: metadata/publish failure
     if (s.address && !s.publishTxHash && s.cid) return "metadata";
+    if (s.bytecodeSize !== undefined) return "deploy";
     // Build completed: deploy phase (or parallel deploy+publish) failed
     if (
         s.buildProgress &&
@@ -62,9 +63,16 @@ function ContractRow({
     // Build column — keep progress bar even when done, empty bar when waiting
     let buildCell: React.ReactNode;
     if (state === "building" && s?.buildProgress) {
-        buildCell = (
-            <ProgressBar compiled={s.buildProgress.compiled} total={s.buildProgress.total} />
-        );
+        const total = s.buildProgress.total;
+        buildCell =
+            total && total > 0 ? (
+                <ProgressBar compiled={s.buildProgress.compiled} total={total} />
+            ) : (
+                <Box>
+                    <Spinner tick={tick} />
+                    <Text dimColor> {s.buildProgress.compiled}</Text>
+                </Box>
+            );
     } else if (state === "building") {
         buildCell = <Spinner tick={tick} />;
     } else if (state === "error" && errorPhase(s!) === "build") {
@@ -76,10 +84,12 @@ function ContractRow({
         // plus the compiled bytecode size (base-10 kB/MB) if the library
         // populated `bytecodeSize` on the status.
         const bp = s?.buildProgress;
-        if (bp) {
+        if (bp?.total && bp.total > 0) {
             buildCell = (
                 <ProgressBar compiled={bp.total} total={bp.total} sizeBytes={s?.bytecodeSize} />
             );
+        } else if (s?.bytecodeSize) {
+            buildCell = <ProgressBar compiled={1} total={1} sizeBytes={s.bytecodeSize} />;
         } else {
             buildCell = <Done />;
         }

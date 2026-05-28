@@ -1,5 +1,21 @@
 # @dotdm/contracts
 
+## 3.1.2
+
+### Patch Changes
+
+- 01d23ce: Resolve contract install queries through the configured chain account when available and surface failed registry query errors directly.
+- Updated dependencies [01d23ce]
+  - @dotdm/env@2.0.2
+
+## 3.1.1
+
+### Patch Changes
+
+- 002400b: Update Product SDK dependencies, remove PreviewNet as a first-class preset, and use the redeployed Paseo registry address.
+- Updated dependencies [002400b]
+  - @dotdm/env@2.0.1
+
 ## 3.1.0
 
 ### Minor Changes

@@ -17,7 +17,7 @@ path = "lib.rs"
 abi-gen = ["pvm-contract-sdk/abi-gen"]
 
 [package.metadata.cdm]
-name = "@example/app-api"
+package = "@example/app-api"
 
 [dependencies]
 pvm-contract-sdk = { workspace = true }

@@ -9,13 +9,14 @@ import { initCommand } from "./commands/init";
 import { accountCommand } from "./commands/account";
 import { testCommand } from "./commands/test";
 import { networkCommand } from "./commands/network";
+import packageJson from "../package.json";
 
 const program = new Command();
 
 program
     .name("cdm")
     .description("Contract Dependency Manager for PVM smart contracts")
-    .version("0.1.0");
+    .version(packageJson.version);
 
 program.addCommand(buildCommand);
 program.addCommand(deployCommand);

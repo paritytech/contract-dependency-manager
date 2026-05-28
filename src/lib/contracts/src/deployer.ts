@@ -483,7 +483,10 @@ export class ContractDeployer {
                         `${label} Expected ${idxs.length} Instantiated events, got ${instantiated.length}`,
                     );
                 }
-                const chunkAddrs = instantiated.map((e) => e.payload.contract);
+                const chunkAddrs = instantiated.map(
+                    (e: ReturnType<typeof this.api.event.Revive.Instantiated.filter>[number]) =>
+                        e.payload.contract,
+                );
                 for (let j = 0; j < idxs.length; j++) {
                     addresses[idxs[j]] = chunkAddrs[j];
                 }
@@ -632,7 +635,10 @@ export class ContractDeployer {
                     `${label} Expected ${idxs.length} Instantiated events, got ${instantiated.length}`,
                 );
             }
-            const chunkAddrs = instantiated.map((e) => e.payload.contract);
+            const chunkAddrs = instantiated.map(
+                (e: ReturnType<typeof this.api.event.Revive.Instantiated.filter>[number]) =>
+                    e.payload.contract,
+            );
             for (let j = 0; j < idxs.length; j++) {
                 const expected = prepared[idxs[j]].address;
                 if (chunkAddrs[j].toLowerCase() !== expected.toLowerCase()) {

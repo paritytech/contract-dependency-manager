@@ -40,7 +40,7 @@ export interface ContractStatus {
     registerTxHash?: string;
     registerBlockHash?: string;
     durationMs?: number;
-    buildProgress?: { compiled: number; total: number; currentCrate: string };
+    buildProgress?: { compiled: number; total?: number; currentCrate: string };
     /** Bytecode size in bytes (populated from `build-done` event). */
     bytecodeSize?: number;
     deployInProgress?: boolean;
