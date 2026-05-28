@@ -1,5 +1,13 @@
 # @dotdm/contracts
 
+## 3.1.2
+
+### Patch Changes
+
+- 01d23ce: Resolve contract install queries through the configured chain account when available and surface failed registry query errors directly.
+- Updated dependencies [01d23ce]
+  - @dotdm/env@2.0.2
+
 ## 3.1.1
 
 ### Patch Changes
