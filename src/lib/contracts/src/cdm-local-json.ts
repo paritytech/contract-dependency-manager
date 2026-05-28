@@ -1,5 +1,29 @@
-import { readFileSync, existsSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, existsSync, writeFileSync } from "fs";
+import { homedir } from "os";
 import { resolve } from "path";
+
+/**
+ * Per-machine file caching the local-chain ContractRegistry address. CREATE2
+ * makes the address deterministic from `(deployer, registry bytecode, salt)`,
+ * so every project on the same machine targets the same address. Persisting it
+ * here lets a fresh project (with no `cdm.local.json`) discover the existing
+ * registry without redeploying — and lets bootstrap detect the
+ * `DuplicateContract` case cleanly when the chain is unchanged but `~/.cdm`
+ * was wiped.
+ */
+const GLOBAL_LOCAL_REGISTRY_PATH = resolve(homedir(), ".cdm/local-registry");
+
+function readGlobalLocalRegistry(): `0x${string}` | undefined {
+    if (!existsSync(GLOBAL_LOCAL_REGISTRY_PATH)) return undefined;
+    const raw = readFileSync(GLOBAL_LOCAL_REGISTRY_PATH, "utf-8").trim();
+    return /^0x[0-9a-fA-F]{40}$/.test(raw) ? (raw as `0x${string}`) : undefined;
+}
+
+export function writeGlobalLocalRegistry(address: `0x${string}`): string {
+    mkdirSync(resolve(homedir(), ".cdm"), { recursive: true });
+    writeFileSync(GLOBAL_LOCAL_REGISTRY_PATH, `${address}\n`);
+    return GLOBAL_LOCAL_REGISTRY_PATH;
+}
 
 export interface CdmLocalJson {
     features?: string[];
@@ -65,7 +89,7 @@ export function writeCdmLocalJson(dir: string, update: Partial<CdmLocalJson>): s
 }
 
 export function resolveLocalRegistry(dir?: string): `0x${string}` | undefined {
-    return readCdmLocalJson(dir)?.cdmLocalJson.localRegistry;
+    return readCdmLocalJson(dir)?.cdmLocalJson.localRegistry ?? readGlobalLocalRegistry();
 }
 
 /**
