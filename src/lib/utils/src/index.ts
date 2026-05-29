@@ -9,4 +9,4 @@ export {
     CREATE3_FACTORY_PACKAGE,
     DEFAULT_NODE_URL,
 } from "./constants";
-export { stringifyBigInt } from "./utils";
+export { retryWithBackoff, stringifyBigInt } from "./utils";
