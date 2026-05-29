@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { createCdmAssetHubClient, getChainPreset } from "@dotdm/env";
 import { resolveLocalRegistry, type SizedHex } from "@dotdm/contracts";
+import { retryWithBackoff } from "@dotdm/utils";
 import { startBulletinIpfsGateway } from "../lib/bulletin-ipfs-gateway";
 import { cdmInvocation } from "../lib/cdm-invocation";
 
@@ -224,12 +225,14 @@ export async function waitForLocalNetwork(maxMs: number): Promise<boolean> {
 }
 
 async function waitForPort(port: number, maxMs: number, intervalMs: number): Promise<boolean> {
-    const deadline = Date.now() + maxMs;
-    while (Date.now() < deadline) {
-        if (await tcpProbe(port)) return true;
-        await new Promise((r) => setTimeout(r, intervalMs));
-    }
-    return false;
+    const attempts = Math.max(1, Math.ceil(maxMs / intervalMs));
+    const delays = [0, ...Array(attempts - 1).fill(intervalMs)];
+    const { ok } = await retryWithBackoff(
+        () => tcpProbe(port),
+        (r) => r,
+        delays,
+    );
+    return ok;
 }
 
 /**

@@ -8,7 +8,7 @@ import {
     type Contract,
     type ContractDef,
 } from "@parity/product-sdk-contracts";
-import { stringifyBigInt } from "@dotdm/utils";
+import { retryWithBackoff, stringifyBigInt } from "@dotdm/utils";
 import { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
 
 import {
@@ -48,19 +48,33 @@ import {
 } from "./deployer";
 import { MetadataPublisher } from "./publisher";
 
+// eth_call against a contract included in the very latest block can return
+// empty data while the state trie propagates — common when
+// `cdm deploy --bootstrap` flows directly into the first `getVersionCount`
+// query against the freshly-deployed registry. Retry briefly so the happy
+// bootstrap path isn't racy; a genuinely missing registry surfaces after ~5s.
+const REGISTRY_QUERY_DELAYS_MS: readonly number[] = [0, 500, 1500, 3000];
+
 async function queryRegistryVersionCounts(
     contract: Contract<ContractDef>,
     pkgs: string[],
 ): Promise<Map<string, number>> {
     const entries = await Promise.all(
         pkgs.map(async (pkg): Promise<readonly [string, number]> => {
-            const versionResult = await contract.getVersionCount.query(pkg);
-
-            if (!versionResult.success || typeof versionResult.value !== "number") {
-                throw new Error(`Failed to query registry version count for "${pkg}"`);
+            const { result, ok } = await retryWithBackoff(
+                () => contract.getVersionCount.query(pkg),
+                (r) => r.success && typeof r.value === "number",
+                REGISTRY_QUERY_DELAYS_MS,
+            );
+            if (!ok) {
+                const totalS = REGISTRY_QUERY_DELAYS_MS.reduce((a, b) => a + b, 0) / 1000;
+                throw new Error(
+                    `Failed to query registry version count for "${pkg}" after ` +
+                        `${REGISTRY_QUERY_DELAYS_MS.length} attempts over ~${totalS}s. ` +
+                        `Last response: ${stringifyBigInt(result)}`,
+                );
             }
-
-            return [pkg, versionResult.value];
+            return [pkg, result.value as number];
         }),
     );
     return new Map(entries);
