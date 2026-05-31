@@ -2,36 +2,37 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNetwork } from "../context/useNetwork";
 import { queryBulletinJson } from "../data/bulletin-client";
 import type { Package } from "../data/types";
-import { queryContractsPage, parseMetadata, metadataCidFromUri } from "../data/registry-queries";
+import {
+    queryContractsPage,
+    parseMetadata,
+    metadataCidFromUri,
+    registryQueryError,
+} from "../data/registry-queries";
 import { withTimeout } from "../data/timeout";
+import { getRegistryConnection } from "../utils/contracts";
 import { useInfiniteLoad } from "./useInfiniteLoad";
 
 const PAGE_SIZE = 10;
 
 export function useRegistry() {
-    const {
-        registry,
-        connected,
-        connecting,
-        error: networkError,
-        network,
-        networkConfig,
-    } = useNetwork();
+    const { connected, connecting, error: networkError, network, networkConfig } = useNetwork();
 
     // Phase 1: Paginated on-chain data via useInfiniteLoad
     const fetchCount = useCallback(async () => {
-        if (!registry) throw new Error("Registry not connected");
+        const { registry } = await getRegistryConnection(networkConfig);
         const result = await withTimeout(
             registry.getContractCount.query(),
             `Registry count query timed out on ${networkConfig.label}.`,
         );
-        if (!result.success) throw new Error("Failed to query contract count");
+        if (!result.success) {
+            throw registryQueryError("Failed to query contract count", result.value);
+        }
         return result.value as number;
-    }, [networkConfig.label, registry]);
+    }, [networkConfig]);
 
     const fetchPage = useCallback(
         async (start: number, count: number) => {
-            if (!registry) throw new Error("Registry not connected");
+            const { registry } = await getRegistryConnection(networkConfig);
 
             const page = await withTimeout(
                 queryContractsPage(registry, start, count),
@@ -39,7 +40,7 @@ export function useRegistry() {
             );
             return page.packages;
         },
-        [networkConfig.label, registry],
+        [networkConfig],
     );
 
     const {
@@ -54,7 +55,7 @@ export function useRegistry() {
         fetchPage,
         getId: (pkg) => pkg.name,
         pageSize: PAGE_SIZE,
-        enabled: !!registry && connected,
+        enabled: connected,
         reverse: true,
     });
 

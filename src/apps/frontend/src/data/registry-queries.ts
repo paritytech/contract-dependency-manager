@@ -1,5 +1,6 @@
+import { stringifyBigInt } from "@dotdm/utils";
 import type { Package, AbiEntry } from "./types";
-import type { RegistryContract } from "../context/network-context";
+import type { RegistryContract } from "../utils/contracts";
 
 export interface ContractNameSearchPage {
     names: string[];
@@ -20,6 +21,10 @@ export function unwrapOption<T>(val: unknown): T | undefined {
     return val as T;
 }
 
+export function registryQueryError(action: string, value: unknown): Error {
+    return new Error(`${action}: ${stringifyBigInt(value)}`);
+}
+
 export async function queryContractByName(
     registry: RegistryContract,
     name: string,
@@ -30,18 +35,27 @@ export async function queryContractByName(
         registry.getAddress.query(name),
     ]);
 
-    const versionCount = versionResult.success ? (versionResult.value as number) : 0;
+    if (!versionResult.success) {
+        throw registryQueryError(`Failed to query version count for ${name}`, versionResult.value);
+    }
+
+    const versionCount = versionResult.value as number;
     if (versionCount === 0) return null;
     const latestVersion = versionCount - 1;
+
+    if (!metadataResult.success) {
+        throw registryQueryError(`Failed to query metadata URI for ${name}`, metadataResult.value);
+    }
+    if (!addressResult.success) {
+        throw registryQueryError(`Failed to query address for ${name}`, addressResult.value);
+    }
 
     return {
         name,
         version: String(latestVersion),
         weeklyCalls: 0,
-        address: addressResult.success ? unwrapOption<string>(addressResult.value) : undefined,
-        metadataUri: metadataResult.success
-            ? unwrapOption<string>(metadataResult.value)
-            : undefined,
+        address: unwrapOption<string>(addressResult.value),
+        metadataUri: unwrapOption<string>(metadataResult.value),
         metadataLoaded: false,
     };
 }
@@ -106,7 +120,7 @@ export async function queryContractsPage(
     count: number,
 ): Promise<ContractPage> {
     const result = await registry.getContracts.query(start, count);
-    if (!result.success) throw new Error("Failed to query contract page");
+    if (!result.success) throw registryQueryError("Failed to query contract page", result.value);
     return parseContractPage(result.value);
 }
 
@@ -143,7 +157,7 @@ export async function queryContractNamesByPrefix(
     limit: number,
 ): Promise<ContractNameSearchPage> {
     const result = await registry.searchContractNames.query(prefix, offset, limit);
-    if (!result.success) throw new Error("Failed to search contract names");
+    if (!result.success) throw registryQueryError("Failed to search contract names", result.value);
     return parseSearchPage(result.value);
 }
 
