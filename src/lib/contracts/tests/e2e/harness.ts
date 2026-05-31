@@ -36,6 +36,7 @@ const ROOT_DIR = resolve(__dirname, "../../../../..");
 // `target/`, not under `target/release/`. Keep this aligned with the path
 // `deploy-registry.ts` reads from.
 const REGISTRY_PVM = resolve(ROOT_DIR, "target/contract-registry.release.polkavm");
+const CDM_ROOT_PVM = resolve(ROOT_DIR, "target/cdm-root.release.polkavm");
 
 // Per-process port counter. Different vitest workers would collide; we don't
 // fan out e2e suites across workers today (vitest.e2e.config.ts pins
@@ -127,7 +128,7 @@ export async function spawnReviveNode(): Promise<NodeHandle> {
 }
 
 async function ensureRegistryBuilt(): Promise<void> {
-    if (existsSync(REGISTRY_PVM)) return;
+    if (existsSync(REGISTRY_PVM) && existsSync(CDM_ROOT_PVM)) return;
     await execFileAsync("make", ["build-registry"], {
         cwd: ROOT_DIR,
         maxBuffer: 16 * 1024 * 1024,
@@ -150,7 +151,7 @@ export async function deployRegistry(wsUrl: string): Promise<HexString> {
     await ensureRegistryBuilt();
     const { stdout } = await execFileAsync(
         "bun",
-        ["run", "src/lib/scripts/deploy-registry.ts", "--assethub-url", wsUrl],
+        ["run", "src/lib/scripts/deploy-registry.ts", "--assethub-url", wsUrl, "--deploy-root"],
         { cwd: ROOT_DIR, maxBuffer: 16 * 1024 * 1024 },
     );
     const match = stdout.match(/^CONTRACTS_REGISTRY_ADDR=(0x[a-fA-F0-9]+)/m);

@@ -41,12 +41,13 @@ compile-all: embed-templates
 	bun build --compile --target=bun-linux-arm64 $(CLI_DIR)/src/cli.ts --outfile dist/cdm-linux-arm64
 
 build-registry:
+	cargo pvm-contract build --manifest-path $(CURDIR)/Cargo.toml -p cdm-root
 	cargo pvm-contract build --manifest-path $(CURDIR)/Cargo.toml -p contract-registry
 
 deploy-registry: build-registry
 	pnpm --filter @dotdm/env build
 	pnpm --filter @dotdm/contracts build
-	bun run src/lib/scripts/deploy-registry.ts --name $(or $(CHAIN),local) $(if $(SURI),--suri "$(SURI)") $(if $(REGISTRY_ADDRESS),--registry-address $(REGISTRY_ADDRESS))
+	bun run src/lib/scripts/deploy-registry.ts --name $(or $(CHAIN),local) $(if $(or $(DEPLOYER_PHRASE),$(SURI)),--suri "$(or $(DEPLOYER_PHRASE),$(SURI))") $(if $(DEPLOY_ROOT),--deploy-root)
 
 build-template:
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter

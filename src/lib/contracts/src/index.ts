@@ -84,6 +84,9 @@ export {
     CONTRACTS_REGISTRY_CRATE,
 } from "@dotdm/utils";
 
+export { createContractFromClient } from "@parity/product-sdk-contracts";
+export { submitAndWatch, type SubmittableTransaction } from "@parity/product-sdk-tx";
+
 export {
     getCdmRoot,
     getContractDir,
