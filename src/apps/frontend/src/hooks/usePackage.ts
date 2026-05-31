@@ -4,9 +4,10 @@ import { queryBulletinJson } from "../data/bulletin-client";
 import type { Package } from "../data/types";
 import { queryContractByName, parseMetadata, metadataCidFromUri } from "../data/registry-queries";
 import { withTimeout } from "../data/timeout";
+import { getRegistryConnection } from "../utils/contracts";
 
 export function usePackage(name: string | undefined) {
-    const { registry, connected, connecting, error: networkError, networkConfig } = useNetwork();
+    const { connected, connecting, error: networkError, networkConfig } = useNetwork();
 
     const [pkg, setPkg] = useState<Package | null>(null);
     const [loading, setLoading] = useState(true);
@@ -20,17 +21,18 @@ export function usePackage(name: string | undefined) {
         setNotFound(false);
         setError(null);
         fetchedRef.current = null;
-    }, [name, registry]);
+    }, [name, networkConfig]);
 
     // Phase 1: Direct on-chain lookup by name
     useEffect(() => {
-        if (!registry || !connected || !name) return;
+        if (!connected || !name) return;
         if (fetchedRef.current === name) return;
         fetchedRef.current = name;
 
         let cancelled = false;
         (async () => {
             try {
+                const { registry } = await getRegistryConnection(networkConfig);
                 const result = await withTimeout(
                     queryContractByName(registry, name),
                     `Registry package query timed out for ${name}.`,
@@ -52,7 +54,7 @@ export function usePackage(name: string | undefined) {
         return () => {
             cancelled = true;
         };
-    }, [registry, connected, name]);
+    }, [connected, name, networkConfig]);
 
     // Phase 2: IPFS metadata enrichment
     const pkgName = pkg?.name;
