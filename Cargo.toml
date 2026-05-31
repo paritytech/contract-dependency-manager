@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["src/contract", "src/lib/cdm/rust", "src/lib/cdm/rust-macros", "src/lib/cdm/import-test"]
+members = [
+    "src/contracts/registry",
+    "src/contracts/cdm-root",
+    "src/lib/cdm/rust",
+    "src/lib/cdm/rust-macros",
+    "src/lib/cdm/import-test",
+]
 
 [workspace.package]
 version = "0.1.0"

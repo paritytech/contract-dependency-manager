@@ -166,7 +166,7 @@ writeFileSync(".cdm/contracts.d.ts", generateContractTypes(resolved));
 - `src/apps/cli/src/lib/{install-pipeline,deploy-pipeline}.ts`
 - `src/lib/contracts/src/{detection,builder,pipeline,deployer,publisher,store,cdm-json,cdm-local-json}.ts`
 - `src/lib/cdm/rust-macros/src/lib.rs` — `cdm::import!()` proc-macro
-- `src/contract/src/lib.rs` — ContractRegistry on-chain contract
+- `src/contracts/registry/lib.rs` — ContractRegistry on-chain contract
 
 **New TypeScript SDK (separate repo, replaces `@dotdm/cdm`):**
 

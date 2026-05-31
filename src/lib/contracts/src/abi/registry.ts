@@ -3,7 +3,7 @@ import type { AbiEntry } from "@parity/product-sdk-contracts";
 /**
  * ABI for the ContractRegistry contract.
  *
- * Source of truth: `src/contract/src/lib.rs` compiled to PolkaVM; this array
+ * Source of truth: `src/contracts/registry/lib.rs` compiled to PolkaVM; this array
  * mirrors the Solidity-ABI export produced by `cargo pvm-contract build`
  * (`target/contract-registry.release.abi.json`). Keep it bit-for-bit identical
  * to the on-chain metadata — editing this file by hand will desync it from
