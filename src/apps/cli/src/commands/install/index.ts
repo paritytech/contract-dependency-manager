@@ -124,9 +124,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         // Batch install: read from cdm.json
         const deps = cdmJson.dependencies;
         if (Object.keys(deps).length === 0) {
-            console.error(
-                "Error: No library specified and no dependencies found in cdm.json.",
-            );
+            console.error("Error: No library specified and no dependencies found in cdm.json.");
             chainClient.destroy();
             process.exit(1);
         }

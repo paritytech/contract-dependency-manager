@@ -512,10 +512,7 @@ if (import.meta.vitest) {
                 },
             } as unknown as CargoPackage;
 
-            expect(extractCdmDependencies(pkg)).toEqual([
-                "@example/counter",
-                "@example/other",
-            ]);
+            expect(extractCdmDependencies(pkg)).toEqual(["@example/counter", "@example/other"]);
         });
     });
 

@@ -3,10 +3,7 @@ import { resolve } from "path";
 import { getCdmRoot, getContractDir, resolveContractAbiPath } from "@dotdm/contracts";
 import type { ResolvedContract, AbiEntry } from "./types";
 
-export function resolveContract(
-    library: string,
-    version: number | "latest",
-): ResolvedContract {
+export function resolveContract(library: string, version: number | "latest"): ResolvedContract {
     // If version is "latest", resolve the symlink
     let resolvedVersion: number;
     if (version === "latest") {

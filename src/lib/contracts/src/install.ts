@@ -354,13 +354,7 @@ if (import.meta.vitest) {
                     "install-done",
                     "pipeline-done",
                 ]);
-                const infoPath = join(
-                    root,
-                    "contracts",
-                    "@example/counter",
-                    "1",
-                    "info.json",
-                );
+                const infoPath = join(root, "contracts", "@example/counter", "1", "info.json");
                 expect(JSON.parse(readFileSync(infoPath, "utf8"))).toMatchObject({
                     name: "@example/counter",
                     version: 1,

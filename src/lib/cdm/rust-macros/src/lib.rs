@@ -172,13 +172,20 @@ fn materialize_abi_import_file(
         .join("contracts")
         .join(package_name)
         .join("abi.json");
-    let parent = abi_path
-        .parent()
-        .ok_or_else(|| format!("Could not determine parent directory for {}", abi_path.display()))?;
+    let parent = abi_path.parent().ok_or_else(|| {
+        format!(
+            "Could not determine parent directory for {}",
+            abi_path.display()
+        )
+    })?;
     std::fs::create_dir_all(parent)
         .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;
-    let bytes = serde_json::to_vec_pretty(abi)
-        .map_err(|e| format!("Failed to serialize local ABI for '{}': {}", package_name, e))?;
+    let bytes = serde_json::to_vec_pretty(abi).map_err(|e| {
+        format!(
+            "Failed to serialize local ABI for '{}': {}",
+            package_name, e
+        )
+    })?;
     std::fs::write(&abi_path, bytes)
         .map_err(|e| format!("Failed to write {}: {}", abi_path.display(), e))?;
     Ok(abi_path)
@@ -300,7 +307,10 @@ fn resolve_installed_abi(
 
     if !abi_path.exists() {
         let parent = abi_path.parent().ok_or_else(|| {
-            format!("Could not determine parent directory for {}", abi_path.display())
+            format!(
+                "Could not determine parent directory for {}",
+                abi_path.display()
+            )
         })?;
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;
@@ -377,10 +387,7 @@ mod tests {
 
     #[test]
     fn materializes_wrapped_cargo_pvm_contract_abi_as_sequence() {
-        let root = std::env::temp_dir().join(format!(
-            "cdm-macro-abi-test-{}",
-            std::process::id()
-        ));
+        let root = std::env::temp_dir().join(format!("cdm-macro-abi-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let artifact = root.join("counter.abi.json");
@@ -390,8 +397,7 @@ mod tests {
         )
         .unwrap();
 
-        let abi_path =
-            materialize_abi_import_file("@example/counter", &artifact, &root).unwrap();
+        let abi_path = materialize_abi_import_file("@example/counter", &artifact, &root).unwrap();
         let content = std::fs::read_to_string(&abi_path).unwrap();
         let value: serde_json::Value = serde_json::from_str(&content).unwrap();
 
