@@ -1,132 +1,122 @@
 {
-  "targets": {
-    "8e7e0cf0a51d8e5e": {
-      "asset-hub": "wss://paseo-asset-hub-next-rpc.polkadot.io",
-      "bulletin": "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs",
-      "registry": "0xa7ae171c78f06c248a9b2556c793aa1df5c9173a"
-    }
-  },
+  "registry": "0xf62c2ece29cd8df2e10040ecfa5a894a5c5d9cb0",
   "dependencies": {
-    "8e7e0cf0a51d8e5e": {
-      "@example/instagram": "latest"
-    }
+    "@example/instagram": "latest"
   },
   "contracts": {
-    "8e7e0cf0a51d8e5e": {
-      "@example/instagram": {
-        "version": 1,
-        "address": "0x6469272A4c5b91cA3c8317410576795fBC78D73A",
-        "abi": [
-          {
-            "type": "constructor",
-            "inputs": [],
-            "stateMutability": "nonpayable"
-          },
-          {
-            "type": "function",
-            "name": "createPost",
-            "inputs": [
-              {
-                "name": "description",
-                "type": "string"
-              },
-              {
-                "name": "photo_cid",
-                "type": "string"
-              }
-            ],
-            "outputs": [
-              {
-                "name": "",
-                "type": "uint64"
-              }
-            ],
-            "stateMutability": "view"
-          },
-          {
-            "type": "function",
-            "name": "getPostCount",
-            "inputs": [
-              {
-                "name": "user",
-                "type": "bytes20"
-              }
-            ],
-            "outputs": [
-              {
-                "name": "",
-                "type": "uint64"
-              }
-            ],
-            "stateMutability": "view"
-          },
-          {
-            "type": "function",
-            "name": "getPost",
-            "inputs": [
-              {
-                "name": "user",
-                "type": "bytes20"
-              },
-              {
-                "name": "index",
-                "type": "uint64"
-              }
-            ],
-            "outputs": [
-              {
-                "name": "",
-                "type": "tuple",
-                "components": [
-                  {
-                    "name": "description",
-                    "type": "string"
-                  },
-                  {
-                    "name": "photo_cid",
-                    "type": "string"
-                  },
-                  {
-                    "name": "timestamp",
-                    "type": "uint64"
-                  }
-                ]
-              }
-            ],
-            "stateMutability": "view"
-          },
-          {
-            "type": "function",
-            "name": "getUserCount",
-            "inputs": [],
-            "outputs": [
-              {
-                "name": "",
-                "type": "uint64"
-              }
-            ],
-            "stateMutability": "view"
-          },
-          {
-            "type": "function",
-            "name": "getUserAt",
-            "inputs": [
-              {
-                "name": "index",
-                "type": "uint64"
-              }
-            ],
-            "outputs": [
-              {
-                "name": "",
-                "type": "bytes20"
-              }
-            ],
-            "stateMutability": "view"
-          }
-        ],
-        "metadataCid": "bafk2bzacebnoogpudglgs4r5yg3lf3ui6wyxv5ci4mt5rqidf6t55glpajpvs"
-      }
+    "@example/instagram": {
+      "version": 1,
+      "address": "0x6469272A4c5b91cA3c8317410576795fBC78D73A",
+      "abi": [
+        {
+          "type": "constructor",
+          "inputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "createPost",
+          "inputs": [
+            {
+              "name": "description",
+              "type": "string"
+            },
+            {
+              "name": "photo_cid",
+              "type": "string"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "",
+              "type": "uint64"
+            }
+          ],
+          "stateMutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "getPostCount",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "bytes20"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "",
+              "type": "uint64"
+            }
+          ],
+          "stateMutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "getPost",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "bytes20"
+            },
+            {
+              "name": "index",
+              "type": "uint64"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "",
+              "type": "tuple",
+              "components": [
+                {
+                  "name": "description",
+                  "type": "string"
+                },
+                {
+                  "name": "photo_cid",
+                  "type": "string"
+                },
+                {
+                  "name": "timestamp",
+                  "type": "uint64"
+                }
+              ]
+            }
+          ],
+          "stateMutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "getUserCount",
+          "inputs": [],
+          "outputs": [
+            {
+              "name": "",
+              "type": "uint64"
+            }
+          ],
+          "stateMutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "getUserAt",
+          "inputs": [
+            {
+              "name": "index",
+              "type": "uint64"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "",
+              "type": "bytes20"
+            }
+          ],
+          "stateMutability": "view"
+        }
+      ],
+      "metadataCid": "bafk2bzacebnoogpudglgs4r5yg3lf3ui6wyxv5ci4mt5rqidf6t55glpajpvs"
     }
   }
 }

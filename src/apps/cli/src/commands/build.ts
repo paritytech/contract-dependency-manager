@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { resolve } from "path";
 import { getChainPreset, getRegistryAddress } from "@dotdm/env";
-import { readCdmJson, resolveFeatures, resolveTargetRegistryAddress } from "@dotdm/contracts";
+import { readCdmJson, resolveFeatures } from "@dotdm/contracts";
 import { runBuildWithUI } from "../lib/ui";
 
 const build = new Command("build")
@@ -27,8 +27,7 @@ function resolveRegistryAddress(rootDir: string, opts: BuildOptions): string {
     }
 
     const cdmResult = readCdmJson(rootDir);
-    const target = Object.values(cdmResult?.cdmJson.targets ?? {})[0];
-    return target ? resolveTargetRegistryAddress(target) : getRegistryAddress();
+    return cdmResult?.cdmJson.registry ?? getRegistryAddress();
 }
 
 build.action(async (opts: BuildOptions) => {
