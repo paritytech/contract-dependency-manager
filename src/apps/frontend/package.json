@@ -21,8 +21,6 @@
         "@parity/product-sdk-contracts": "catalog:",
         "@parity/product-sdk-descriptors": "catalog:",
         "@parity/product-sdk-host": "catalog:",
-        "@parity/product-sdk-keys": "catalog:",
-        "@polkadot-labs/hdkd-helpers": "catalog:",
         "dompurify": "catalog:",
         "marked": "catalog:",
         "react": "catalog:",
