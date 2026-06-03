@@ -1,17 +1,21 @@
-import { homedir } from "os";
 import { resolve } from "path";
 import { mkdirSync, writeFileSync, symlinkSync, unlinkSync } from "fs";
 
-export function getCdmRoot(): string {
-    return process.env.CDM_ROOT ?? resolve(homedir(), ".cdm");
+export function getCdmRoot(artifactsDir?: string): string {
+    return (
+        artifactsDir ??
+        process.env.CDM_ARTIFACTS_DIR ??
+        process.env.CDM_ROOT ??
+        resolve(process.cwd(), ".cdm")
+    );
 }
 
-export function getContractDir(targetHash: string, library: string, version: number): string {
-    return resolve(getCdmRoot(), targetHash, "contracts", library, String(version));
+export function getContractDir(library: string, version: number, artifactsDir?: string): string {
+    return resolve(getCdmRoot(artifactsDir), "contracts", library, String(version));
 }
 
 export interface SaveContractOptions {
-    targetHash: string;
+    artifactsDir?: string;
     library: string;
     version: number;
     abi: unknown[];
@@ -21,7 +25,7 @@ export interface SaveContractOptions {
 }
 
 export function saveContract(opts: SaveContractOptions): string {
-    const dir = getContractDir(opts.targetHash, opts.library, opts.version);
+    const dir = getContractDir(opts.library, opts.version, opts.artifactsDir);
     mkdirSync(dir, { recursive: true });
 
     writeFileSync(resolve(dir, "abi.json"), JSON.stringify(opts.abi, null, 2));
@@ -31,7 +35,6 @@ export function saveContract(opts: SaveContractOptions): string {
         JSON.stringify(
             {
                 name: opts.library,
-                targetHash: opts.targetHash,
                 version: opts.version,
                 address: opts.address,
                 metadataCid: opts.metadataCid,
@@ -53,9 +56,9 @@ export function saveContract(opts: SaveContractOptions): string {
 }
 
 export function resolveContractAbiPath(
-    targetHash: string,
     library: string,
     version: number,
+    artifactsDir?: string,
 ): string {
-    return resolve(getContractDir(targetHash, library, version), "abi.json");
+    return resolve(getContractDir(library, version, artifactsDir), "abi.json");
 }

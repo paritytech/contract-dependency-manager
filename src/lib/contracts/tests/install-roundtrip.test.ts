@@ -116,7 +116,6 @@ describe("install round-trip preserves new-shape ABI", () => {
         const fetchedAbi = fetched.abi as AbiEntry[];
 
         const savedPath = saveContract({
-            targetHash: "deadbeef",
             library: "round_trip_fixture",
             version: 0,
             abi: fetchedAbi,
@@ -125,7 +124,7 @@ describe("install round-trip preserves new-shape ABI", () => {
             metadataCid: "bafy-test-cid",
         });
 
-        expect(savedPath).toBe(getContractDir("deadbeef", "round_trip_fixture", 0));
+        expect(savedPath).toBe(getContractDir("round_trip_fixture", 0));
 
         const rereadAbi = JSON.parse(readFileSync(resolve(savedPath, "abi.json"), "utf-8"));
         expect(rereadAbi).toEqual(sampleAbi);
@@ -136,7 +135,6 @@ describe("install round-trip preserves new-shape ABI", () => {
         const info = JSON.parse(readFileSync(resolve(savedPath, "info.json"), "utf-8"));
         expect(info).toEqual({
             name: "round_trip_fixture",
-            targetHash: "deadbeef",
             version: 0,
             address: "0x0000000000000000000000000000000000000001",
             metadataCid: "bafy-test-cid",

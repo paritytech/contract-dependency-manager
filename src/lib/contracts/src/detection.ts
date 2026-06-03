@@ -25,7 +25,7 @@ export interface ContractInfo {
     readmePath: string | null;
     /** Path to contract crate directory */
     path: string;
-    /** Crate names this contract depends on (from Cargo dependency graph) */
+    /** Crate names this contract depends on */
     dependsOnCrates: string[];
 }
 
@@ -137,13 +137,23 @@ function extractCdmPackage(pkg: CargoPackage): string | null {
     return typeof packageName === "string" ? packageName : null;
 }
 
+function extractCdmDependencies(pkg: CargoPackage): string[] {
+    const meta = pkg.metadata;
+    if (!meta || typeof meta !== "object") return [];
+    const cdm = (meta as Record<string, unknown>).cdm;
+    if (!cdm || typeof cdm !== "object") return [];
+    const dependencies = (cdm as Record<string, unknown>).dependencies;
+    if (!Array.isArray(dependencies)) return [];
+    return dependencies.filter((dep): dep is string => typeof dep === "string");
+}
+
 /**
  * Detect all PVM contracts in a workspace using cargo metadata.
  *
  * This replaces the old regex-based detection with Cargo's own resolver:
  * - Workspace members come from cargo metadata (not recursive file scanning)
  * - PVM contract detection uses resolved dependency graph (not string matching)
- * - Inter-contract dependencies come from Cargo.toml (not regex on source)
+ * - Inter-contract dependencies come from Cargo.toml metadata
  * - CDM package names come from `[package.metadata.cdm]` in Cargo.toml
  */
 export function detectContracts(rootDir: string): ContractInfo[] {
@@ -161,15 +171,26 @@ export function detectContracts(rootDir: string): ContractInfo[] {
             workspacePkgIds.has(pkg.id) && isPvmContract(pkg) && extractCdmPackage(pkg) !== null,
     );
 
-    // Build set of known contract crate names for filtering deps
+    // Build set of known contract crate names/package names for filtering deps.
     const contractNames = new Set(pvmPackages.map((p) => p.name));
+    const packageToCrate = new Map<string, string>();
+    for (const pkg of pvmPackages) {
+        const packageName = extractCdmPackage(pkg);
+        if (packageName) {
+            packageToCrate.set(packageName, pkg.name);
+        }
+    }
 
     return pvmPackages.map((pkg) => {
         // Get inter-contract dependencies from Cargo's dependency list
         // Only include normal dependencies that are also PVM contracts in this workspace
-        const deps = pkg.dependencies
+        const cargoDeps = pkg.dependencies
             .filter((d) => (d.kind === null || d.kind === "normal") && contractNames.has(d.name))
             .map((d) => d.name);
+        const cdmPackageDeps = extractCdmDependencies(pkg)
+            .map((packageName) => packageToCrate.get(packageName))
+            .filter((crate): crate is string => typeof crate === "string");
+        const deps = [...new Set([...cargoDeps, ...cdmPackageDeps])];
 
         const manifestDir = resolve(pkg.manifest_path, "..");
         const configuredReadme = pkg.readme ? resolve(manifestDir, pkg.readme) : null;
@@ -478,6 +499,20 @@ if (import.meta.vitest) {
             writeFileSync(join(root, "README.md"), "workspace docs");
 
             expect(findReadmeWithFallback(contractDir, root)).toBe(join(root, "README.md"));
+        });
+    });
+
+    describe("cdm metadata dependencies", () => {
+        test("extracts package dependency names from Cargo metadata", () => {
+            const pkg = {
+                metadata: {
+                    cdm: {
+                        dependencies: ["@example/counter", "@example/other", 7],
+                    },
+                },
+            } as unknown as CargoPackage;
+
+            expect(extractCdmDependencies(pkg)).toEqual(["@example/counter", "@example/other"]);
         });
     });
 

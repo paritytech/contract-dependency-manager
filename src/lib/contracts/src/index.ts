@@ -94,10 +94,8 @@ export {
 
 export {
     type CdmJsonContract,
-    type CdmJsonTarget,
     type CdmJson,
-    computeTargetHash,
-    resolveTargetRegistryAddress,
+    normalizeCdmJson,
     readCdmJson,
     writeCdmJson,
 } from "./cdm-json";

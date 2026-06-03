@@ -39,8 +39,8 @@ src/
       src/registry.ts          #   ContractRegistry ink contract interaction
       src/builder.ts           #   Cargo build wrapper (cargo pvm-contract build)
       src/cid.ts               #   CID computation
-      src/store.ts             #   ~/.cdm/ directory persistence (saveContract, getCdmRoot, getContractDir)
-      src/cdm-json.ts          #   cdm.json reading/writing, target hash computation
+      src/store.ts             #   Project-local .cdm/ artifact persistence
+      src/cdm-json.ts          #   Flat cdm.json reading/writing
     descriptors/               # @dotdm/descriptors — papi-generated chain descriptors
     env/                       # @dotdm/env — Chain environment
       src/connection.ts        #   WebSocket, Smoldot, Bulletin, and IPFS gateway connections
@@ -132,7 +132,7 @@ Entry: `src/apps/cli/src/cli.ts` (Commander.js)
 
 **Shared imports**: CLI imports from `@dotdm/contracts` (detection, deployer, publisher, registry, builder, cid, store, cdm-json), `@dotdm/env` (connection, signer, KNOWN_CHAINS, getChainPreset), `@dotdm/descriptors`, `@dotdm/cdm`, and `@dotdm/utils` (all constants, stringifyBigInt). All constants (`ALICE_SS58`, `GAS_LIMIT`, `STORAGE_DEPOSIT_LIMIT`, `CONTRACTS_REGISTRY_CRATE`, `DEFAULT_NODE_URL`) live in `@dotdm/utils`.
 
-**Install command**: `cdm install` saves contract data (ABI, metadata, address) to `~/.cdm/<targetHash>/contracts/<name>/<version>/`. The install command implementation is split across subfiles: `index.ts`, `typescript.ts`, `rust.ts`.
+**Install command**: `cdm install` writes the registry snapshot to flat `cdm.json` and saves ABI/metadata artifacts to project-local `.cdm/contracts/<name>/<version>/`. User account data still lives under `~/.cdm/accounts.json`. The install command implementation is split across subfiles: `index.ts`, `typescript.ts`, `rust.ts`.
 
 ## Frontend Architecture
 

@@ -14,7 +14,6 @@ export interface InstallLibraryRequest {
 }
 
 export interface InstallResult {
-    targetHash: string;
     library: string;
     version: number;
     address: string;
@@ -60,7 +59,7 @@ export interface InstallContractsOptions {
     libraries: InstallLibraryRequest[];
     registry: RegistryContract;
     ipfs: InstallIpfsGateway;
-    targetHash: string;
+    artifactsDir?: string;
     onEvent?: (event: InstallEvent) => void;
 }
 
@@ -217,7 +216,7 @@ async function installOne(
     }
 
     const savedPath = saveContract({
-        targetHash: opts.targetHash,
+        artifactsDir: opts.artifactsDir,
         library,
         version,
         abi,
@@ -227,7 +226,6 @@ async function installOne(
     });
 
     const result = {
-        targetHash: opts.targetHash,
         library,
         version,
         address: contractAddress,
@@ -338,7 +336,6 @@ if (import.meta.vitest) {
                     libraries: [{ library: "@example/counter", requestedVersion: "latest" }],
                     registry: fakeRegistry(),
                     ipfs: fakeIpfs(),
-                    targetHash: "target123",
                     onEvent: (event) => events.push(event),
                 });
 
@@ -357,14 +354,7 @@ if (import.meta.vitest) {
                     "install-done",
                     "pipeline-done",
                 ]);
-                const infoPath = join(
-                    root,
-                    "target123",
-                    "contracts",
-                    "@example/counter",
-                    "1",
-                    "info.json",
-                );
+                const infoPath = join(root, "contracts", "@example/counter", "1", "info.json");
                 expect(JSON.parse(readFileSync(infoPath, "utf8"))).toMatchObject({
                     name: "@example/counter",
                     version: 1,
@@ -387,7 +377,6 @@ if (import.meta.vitest) {
                             json: async () => ({ abi: [] }),
                         }),
                     },
-                    targetHash: "target123",
                 });
 
                 expect(summary.success).toBe(false);
@@ -422,7 +411,6 @@ if (import.meta.vitest) {
                         },
                     } as unknown as RegistryContract,
                     ipfs: fakeIpfs(),
-                    targetHash: "target123",
                 });
 
                 expect(summary.success).toBe(false);

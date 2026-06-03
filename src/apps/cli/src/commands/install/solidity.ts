@@ -2,16 +2,15 @@ import { dirname, resolve } from "path";
 import { mkdirSync, writeFileSync } from "fs";
 import { generateSolidityImport, readCdmJson } from "@dotdm/contracts";
 import type { SolidityAbiEntry } from "@dotdm/contracts";
-import type { InstallResult } from "./index";
 
-export async function postInstallSolidity(result: InstallResult): Promise<void> {
+export async function postInstallSolidity(): Promise<void> {
     const cdmResult = readCdmJson();
     if (!cdmResult) return;
 
-    const contractsForTarget = cdmResult.cdmJson.contracts?.[result.targetHash];
-    if (!contractsForTarget) return;
+    const installedContracts = cdmResult.cdmJson.contracts;
+    if (!installedContracts) return;
 
-    for (const [library, data] of Object.entries(contractsForTarget)) {
+    for (const [library, data] of Object.entries(installedContracts)) {
         const generated = generateSolidityImport({
             library,
             address: data.address,

@@ -6,33 +6,31 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-#[allow(dead_code)]
 #[derive(serde::Deserialize)]
-struct CdmJsonTarget {
-    #[serde(rename = "asset-hub")]
-    asset_hub: String,
-    bulletin: String,
-    registry: Option<String>,
+struct CdmJsonContract {
+    version: u64,
+    abi: serde_json::Value,
 }
 
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
 enum VersionSpec {
-    Pinned(u64),
+    Pinned(#[allow(dead_code)] u64),
     Latest(#[allow(dead_code)] String),
 }
 
 #[derive(serde::Deserialize)]
 struct CdmJson {
     #[allow(dead_code)]
-    targets: HashMap<String, CdmJsonTarget>,
-    dependencies: HashMap<String, HashMap<String, VersionSpec>>,
+    dependencies: HashMap<String, VersionSpec>,
+    contracts: Option<HashMap<String, CdmJsonContract>>,
 }
 
 #[derive(serde::Deserialize)]
 struct CargoMetadata {
     packages: Vec<CargoPackage>,
     workspace_members: Vec<String>,
+    workspace_root: PathBuf,
     target_directory: PathBuf,
 }
 
@@ -103,7 +101,13 @@ fn push_unique(values: &mut Vec<String>, value: &str) {
     }
 }
 
-fn abi_path_candidates(target_dir: &Path, package: &CargoPackage) -> Vec<PathBuf> {
+fn push_unique_path(values: &mut Vec<PathBuf>, value: PathBuf) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
+}
+
+fn abi_path_candidates(target_dirs: &[PathBuf], package: &CargoPackage) -> Vec<PathBuf> {
     let mut names = Vec::new();
     for target in package
         .targets
@@ -117,14 +121,74 @@ fn abi_path_candidates(target_dir: &Path, package: &CargoPackage) -> Vec<PathBuf
     push_unique(&mut names, &package.name.replace('-', "_"));
 
     let mut candidates = Vec::new();
-    for name in names {
-        for profile in ["release", "debug"] {
-            candidates.push(target_dir.join(profile).join(format!("{}.abi.json", name)));
-            candidates.push(target_dir.join(format!("{}.{}.abi.json", name, profile)));
+    for target_dir in target_dirs {
+        for name in &names {
+            for profile in ["release", "debug"] {
+                candidates.push(target_dir.join(profile).join(format!("{}.abi.json", name)));
+                candidates.push(target_dir.join(format!("{}.{}.abi.json", name, profile)));
+            }
+            candidates.push(target_dir.join(format!("{}.abi.json", name)));
         }
-        candidates.push(target_dir.join(format!("{}.abi.json", name)));
     }
     candidates
+}
+
+fn materialize_abi_import_file(
+    package_name: &str,
+    artifact_path: &Path,
+    project_root: &Path,
+) -> Result<PathBuf, String> {
+    let content = std::fs::read_to_string(artifact_path)
+        .map_err(|e| format!("Failed to read {}: {}", artifact_path.display(), e))?;
+    let value: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse {}: {}", artifact_path.display(), e))?;
+
+    let abi = match &value {
+        serde_json::Value::Array(_) => return Ok(artifact_path.to_path_buf()),
+        serde_json::Value::Object(object) => object.get("abi").ok_or_else(|| {
+            format!(
+                "Local ABI artifact {} is an object but does not contain an `abi` field",
+                artifact_path.display()
+            )
+        })?,
+        _ => {
+            return Err(format!(
+                "Local ABI artifact {} must be an ABI array or object with an `abi` field",
+                artifact_path.display()
+            ));
+        }
+    };
+
+    if !abi.is_array() {
+        return Err(format!(
+            "Local ABI artifact {} has a non-array `abi` field",
+            artifact_path.display()
+        ));
+    }
+
+    let abi_path = project_root
+        .join(".cdm")
+        .join("local")
+        .join("contracts")
+        .join(package_name)
+        .join("abi.json");
+    let parent = abi_path.parent().ok_or_else(|| {
+        format!(
+            "Could not determine parent directory for {}",
+            abi_path.display()
+        )
+    })?;
+    std::fs::create_dir_all(parent)
+        .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;
+    let bytes = serde_json::to_vec_pretty(abi).map_err(|e| {
+        format!(
+            "Failed to serialize local ABI for '{}': {}",
+            package_name, e
+        )
+    })?;
+    std::fs::write(&abi_path, bytes)
+        .map_err(|e| format!("Failed to write {}: {}", abi_path.display(), e))?;
+    Ok(abi_path)
 }
 
 fn resolve_local_abi(package_name: &str, manifest_dir: &Path) -> Result<Option<PathBuf>, String> {
@@ -145,9 +209,23 @@ fn resolve_local_abi(package_name: &str, manifest_dir: &Path) -> Result<Option<P
     match matches.as_slice() {
         [] => Ok(None),
         [package] => {
-            let candidates = abi_path_candidates(&metadata.target_directory, package);
+            let mut target_dirs = Vec::new();
+            push_unique_path(&mut target_dirs, metadata.target_directory.clone());
+            push_unique_path(&mut target_dirs, metadata.workspace_root.join("target"));
+
+            if let Some(cdm_json_path) = find_cdm_json(manifest_dir) {
+                if let Some(project_root) = cdm_json_path.parent() {
+                    push_unique_path(&mut target_dirs, project_root.join("target"));
+                }
+            }
+
+            let candidates = abi_path_candidates(&target_dirs, package);
+            let project_root = find_cdm_json(manifest_dir)
+                .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
+                .unwrap_or_else(|| metadata.workspace_root.clone());
+
             if let Some(path) = candidates.iter().find(|path| path.exists()) {
-                return Ok(Some(path.clone()));
+                return materialize_abi_import_file(package_name, path, &project_root).map(Some);
             }
 
             let searched = candidates
@@ -197,72 +275,50 @@ fn resolve_installed_abi(
     let cdm: CdmJson = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse {}: {}", cdm_json_path.display(), e))?;
 
-    let mut found: Vec<(String, &VersionSpec)> = Vec::new();
-    for (hash, deps) in &cdm.dependencies {
-        if let Some(version) = deps.get(package_name) {
-            found.push((hash.clone(), version));
-        }
-    }
-
-    if found.is_empty() {
+    if !cdm.dependencies.contains_key(package_name) {
         return Err(format!(
             "Package '{}' not found in cdm.json dependencies. Run 'cdm install {}' first.",
             package_name, package_name
         ));
     }
 
-    if found.len() > 1 {
-        let hashes: Vec<&str> = found.iter().map(|(h, _)| h.as_str()).collect();
-        return Err(format!(
-            "Package '{}' found in multiple targets: [{}]. Target disambiguation is not yet supported.",
-            package_name,
-            hashes.join(", ")
-        ));
-    }
+    let contracts = cdm.contracts.as_ref().ok_or_else(|| {
+        format!(
+            "No contracts found in cdm.json. Run 'cdm install {}' first.",
+            package_name
+        )
+    })?;
+    let contract = contracts.get(package_name).ok_or_else(|| {
+        format!(
+            "Package '{}' has no installed contract data in cdm.json. Run 'cdm install {}' first.",
+            package_name, package_name
+        )
+    })?;
 
-    let (target_hash, version_spec) = &found[0];
-
-    let cdm_root = match std::env::var_os("CDM_ROOT") {
-        Some(p) => PathBuf::from(p),
-        None => match home::home_dir() {
-            Some(h) => h.join(".cdm"),
-            None => return Err("Could not determine home directory".to_string()),
-        },
-    };
-
-    let version: u64 = match version_spec {
-        VersionSpec::Pinned(v) => *v,
-        VersionSpec::Latest(_) => {
-            let latest_link = cdm_root
-                .join(target_hash)
-                .join("contracts")
-                .join(package_name)
-                .join("latest");
-            let target = std::fs::read_link(&latest_link).map_err(|e| {
-                format!(
-                    "Could not read latest symlink at {}: {}. Run 'cdm install {}' first.",
-                    latest_link.display(),
-                    e,
-                    package_name
-                )
-            })?;
-            let version_str = target.to_string_lossy();
-            version_str.parse::<u64>().map_err(|_| {
-                format!(
-                    "Could not parse version from latest symlink at {}. Target: {}",
-                    latest_link.display(),
-                    version_str
-                )
-            })?
-        }
-    };
-
+    let cdm_root = cdm_json_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(".cdm");
     let abi_path = cdm_root
-        .join(target_hash)
         .join("contracts")
         .join(package_name)
-        .join(version.to_string())
+        .join(contract.version.to_string())
         .join("abi.json");
+
+    if !abi_path.exists() {
+        let parent = abi_path.parent().ok_or_else(|| {
+            format!(
+                "Could not determine parent directory for {}",
+                abi_path.display()
+            )
+        })?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;
+        let abi = serde_json::to_vec_pretty(&contract.abi)
+            .map_err(|e| format!("Failed to serialize ABI for '{}': {}", package_name, e))?;
+        std::fs::write(&abi_path, abi)
+            .map_err(|e| format!("Failed to write {}: {}", abi_path.display(), e))?;
+    };
 
     if !abi_path.exists() {
         return Err(format!(
@@ -317,7 +373,7 @@ mod tests {
             }],
         };
 
-        let candidates = abi_path_candidates(Path::new("/workspace/target"), &package);
+        let candidates = abi_path_candidates(&[PathBuf::from("/workspace/target")], &package);
         assert!(candidates.contains(&PathBuf::from(
             "/workspace/target/release/counter-reader.abi.json"
         )));
@@ -327,6 +383,35 @@ mod tests {
         assert!(candidates.contains(&PathBuf::from(
             "/workspace/target/counter-reader.release.abi.json"
         )));
+    }
+
+    #[test]
+    fn materializes_wrapped_cargo_pvm_contract_abi_as_sequence() {
+        let root = std::env::temp_dir().join(format!("cdm-macro-abi-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let artifact = root.join("counter.abi.json");
+        std::fs::write(
+            &artifact,
+            r#"{"abi":[{"type":"function","name":"getCount","inputs":[],"outputs":[]}],"storageLayout":{"storage":[]}}"#,
+        )
+        .unwrap();
+
+        let abi_path = materialize_abi_import_file("@example/counter", &artifact, &root).unwrap();
+        let content = std::fs::read_to_string(&abi_path).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        assert!(value.is_array());
+        assert_eq!(
+            abi_path,
+            root.join(".cdm")
+                .join("local")
+                .join("contracts")
+                .join("@example/counter")
+                .join("abi.json")
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
 

@@ -18,6 +18,7 @@ abi-gen = ["pvm-contract-sdk/abi-gen"]
 
 [package.metadata.cdm]
 package = "@example/counter-writer"
+dependencies = ["@example/counter"]
 
 [dependencies]
 cdm = { workspace = true }
@@ -25,5 +26,3 @@ pvm-contract-sdk = { workspace = true }
 pvm-cdm = { workspace = true }
 polkavm-derive = { workspace = true }
 picoalloc = { workspace = true }
-# Build/deploy ordering only — source consumes `counter` via `cdm::import!`.
-counter = { path = "../counter" }

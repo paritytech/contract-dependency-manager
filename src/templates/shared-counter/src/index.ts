@@ -2,40 +2,26 @@ import {
     ContractManager,
     ensureContractAccountMapped,
     type CdmJson,
-    type CdmJsonTarget,
 } from "@parity/product-sdk-contracts";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { createDevSigner, getDevPublicKey } from "@parity/product-sdk-tx";
 import { ss58Address } from "@polkadot-labs/hdkd-helpers";
-import { createClient, type ChainDefinition, type SS58String } from "polkadot-api";
+import { createClient, type SS58String } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import cdmJson from "../cdm.json";
 
-function getTarget(config: CdmJson): CdmJsonTarget {
-    const target = Object.values(config.targets)[0];
-    if (!target) {
-        throw new Error(
-            "No CDM target found. Run `cdm i -n paseo @example/counter @example/counter-writer @example/counter-reader` first.",
-        );
-    }
-    return target;
-}
-
-function descriptorFor(_target: CdmJsonTarget): ChainDefinition {
-    return paseo_asset_hub;
-}
+const PASEO_ASSET_HUB_URL = "wss://paseo-asset-hub-next-rpc.polkadot.io";
 
 // --- Setup signer (Alice) ---
 const signer = createDevSigner("Alice");
 const aliceAddress = ss58Address(getDevPublicKey("Alice"), 42) as SS58String;
 
 // --- Create Product SDK contract manager from cdm.json ---
-const target = getTarget(cdmJson as CdmJson);
-const client = createClient(getWsProvider(target["asset-hub"]));
+const client = createClient(getWsProvider(PASEO_ASSET_HUB_URL));
 const contracts = ContractManager.fromClient(
     cdmJson as CdmJson,
     client,
-    descriptorFor(target),
+    paseo_asset_hub,
     {
         defaultOrigin: aliceAddress,
         defaultSigner: signer,
