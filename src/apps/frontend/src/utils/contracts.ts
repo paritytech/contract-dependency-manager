@@ -21,11 +21,7 @@ async function createRegistryConnection(networkConfig: NetworkConfig): Promise<R
         client.raw.assetHub,
         networkConfig.assetHubDescriptor,
     );
-    const registry = createContract(
-        runtime,
-        networkConfig.registryAddress,
-        CONTRACTS_REGISTRY_ABI,
-    );
+    const registry = createContract(runtime, networkConfig.registryAddress, CONTRACTS_REGISTRY_ABI);
 
     return { client, registry };
 }
