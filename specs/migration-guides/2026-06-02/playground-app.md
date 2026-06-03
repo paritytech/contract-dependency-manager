@@ -131,13 +131,14 @@ If deploying the staging package, update both places to `@staging/playground-reg
 
 That means a simple Rust dependency update to the latest `cdm` crate can break this legacy contract even if the global CDM CLI is latest.
 
-There are three viable paths:
+There are several viable paths:
 
 1. Keep the Rust `cdm` proc-macro dependency pinned to the existing legacy-compatible commit and keep using the old target-hash manifest for Rust builds. This conflicts with the new flat `cdm.json` goal and is only a short-term escape hatch.
-2. Add a compatibility mode to CDM's Rust `cdm::import!` macro that detects legacy `pvm_contract` consumers and emits legacy `pvm::abi_import!(..., cdm = "...")` while reading the new flat `cdm.json` and project `.cdm` artifacts.
-3. Rewrite `contracts/registry/lib.rs` to the current SDK. This is the clean long-term solution, but it is larger because this contract uses `OrderedIndex`, stored CDM references, and legacy storage APIs.
+2. Change only the `@mock/reputation` import to a legacy-compatible/manual import path that works with flat installed ABI artifacts.
+3. Add a compatibility mode to CDM's Rust `cdm::import!` macro that detects legacy `pvm_contract` consumers and emits legacy `pvm::abi_import!(..., cdm = "...")` while reading the new flat `cdm.json` and project `.cdm` artifacts.
+4. Rewrite `contracts/registry/lib.rs` to the current SDK. This is the clean long-term solution, but it is larger because this contract uses `OrderedIndex`, stored CDM references, and legacy storage APIs.
 
-For this migration, do not assume `cdm::import!` will work in the legacy contract until path 2 exists or the contract has been rewritten. This is the main blocker found while preparing this guide.
+For this migration, do not assume latest-CDM `cdm::import!` will work unchanged in a legacy `pvm_contract` contract. This does not inherently require a full contract rewrite; the likely migration is to fix the `@mock/reputation` import path while leaving the rest of the legacy contract on `charles/cdm-integration`.
 
 ## Install The Flat Manifest
 
@@ -269,6 +270,6 @@ If this fails at `cdm::import!("@mock/reputation")`, that is the legacy/current 
 
 ## Gaps To Discuss
 
-- The latest CDM Rust import macro currently targets the new SDK, but this repo's registry contract is legacy and imports `@mock/reputation`. A compatibility macro mode or a contract rewrite is required for a clean flat-manifest migration.
+- The latest CDM Rust import macro currently targets the new SDK, but this repo's registry contract is legacy and imports `@mock/reputation`. The expected migration may be limited to that import path, either through a legacy-compatible import helper or a manual ABI import; a full contract rewrite is only the larger cleanup path.
 - `cdm.json` no longer stores endpoints. Scripts that previously inferred Asset Hub or IPFS gateway from the manifest need an explicit environment/preset input.
 - The app should use product-sdk's strict live resolver. Silent fallback from live registry lookup to a stale local snapshot should be avoided because it can pair a stale ABI with a newer address or hide registry failures.
