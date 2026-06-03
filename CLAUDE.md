@@ -7,6 +7,7 @@ CLI and web tooling for managing PVM smart contract dependencies on Polkadot. Au
 - **Always act as team leader.** The primary agent the user is talking to MUST act as a team leader and delegate work to sub-agents for almost everything.
 - **Always use team mode.** You MUST always run agents in team mode (using `TeamCreate` + `Task` with `team_name`) so the user can properly watch their work. Never use standalone agents outside of a team. This applies to ALL agent usage — no exceptions.
 - **Always format when done.** After finishing code changes, run `make format` to ensure consistent formatting before presenting results to the user.
+- **Always add a changeset for releasable changes.** Any change that affects a publishable workspace package (everything except `@dotdm/frontend` and `@dotdm/scripts`, per [.changeset/config.json](.changeset/config.json)) requires a changeset file in `.changeset/`. Create it as part of the change — do not wait to be asked. Use `---` frontmatter listing each affected package with `patch`/`minor`/`major`, followed by a one-line summary. Skip only for changes that touch no publishable packages (docs-only, frontend-only, scripts-only, CI/tooling).
 
 ## Monorepo Structure
 
