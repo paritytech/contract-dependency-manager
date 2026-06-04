@@ -9,11 +9,11 @@ packages:
 catalog:
   polkadot-api: ^2.1.5
   "@polkadot-api/sdk-ink": ^0.7.0
-  "@novasamatech/host-api": 0.8.2
+  "@novasamatech/host-api": 0.8.4
   "@novasamatech/product-sdk": 0.7.9-4
   "@parity/bulletin-sdk": ^0.3.0
-  "@parity/product-sdk-bulletin": 0.4.2
   "@parity/product-sdk-chain-client": 0.5.3
+  "@parity/product-sdk-cloud-storage": 0.5.3
   "@parity/product-sdk-contracts": 0.7.0
   "@parity/product-sdk-descriptors": 0.5.2
   "@parity/product-sdk-host": 0.6.1
@@ -37,6 +37,7 @@ catalog:
   multiformats: ^13.4.2
   vite: ^7.3.1
   "@vitejs/plugin-react": ^5.1.1
+  esbuild: ^0.28.0
   typescript: ^5.9.3
   turbo: ^2.3.0
   eslint: ^9.39.1

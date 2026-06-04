@@ -1,4 +1,4 @@
-import { queryJson } from "@parity/product-sdk-bulletin";
+import { queryJson } from "@parity/product-sdk-cloud-storage";
 import type { ProductSdkEnvironment } from "@dotdm/env/registry";
 import { withTimeout } from "./timeout";
 

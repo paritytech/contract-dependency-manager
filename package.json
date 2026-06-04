@@ -4,7 +4,7 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev",
+    "dev": "pnpm --filter @dotdm/frontend dev",
     "lint": "turbo lint",
     "clean": "turbo clean",
     "test": "vitest run",

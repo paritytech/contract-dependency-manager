@@ -3,16 +3,16 @@ import type { PolkadotSigner } from "polkadot-api";
 import type { CdmBulletinApi } from "@dotdm/env";
 import {
     AsyncBulletinClient,
-    BulletinClient,
-    type BulletinApi,
+    CloudStorageClient,
+    type CloudStorageApi,
     type BulletinTypedApi as ProductBulletinTypedApi,
     type StoreBuilder,
     type SubmitFn,
-} from "@parity/product-sdk-bulletin";
+} from "@parity/product-sdk-cloud-storage";
 import type { Metadata } from "./deployer";
 
 /**
- * Thin wrapper around product-sdk's `BulletinClient.store(...).send()`.
+ * Thin wrapper around product-sdk's `CloudStorageClient.store(...).send()`.
  *
  * Kept as a class with the original surface so downstream callers
  * (deploy-pipeline.ts) don't need to change in this migration step.
@@ -28,18 +28,18 @@ import type { Metadata } from "./deployer";
 export class MetadataPublisher {
     public signer: PolkadotSigner;
     public bulletinApi: CdmBulletinApi;
-    private bulletin: BulletinClient;
+    private bulletin: CloudStorageClient;
 
     constructor(signer: PolkadotSigner, api: CdmBulletinApi, client: PolkadotClient) {
         this.signer = signer;
         this.bulletinApi = api;
-        this.bulletin = BulletinClient.from(
+        this.bulletin = CloudStorageClient.from(
             new AsyncBulletinClient(
                 api as unknown as ProductBulletinTypedApi,
                 signer,
                 client.submit as SubmitFn,
             ),
-            api as unknown as BulletinApi,
+            api as unknown as CloudStorageApi,
         );
     }
 
