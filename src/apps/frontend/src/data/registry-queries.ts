@@ -1,4 +1,4 @@
-import { stringifyBigInt } from "@dotdm/utils";
+import { stringifyBigInt } from "@parity/cdm-utils";
 import type { Package, AbiEntry } from "./types";
 import type { RegistryContract } from "../utils/contracts";
 

@@ -61,7 +61,7 @@ jobs:
             # Build all publishable packages
             - name: Build packages
               if: steps.changesets.outputs.found == 'true'
-              run: pnpm -r --filter "@dotdm/utils" --filter "@dotdm/env" --filter "@dotdm/contracts" --filter "@dotdm/cdm" build
+              run: pnpm -r --filter "@parity/cdm-utils" --filter "@parity/cdm-env" --filter "@parity/cdm-builder" --filter "@parity/cdm-codegen" build
 
             # Commit version bumps
             - name: Commit version changes
@@ -100,7 +100,7 @@ jobs:
               if: steps.changesets.outputs.found == 'true'
               id: tag
               run: |
-                  # Use the @dotdm/cli version as the release tag
+                  # Use the @parity/cdm-cli version as the release tag
                   VERSION=$(node -p "require('./src/apps/cli/package.json').version")
                   TAG="v${VERSION}"
                   echo "tag=$TAG" >> $GITHUB_OUTPUT

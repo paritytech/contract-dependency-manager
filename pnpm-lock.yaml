@@ -155,16 +155,16 @@ importers:
 
   src/apps/cli:
     dependencies:
-      '@dotdm/cdm':
-        specifier: workspace:*
-        version: link:../../lib/cdm/typescript
-      '@dotdm/contracts':
+      '@parity/cdm-builder':
         specifier: workspace:*
         version: link:../../lib/contracts
-      '@dotdm/env':
+      '@parity/cdm-codegen':
+        specifier: workspace:*
+        version: link:../../lib/cdm/typescript
+      '@parity/cdm-env':
         specifier: workspace:*
         version: link:../../lib/env
-      '@dotdm/utils':
+      '@parity/cdm-utils':
         specifier: workspace:*
         version: link:../../lib/utils
       '@parity/product-sdk-contracts':
@@ -204,21 +204,21 @@ importers:
 
   src/apps/frontend:
     dependencies:
-      '@dotdm/contracts':
-        specifier: workspace:*
-        version: link:../../lib/contracts
-      '@dotdm/env':
-        specifier: workspace:*
-        version: link:../../lib/env
-      '@dotdm/utils':
-        specifier: workspace:*
-        version: link:../../lib/utils
       '@novasamatech/host-api':
         specifier: 'catalog:'
         version: 0.8.4
       '@novasamatech/product-sdk':
         specifier: 'catalog:'
         version: 0.7.9-4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.28.0)(rxjs@7.8.2)
+      '@parity/cdm-builder':
+        specifier: workspace:*
+        version: link:../../lib/contracts
+      '@parity/cdm-env':
+        specifier: workspace:*
+        version: link:../../lib/env
+      '@parity/cdm-utils':
+        specifier: workspace:*
+        version: link:../../lib/utils
       '@parity/product-sdk-chain-client':
         specifier: 'catalog:'
         version: 0.5.3(@novasamatech/host-api-wrapper@0.8.4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.28.0)(rxjs@7.8.2))(@novasamatech/host-api@0.8.4)(esbuild@0.28.0)(rxjs@7.8.2)
@@ -295,13 +295,13 @@ importers:
 
   src/lib/cdm/typescript:
     dependencies:
-      '@dotdm/contracts':
+      '@parity/cdm-builder':
         specifier: workspace:*
         version: link:../../contracts
-      '@dotdm/env':
+      '@parity/cdm-env':
         specifier: workspace:*
         version: link:../../env
-      '@dotdm/utils':
+      '@parity/cdm-utils':
         specifier: workspace:*
         version: link:../../utils
       '@polkadot-api/sdk-ink':
@@ -323,15 +323,15 @@ importers:
 
   src/lib/contracts:
     dependencies:
-      '@dotdm/env':
-        specifier: workspace:*
-        version: link:../env
-      '@dotdm/utils':
-        specifier: workspace:*
-        version: link:../utils
       '@noble/hashes':
         specifier: 'catalog:'
         version: 2.0.1
+      '@parity/cdm-env':
+        specifier: workspace:*
+        version: link:../env
+      '@parity/cdm-utils':
+        specifier: workspace:*
+        version: link:../utils
       '@parity/product-sdk-cloud-storage':
         specifier: 'catalog:'
         version: 0.5.3(@novasamatech/host-api-wrapper@0.8.4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.28.0)(rxjs@7.8.2))(@novasamatech/host-api@0.8.4)(esbuild@0.28.0)(rxjs@7.8.2)
@@ -363,7 +363,7 @@ importers:
 
   src/lib/env:
     dependencies:
-      '@dotdm/utils':
+      '@parity/cdm-utils':
         specifier: workspace:*
         version: link:../utils
       '@parity/product-sdk-descriptors':
@@ -397,13 +397,13 @@ importers:
 
   src/lib/scripts:
     dependencies:
-      '@dotdm/contracts':
+      '@parity/cdm-builder':
         specifier: workspace:*
         version: link:../contracts
-      '@dotdm/env':
+      '@parity/cdm-env':
         specifier: workspace:*
         version: link:../env
-      '@dotdm/utils':
+      '@parity/cdm-utils':
         specifier: workspace:*
         version: link:../utils
     devDependencies:

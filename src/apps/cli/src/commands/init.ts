@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { isKnownChainPreset } from "@dotdm/env";
-import { getAccount, saveAccount, generateAccount } from "@dotdm/utils/accounts";
+import { isKnownChainPreset } from "@parity/cdm-env";
+import { getAccount, saveAccount, generateAccount } from "@parity/cdm-utils/accounts";
 import { printBalances } from "./account";
 
 const init = new Command("init")

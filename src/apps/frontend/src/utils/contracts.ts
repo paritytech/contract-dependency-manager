@@ -1,7 +1,7 @@
 import { getChainAPI, type ChainClient, type PresetChains } from "@parity/product-sdk-chain-client";
 import { createContract, createContractRuntimeFromClient } from "@parity/product-sdk-contracts";
 import type { Contract, ContractDef, ContractRuntime } from "@parity/product-sdk-contracts";
-import { CONTRACTS_REGISTRY_ABI } from "@dotdm/contracts/abi";
+import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder/abi";
 import { DEFAULT_NETWORK, NETWORKS, type NetworkConfig, type NetworkKey } from "../config/networks";
 
 export type RegistryContract = Contract<ContractDef>;

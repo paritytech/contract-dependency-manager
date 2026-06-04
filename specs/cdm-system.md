@@ -4,7 +4,7 @@
 
 - **Rust / PVM**: implemented end-to-end (build · deploy · publish metadata · register · install · consume).
 - **Foundry / Hardhat**: first-pass build + deploy pipeline implemented. Solidity bytecode/ABI is normalized before deploy; `/// @custom:cdm @org/name` supplies the registry package name.
-- **TypeScript SDK**: migrating from `@dotdm/cdm` to `@parity/product-sdk-contracts` (targets `pallet-revive` directly, not Ink). Old SDK to be deprecated once parity is reached.
+- **TypeScript SDK**: migrating from `@parity/cdm-codegen` to `@parity/product-sdk-contracts` (targets `pallet-revive` directly, not Ink). Old SDK to be deprecated once parity is reached.
 
 ## System map
 
@@ -50,7 +50,7 @@ The metadata blob composition is in the right panel of the publish-pipeline diag
 
 ![ContractRegistry — state machine, storage, queries](./assets/cdm-registry.svg)
 
-The registry is a `pallet-revive` contract on Asset Hub, CREATE2-deployed under `@cdm/registry`. Registry addresses are environment-scoped and resolved through `@dotdm/env` (`getRegistryAddress(name)`, defaulting to Paseo); custom environments can still pass `--registry-address`. `cdm.json.registry` records the registry used for the installed snapshot.
+The registry is a `pallet-revive` contract on Asset Hub, CREATE2-deployed under `@cdm/registry`. Registry addresses are environment-scoped and resolved through `@parity/cdm-env` (`getRegistryAddress(name)`, defaulting to Paseo); custom environments can still pass `--registry-address`. `cdm.json.registry` records the registry used for the installed snapshot.
 
 Key invariants:
 
@@ -103,7 +103,7 @@ The `cdm::import!()` proc-macro first checks Cargo metadata for a local workspac
 
 ### TypeScript app
 
-Use `@parity/product-sdk-contracts` (replaces `@dotdm/cdm`):
+Use `@parity/product-sdk-contracts` (replaces `@parity/cdm-codegen`):
 
 ```ts
 import { createChainClient } from "@parity/product-sdk-chain-client";
@@ -136,7 +136,7 @@ await counter.increment.tx();
 const prepared = counter.increment.prepare();
 ```
 
-Material differences from `@dotdm/cdm`:
+Material differences from `@parity/cdm-codegen`:
 
 - Targets `pallet-revive` directly (not Ink) — wholesale replacement, not an upgrade.
 - Consumer owns the chain client; the SDK wraps it (rather than constructing one internally).
@@ -166,13 +166,13 @@ writeFileSync(".cdm/contracts.d.ts", generateContractTypes(resolved));
 - `src/lib/cdm/rust-macros/src/lib.rs` — `cdm::import!()` proc-macro
 - `src/contract/src/lib.rs` — ContractRegistry on-chain contract
 
-**New TypeScript SDK (separate repo, replaces `@dotdm/cdm`):**
+**New TypeScript SDK (separate repo, replaces `@parity/cdm-codegen`):**
 
 - `/Users/charleshetterich/code/product-sdk/product-sdk/packages/contracts/src/manager.ts` — `ContractManager`
 - `/Users/charleshetterich/code/product-sdk/product-sdk/packages/contracts/src/codegen.ts` — `generateContractTypes`
 - `/Users/charleshetterich/code/product-sdk/product-sdk/packages/contracts/README.md` — full API reference
 
-**Solidity build adapters (to lift into `@dotdm/contracts`):**
+**Solidity build adapters (to lift into `@parity/cdm-builder`):**
 
 - `/Users/charleshetterich/code/playground-cli/src/utils/build/detect.ts` — file-based toolchain detection
 - `/Users/charleshetterich/code/playground-cli/src/utils/deploy/contracts.ts` — `compileFoundry`, `compileHardhat`, `extractFoundryBytecode`, `extractHardhatBytecode`, `hexToBytes`, `writeTmpBytecode`

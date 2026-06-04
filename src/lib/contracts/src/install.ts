@@ -2,7 +2,7 @@ import type { Contract, ContractDef } from "@parity/product-sdk-contracts";
 import { mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { stringifyBigInt } from "@dotdm/utils";
+import { stringifyBigInt } from "@parity/cdm-utils";
 import type { AbiEntry } from "./deployer";
 import { saveContract } from "./store";
 

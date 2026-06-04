@@ -1,5 +1,5 @@
 {
-    "name": "@dotdm/cli",
+    "name": "@parity/cdm-cli",
     "version": "0.8.18",
     "private": true,
     "type": "module",
@@ -15,10 +15,10 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
-        "@dotdm/cdm": "workspace:*",
-        "@dotdm/contracts": "workspace:*",
-        "@dotdm/env": "workspace:*",
-        "@dotdm/utils": "workspace:*",
+        "@parity/cdm-codegen": "workspace:*",
+        "@parity/cdm-builder": "workspace:*",
+        "@parity/cdm-env": "workspace:*",
+        "@parity/cdm-utils": "workspace:*",
         "@parity/product-sdk-contracts": "catalog:",
         "@parity/product-sdk-tx": "catalog:",
         "commander": "catalog:",

@@ -18,14 +18,14 @@ dev: embed-templates
 	bun run $(CLI_DIR)/src/cli.ts
 
 frontend:
-	pnpm --filter @dotdm/env build
-	pnpm --filter @dotdm/contracts build
-	pnpm --filter @dotdm/frontend dev
+	pnpm --filter @parity/cdm-env build
+	pnpm --filter @parity/cdm-builder build
+	pnpm --filter @parity/cdm-frontend dev
 
 build:
-	pnpm --filter @dotdm/env build
-	pnpm --filter @dotdm/contracts build
-	pnpm --filter @dotdm/frontend build
+	pnpm --filter @parity/cdm-env build
+	pnpm --filter @parity/cdm-builder build
+	pnpm --filter @parity/cdm-frontend build
 
 embed-templates:
 	bun run src/lib/scripts/embed-templates.ts
@@ -44,8 +44,8 @@ build-registry:
 	cargo pvm-contract build --manifest-path $(CURDIR)/Cargo.toml -p contract-registry
 
 deploy-registry: build-registry
-	pnpm --filter @dotdm/env build
-	pnpm --filter @dotdm/contracts build
+	pnpm --filter @parity/cdm-env build
+	pnpm --filter @parity/cdm-builder build
 	bun run src/lib/scripts/deploy-registry.ts --name $(or $(CHAIN),local) $(if $(SURI),--suri "$(SURI)") $(if $(REGISTRY_ADDRESS),--registry-address $(REGISTRY_ADDRESS))
 
 build-template:

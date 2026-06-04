@@ -3,9 +3,9 @@ import { getWsProvider } from "polkadot-api/ws";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import type { PolkadotClient, SS58String, HexString } from "polkadot-api";
 import type { InkSdk } from "@polkadot-api/sdk-ink";
-import type { CdmJson, CdmJsonContract } from "@dotdm/contracts";
-import { ALICE_SS58 } from "@dotdm/utils";
-import { prepareSigner } from "@dotdm/env";
+import type { CdmJson, CdmJsonContract } from "@parity/cdm-builder";
+import { ALICE_SS58 } from "@parity/cdm-utils";
+import { prepareSigner } from "@parity/cdm-env";
 import { wrapContract } from "./wrap";
 import type { CdmContract, CdmContracts, CdmDefaults, CdmOptions } from "./types";
 

@@ -1,4 +1,4 @@
-import type { CdmJson } from "@dotdm/contracts";
+import type { CdmJson } from "@parity/cdm-builder";
 import { Cdm } from "./cdm-core";
 import type { CdmOptions } from "./types";
 

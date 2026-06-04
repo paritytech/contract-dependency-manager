@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { resolve } from "path";
-import { getChainPreset, getRegistryAddress } from "@dotdm/env";
-import { readCdmJson, resolveFeatures } from "@dotdm/contracts";
+import { getChainPreset, getRegistryAddress } from "@parity/cdm-env";
+import { readCdmJson, resolveFeatures } from "@parity/cdm-builder";
 import { runBuildWithUI } from "../lib/ui";
 
 const build = new Command("build")

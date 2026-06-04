@@ -5,9 +5,9 @@ import {
     createCdmAssetHubClient,
     getChainPreset,
     prepareSignerFromMnemonic,
-} from "@dotdm/env";
-import type { Account } from "@dotdm/utils/accounts";
-import { getAccount, saveAccount, accountFromMnemonic } from "@dotdm/utils/accounts";
+} from "@parity/cdm-env";
+import type { Account } from "@parity/cdm-utils/accounts";
+import { getAccount, saveAccount, accountFromMnemonic } from "@parity/cdm-utils/accounts";
 import supportsHyperlinks from "supports-hyperlinks";
 
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;

@@ -7,7 +7,7 @@ CLI and web tooling for managing PVM smart contract dependencies on Polkadot. Au
 - **Always act as team leader.** The primary agent the user is talking to MUST act as a team leader and delegate work to sub-agents for almost everything.
 - **Always use team mode.** You MUST always run agents in team mode (using `TeamCreate` + `Task` with `team_name`) so the user can properly watch their work. Never use standalone agents outside of a team. This applies to ALL agent usage — no exceptions.
 - **Always format when done.** After finishing code changes, run `make format` to ensure consistent formatting before presenting results to the user.
-- **Always add a changeset for releasable changes.** Any change that affects a publishable workspace package (everything except `@dotdm/frontend` and `@dotdm/scripts`, per [.changeset/config.json](.changeset/config.json)) requires a changeset file in `.changeset/`. Create it as part of the change — do not wait to be asked. Use `---` frontmatter listing each affected package with `patch`/`minor`/`major`, followed by a one-line summary. Skip only for changes that touch no publishable packages (docs-only, frontend-only, scripts-only, CI/tooling).
+- **Always add a changeset for releasable changes.** Any change that affects a publishable workspace package (everything except `@parity/cdm-frontend` and `@parity/cdm-scripts`, per [.changeset/config.json](.changeset/config.json)) requires a changeset file in `.changeset/`. Create it as part of the change — do not wait to be asked. Use `---` frontmatter listing each affected package with `patch`/`minor`/`major`, followed by a one-line summary. Skip only for changes that touch no publishable packages (docs-only, frontend-only, scripts-only, CI/tooling).
 
 ## Monorepo Structure
 
@@ -22,18 +22,18 @@ tsconfig.json                  # Base TS config (no outDir/rootDir/jsx)
 Makefile                       # Top-level dev commands
 src/
   apps/
-    cli/                       # @dotdm/cli — Commander.js CLI (bun runtime)
+    cli/                       # @parity/cdm-cli — Commander.js CLI (bun runtime)
       src/cli.ts               #   Entry point
       src/commands/             #   build, deploy, install, template
       src/lib/                  #   deploy-pipeline.ts, install-pipeline.ts, ui.ts, components/DeployTable.tsx, InstallTable.tsx, shared.tsx
       src/generated/            #   Auto-generated template embeds (gitignored)
       tests/
-    frontend/                  # @dotdm/frontend — React 19 SPA (Vite)
+    frontend/                  # @parity/cdm-frontend — React 19 SPA (Vite)
   lib/
-    utils/                     # @dotdm/utils — Shared constants/types
+    utils/                     # @parity/cdm-utils — Shared constants/types
       src/constants.ts         #   ALL constants (ALICE_SS58, GAS_LIMIT, STORAGE_DEPOSIT_LIMIT, CONTRACTS_REGISTRY_CRATE, DEFAULT_NODE_URL)
       src/utils.ts             #   stringifyBigInt
-    contracts/                 # @dotdm/contracts — Contract tooling
+    contracts/                 # @parity/cdm-builder — Contract tooling
       src/detection.ts         #   Workspace scanning, dependency graph, topological sort
       src/deployer.ts          #   Contract deployment via Revive pallet
       src/publisher.ts         #   Metadata publishing to Bulletin chain
@@ -42,18 +42,17 @@ src/
       src/cid.ts               #   CID computation
       src/store.ts             #   Project-local .cdm/ artifact persistence
       src/cdm-json.ts          #   Flat cdm.json reading/writing
-    descriptors/               # @dotdm/descriptors — papi-generated chain descriptors
-    env/                       # @dotdm/env — Chain environment
+    env/                       # @parity/cdm-env — Chain environment
       src/connection.ts        #   WebSocket, Smoldot, Bulletin, and IPFS gateway connections
       src/signer.ts            #   sr25519 key derivation (dev accounts)
       src/known_chains.ts      #   Chain presets (polkadot, paseo, preview-net, local)
-    scripts/                   # @dotdm/scripts — Standalone bun scripts
+    scripts/                   # @parity/cdm-scripts — Standalone bun scripts
       embed-templates.ts       #   Generate src/apps/cli/src/generated/templates.ts
       deploy-registry.ts       #   Deploy registry on-chain
     cdm/
       rust/                    # cdm crate — re-exports cdm::import!() macro
       rust-macros/             # cdm-macros — Proc-macro crate, provides cdm::import!()
-      typescript/              # @dotdm/cdm package (stub)
+      typescript/              # @parity/cdm-codegen package (stub)
   contract/                    # contract-registry Rust crate (PolkaVM)
   templates/                   # Scaffolding templates (shared-counter, guide)
   stubs/                       # Stub packages (react-devtools-core)
@@ -63,14 +62,13 @@ src/
 
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@dotdm/cli` | `src/apps/cli` | CLI tool — runs via bun, compiles to standalone binary |
-| `@dotdm/frontend` | `src/apps/frontend` | Web dashboard — Vite + React |
-| `@dotdm/utils` | `src/lib/utils` | Shared constants and utilities |
-| `@dotdm/contracts` | `src/lib/contracts` | Contract deployment, detection, building, publishing, registry, CID, store |
-| `@dotdm/descriptors` | `src/lib/descriptors` | papi-generated chain & contract descriptors |
-| `@dotdm/env` | `src/lib/env` | Chain connections, signer, chain presets |
-| `@dotdm/scripts` | `src/lib/scripts` | Standalone bun scripts (embed-templates, deploy-registry) |
-| `@dotdm/cdm` | `src/lib/cdm/typescript` | Stub TS library |
+| `@parity/cdm-cli` | `src/apps/cli` | CLI tool — runs via bun, compiles to standalone binary |
+| `@parity/cdm-frontend` | `src/apps/frontend` | Web dashboard — Vite + React |
+| `@parity/cdm-utils` | `src/lib/utils` | Shared constants and utilities |
+| `@parity/cdm-builder` | `src/lib/contracts` | Contract deployment, detection, building, publishing, registry, CID, store |
+| `@parity/cdm-env` | `src/lib/env` | Chain connections, signer, chain presets |
+| `@parity/cdm-scripts` | `src/lib/scripts` | Standalone bun scripts (embed-templates, deploy-registry) |
+| `@parity/cdm-codegen` | `src/lib/cdm/typescript` | Stub TS library |
 | `contract-registry` | `src/contract` | On-chain ContractRegistry (Rust/PolkaVM) |
 | `cdm` | `src/lib/cdm/rust` | CDM crate — re-exports cdm::import!() macro |
 | `cdm-macros` | `src/lib/cdm/rust-macros` | Proc-macro crate — cdm::import!() resolves ABI from cdm.json |
@@ -83,7 +81,7 @@ make setup                    # Install ppn-proxy + pnpm install + build templat
 
 # Development
 make dev                      # Run CLI in dev mode (bun)
-make frontend                 # pnpm --filter @dotdm/frontend dev
+make frontend                 # pnpm --filter @parity/cdm-frontend dev
 bun run src/apps/cli/src/cli.ts  # Run CLI directly
 
 # Building
@@ -109,7 +107,7 @@ make clean                    # Remove build artifacts
 
 # Package management
 pnpm install                  # Install all workspace deps
-pnpm --filter @dotdm/frontend build  # Build specific package
+pnpm --filter @parity/cdm-frontend build  # Build specific package
 make generate-papi            # Run polkadot-api codegen (from src/lib/descriptors/)
 ```
 
@@ -131,19 +129,19 @@ Entry: `src/apps/cli/src/cli.ts` (Commander.js)
 - `components/InstallTable.tsx` — Terminal install table component
 - `components/shared.tsx` — Shared terminal UI components
 
-**Shared imports**: CLI imports from `@dotdm/contracts` (detection, deployer, publisher, registry, builder, cid, store, cdm-json), `@dotdm/env` (connection, signer, KNOWN_CHAINS, getChainPreset), `@dotdm/descriptors`, `@dotdm/cdm`, and `@dotdm/utils` (all constants, stringifyBigInt). All constants (`ALICE_SS58`, `GAS_LIMIT`, `STORAGE_DEPOSIT_LIMIT`, `CONTRACTS_REGISTRY_CRATE`, `DEFAULT_NODE_URL`) live in `@dotdm/utils`.
+**Shared imports**: CLI imports from `@parity/cdm-builder` (detection, deployer, publisher, registry, builder, cid, store, cdm-json), `@parity/cdm-env` (connection, signer, KNOWN_CHAINS, getChainPreset), `@parity/cdm-codegen`, and `@parity/cdm-utils` (all constants, stringifyBigInt). All constants (`ALICE_SS58`, `GAS_LIMIT`, `STORAGE_DEPOSIT_LIMIT`, `CONTRACTS_REGISTRY_CRATE`, `DEFAULT_NODE_URL`) live in `@parity/cdm-utils`.
 
 **Install command**: `cdm install` writes the registry snapshot to flat `cdm.json` and saves ABI/metadata artifacts to project-local `.cdm/contracts/<name>/<version>/`. User account data still lives under `~/.cdm/accounts.json`. The install command implementation is split across subfiles: `index.ts`, `typescript.ts`, `rust.ts`.
 
 ## Frontend Architecture
 
-React 19 + Vite + React Router DOM (HashRouter). Uses `@dotdm/descriptors` and `@polkadot-api/sdk-ink` directly. Creates its own papi client (does not use `@dotdm/env` for connections). Uses `@dotdm/env` for chain presets and `@dotdm/utils` for constants.
+React 19 + Vite + React Router DOM (HashRouter). Uses product-sdk descriptors and contract helpers. Uses `@parity/cdm-env` for chain presets and `@parity/cdm-utils` for constants.
 
 **Pages**: HomePage (landing + stats + featured contracts), SearchPage (filtering + sorting), PackagePage (readme, ABI viewer, versions, dependencies)
 
 **Key components**: Header, Layout, PackageCard, NetworkConfig, GrainCanvas
 
-- `NetworkContext.tsx` — Chain connection management, imports `KNOWN_CHAINS`/`ChainPreset` from `@dotdm/env`
+- `NetworkContext.tsx` — Chain connection management, imports `KNOWN_CHAINS`/`ChainPreset` from `@parity/cdm-env`
 - `useRegistry.ts` — On-chain contract queries + IPFS metadata fetching (two-phase loading)
 - DOMPurify + marked for XSS-safe markdown rendering
 

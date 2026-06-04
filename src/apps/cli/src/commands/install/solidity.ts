@@ -1,7 +1,7 @@
 import { dirname, resolve } from "path";
 import { mkdirSync, writeFileSync } from "fs";
-import { generateSolidityImport, readCdmJson } from "@dotdm/contracts";
-import type { SolidityAbiEntry } from "@dotdm/contracts";
+import { generateSolidityImport, readCdmJson } from "@parity/cdm-builder";
+import type { SolidityAbiEntry } from "@parity/cdm-builder";
 
 export async function postInstallSolidity(): Promise<void> {
     const cdmResult = readCdmJson();

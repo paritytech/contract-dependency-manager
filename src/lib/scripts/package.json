@@ -1,5 +1,5 @@
 {
-    "name": "@dotdm/scripts",
+    "name": "@parity/cdm-scripts",
     "version": "0.0.1",
     "private": true,
     "type": "module",
@@ -8,9 +8,9 @@
         "clean": "echo 'Nothing to clean'"
     },
     "dependencies": {
-        "@dotdm/contracts": "workspace:*",
-        "@dotdm/env": "workspace:*",
-        "@dotdm/utils": "workspace:*"
+        "@parity/cdm-builder": "workspace:*",
+        "@parity/cdm-env": "workspace:*",
+        "@parity/cdm-utils": "workspace:*"
     },
     "devDependencies": {
         "@types/bun": "catalog:",

@@ -10,10 +10,10 @@ import {
     getRegistryAddress,
     ss58Address,
     type CdmChainClient,
-} from "@dotdm/env";
-import { getAccount } from "@dotdm/utils/accounts";
-import { ALICE_SS58, CONTRACTS_REGISTRY_PACKAGE } from "@dotdm/utils";
-import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, resolveFeatures } from "@dotdm/contracts";
+} from "@parity/cdm-env";
+import { getAccount } from "@parity/cdm-utils/accounts";
+import { ALICE_SS58, CONTRACTS_REGISTRY_PACKAGE } from "@parity/cdm-utils";
+import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, resolveFeatures } from "@parity/cdm-builder";
 import type { HexString } from "polkadot-api";
 import { runDeployWithUI, spinner } from "../lib/ui";
 

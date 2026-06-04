@@ -68,7 +68,7 @@ export interface ResolvedContract {
     metadataCid: string;
 }
 
-// ABI types (reuse shape from @dotdm/contracts deployer)
+// ABI types (reuse shape from @parity/cdm-builder deployer)
 export interface AbiParam {
     name: string;
     type: string;

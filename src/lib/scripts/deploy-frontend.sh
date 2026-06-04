@@ -37,7 +37,7 @@ if [[ "${SKIP_BULLETIN_INSTALL:-0}" != "1" ]]; then
     npm install -g bulletin-deploy@latest
 fi
 
-pnpm --filter @dotdm/frontend build
+pnpm --filter @parity/cdm-frontend build
 
 export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=8192"
 

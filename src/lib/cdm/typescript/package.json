@@ -1,5 +1,5 @@
 {
-    "name": "@dotdm/cdm",
+    "name": "@parity/cdm-codegen",
     "version": "0.6.16",
     "type": "module",
     "main": "./dist/index.js",
@@ -27,9 +27,9 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
-        "@dotdm/contracts": "workspace:*",
-        "@dotdm/env": "workspace:*",
-        "@dotdm/utils": "workspace:*",
+        "@parity/cdm-builder": "workspace:*",
+        "@parity/cdm-env": "workspace:*",
+        "@parity/cdm-utils": "workspace:*",
         "@polkadot-api/sdk-ink": "catalog:",
         "polkadot-api": "catalog:"
     },

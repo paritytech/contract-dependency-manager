@@ -1,5 +1,5 @@
 {
-    "name": "@dotdm/frontend",
+    "name": "@parity/cdm-frontend",
     "private": true,
     "version": "0.0.0",
     "type": "module",
@@ -11,9 +11,9 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
-        "@dotdm/contracts": "workspace:*",
-        "@dotdm/env": "workspace:*",
-        "@dotdm/utils": "workspace:*",
+        "@parity/cdm-builder": "workspace:*",
+        "@parity/cdm-env": "workspace:*",
+        "@parity/cdm-utils": "workspace:*",
         "@novasamatech/host-api": "catalog:",
         "@novasamatech/product-sdk": "catalog:",
         "@parity/product-sdk-chain-client": "catalog:",
