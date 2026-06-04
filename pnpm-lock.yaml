@@ -70,8 +70,8 @@ catalogs:
       specifier: ^12.0.0
       version: 12.1.0
     dompurify:
-      specifier: ^3.3.1
-      version: 3.3.1
+      specifier: ^3.4.0
+      version: 3.4.8
     esbuild:
       specifier: ^0.28.0
       version: 0.28.0
@@ -236,7 +236,7 @@ importers:
         version: 0.6.1(@novasamatech/host-api-wrapper@0.8.4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.28.0)(rxjs@7.8.2))(@novasamatech/host-api@0.8.4)(esbuild@0.28.0)(rxjs@7.8.2)
       dompurify:
         specifier: 'catalog:'
-        version: 3.3.1
+        version: 3.4.8
       marked:
         specifier: 'catalog:'
         version: 17.0.3
@@ -2347,8 +2347,8 @@ packages:
     resolution: {integrity: sha512-WkrWp9GR4KXfKGYzOLmTuGVi1UWFfws377n9cc55/tb6DuqyF6pcQ5AbiHEshaDpY9v6oaSr2XCDidGmMwdzIA==}
     engines: {node: '>=8'}
 
-  dompurify@3.3.1:
-    resolution: {integrity: sha512-qkdCKzLNtrgPFP1Vo+98FRzJnBRGe4ffyCea9IwHB1fyxPOeNTHpLKYGd4Uk9xvNoH0ZoOjwZxNptyMwqrId1Q==}
+  dompurify@3.4.8:
+    resolution: {integrity: sha512-yb1cEmaOum7wFvOCSQxyfgVlv5D47Rc30iZWoMpbDIWTnJ6grDDQyu2KFJzB2k7u0pMuJcQ1zphH//fFnw2tjQ==}
 
   electron-to-chromium@1.5.302:
     resolution: {integrity: sha512-sM6HAN2LyK82IyPBpznDRqlTQAtuSaO+ShzFiWTvoMJLHyZ+Y39r8VMfHzwbU8MVBzQ4Wdn85+wlZl2TLGIlwg==}
@@ -5543,7 +5543,7 @@ snapshots:
 
   '@types/dompurify@3.2.0':
     dependencies:
-      dompurify: 3.3.1
+      dompurify: 3.4.8
 
   '@types/estree@1.0.8': {}
 
@@ -5917,7 +5917,7 @@ snapshots:
     dependencies:
       path-type: 4.0.0
 
-  dompurify@3.3.1:
+  dompurify@3.4.8:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
