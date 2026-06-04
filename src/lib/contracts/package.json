@@ -26,7 +26,7 @@
         "@dotdm/env": "workspace:*",
         "@dotdm/utils": "workspace:*",
         "@noble/hashes": "catalog:",
-        "@parity/product-sdk-bulletin": "catalog:",
+        "@parity/product-sdk-cloud-storage": "catalog:",
         "@parity/product-sdk-contracts": "catalog:",
         "@parity/product-sdk-descriptors": "catalog:",
         "@parity/product-sdk-tx": "catalog:",

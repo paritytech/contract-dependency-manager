@@ -48,8 +48,6 @@
 }
 
 .search-results-list .package-card-description {
-  flex: initial;
-  min-height: 0;
   margin-bottom: 16px;
 }
 

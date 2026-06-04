@@ -21,3 +21,12 @@ From the logs, take note of the address which registry was deployed to. This wil
 ```
 
 5. Open a PR with the new target update.
+
+6. Deploy frontend:
+```
+BULLETIN_DEPLOY_ENV="<bulletin-deploy-environment>" src/lib/scripts/deploy-frontend.sh "<deployer-suri-or-mnemonic>"
+```
+
+7. Verify:
+- Open `contracts.dot` in Polkadot Desktop or Polkadot Browser. You should see the Contract Registry site.
+- Run `cdm i -n <environment name> <known package>`. It should resolve from the deployed registry.

@@ -82,10 +82,12 @@
 .package-card-description {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 0 0 auto;
   gap: 8px;
   margin-bottom: 22px;
-  min-height: 44px;
+  min-height: 64px;
+  height: 64px;
+  overflow: hidden;
 }
 
 .package-card-description-text {
@@ -93,6 +95,10 @@
   font-size: 15px;
   line-height: 1.42;
   margin: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .package-card-meta {

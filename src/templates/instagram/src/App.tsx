@@ -9,7 +9,7 @@ import {
 } from "@parity/product-sdk-contracts";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { SignerManager, type SignerAccount, type SignerState } from "@parity/product-sdk-signer";
-import { BulletinClient, createLazySigner } from "@parity/product-sdk-bulletin";
+import { CloudStorageClient, createLazySigner } from "@parity/product-sdk-cloud-storage";
 import type { SizedHex } from "polkadot-api";
 import {
   useIntersectionObserver, short, ago,
@@ -30,7 +30,7 @@ const contracts = ContractManager.fromClient(
   chain.raw.assetHub,
   paseo_asset_hub,
 );
-const bulletin = await BulletinClient.create({
+const bulletin = await CloudStorageClient.create({
   environment: "paseo",
   signer: createLazySigner(() => activeProductAccount?.getSigner() ?? null),
 });
