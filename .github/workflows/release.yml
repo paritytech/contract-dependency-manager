@@ -7,6 +7,9 @@ on:
 permissions:
     contents: write
     actions: read
+    packages: write
+    attestations: write
+    id-token: write
 
 jobs:
     release:
@@ -112,7 +115,7 @@ jobs:
 
             - name: Publish via npm_publish_automation
               if: steps.changesets.outputs.found == 'true'
-              uses: octokit/request-action@v2.x
+              uses: octokit/request-action@02f5e7c637a73a3b12ed81015fa7fb5f11cc5d7d # v2.x
               with:
                   route: POST /repos/paritytech/npm_publish_automation/actions/workflows/publish.yml/dispatches
                   ref: main
