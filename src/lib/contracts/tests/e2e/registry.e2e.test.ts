@@ -10,13 +10,13 @@
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import type { HexString } from "polkadot-api";
-import { createCdmAssetHubClient, prepareSigner, type CdmChainClient } from "@dotdm/env";
-import { ALICE_SS58 } from "@dotdm/utils";
-// Subpath `@dotdm/contracts/abi` rather than the package root: vitest's
+import { createCdmAssetHubClient, prepareSigner, type CdmChainClient } from "@parity/cdm-env";
+import { ALICE_SS58 } from "@parity/cdm-utils";
+// Subpath `@parity/cdm-builder/abi` rather than the package root: vitest's
 // Vite resolver tree-shakes the package's `dist/index.js` (re-exports +
 // Node-only deps in adjacent modules) and CONTRACTS_REGISTRY_ABI comes back
 // undefined. The dedicated subpath maps straight to `dist/abi.js`.
-import { CONTRACTS_REGISTRY_ABI } from "@dotdm/contracts/abi";
+import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder/abi";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
 import { spawnReviveNode, deployRegistry, type NodeHandle } from "./harness";
 

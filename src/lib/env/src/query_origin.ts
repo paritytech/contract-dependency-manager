@@ -1,5 +1,5 @@
-import { ALICE_SS58 } from "@dotdm/utils";
-import { getAccount } from "@dotdm/utils/accounts";
+import { ALICE_SS58 } from "@parity/cdm-utils";
+import { getAccount } from "@parity/cdm-utils/accounts";
 import {
     findKnownChainByAssetHubUrl,
     normalizeChainName,
@@ -36,7 +36,7 @@ if (import.meta.vitest) {
     const { mkdtempSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { saveAccount } = await import("@dotdm/utils/accounts");
+    const { saveAccount } = await import("@parity/cdm-utils/accounts");
 
     describe("resolveQueryOrigin", () => {
         const originalCdmRoot = process.env.CDM_ROOT;

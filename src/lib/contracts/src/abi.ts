@@ -1,7 +1,7 @@
 /**
  * Browser-safe subpath exporting contract ABIs only.
  *
- * Importing from `@dotdm/contracts/abi` instead of `@dotdm/contracts` avoids
+ * Importing from `@parity/cdm-builder/abi` instead of `@parity/cdm-builder` avoids
  * pulling the Node-only pipeline/deployer surface (fs, child_process, path,
  * etc.) into frontend bundles.
  */

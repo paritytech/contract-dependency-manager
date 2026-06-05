@@ -1,6 +1,6 @@
 import { readFileSync, existsSync, realpathSync } from "fs";
 import { resolve } from "path";
-import { getCdmRoot, getContractDir, resolveContractAbiPath } from "@dotdm/contracts";
+import { getCdmRoot, getContractDir, resolveContractAbiPath } from "@parity/cdm-builder";
 import type { ResolvedContract, AbiEntry } from "./types";
 
 export function resolveContract(library: string, version: number | "latest"): ResolvedContract {

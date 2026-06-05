@@ -79,9 +79,9 @@ Replace old product-sdk and CDM package versions in `package.json`:
 ```json
 {
   "dependencies": {
-    "@dotdm/cdm": "<latest release>",
-    "@dotdm/contracts": "<latest release>",
-    "@dotdm/env": "<latest release>",
+    "@parity/cdm-codegen": "<latest release>",
+    "@parity/cdm-builder": "<latest release>",
+    "@parity/cdm-env": "<latest release>",
     "@parity/product-sdk-contracts": "<latest release>",
     "@parity/product-sdk-descriptors": "<latest release>"
   }

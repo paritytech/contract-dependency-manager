@@ -7,5 +7,5 @@
     "access": "public",
     "baseBranch": "main",
     "updateInternalDependencies": "patch",
-    "ignore": ["@dotdm/frontend", "@dotdm/scripts"]
+    "ignore": ["@parity/cdm-frontend", "@parity/cdm-scripts"]
 }

@@ -1,5 +1,5 @@
 import { queryJson } from "@parity/product-sdk-cloud-storage";
-import type { ProductSdkEnvironment } from "@dotdm/env/registry";
+import type { ProductSdkEnvironment } from "@parity/cdm-env/registry";
 import { withTimeout } from "./timeout";
 
 // CIDs are content-addressed and immutable, so a successful resolution can

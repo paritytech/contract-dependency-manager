@@ -1,6 +1,6 @@
 import type { PolkadotClient } from "polkadot-api";
 import type { PolkadotSigner } from "polkadot-api";
-import type { CdmBulletinApi } from "@dotdm/env";
+import type { CdmBulletinApi } from "@parity/cdm-env";
 import {
     AsyncBulletinClient,
     CloudStorageClient,

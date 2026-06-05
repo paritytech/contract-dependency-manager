@@ -15,7 +15,11 @@ const SEARCH_PAGE_SIZE = 20;
 
 export function useRegistrySearch(query: string) {
     const { connected, connecting, error: networkError, network, networkConfig } = useNetwork();
-    const prefix = useMemo(() => query.trim(), [query]);
+    const prefix = useMemo(() => {
+        const trimmed = query.trim();
+        if (!trimmed) return "";
+        return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+    }, [query]);
 
     const [basePackages, setBasePackages] = useState<Package[]>([]);
     const [metadataMap, setMetadataMap] = useState<Record<string, Partial<Package>>>({});

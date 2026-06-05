@@ -6,10 +6,10 @@ import {
     type InstallEvent,
     type InstallResult,
     type InstallSummary,
-} from "@dotdm/contracts";
+} from "@parity/cdm-builder";
 import { InstallTable } from "./components/InstallTable";
 
-export type { InstallResult, InstallSummary } from "@dotdm/contracts";
+export type { InstallResult, InstallSummary } from "@parity/cdm-builder";
 
 export type InstallState = "waiting" | "querying" | "fetching" | "done" | "error";
 

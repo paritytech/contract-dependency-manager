@@ -6,9 +6,7 @@ on:
 
 permissions:
     contents: write
-    packages: write
-    attestations: write
-    id-token: write
+    actions: read
 
 jobs:
     release:
@@ -46,7 +44,7 @@ jobs:
                   registry-url: "https://registry.npmjs.org"
 
             - if: steps.changesets.outputs.found == 'true'
-              run: pnpm install
+              run: pnpm install --frozen-lockfile
 
             # Version packages (consumes changesets, bumps versions)
             - name: Version packages
@@ -61,7 +59,7 @@ jobs:
             # Build all publishable packages
             - name: Build packages
               if: steps.changesets.outputs.found == 'true'
-              run: pnpm -r --filter "@dotdm/utils" --filter "@dotdm/env" --filter "@dotdm/contracts" --filter "@dotdm/cdm" build
+              run: pnpm -r --filter "@parity/cdm-utils" --filter "@parity/cdm-env" --filter "@parity/cdm-builder" --filter "@parity/cdm-codegen" build
 
             # Commit version bumps
             - name: Commit version changes
@@ -73,17 +71,54 @@ jobs:
                   git diff --cached --quiet || git commit -m "chore: version packages"
                   git push
 
-            # Publish to npm
-            - name: Publish to npm
+            # Create git tags for versioned public packages. The CLI release tag
+            # is created by the GitHub release step below.
+            - name: Create and push package tags
               if: steps.changesets.outputs.found == 'true'
-              run: pnpm changeset publish
-              env:
-                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+              run: |
+                  for pkg in \
+                    src/lib/utils/package.json \
+                    src/lib/env/package.json \
+                    src/lib/contracts/package.json \
+                    src/lib/cdm/typescript/package.json; do
+                    name=$(jq -r '.name' "$pkg")
+                    version=$(jq -r '.version' "$pkg")
+                    tag="${name}@${version}"
+                    if ! git tag -l "$tag" | grep -q .; then
+                      git tag "$tag"
+                    fi
+                  done
+                  git push --tags
 
-            # Push git tags created by changeset publish
-            - name: Push tags
+            # Pack all public npm packages for npm_publish_automation.
+            - name: Pack packages
               if: steps.changesets.outputs.found == 'true'
-              run: git push --tags
+              run: |
+                  mkdir -p artifacts
+                  for dir in \
+                    src/lib/utils \
+                    src/lib/env \
+                    src/lib/contracts \
+                    src/lib/cdm/typescript; do
+                    (cd "$dir" && pnpm pack --pack-destination "$GITHUB_WORKSPACE/artifacts")
+                  done
+
+            - name: Upload package artifacts
+              if: steps.changesets.outputs.found == 'true'
+              uses: actions/upload-artifact@v4
+              with:
+                  name: packages
+                  path: artifacts/*.tgz
+
+            - name: Publish via npm_publish_automation
+              if: steps.changesets.outputs.found == 'true'
+              uses: octokit/request-action@v2.x
+              with:
+                  route: POST /repos/paritytech/npm_publish_automation/actions/workflows/publish.yml/dispatches
+                  ref: main
+                  inputs: '${{ format(''{{ "repo": "{0}", "run_id": "{1}", "artifact_name": "packages" }}'', github.repository, github.run_id) }}'
+              env:
+                  GITHUB_TOKEN: ${{ secrets.NPM_PUBLISH_AUTOMATION_TOKEN }}
 
             # Compile CLI binaries
             - name: Compile binaries
@@ -100,7 +135,7 @@ jobs:
               if: steps.changesets.outputs.found == 'true'
               id: tag
               run: |
-                  # Use the @dotdm/cli version as the release tag
+                  # Use the @parity/cdm-cli version as the release tag
                   VERSION=$(node -p "require('./src/apps/cli/package.json').version")
                   TAG="v${VERSION}"
                   echo "tag=$TAG" >> $GITHUB_OUTPUT

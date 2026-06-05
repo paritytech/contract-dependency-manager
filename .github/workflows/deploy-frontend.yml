@@ -8,16 +8,15 @@ on:
 
 permissions:
     contents: read
-    pull-requests: write
 
 concurrency:
-    group: deploy-frontend-${{ github.event.pull_request.number || github.ref }}
+    group: deploy-frontend-${{ github.ref }}
     cancel-in-progress: true
 
 jobs:
-    build:
+    deploy:
         runs-on: ubuntu-latest
-        name: Build
+        name: Deploy
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
@@ -30,140 +29,10 @@ jobs:
               with:
                   node-version: "22"
 
-            - name: Install and build
-              run: pnpm install && pnpm turbo build --filter=@dotdm/frontend
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
 
-            - name: Upload build artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: frontend-build
-                  path: src/apps/frontend/dist
-                  retention-days: 1
-
-    comment-deploying:
-        needs: build
-        if: github.event_name == 'pull_request'
-        runs-on: ubuntu-latest
-        name: Comment Deploying
-        steps:
-            - name: Comment deployment in progress
-              uses: marocchino/sticky-pull-request-comment@v2
-              with:
-                  header: deploy-preview
-                  message: |
-                      ## Preview Deployment
-
-                      | App | Status |
-                      |:---:|:------:|
-                      | Frontend | Deploying... |
-
-                      <sub>Deployment in progress. This comment will update when ready. [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})</sub>
-
-    deploy:
-        needs: build
-        runs-on: ubuntu-latest
-        name: Deploy
-        outputs:
-            domain: ${{ steps.deploy.outputs.domain }}
-            cid: ${{ steps.deploy.outputs.cid }}
-            url: ${{ steps.domain.outputs.url }}
-        steps:
-            - name: Download build artifact
-              uses: actions/download-artifact@v4
-              with:
-                  name: frontend-build
-                  path: dist
-
-            - name: Setup Node.js
-              uses: actions/setup-node@v4
-              with:
-                  node-version: "22"
-
-            - name: Setup IPFS
-              uses: ipfs/download-ipfs-distribution-action@v1
-              with:
-                  name: kubo
-                  version: v0.33.0
-            - run: ipfs init
-
-            - name: Install bulletin-deploy
-              run: npm install -g bulletin-deploy
-
-            - name: Determine domain
-              id: domain
-              run: |
-                  if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-                    DOMAIN="contracts-pr-${{ github.event.pull_request.number }}.dot"
-                    echo "url=https://contracts-pr-${{ github.event.pull_request.number }}.dot.li" >> "$GITHUB_OUTPUT"
-                  else
-                    DOMAIN="contracts.dot"
-                    echo "url=https://contracts.dot.li" >> "$GITHUB_OUTPUT"
-                  fi
-                  echo "domain=$DOMAIN" >> "$GITHUB_OUTPUT"
-
-            - name: Deploy to Bulletin
-              id: deploy
-              uses: nick-fields/retry@v3
-              with:
-                  timeout_minutes: 15
-                  max_attempts: 3
-                  retry_wait_seconds: 30
-                  command: bulletin-deploy './dist' '${{ steps.domain.outputs.domain }}'
+            - name: Deploy contracts.dot
+              run: src/lib/scripts/deploy-frontend.sh "$CDM_DEPLOY_SURI"
               env:
-                  MNEMONIC: ${{ secrets.MNEMONIC }}
-                  NODE_OPTIONS: "--max-old-space-size=8192"
-
-    comment-success:
-        needs: [build, deploy]
-        if: github.event_name == 'pull_request' && success()
-        runs-on: ubuntu-latest
-        name: Comment Success
-        steps:
-            - name: Comment on PR
-              uses: marocchino/sticky-pull-request-comment@v2
-              with:
-                  header: deploy-preview
-                  message: |
-                      ## Preview Deployment Ready!
-
-                      | App | Status | Preview |
-                      |:---:|:------:|:-------:|
-                      | **Frontend** | Ready | [**Visit Preview**](${{ needs.deploy.outputs.url }}) |
-
-                      <details>
-                      <summary>Deployment Details</summary>
-
-                      | Detail | Value |
-                      |--------|-------|
-                      | **Domain** | `${{ needs.deploy.outputs.domain }}` |
-                      | **CID** | `${{ needs.deploy.outputs.cid }}` |
-                      | **Commit** | [`${{ github.event.pull_request.head.sha }}`](${{ github.event.pull_request.head.repo.html_url }}/commit/${{ github.event.pull_request.head.sha }}) |
-                      | **Branch** | `${{ github.head_ref }}` |
-
-                      </details>
-
-                      ---
-                      <sub>This preview updates automatically on each push to this PR. [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})</sub>
-
-    comment-failure:
-        needs: [build, deploy]
-        if: github.event_name == 'pull_request' && failure()
-        runs-on: ubuntu-latest
-        name: Comment Failure
-        steps:
-            - name: Comment on PR
-              uses: marocchino/sticky-pull-request-comment@v2
-              with:
-                  header: deploy-preview
-                  message: |
-                      ## Preview Deployment Failed
-
-                      | Stage | Status |
-                      |:------|:------:|
-                      | **Build** | ${{ needs.build.result == 'success' && 'Built' || needs.build.result == 'skipped' && 'Skipped' || 'Failed' }} |
-                      | **Deploy** | ${{ needs.deploy.result == 'success' && 'Deployed' || needs.deploy.result == 'skipped' && 'Skipped' || 'Failed' }} |
-
-                      [**View workflow run**](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-                      ---
-                      <sub>Fix any issues and push again to retry.</sub>
+                  CDM_DEPLOY_SURI: ${{ secrets.MNEMONIC }}

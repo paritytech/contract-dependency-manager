@@ -10,13 +10,13 @@ import {
     getRegistryAddress,
     DEFAULT_NODE_URL,
     resolveQueryOrigin,
-} from "@dotdm/env";
+} from "@parity/cdm-env";
 import {
     CONTRACTS_REGISTRY_ABI,
     hasBuildableSolidityProject,
     readCdmJson,
     writeCdmJson,
-} from "@dotdm/contracts";
+} from "@parity/cdm-builder";
 import { spinner } from "../../lib/ui";
 import { runInstallWithUI } from "../../lib/install-pipeline";
 import type { InstallResult } from "../../lib/install-pipeline";

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { saveContract, getContractDir } from "../src/store";
 
-// Inlined to avoid pulling deployer.ts (which transitively imports @dotdm/env
-// and @dotdm/utils — workspace packages whose dist/ isn't built in a fresh
+// Inlined to avoid pulling deployer.ts (which transitively imports @parity/cdm-env
+// and @parity/cdm-utils — workspace packages whose dist/ isn't built in a fresh
 // checkout). These mirror the AbiEntry/Metadata shapes in src/deployer.ts.
 interface AbiParam {
     name: string;

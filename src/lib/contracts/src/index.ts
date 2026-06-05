@@ -82,7 +82,7 @@ export {
     GAS_LIMIT,
     STORAGE_DEPOSIT_LIMIT,
     CONTRACTS_REGISTRY_CRATE,
-} from "@dotdm/utils";
+} from "@parity/cdm-utils";
 
 export {
     getCdmRoot,

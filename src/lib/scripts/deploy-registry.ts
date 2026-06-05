@@ -18,10 +18,10 @@ import {
     prepareSignerFromSuri,
     getChainPreset,
     ss58Address,
-} from "@dotdm/env";
-import { CONTRACTS_REGISTRY_PACKAGE } from "@dotdm/utils";
-import { getAccount } from "@dotdm/utils/accounts";
-import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@dotdm/contracts";
+} from "@parity/cdm-env";
+import { CONTRACTS_REGISTRY_PACKAGE } from "@parity/cdm-utils";
+import { getAccount } from "@parity/cdm-utils/accounts";
+import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@parity/cdm-builder";
 
 const { values: opts } = parseArgs({
     args: process.argv.slice(2),

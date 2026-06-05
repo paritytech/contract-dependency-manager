@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
-import { readCdmJson } from "@dotdm/contracts";
-import { generateContractTypes, generateContractsAugmentation } from "@dotdm/cdm";
+import { readCdmJson } from "@parity/cdm-builder";
+import { generateContractTypes, generateContractsAugmentation } from "@parity/cdm-codegen";
 
 /**
  * Ensures the project's tsconfig.json includes the `.cdm/` directory so that
@@ -48,7 +48,7 @@ function ensureTsconfigInclude(artifactsPath: string): void {
  *
  * Reads the installed contracts from `cdm.json` and generates `.cdm/cdm.d.ts` — a
  * module augmentation that extends the empty `CdmContracts` interface in
- * `@dotdm/cdm` with typed method signatures for each installed contract.
+ * `@parity/cdm-codegen` with typed method signatures for each installed contract.
  *
  * Also patches tsconfig.json to include the `.cdm/` directory so the
  * augmentation is visible to the TypeScript compiler.

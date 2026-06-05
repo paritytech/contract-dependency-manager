@@ -40,7 +40,7 @@ Use CDM for contract lifecycle and dependency resolution:
 
 Use product-sdk in apps and frontends:
 
-- Do not import `@dotdm/cdm` in frontend/runtime app code.
+- Do not import `@parity/cdm-codegen` in frontend/runtime app code.
 - Use `@parity/product-sdk-contracts` and `ContractManager` to resolve contracts from `cdm.json`.
 - Use `@parity/product-sdk-signer` for Product Account / Triangle host signing.
 - Use `@parity/product-sdk-chain-client` for host chain connections.
@@ -306,9 +306,9 @@ src/
     cli/                  CLI tool (Commander.js, Bun runtime)
     frontend/             Contract Hub web dashboard (React, Vite)
   lib/
-    contracts/            @dotdm/contracts: detection, deploy, publish, registry, install helpers
-    env/                  @dotdm/env: chain connections, signers, presets
-    utils/                @dotdm/utils: shared constants and utilities
+    contracts/            @parity/cdm-builder: detection, deploy, publish, registry, install helpers
+    env/                  @parity/cdm-env: chain connections, signers, presets
+    utils/                @parity/cdm-utils: shared constants and utilities
     scripts/              build/deploy helper scripts
     cdm/                  Rust macro + TypeScript compatibility package
   contract/               ContractRegistry (Rust/PolkaVM)

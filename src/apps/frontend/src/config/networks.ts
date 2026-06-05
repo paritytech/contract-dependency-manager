@@ -1,4 +1,4 @@
-import { getRegistryAddress, type ProductSdkEnvironment } from "@dotdm/env/registry";
+import { getRegistryAddress, type ProductSdkEnvironment } from "@parity/cdm-env/registry";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 
 export type NetworkKey = "paseo";
