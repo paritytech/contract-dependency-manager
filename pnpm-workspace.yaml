@@ -53,5 +53,5 @@ catalog:
   "@types/bun": latest
   "@biomejs/biome": ^1.9.4
   tsup: ^8.5.0
-  vitest: ^3.1.4
+  vitest: ^4.1.0
   supports-hyperlinks: ^4.4.0
