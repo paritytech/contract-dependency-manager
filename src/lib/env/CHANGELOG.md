@@ -1,5 +1,13 @@
 # @dotdm/env
 
+## 2.0.4
+
+### Patch Changes
+
+- 1ec36d8: Rename CDM workspace packages from the `@dotdm/*` scope to `@parity/cdm-*`.
+- Updated dependencies [1ec36d8]
+  - @parity/cdm-utils@0.4.1
+
 ## 2.0.3
 
 ### Patch Changes
