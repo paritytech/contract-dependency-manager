@@ -6,7 +6,7 @@ export interface NetworkContextType {
     networkConfig: NetworkConfig;
     networks: NetworkConfig[];
     setNetwork: (name: NetworkKey) => void;
-    registryAddress: `0x${string}`;
+    registryAddress: `0x${string}` | "";
     connected: boolean;
     connecting: boolean;
     error: string | null;

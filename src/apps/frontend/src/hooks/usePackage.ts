@@ -63,6 +63,9 @@ export function usePackage(name: string | undefined) {
 
     useEffect(() => {
         if (!pkgName || metadataLoaded) return;
+        const productSdkEnvironment = networkConfig.productSdkEnvironment;
+        if (!productSdkEnvironment) return;
+
         const cid = metadataCidFromUri(metadataUri);
         if (!cid) {
             setPkg((prev) => (prev ? { ...prev, metadataLoaded: true } : null));
@@ -70,7 +73,7 @@ export function usePackage(name: string | undefined) {
         }
 
         let cancelled = false;
-        queryBulletinJson(networkConfig.productSdkEnvironment, cid)
+        queryBulletinJson(productSdkEnvironment, cid)
             .then((metadata) => {
                 if (!cancelled)
                     setPkg((prev) => (prev ? { ...prev, ...parseMetadata(metadata) } : null));

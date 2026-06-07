@@ -68,12 +68,14 @@ export interface CdmChainEndpoints {
 
 const DEPLOY_CHAIN_DESCRIPTORS = {
     paseo: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
+    w3s: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
     local: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
 } as const;
 
 const ASSET_HUB_DESCRIPTORS = {
     polkadot: polkadot_asset_hub,
     paseo: paseo_asset_hub,
+    w3s: paseo_asset_hub,
     local: paseo_asset_hub,
 } as const;
 
@@ -81,7 +83,7 @@ function resolveExplicitChainName(chainName: string): KnownChainName | "custom" 
     const normalized = normalizeChainName(chainName);
     if (!normalized) {
         throw new Error(
-            `Unknown chain "${chainName}". Valid names: polkadot, paseo, local, custom`,
+            `Unknown chain "${chainName}". Valid names: polkadot, paseo, w3s, local, custom`,
         );
     }
     return normalized;

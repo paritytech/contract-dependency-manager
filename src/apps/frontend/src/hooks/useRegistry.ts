@@ -66,6 +66,9 @@ export function useRegistry() {
     const metadataKey = useCallback((pkg: Package) => `${network}:${pkg.name}`, [network]);
 
     useEffect(() => {
+        const productSdkEnvironment = networkConfig.productSdkEnvironment;
+        if (!productSdkEnvironment) return;
+
         const toFetch = basePackages.filter(
             (p) =>
                 metadataCidFromUri(p.metadataUri) && !metadataAttempted.current.has(metadataKey(p)),
@@ -80,7 +83,7 @@ export function useRegistry() {
         for (const pkg of toFetch) {
             const cid = metadataCidFromUri(pkg.metadataUri)!;
             const key = metadataKey(pkg);
-            queryBulletinJson(networkConfig.productSdkEnvironment, cid)
+            queryBulletinJson(productSdkEnvironment, cid)
                 .then((metadata) => {
                     setMetadataMap((prev) => ({ ...prev, [key]: parseMetadata(metadata) }));
                 })
