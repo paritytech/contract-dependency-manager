@@ -1,5 +1,11 @@
 # @dotdm/env
 
+## 2.0.5
+
+### Patch Changes
+
+- 9f40bc9: Add a W3S chain preset with Summit RPC endpoints and placeholder registry/IPFS configuration.
+
 ## 2.0.4
 
 ### Patch Changes

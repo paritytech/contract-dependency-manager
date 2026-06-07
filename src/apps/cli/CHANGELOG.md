@@ -1,5 +1,15 @@
 # @dotdm/cli
 
+## 0.8.20
+
+### Patch Changes
+
+- 9f40bc9: Add a W3S chain preset with Summit RPC endpoints and placeholder registry/IPFS configuration.
+- Updated dependencies [9f40bc9]
+  - @parity/cdm-env@2.0.5
+  - @parity/cdm-codegen@0.6.18
+  - @parity/cdm-builder@3.1.5
+
 ## 0.8.19
 
 ### Patch Changes
