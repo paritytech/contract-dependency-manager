@@ -3,10 +3,11 @@ import { createContract, createContractRuntimeFromClient } from "@parity/product
 import type { Contract, ContractDef, ContractRuntime } from "@parity/product-sdk-contracts";
 import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder/abi";
 import { DEFAULT_NETWORK, NETWORKS, type NetworkConfig, type NetworkKey } from "../config/networks";
+import type { ProductSdkEnvironment } from "@parity/cdm-env/registry";
 
 export type RegistryContract = Contract<ContractDef>;
 
-type ProductChainClient = ChainClient<PresetChains<NetworkConfig["productSdkEnvironment"]>>;
+type ProductChainClient = ChainClient<PresetChains<ProductSdkEnvironment>>;
 
 export interface RegistryConnection {
     client: ProductChainClient;
@@ -16,6 +17,16 @@ export interface RegistryConnection {
 const registryConnections = new Map<NetworkKey, Promise<RegistryConnection>>();
 
 async function createRegistryConnection(networkConfig: NetworkConfig): Promise<RegistryConnection> {
+    if (!networkConfig.productSdkEnvironment) {
+        throw new Error(`No product-sdk environment configured for ${networkConfig.label}.`);
+    }
+    if (!networkConfig.assetHubDescriptor) {
+        throw new Error(`No Asset Hub descriptor configured for ${networkConfig.label}.`);
+    }
+    if (!networkConfig.registryAddress) {
+        throw new Error(`No CDM registry address configured for ${networkConfig.label}.`);
+    }
+
     const client = (await getChainAPI(networkConfig.productSdkEnvironment)) as ProductChainClient;
     const runtime: ContractRuntime = createContractRuntimeFromClient(
         client.raw.assetHub,

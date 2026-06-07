@@ -44,6 +44,12 @@ const KNOWN_CHAINS = {
             },
         ],
     },
+    w3s: {
+        assethubUrl: "wss://summit-asset-hub-rpc.polkadot.io",
+        bulletinUrl: "wss://summit-bulletin-rpc.polkadot.io",
+        ipfsGatewayUrl: "",
+        registryAddress: getRegistryAddress("w3s"),
+    },
     local: {
         assethubUrl: "ws://127.0.0.1:10020",
         bulletinUrl: "ws://127.0.0.1:10030",
@@ -56,7 +62,7 @@ export type KnownChainName = keyof typeof KNOWN_CHAINS;
 
 export function normalizeChainName(name: string): KnownChainName | "custom" | undefined {
     if (name === "paseo-next-v2" || name === "paseo-v2") return "paseo";
-    if (name === "paseo" || name === "polkadot" || name === "local") {
+    if (name === "paseo" || name === "polkadot" || name === "w3s" || name === "local") {
         return name;
     }
     if (name === "custom") return "custom";
