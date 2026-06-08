@@ -1,3 +1,5 @@
+**IN PROGRESS DO NOT RUN YET**
+
 # Deploying CDM to W3S
 
 Deploy the CDM ContractRegistry to W3S/Summit Asset Hub and record the deployed registry address for CDM consumers.
