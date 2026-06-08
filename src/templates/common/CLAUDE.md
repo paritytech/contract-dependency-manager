@@ -4,7 +4,7 @@ Guidance for working in this CDM template.
 
 ## Toolchain
 
-Rust contracts use `pvm_contract_sdk` from `paritytech/cargo-pvm-contract` branch `sm/cdm` and build with:
+Rust contracts use `pvm_contract_sdk` from `paritytech/cargo-pvm-contract` branch `main` and build with:
 
 ```bash
 cdm build
@@ -81,7 +81,7 @@ crate directly can pull in duplicate contract runtime items.
 
 ## Storage
 
-Prefer the storage helpers re-exported by `pvm_contract_sdk`, such as `Lazy`, `Mapping`, `LazyString`, and `MappingString`. The current target branch supports storage composition and dynamic string/bytes storage, but arbitrary vector storage still needs explicit modelling with mappings.
+Prefer the storage helpers re-exported by `pvm_contract_sdk`, such as `Lazy`, `Mapping`, `LazyString`, and `MappingString`. The main branch supports storage composition and dynamic string/bytes storage, but arbitrary vector storage still needs explicit modelling with mappings.
 
 ## Deployment
 

@@ -53,7 +53,7 @@ HOST_TARGET=$(rustc -vV | awk '/^host:/ {print $2}')
 cargo install --force --locked \
   --target "$HOST_TARGET" \
   --git https://github.com/paritytech/cargo-pvm-contract.git \
-  --branch sm/cdm \
+  --branch main \
   cargo-pvm-contract
 ```
 
@@ -78,7 +78,7 @@ with:
 
 ```toml
 [workspace.dependencies]
-pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "sm/cdm", features = ["alloc"] }
+pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "main", features = ["alloc"] }
 polkavm-derive = "0.31"
 picoalloc = "5.2"
 ```

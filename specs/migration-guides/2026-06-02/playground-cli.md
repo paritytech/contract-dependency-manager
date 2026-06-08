@@ -103,7 +103,7 @@ cargo install --force --locked --target "$host_target" \
   --path "$tmp_dir/crates/cargo-pvm-contract"
 ```
 
-Do not switch the CLI's toolchain installer to current `sm/cdm` unless the fixture projects and expected user projects are migrated to `pvm-contract-sdk`.
+Do not switch the CLI's toolchain installer to current `main` unless the fixture projects and expected user projects are migrated to `pvm-contract-sdk`.
 
 ## Rewrite `playground contract install`
 

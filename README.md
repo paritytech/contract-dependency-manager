@@ -1,3 +1,6 @@
+> [!WARNING]
+> The following is a prototype, reference implementation, and proof-of-concept. This open source code is provided for research, experimentation, and developer education only. This code has not been audited, is actively experimental, and may contain bugs, vulnerabilities, or incomplete features. Use at your own risk.
+
 # Contract Dependency Manager (CDM)
 
 CDM is the deploy, registry, and dependency tool for PVM smart contracts on Polkadot. It builds contracts in dependency order, deploys them to Asset Hub, publishes metadata to Bulletin, registers package names in the on-chain registry, and installs typed ABIs for downstream projects.

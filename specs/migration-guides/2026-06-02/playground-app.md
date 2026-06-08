@@ -95,7 +95,7 @@ cargo install --force --locked \
   cargo-pvm-contract
 ```
 
-Do not install the current `sm/cdm`/new SDK toolchain for this repo unless you are also rewriting `contracts/registry/lib.rs`.
+Do not install the current `main` SDK toolchain for this repo unless you are also rewriting `contracts/registry/lib.rs`.
 
 ## Rust Contract Metadata
 

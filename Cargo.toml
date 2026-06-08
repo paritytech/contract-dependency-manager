@@ -10,7 +10,7 @@ license = "Apache-2.0"
 repository = "https://github.com/paritytech/contract-dependency-manager"
 
 [workspace.dependencies]
-pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "sm/cdm", features = ["alloc"] }
+pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "main", features = ["alloc"] }
 pvm-cdm = { path = "src/lib/cdm/rust-macros/pvm-cdm" }
 polkavm-derive = "0.31"
 picoalloc = "5.2"
