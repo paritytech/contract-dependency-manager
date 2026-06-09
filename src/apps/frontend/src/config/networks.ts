@@ -39,7 +39,7 @@ export const NETWORKS: Record<NetworkKey, NetworkConfig> = {
     },
 };
 
-export const DEFAULT_NETWORK: NetworkKey = "paseo";
+export const DEFAULT_NETWORK: NetworkKey = "w3s";
 export const NETWORK_OPTIONS = Object.values(NETWORKS);
 
 export function resolveNetworkKey(value: string | null | undefined): NetworkKey | null {
