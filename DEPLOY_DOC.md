@@ -49,7 +49,20 @@ Update only the W3S registry string in `src/lib/env/src/registry.ts`:
 const W3S_REGISTRY_ADDRESS = "0x...";
 ```
 
-Open a PR with that change. The Summit RPC endpoints are already wired in the W3S preset.
+Add a changeset so the updated registry address ships in both the `@parity/cdm-env` package and the compiled CLI release:
+
+```bash
+cat > .changeset/w3s-registry-address.md <<'EOF'
+---
+"@parity/cdm-cli": patch
+"@parity/cdm-env": patch
+---
+
+Set the W3S registry address.
+EOF
+```
+
+Open a PR with those changes. The Summit RPC endpoints are already wired in the W3S preset.
 
 ## 5. Install CDM CLI With W3S Registry
 
