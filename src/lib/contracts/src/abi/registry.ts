@@ -137,27 +137,6 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
     },
     {
         type: "function",
-        name: "searchContractNames",
-        inputs: [
-            { name: "prefix", type: "string" },
-            { name: "offset", type: "uint32" },
-            { name: "limit", type: "uint32" },
-        ],
-        outputs: [
-            {
-                name: "",
-                type: "tuple",
-                components: [
-                    { name: "names", type: "string[]" },
-                    { name: "next_offset", type: "uint32" },
-                    { name: "done", type: "bool" },
-                ],
-            },
-        ],
-        stateMutability: "view",
-    },
-    {
-        type: "function",
         name: "getOwner",
         inputs: [{ name: "contract_name", type: "string" }],
         outputs: [{ name: "", type: "address" }],
