@@ -3,6 +3,8 @@ import { Box, Text } from "ink";
 import type { ContractStatus, PhaseInfo } from "../deploy-pipeline";
 import {
     Link,
+    LinkLine,
+    hyperlinksSupported,
     Spinner,
     ProgressBar,
     EmptyBar,
@@ -203,7 +205,7 @@ function ContractRow({
         addrCell = <Idle />;
     }
 
-    return (
+    const row = (
         <Box>
             <Cell width={COL_CONTRACT}>
                 <Text bold wrap="truncate">
@@ -215,6 +217,43 @@ function ContractRow({
             <Cell width={COL_PHASE}>{metaCell}</Cell>
             <Cell width={COL_PHASE}>{registerCell}</Cell>
             <Cell width={COL_ADDR}>{addrCell}</Cell>
+        </Box>
+    );
+
+    if (hyperlinksSupported) return row;
+
+    // No OSC 8 support: the phase cells only show short hashes, so surface each
+    // full link on its own line below the row. Conditions mirror the cell
+    // rendering above so an inline line appears iff a cell shows a link.
+    const linkDefs: { label: string; url: string }[] = [];
+    if (
+        ["registering", "done"].includes(state) &&
+        s?.deployTxHash &&
+        s?.deployBlockHash &&
+        assethubUrl
+    ) {
+        linkDefs.push({ label: "deploy", url: pjsExplorerUrl(assethubUrl, s.deployBlockHash) });
+    }
+    if (["registering", "done"].includes(state) && s?.cid && ipfsGatewayUrl) {
+        linkDefs.push({ label: "metadata", url: ipfsUrl(ipfsGatewayUrl, s.cid) });
+    }
+    if (state === "done" && s?.registerTxHash && s?.registerBlockHash && assethubUrl) {
+        linkDefs.push({ label: "register", url: pjsExplorerUrl(assethubUrl, s.registerBlockHash) });
+    }
+    if (linkDefs.length === 0) return row;
+
+    // Deploy and register share one block hash (single batch), so collapse
+    // duplicate URLs into a single line with a combined label.
+    const byUrl = new Map<string, string[]>();
+    for (const { label, url } of linkDefs) {
+        byUrl.set(url, [...(byUrl.get(url) ?? []), label]);
+    }
+    return (
+        <Box flexDirection="column">
+            {row}
+            {[...byUrl].map(([url, labels]) => (
+                <LinkLine key={url} label={labels.join("/")} url={url} />
+            ))}
         </Box>
     );
 }
