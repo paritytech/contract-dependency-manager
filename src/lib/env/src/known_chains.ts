@@ -47,8 +47,9 @@ const KNOWN_CHAINS = {
     w3s: {
         assethubUrl: "wss://summit-asset-hub-rpc.polkadot.io",
         bulletinUrl: "wss://summit-bulletin-rpc.polkadot.io",
-        ipfsGatewayUrl: "",
+        ipfsGatewayUrl: "https://summit-ipfs.polkadot.io/ipfs",
         registryAddress: getRegistryAddress("w3s"),
+        productSdkEnvironment: "summit",
     },
     local: {
         assethubUrl: "ws://127.0.0.1:10020",

@@ -1,4 +1,4 @@
-export type ProductSdkEnvironment = "paseo";
+export type ProductSdkEnvironment = "paseo" | "summit";
 
 const POLKADOT_REGISTRY_ADDRESS = "";
 const PASEO_REGISTRY_ADDRESS = "0xf62c2ece29cd8df2e10040ecfa5a894a5c5d9cb0";
