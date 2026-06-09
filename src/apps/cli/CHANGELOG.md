@@ -1,5 +1,11 @@
 # @dotdm/cli
 
+## 0.8.21
+
+### Patch Changes
+
+- 65742ed: Fix deploy/install link display in terminals without OSC 8 hyperlink support. Instead of squeezing the full URL into a narrow table column (where it wrapped into an unreadable smear), the cell now keeps the short hash and the full link is printed on its own line below the row.
+
 ## 0.8.20
 
 ### Patch Changes
