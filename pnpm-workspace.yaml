@@ -9,17 +9,17 @@ packages:
 catalog:
   polkadot-api: ^2.1.5
   "@polkadot-api/sdk-ink": ^0.7.0
-  "@novasamatech/host-api": 0.8.4
+  "@novasamatech/host-api": 0.8.7-1
   "@novasamatech/product-sdk": 0.7.9-4
   "@parity/bulletin-sdk": ^0.3.0
-  "@parity/product-sdk-chain-client": 0.5.3
-  "@parity/product-sdk-cloud-storage": 0.5.3
-  "@parity/product-sdk-contracts": 0.7.0
-  "@parity/product-sdk-descriptors": 0.5.2
-  "@parity/product-sdk-host": 0.6.1
-  "@parity/product-sdk-keys": 0.3.3
-  "@parity/product-sdk-signer": 0.6.0
-  "@parity/product-sdk-tx": 0.2.7
+  "@parity/product-sdk-chain-client": 0.7.0
+  "@parity/product-sdk-cloud-storage": 0.6.0
+  "@parity/product-sdk-contracts": 0.7.3
+  "@parity/product-sdk-descriptors": 0.6.0
+  "@parity/product-sdk-host": 0.8.0
+  "@parity/product-sdk-keys": 0.3.6
+  "@parity/product-sdk-signer": 0.6.3
+  "@parity/product-sdk-tx": 0.2.10
   "@polkadot-api/smoldot": ^0.4.2
   "@polkadot-api/cli": ^0.21.1
   "@polkadot-labs/hdkd": ^0.0.26
