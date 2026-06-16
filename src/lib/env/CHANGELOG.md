@@ -1,5 +1,11 @@
 # @dotdm/env
 
+## 2.0.6
+
+### Patch Changes
+
+- 083bc41: Add the W3S registry address to the environment registry.
+
 ## 2.0.5
 
 ### Patch Changes
