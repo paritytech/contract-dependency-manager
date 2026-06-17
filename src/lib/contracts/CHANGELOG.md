@@ -1,5 +1,11 @@
 # @dotdm/contracts
 
+## 3.1.7
+
+### Patch Changes
+
+- 02c7e06: Submit contract metadata to Bulletin directly to avoid stale remaining-quota preflight failures.
+
 ## 3.1.6
 
 ### Patch Changes
