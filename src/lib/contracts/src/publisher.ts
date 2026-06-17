@@ -1,3 +1,4 @@
+// TODO! Report the Bulletin quota preflight issue to product-sdk from https://github.com/paritytech/contract-dependency-manager/pull/53, then replace this hand-rolled submit path with the fixed SDK flow.
 import type { PolkadotSigner } from "polkadot-api";
 import type { CdmBulletinApi } from "@parity/cdm-env";
 import { calculateCid } from "@parity/product-sdk-cloud-storage";
