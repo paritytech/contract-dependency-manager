@@ -1,5 +1,42 @@
 # @dotdm/contracts
 
+## 3.1.7
+
+### Patch Changes
+
+- 02c7e06: Submit contract metadata to Bulletin directly to avoid stale remaining-quota preflight failures.
+
+## 3.1.6
+
+### Patch Changes
+
+- Updated dependencies [083bc41]
+  - @parity/cdm-env@2.0.6
+
+## 3.1.5
+
+### Patch Changes
+
+- Updated dependencies [9f40bc9]
+  - @parity/cdm-env@2.0.5
+
+## 3.1.4
+
+### Patch Changes
+
+- 1ec36d8: Rename CDM workspace packages from the `@dotdm/*` scope to `@parity/cdm-*`.
+- Updated dependencies [1ec36d8]
+  - @parity/cdm-env@2.0.4
+  - @parity/cdm-utils@0.4.1
+
+## 3.1.3
+
+### Patch Changes
+
+- 6eccbfa: Bump `@parity/product-sdk-*` packages (chain-client 0.5.3, contracts 0.7.0, descriptors 0.5.2, host 0.6.1, keys 0.3.3, signer 0.6.0, tx 0.2.7) and align `polkadot-api` to `^2.1.5` to match their peer requirement.
+- Updated dependencies [6eccbfa]
+  - @dotdm/env@2.0.3
+
 ## 3.1.2
 
 ### Patch Changes

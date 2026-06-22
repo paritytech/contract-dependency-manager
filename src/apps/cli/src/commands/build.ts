@@ -1,19 +1,14 @@
 import { Command } from "commander";
 import { resolve } from "path";
-import { getChainPreset, getRegistryAddress } from "@dotdm/env";
-import {
-    readCdmJson,
-    resolveFeatures,
-    resolveLocalRegistry,
-    resolveTargetRegistryAddress,
-} from "@dotdm/contracts";
+import { getChainPreset, getRegistryAddress } from "@parity/cdm-env";
+import { readCdmJson, resolveFeatures, resolveLocalRegistry } from "@parity/cdm-builder";
 import { runBuildWithUI } from "../lib/ui";
 
 const build = new Command("build")
     .description("Build all contracts")
     .option("--contracts <names...>", "Only build specific contracts")
     .option("--features <features>", "Cargo feature flags to pass to the build")
-    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, local)")
+    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, w3s, local)")
     .option("--registry-address <address>", "Registry contract address to embed")
     .option("--root <path>", "Workspace root directory", process.cwd());
 
@@ -42,8 +37,7 @@ function resolveRegistryAddress(rootDir: string, opts: BuildOptions): string {
     }
 
     const cdmResult = readCdmJson(rootDir);
-    const target = Object.values(cdmResult?.cdmJson.targets ?? {})[0];
-    return target ? resolveTargetRegistryAddress(target) : getRegistryAddress();
+    return cdmResult?.cdmJson.registry ?? getRegistryAddress();
 }
 
 build.action(async (opts: BuildOptions) => {

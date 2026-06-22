@@ -1,6 +1,6 @@
 {
-    "name": "@dotdm/contracts",
-    "version": "3.1.2",
+    "name": "@parity/cdm-builder",
+    "version": "3.1.7",
     "type": "module",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
@@ -23,10 +23,10 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
-        "@dotdm/env": "workspace:*",
-        "@dotdm/utils": "workspace:*",
+        "@parity/cdm-env": "workspace:*",
+        "@parity/cdm-utils": "workspace:*",
         "@noble/hashes": "catalog:",
-        "@parity/product-sdk-bulletin": "catalog:",
+        "@parity/product-sdk-cloud-storage": "catalog:",
         "@parity/product-sdk-contracts": "catalog:",
         "@parity/product-sdk-descriptors": "catalog:",
         "@parity/product-sdk-tx": "catalog:",

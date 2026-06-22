@@ -9,9 +9,8 @@ import type { AbiEntry } from "@parity/product-sdk-contracts";
  * to the on-chain metadata — editing this file by hand will desync it from
  * the registry deployed on every network.
  *
- * Previously exposed via the `@dotdm/descriptors` package (papi-generated
- * ink descriptor); embedding it here removes the papi codegen dependency for
- * the one fixed contract every CDM deploy touches.
+ * Previously exposed via generated descriptors; embedding it here removes the
+ * papi codegen dependency for the one fixed contract every CDM deploy touches.
  */
 export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
     {
@@ -131,27 +130,6 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
                             { name: "owner", type: "address" },
                         ],
                     },
-                ],
-            },
-        ],
-        stateMutability: "view",
-    },
-    {
-        type: "function",
-        name: "searchContractNames",
-        inputs: [
-            { name: "prefix", type: "string" },
-            { name: "offset", type: "uint32" },
-            { name: "limit", type: "uint32" },
-        ],
-        outputs: [
-            {
-                name: "",
-                type: "tuple",
-                components: [
-                    { name: "names", type: "string[]" },
-                    { name: "next_offset", type: "uint32" },
-                    { name: "done", type: "bool" },
                 ],
             },
         ],

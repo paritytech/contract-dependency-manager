@@ -4,9 +4,9 @@ import { createConnection } from "node:net";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { createCdmAssetHubClient, getChainPreset } from "@dotdm/env";
-import { resolveLocalRegistry, type SizedHex } from "@dotdm/contracts";
-import { retryWithBackoff } from "@dotdm/utils";
+import { createCdmAssetHubClient, getChainPreset } from "@parity/cdm-env";
+import { resolveLocalRegistry, type SizedHex } from "@parity/cdm-builder";
+import { retryWithBackoff } from "@parity/cdm-utils";
 import { startBulletinIpfsGateway } from "../lib/bulletin-ipfs-gateway";
 import { cdmInvocation } from "../lib/cdm-invocation";
 

@@ -1,10 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
-import { readCdmJson } from "@dotdm/contracts";
-import { generateContractTypes, generateContractsAugmentation } from "@dotdm/cdm";
-import type { InstallResult } from "./index";
-
-const CDM_INCLUDE = ".cdm/**/*";
+import { readCdmJson } from "@parity/cdm-builder";
+import { generateContractTypes, generateContractsAugmentation } from "@parity/cdm-codegen";
 
 /**
  * Ensures the project's tsconfig.json includes the `.cdm/` directory so that
@@ -18,8 +15,9 @@ const CDM_INCLUDE = ".cdm/**/*";
  * - Normalizes leading `./` when checking for duplicates.
  * - Silently skips if the tsconfig exists but can't be parsed (e.g. has comments/trailing commas).
  */
-function ensureTsconfigInclude(): void {
+function ensureTsconfigInclude(artifactsPath: string): void {
     const tsconfigPath = resolve(process.cwd(), "tsconfig.json");
+    const cdmInclude = `${artifactsPath.replace(/^\.\//, "").replace(/\/+$/, "")}/**/*`;
 
     let tsconfig: Record<string, unknown>;
     if (existsSync(tsconfigPath)) {
@@ -34,48 +32,47 @@ function ensureTsconfigInclude(): void {
 
     const include = Array.isArray(tsconfig.include) ? tsconfig.include : [];
     const alreadyHas = include.some(
-        (entry: unknown) => typeof entry === "string" && entry.replace(/^\.\//, "") === CDM_INCLUDE,
+        (entry: unknown) => typeof entry === "string" && entry.replace(/^\.\//, "") === cdmInclude,
     );
 
     if (alreadyHas) return;
 
-    include.push(`./${CDM_INCLUDE}`);
+    include.push(`./${cdmInclude}`);
     tsconfig.include = include;
     writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 4) + "\n");
 }
 
 /**
  * Post-install hook for TypeScript projects. Runs after all contracts have been
- * fetched and saved to `~/.cdm/`.
+ * fetched and saved to `cdm.json`.
  *
- * Reads the current target's dependencies from `cdm.json`, resolves each
- * contract's ABI from the local store, and generates `.cdm/cdm.d.ts` — a
+ * Reads the installed contracts from `cdm.json` and generates `.cdm/cdm.d.ts` — a
  * module augmentation that extends the empty `CdmContracts` interface in
- * `@dotdm/cdm` with typed method signatures for each installed contract.
+ * `@parity/cdm-codegen` with typed method signatures for each installed contract.
  *
  * Also patches tsconfig.json to include the `.cdm/` directory so the
  * augmentation is visible to the TypeScript compiler.
  */
-export async function postInstallTypeScript(result: InstallResult): Promise<void> {
+export async function postInstallTypeScript(): Promise<void> {
     const cdmResult = readCdmJson();
     if (!cdmResult) return;
 
-    const contractsForTarget = cdmResult.cdmJson.contracts?.[result.targetHash];
-    if (!contractsForTarget) return;
+    const installedContracts = cdmResult.cdmJson.contracts;
+    if (!installedContracts) return;
+    const artifactsPath = ".cdm";
 
-    // Collect all contracts for this target from embedded data
-    const contracts = Object.entries(contractsForTarget).map(([lib, data]) => ({
+    const contracts = Object.entries(installedContracts).map(([lib, data]) => ({
         library: lib,
         abi: data.abi as any[],
     }));
 
     if (contracts.length === 0) return;
 
-    const cdmDir = resolve(process.cwd(), ".cdm");
+    const cdmDir = resolve(process.cwd(), artifactsPath);
     mkdirSync(cdmDir, { recursive: true });
     writeFileSync(resolve(cdmDir, "cdm.d.ts"), generateContractTypes(contracts));
     writeFileSync(resolve(cdmDir, "contracts.d.ts"), generateContractsAugmentation(contracts));
 
     // Ensure tsconfig.json includes .cdm/ for module augmentation
-    ensureTsconfigInclude();
+    ensureTsconfigInclude(artifactsPath);
 }

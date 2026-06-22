@@ -1,6 +1,6 @@
 import { resolve } from "path";
 import { execFileSync, spawn } from "child_process";
-import { getRegistryAddress } from "@dotdm/env/registry";
+import { getRegistryAddress } from "@parity/cdm-env/registry";
 
 export interface BuildResult {
     crateName: string;

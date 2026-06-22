@@ -1,6 +1,6 @@
 {
-    "name": "@dotdm/env",
-    "version": "2.0.2",
+    "name": "@parity/cdm-env",
+    "version": "2.0.6",
     "type": "module",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
@@ -23,7 +23,7 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
-        "@dotdm/utils": "workspace:*",
+        "@parity/cdm-utils": "workspace:*",
         "@parity/product-sdk-descriptors": "catalog:",
         "@parity/product-sdk-host": "catalog:",
         "@polkadot-labs/hdkd": "catalog:",

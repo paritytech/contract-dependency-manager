@@ -13,7 +13,7 @@
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import { setupForeignContracts, cachePathFor } from "@dotdm/cdm/test";
+import { setupForeignContracts, cachePathFor } from "@parity/cdm-codegen/test";
 
 const PKG = "@polkadot/contexts:latest";
 

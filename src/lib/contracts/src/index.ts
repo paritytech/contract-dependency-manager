@@ -84,7 +84,7 @@ export {
     GAS_LIMIT,
     STORAGE_DEPOSIT_LIMIT,
     CONTRACTS_REGISTRY_CRATE,
-} from "@dotdm/utils";
+} from "@parity/cdm-utils";
 
 export {
     getCdmRoot,
@@ -96,10 +96,8 @@ export {
 
 export {
     type CdmJsonContract,
-    type CdmJsonTarget,
     type CdmJson,
-    computeTargetHash,
-    resolveTargetRegistryAddress,
+    normalizeCdmJson,
     readCdmJson,
     writeCdmJson,
 } from "./cdm-json";

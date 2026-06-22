@@ -4,14 +4,14 @@ import type {
     BuildSummary,
     DeploySummary,
     ContractInfo,
-} from "@dotdm/contracts";
+} from "@parity/cdm-builder";
 
 /**
  * CLI-local `ContractStatus` shape that the Ink `DeployTable.tsx` component
  * consumes. Populated by adapting `BuildEvent` / `DeployEvent` streams from
- * `@dotdm/contracts` `buildContracts()` / `deployContracts()`.
+ * `@parity/cdm-builder` `buildContracts()` / `deployContracts()`.
  *
- * The pipeline itself now lives in `@dotdm/contracts`; this file only handles
+ * The pipeline itself now lives in `@parity/cdm-builder`; this file only handles
  * event → UI-status translation so the terminal table stays unchanged.
  */
 export type ContractState =

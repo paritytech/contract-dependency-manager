@@ -1,7 +1,7 @@
 import { CID } from "multiformats/cid";
 import * as Digest from "multiformats/hashes/digest";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { BulletinPreparer, DEFAULT_CLIENT_CONFIG } from "@parity/product-sdk-bulletin";
+import { BulletinPreparer, DEFAULT_CLIENT_CONFIG } from "@parity/product-sdk-cloud-storage";
 
 const BLAKE2B_256 = 0xb220;
 const RAW_CODEC = 0x55;

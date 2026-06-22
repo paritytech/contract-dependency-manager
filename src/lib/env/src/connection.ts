@@ -8,6 +8,8 @@ import { getWsProvider } from "polkadot-api/ws";
 import { polkadot_asset_hub } from "@parity/product-sdk-descriptors/polkadot-asset-hub";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
+import { summit_asset_hub } from "@parity/product-sdk-descriptors/summit-asset-hub";
+import { summit_bulletin } from "@parity/product-sdk-descriptors/summit-bulletin";
 import { getChainPreset, normalizeChainName, type KnownChainName } from "./known_chains";
 
 export type CdmDirectChainClient<TChains extends Record<string, ChainDefinition>> = {
@@ -18,9 +20,9 @@ export type CdmDirectChainClient<TChains extends Record<string, ChainDefinition>
     destroy: () => void;
 };
 
-export type CdmDeployAssetHubDescriptor = typeof paseo_asset_hub;
+export type CdmDeployAssetHubDescriptor = typeof paseo_asset_hub | typeof summit_asset_hub;
 export type CdmAssetHubDescriptor = CdmDeployAssetHubDescriptor | typeof polkadot_asset_hub;
-export type CdmBulletinDescriptor = typeof paseo_bulletin;
+export type CdmBulletinDescriptor = typeof paseo_bulletin | typeof summit_bulletin;
 
 export type CdmDeployAssetHubApi = TypedApi<CdmDeployAssetHubDescriptor>;
 export type CdmAssetHubApi = TypedApi<CdmAssetHubDescriptor>;
@@ -68,12 +70,14 @@ export interface CdmChainEndpoints {
 
 const DEPLOY_CHAIN_DESCRIPTORS = {
     paseo: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
+    w3s: { assetHub: summit_asset_hub, bulletin: summit_bulletin },
     local: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
 } as const;
 
 const ASSET_HUB_DESCRIPTORS = {
     polkadot: polkadot_asset_hub,
     paseo: paseo_asset_hub,
+    w3s: summit_asset_hub,
     local: paseo_asset_hub,
 } as const;
 
@@ -81,7 +85,7 @@ function resolveExplicitChainName(chainName: string): KnownChainName | "custom" 
     const normalized = normalizeChainName(chainName);
     if (!normalized) {
         throw new Error(
-            `Unknown chain "${chainName}". Valid names: polkadot, paseo, local, custom`,
+            `Unknown chain "${chainName}". Valid names: polkadot, paseo, w3s, local, custom`,
         );
     }
     return normalized;
@@ -97,7 +101,7 @@ function resolveDeployDescriptors(chainName: string | undefined) {
     const descriptorChain = normalized && normalized !== "custom" ? normalized : "paseo";
     if (descriptorChain === "polkadot") {
         throw new Error(
-            'CDM deploy connections are only available for "paseo" and "local"; product-sdk does not publish a Polkadot Bulletin descriptor yet.',
+            'CDM deploy connections are only available for "paseo", "w3s", and "local"; product-sdk does not publish a Polkadot Bulletin descriptor yet.',
         );
     }
 
@@ -211,5 +215,12 @@ if (import.meta.vitest) {
 
         expect(descriptors.assetHub).toBe(paseo_asset_hub);
         expect(descriptors.bulletin).toBe(paseo_bulletin);
+    });
+
+    test("w3s deploy connections use summit descriptors", () => {
+        const descriptors = resolveDeployDescriptors("w3s");
+
+        expect(descriptors.assetHub).toBe(summit_asset_hub);
+        expect(descriptors.bulletin).toBe(summit_bulletin);
     });
 }

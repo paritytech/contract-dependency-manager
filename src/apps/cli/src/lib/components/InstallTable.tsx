@@ -3,6 +3,8 @@ import { Box, Text } from "ink";
 import type { InstallStatus } from "../install-pipeline";
 import {
     Link,
+    LinkLine,
+    hyperlinksSupported,
     Spinner,
     Cell,
     Idle,
@@ -70,7 +72,7 @@ function InstallRow({
         addrCell = <Idle />;
     }
 
-    return (
+    const row = (
         <Box>
             <Cell width={COL_CONTRACT}>
                 <Text bold wrap="truncate">
@@ -80,6 +82,17 @@ function InstallRow({
             <Cell width={COL_VERSION}>{versionCell}</Cell>
             <Cell width={COL_META}>{metaCell}</Cell>
             <Cell width={COL_ADDR}>{addrCell}</Cell>
+        </Box>
+    );
+
+    // When OSC 8 hyperlinks aren't available, the metadata cell only shows the
+    // short CID hash; surface the full link on its own line below the row.
+    const hasLink = state === "done" && s?.metadataCid && ipfsGatewayUrl;
+    if (hyperlinksSupported || !hasLink) return row;
+    return (
+        <Box flexDirection="column">
+            {row}
+            <LinkLine url={ipfsUrl(ipfsGatewayUrl!, s!.metadataCid!)} />
         </Box>
     );
 }

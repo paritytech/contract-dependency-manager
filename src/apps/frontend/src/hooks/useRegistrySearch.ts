@@ -9,19 +9,17 @@ import {
     queryContractNamesByPrefix,
 } from "../data/registry-queries";
 import { withTimeout } from "../data/timeout";
+import { getRegistryConnection } from "../utils/contracts";
 
 const SEARCH_PAGE_SIZE = 20;
 
 export function useRegistrySearch(query: string) {
-    const {
-        registry,
-        connected,
-        connecting,
-        error: networkError,
-        network,
-        networkConfig,
-    } = useNetwork();
-    const prefix = useMemo(() => query.trim(), [query]);
+    const { connected, connecting, error: networkError, network, networkConfig } = useNetwork();
+    const prefix = useMemo(() => {
+        const trimmed = query.trim();
+        if (!trimmed) return "";
+        return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+    }, [query]);
 
     const [basePackages, setBasePackages] = useState<Package[]>([]);
     const [metadataMap, setMetadataMap] = useState<Record<string, Partial<Package>>>({});
@@ -39,7 +37,7 @@ export function useRegistrySearch(query: string) {
 
     const loadPage = useCallback(
         async (generation: number) => {
-            if (!registry || !connected || !prefix || busyRef.current || !hasMoreRef.current) {
+            if (!connected || !prefix || busyRef.current || !hasMoreRef.current) {
                 return;
             }
 
@@ -48,6 +46,7 @@ export function useRegistrySearch(query: string) {
             setError(null);
 
             try {
+                const { registry } = await getRegistryConnection(networkConfig);
                 const page = await withTimeout(
                     queryContractNamesByPrefix(
                         registry,
@@ -90,7 +89,7 @@ export function useRegistrySearch(query: string) {
                 }
             }
         },
-        [connected, networkConfig.label, prefix, registry],
+        [connected, networkConfig, prefix],
     );
 
     useEffect(() => {
@@ -107,18 +106,21 @@ export function useRegistrySearch(query: string) {
         busyRef.current = false;
         metadataAttempted.current.clear();
 
-        if (registry && connected && prefix) {
+        if (connected && prefix) {
             hasMoreRef.current = true;
             setHasMore(true);
             void loadPage(generation);
         }
-    }, [connected, loadPage, prefix, registry]);
+    }, [connected, loadPage, prefix]);
 
     const loadMore = useCallback(() => {
         void loadPage(generationRef.current);
     }, [loadPage]);
 
     useEffect(() => {
+        const productSdkEnvironment = networkConfig.productSdkEnvironment;
+        if (!productSdkEnvironment) return;
+
         const toFetch = basePackages.filter(
             (pkg) =>
                 metadataCidFromUri(pkg.metadataUri) &&
@@ -134,7 +136,7 @@ export function useRegistrySearch(query: string) {
         for (const pkg of toFetch) {
             const cid = metadataCidFromUri(pkg.metadataUri)!;
             const key = metadataKey(pkg);
-            queryBulletinJson(networkConfig.productSdkEnvironment, cid)
+            queryBulletinJson(productSdkEnvironment, cid)
                 .then((metadata) => {
                     setMetadataMap((prev) => ({ ...prev, [key]: parseMetadata(metadata) }));
                 })

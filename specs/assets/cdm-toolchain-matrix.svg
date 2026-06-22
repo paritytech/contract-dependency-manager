@@ -67,7 +67,7 @@
     <!-- field: deploy adapter -->
     <text x="60" y="582" font-size="10" font-weight="700" fill="#92400E" letter-spacing="1">DEPLOY + REGISTER</text>
     <use href="#pipDone" x="215" y="571" width="14" height="14"/>
-    <text x="60" y="603" font-size="11" fill="#78350F">@dotdm/contracts deployer  ·  CREATE2  ·  batch_all</text>
+    <text x="60" y="603" font-size="11" fill="#78350F">@parity/cdm-builder deployer  ·  CREATE2  ·  batch_all</text>
     <text x="60" y="620" font-size="11" font-style="italic" fill="#15803D">all flows wired end-to-end</text>
   </g>
 

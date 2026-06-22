@@ -1,3 +1,6 @@
+> [!WARNING]
+> The following is a prototype, reference implementation, and proof-of-concept. This open source code is provided for research, experimentation, and developer education only. This code has not been audited, is actively experimental, and may contain bugs, vulnerabilities, or incomplete features. Use at your own risk.
+
 # Contract Dependency Manager (CDM)
 
 CDM is the deploy, registry, and dependency tool for PVM smart contracts on Polkadot. It builds contracts in dependency order, deploys them to Asset Hub, publishes metadata to Bulletin, registers package names in the on-chain registry, and installs typed ABIs for downstream projects.
@@ -40,7 +43,7 @@ Use CDM for contract lifecycle and dependency resolution:
 
 Use product-sdk in apps and frontends:
 
-- Do not import `@dotdm/cdm` in frontend/runtime app code.
+- Do not import `@parity/cdm-codegen` in frontend/runtime app code.
 - Use `@parity/product-sdk-contracts` and `ContractManager` to resolve contracts from `cdm.json`.
 - Use `@parity/product-sdk-signer` for Product Account / Triangle host signing.
 - Use `@parity/product-sdk-chain-client` for host chain connections.
@@ -83,7 +86,7 @@ let other = other_contract::OtherContract::cdm_lookup();
 other.do_something().call(self).expect("OtherCallFailed");
 ```
 
-For workspace-local packages, `cdm::import!` resolves the ABI through Cargo metadata when the provider crate declares the matching `[package.metadata.cdm] package`. For external packages, run `cdm i -n paseo @someorg/other-contract` first; the macro falls back to `cdm.json` and the installed ABI in `~/.cdm`.
+For workspace-local packages, `cdm::import!` resolves the ABI through Cargo metadata when the provider crate declares the matching `[package.metadata.cdm] package`. For external packages, run `cdm i -n paseo @someorg/other-contract` first; the macro falls back to the flat `cdm.json` snapshot and materializes any ABI file it needs under the project-local `.cdm/` directory.
 
 Solidity contracts use NatSpec for their own CDM package name:
 
@@ -114,16 +117,16 @@ Install published contract ABIs:
 cdm i -n paseo @yourorg/counter @yourorg/counter-writer
 ```
 
-This updates `cdm.json`, stores ABIs under `~/.cdm`, writes `.cdm/contracts.d.ts`, and generates Solidity imports under `.cdm/solidity/`. Keep `.cdm/**/*` in `tsconfig.json` so product-sdk contract handles are typed.
+This updates `cdm.json`, stores ABI/metadata artifacts under project-local `.cdm/contracts/`, writes `.cdm/contracts.d.ts`, and generates Solidity imports under `.cdm/solidity/`. Keep `.cdm/**/*` in `tsconfig.json` so product-sdk contract handles are typed.
 
 Install the product-sdk app/runtime packages:
 
 ```bash
-pnpm add @parity/product-sdk-chain-client@^0.4.1 \
-  @parity/product-sdk-contracts@^0.5.0 \
-  @parity/product-sdk-descriptors@^0.4.0 \
-  @parity/product-sdk-signer@^0.2.4 \
-  @parity/product-sdk-tx@^0.2.3 \
+pnpm add @parity/product-sdk-chain-client@^0.5.2 \
+  @parity/product-sdk-contracts@^0.6.2 \
+  @parity/product-sdk-descriptors@^0.5.1 \
+  @parity/product-sdk-signer@^0.5.0 \
+  @parity/product-sdk-tx@^0.2.6 \
   polkadot-api@^2.1.2
 ```
 
@@ -252,7 +255,7 @@ cdm i -n paseo @polkadot/contexts @polkadot/profiles
 cdm i -n paseo @yourorg/package:3
 ```
 
-`cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates `cdm.json`, installs ABIs under `~/.cdm`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`.
+`cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates the flat `cdm.json`, installs ABI/metadata artifacts under project-local `.cdm/contracts/`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`.
 
 ### `cdm test`
 
@@ -343,9 +346,9 @@ src/
     cli/                  CLI tool (Commander.js, Bun runtime)
     frontend/             Contract Hub web dashboard (React, Vite)
   lib/
-    contracts/            @dotdm/contracts: detection, deploy, publish, registry, install helpers
-    env/                  @dotdm/env: chain connections, signers, presets
-    utils/                @dotdm/utils: shared constants and utilities
+    contracts/            @parity/cdm-builder: detection, deploy, publish, registry, install helpers
+    env/                  @parity/cdm-env: chain connections, signers, presets
+    utils/                @parity/cdm-utils: shared constants and utilities
     scripts/              build/deploy helper scripts
     cdm/                  Rust macro + TypeScript compatibility package
   contract/               ContractRegistry (Rust/PolkaVM)

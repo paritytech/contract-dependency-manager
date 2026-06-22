@@ -1,5 +1,46 @@
 # @dotdm/cdm
 
+## 0.6.20
+
+### Patch Changes
+
+- Updated dependencies [02c7e06]
+  - @parity/cdm-builder@3.1.7
+
+## 0.6.19
+
+### Patch Changes
+
+- Updated dependencies [083bc41]
+  - @parity/cdm-env@2.0.6
+  - @parity/cdm-builder@3.1.6
+
+## 0.6.18
+
+### Patch Changes
+
+- Updated dependencies [9f40bc9]
+  - @parity/cdm-env@2.0.5
+  - @parity/cdm-builder@3.1.5
+
+## 0.6.17
+
+### Patch Changes
+
+- 1ec36d8: Rename CDM workspace packages from the `@dotdm/*` scope to `@parity/cdm-*`.
+- Updated dependencies [1ec36d8]
+  - @parity/cdm-builder@3.1.4
+  - @parity/cdm-env@2.0.4
+  - @parity/cdm-utils@0.4.1
+
+## 0.6.16
+
+### Patch Changes
+
+- Updated dependencies [6eccbfa]
+  - @dotdm/contracts@3.1.3
+  - @dotdm/env@2.0.3
+
 ## 0.6.15
 
 ### Patch Changes

@@ -1,21 +1,22 @@
-import { getRegistryAddress, type ProductSdkEnvironment } from "@dotdm/env/registry";
+import { getRegistryAddress, type ProductSdkEnvironment } from "@parity/cdm-env/registry";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
+import { summit_asset_hub } from "@parity/product-sdk-descriptors/summit-asset-hub";
 
-export type NetworkKey = "paseo";
-type AssetHubDescriptor = typeof paseo_asset_hub;
+export type NetworkKey = "paseo" | "w3s";
+type AssetHubDescriptor = typeof paseo_asset_hub | typeof summit_asset_hub;
 
 export interface NetworkConfig {
     key: NetworkKey;
     label: string;
     installName: string;
-    productSdkEnvironment: ProductSdkEnvironment;
-    assetHubDescriptor: AssetHubDescriptor;
-    registryAddress: `0x${string}`;
+    productSdkEnvironment: ProductSdkEnvironment | "";
+    assetHubDescriptor: AssetHubDescriptor | null;
+    registryAddress: `0x${string}` | "";
 }
 
-function registryAddressFor(name: string): `0x${string}` {
+function registryAddressFor(name: string): `0x${string}` | "" {
     const registryAddress = getRegistryAddress(name);
-    if (!registryAddress) throw new Error(`No CDM registry address configured for ${name}`);
+    if (!registryAddress) return "";
     return registryAddress as `0x${string}`;
 }
 
@@ -28,9 +29,17 @@ export const NETWORKS: Record<NetworkKey, NetworkConfig> = {
         assetHubDescriptor: paseo_asset_hub,
         registryAddress: registryAddressFor("paseo"),
     },
+    w3s: {
+        key: "w3s",
+        label: "W3S",
+        installName: "w3s",
+        productSdkEnvironment: "summit",
+        assetHubDescriptor: summit_asset_hub,
+        registryAddress: registryAddressFor("w3s"),
+    },
 };
 
-export const DEFAULT_NETWORK: NetworkKey = "paseo";
+export const DEFAULT_NETWORK: NetworkKey = "w3s";
 export const NETWORK_OPTIONS = Object.values(NETWORKS);
 
 export function resolveNetworkKey(value: string | null | undefined): NetworkKey | null {

@@ -7,16 +7,19 @@ packages:
   - "src/lib/cdm/typescript"
 
 catalog:
-  polkadot-api: ^2.1.2
+  polkadot-api: ^2.1.5
   "@polkadot-api/sdk-ink": ^0.7.0
+  "@novasamatech/host-api": 0.8.7-1
+  "@novasamatech/product-sdk": 0.7.9-4
   "@parity/bulletin-sdk": ^0.3.0
-  "@parity/product-sdk-bulletin": ^0.4.2
-  "@parity/product-sdk-chain-client": ^0.5.0
-  "@parity/product-sdk-contracts": ^0.6.0
-  "@parity/product-sdk-descriptors": ^0.5.0
-  "@parity/product-sdk-host": ^0.5.0
-  "@parity/product-sdk-keys": ^0.2.0
-  "@parity/product-sdk-tx": ^0.2.5
+  "@parity/product-sdk-chain-client": 0.7.0
+  "@parity/product-sdk-cloud-storage": 0.6.0
+  "@parity/product-sdk-contracts": 0.7.3
+  "@parity/product-sdk-descriptors": 0.6.0
+  "@parity/product-sdk-host": 0.8.0
+  "@parity/product-sdk-keys": 0.3.6
+  "@parity/product-sdk-signer": 0.6.3
+  "@parity/product-sdk-tx": 0.2.10
   "@polkadot-api/smoldot": ^0.4.2
   "@polkadot-api/cli": ^0.21.1
   "@polkadot-labs/hdkd": ^0.0.26
@@ -34,6 +37,7 @@ catalog:
   multiformats: ^13.4.2
   vite: ^7.3.1
   "@vitejs/plugin-react": ^5.1.1
+  esbuild: ^0.28.0
   typescript: ^5.9.3
   turbo: ^2.3.0
   eslint: ^9.39.1

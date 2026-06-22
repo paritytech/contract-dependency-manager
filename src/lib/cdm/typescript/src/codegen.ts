@@ -101,7 +101,7 @@ function generateModuleAugmentation(
 }
 
 export function generateContractTypes(contracts: { library: string; abi: AbiEntry[] }[]): string {
-    return generateModuleAugmentation(contracts, "@dotdm/cdm", "CdmContracts");
+    return generateModuleAugmentation(contracts, "@parity/cdm-codegen", "CdmContracts");
 }
 
 export function generateContractsAugmentation(

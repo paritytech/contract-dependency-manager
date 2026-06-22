@@ -1,5 +1,59 @@
 # @dotdm/cli
 
+## 0.8.23
+
+### Patch Changes
+
+- Updated dependencies [02c7e06]
+  - @parity/cdm-builder@3.1.7
+  - @parity/cdm-codegen@0.6.20
+
+## 0.8.22
+
+### Patch Changes
+
+- Updated dependencies [083bc41]
+  - @parity/cdm-env@2.0.6
+  - @parity/cdm-codegen@0.6.19
+  - @parity/cdm-builder@3.1.6
+
+## 0.8.21
+
+### Patch Changes
+
+- 65742ed: Fix deploy/install link display in terminals without OSC 8 hyperlink support. Instead of squeezing the full URL into a narrow table column (where it wrapped into an unreadable smear), the cell now keeps the short hash and the full link is printed on its own line below the row.
+
+## 0.8.20
+
+### Patch Changes
+
+- 9f40bc9: Add a W3S chain preset with Summit RPC endpoints and placeholder registry/IPFS configuration.
+- Updated dependencies [9f40bc9]
+  - @parity/cdm-env@2.0.5
+  - @parity/cdm-codegen@0.6.18
+  - @parity/cdm-builder@3.1.5
+
+## 0.8.19
+
+### Patch Changes
+
+- 1ec36d8: Rename CDM workspace packages from the `@dotdm/*` scope to `@parity/cdm-*`.
+- Updated dependencies [1ec36d8]
+  - @parity/cdm-codegen@0.6.17
+  - @parity/cdm-builder@3.1.4
+  - @parity/cdm-env@2.0.4
+  - @parity/cdm-utils@0.4.1
+
+## 0.8.18
+
+### Patch Changes
+
+- 6eccbfa: Bump `@parity/product-sdk-*` packages (chain-client 0.5.3, contracts 0.7.0, descriptors 0.5.2, host 0.6.1, keys 0.3.3, signer 0.6.0, tx 0.2.7) and align `polkadot-api` to `^2.1.5` to match their peer requirement.
+- Updated dependencies [6eccbfa]
+  - @dotdm/contracts@3.1.3
+  - @dotdm/env@2.0.3
+  - @dotdm/cdm@0.6.16
+
 ## 0.8.17
 
 ### Patch Changes

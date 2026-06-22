@@ -9,7 +9,7 @@
 // Requires:
 //   - `revive-dev-node` on $PATH (install:
 //       cargo install --git https://github.com/paritytech/polkadot-sdk --bin revive-dev-node)
-//   - `@dotdm/contracts` + `@dotdm/env` + `@dotdm/utils` dist/ built (pnpm -r build)
+//   - `@parity/cdm-builder` + `@parity/cdm-env` + `@parity/cdm-utils` dist/ built (pnpm -r build)
 //   - the registry .polkavm binary (built lazily on first `deployRegistry()` call
 //     via `make build-registry`)
 

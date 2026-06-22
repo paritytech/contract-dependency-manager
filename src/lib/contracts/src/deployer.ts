@@ -1,7 +1,7 @@
 import { Binary, Enum, type PolkadotClient, type SizedHex } from "polkadot-api";
 import { readFileSync } from "fs";
-import { prepareSigner, type CdmDeployAssetHubApi } from "@dotdm/env";
-import { stringifyBigInt, STORAGE_DEPOSIT_LIMIT, GAS_LIMIT } from "@dotdm/utils";
+import { prepareSigner, type CdmDeployAssetHubApi } from "@parity/cdm-env";
+import { stringifyBigInt, STORAGE_DEPOSIT_LIMIT, GAS_LIMIT } from "@parity/cdm-utils";
 import { blake2b } from "@noble/hashes/blake2.js";
 import {
     submitAndWatch,

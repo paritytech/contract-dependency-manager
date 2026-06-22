@@ -52,13 +52,13 @@ export interface CdmDefaults {
 // Options for createCdm()
 export interface CdmOptions {
     cdmJsonPath?: string;
-    targetHash?: string;
     client?: import("polkadot-api").PolkadotClient;
+    assethubUrl?: string;
     defaultOrigin?: SS58String;
     defaultSigner?: PolkadotSigner;
 }
 
-// Resolved contract info from ~/.cdm/
+// Resolved contract info from project .cdm/
 export interface ResolvedContract {
     name: string;
     address: string;
@@ -68,7 +68,7 @@ export interface ResolvedContract {
     metadataCid: string;
 }
 
-// ABI types (reuse shape from @dotdm/contracts deployer)
+// ABI types (reuse shape from @parity/cdm-builder deployer)
 export interface AbiParam {
     name: string;
     type: string;

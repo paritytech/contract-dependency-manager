@@ -1,5 +1,31 @@
 # @dotdm/env
 
+## 2.0.6
+
+### Patch Changes
+
+- 083bc41: Add the W3S registry address to the environment registry.
+
+## 2.0.5
+
+### Patch Changes
+
+- 9f40bc9: Add a W3S chain preset with Summit RPC endpoints and placeholder registry/IPFS configuration.
+
+## 2.0.4
+
+### Patch Changes
+
+- 1ec36d8: Rename CDM workspace packages from the `@dotdm/*` scope to `@parity/cdm-*`.
+- Updated dependencies [1ec36d8]
+  - @parity/cdm-utils@0.4.1
+
+## 2.0.3
+
+### Patch Changes
+
+- 6eccbfa: Bump `@parity/product-sdk-*` packages (chain-client 0.5.3, contracts 0.7.0, descriptors 0.5.2, host 0.6.1, keys 0.3.3, signer 0.6.0, tx 0.2.7) and align `polkadot-api` to `^2.1.5` to match their peer requirement.
+
 ## 2.0.2
 
 ### Patch Changes

@@ -9,7 +9,7 @@ import {
     type BuildSummary,
     type DeploySummary,
     type DeployEvent,
-} from "@dotdm/contracts";
+} from "@parity/cdm-builder";
 import { PipelineStatusAdapter, type ContractStatus, type PipelineResult } from "./deploy-pipeline";
 import { DeployTable } from "./components/DeployTable";
 import { SPINNER_FRAMES } from "./components/shared";

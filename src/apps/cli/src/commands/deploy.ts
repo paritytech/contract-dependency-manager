@@ -12,9 +12,9 @@ import {
     getRegistryAddress,
     ss58Address,
     type CdmChainClient,
-} from "@dotdm/env";
-import { getAccount } from "@dotdm/utils/accounts";
-import { ALICE_SS58, CONTRACTS_REGISTRY_PACKAGE } from "@dotdm/utils";
+} from "@parity/cdm-env";
+import { getAccount } from "@parity/cdm-utils/accounts";
+import { ALICE_SS58, CONTRACTS_REGISTRY_PACKAGE } from "@parity/cdm-utils";
 import {
     ContractDeployer,
     CONTRACTS_REGISTRY_CRATE,
@@ -22,7 +22,7 @@ import {
     resolveLocalRegistry,
     writeCdmLocalJson,
     writeGlobalLocalRegistry,
-} from "@dotdm/contracts";
+} from "@parity/cdm-builder";
 import type { HexString } from "polkadot-api";
 import { runDeployWithUI, spinner } from "../lib/ui";
 
@@ -30,7 +30,7 @@ const deploy = new Command("deploy")
     .description("Deploy and register contracts")
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
     .option("--bulletin-url <url>", "WebSocket URL for Bulletin chain")
-    .option("-n, --name <name>", "Chain preset name (paseo, local, custom)")
+    .option("-n, --name <name>", "Chain preset name (paseo, w3s, local, custom)")
     .option("--registry-address <address>", "Registry contract address")
     .option("--suri <uri>", "Secret URI for signing")
     .option("--features <features>", "Cargo feature flags to pass to the build")

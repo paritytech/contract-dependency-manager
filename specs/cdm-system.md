@@ -4,13 +4,13 @@
 
 - **Rust / PVM**: implemented end-to-end (build · deploy · publish metadata · register · install · consume).
 - **Foundry / Hardhat**: first-pass build + deploy pipeline implemented. Solidity bytecode/ABI is normalized before deploy; `/// @custom:cdm @org/name` supplies the registry package name.
-- **TypeScript SDK**: migrating from `@dotdm/cdm` to `@parity/product-sdk-contracts` (targets `pallet-revive` directly, not Ink). Old SDK to be deprecated once parity is reached.
+- **TypeScript SDK**: migrating from `@parity/cdm-codegen` to `@parity/product-sdk-contracts` (targets `pallet-revive` directly, not Ink). Old SDK to be deprecated once parity is reached.
 
 ## System map
 
 ![CDM system map](./assets/cdm-system-map.svg)
 
-A CDM package name is a globally unique identifier resolved by an on-chain registry. Rust contracts declare it in Cargo metadata (`[package.metadata.cdm] package = "@org/name"`); Solidity contracts declare it with `/// @custom:cdm @org/name`. Contracts publish `(name → address, name → metadataCid)` on Asset Hub; metadata blobs live on Bulletin (content-addressed, retrievable via IPFS gateway). Consumers install a frozen snapshot of `(ABI, address, version)` to `~/.cdm/`, after which Rust contracts use `cdm::import!()` and TypeScript apps use `@parity/product-sdk-contracts`.
+A CDM package name is a globally unique identifier resolved by an on-chain registry. Rust contracts declare it in Cargo metadata (`[package.metadata.cdm] package = "@org/name"`); Solidity contracts declare it with `/// @custom:cdm @org/name`. Contracts publish `(name → address, name → metadataCid)` on Asset Hub; metadata blobs live on Bulletin (content-addressed, retrievable via IPFS gateway). Consumers install a frozen snapshot of `(ABI, address, version)` into `cdm.json` plus generated project `.cdm/` artifacts, after which Rust contracts use `cdm::import!()` and TypeScript apps use `@parity/product-sdk-contracts`.
 
 ## Toolchain matrix
 
@@ -50,7 +50,7 @@ The metadata blob composition is in the right panel of the publish-pipeline diag
 
 ![ContractRegistry — state machine, storage, queries](./assets/cdm-registry.svg)
 
-The registry is a `pallet-revive` contract on Asset Hub, CREATE2-deployed under `@cdm/registry`. Registry addresses are environment-scoped and resolved through `@dotdm/env` (`getRegistryAddress(name)`, defaulting to Paseo); custom targets can still pass `--registry-address` or store `targets[*].registry` in `cdm.json`.
+The registry is a `pallet-revive` contract on Asset Hub, CREATE2-deployed under `@cdm/registry`. Registry addresses are environment-scoped and resolved through `@parity/cdm-env` (`getRegistryAddress(name)`, defaulting to Paseo); custom environments can still pass `--registry-address`. `cdm.json.registry` records the registry used for the installed snapshot.
 
 Key invariants:
 
@@ -64,16 +64,14 @@ The Storage struct and query surface (`get_address`, `get_metadata_uri`, `get_ow
 
 ![Install pipeline](./assets/cdm-install-pipeline.svg)
 
-`cdm install` reads `cdm.json`, resolves a target environment (from `-n <preset>` or the first `targets[]` entry), computes its `targetHash`, then in parallel per library:
+`cdm install` reads flat package dependencies from `cdm.json`, resolves the target environment from CLI input (`-n <preset>` or explicit URLs/address), then in parallel per library:
 
 1. **Query registry** — `getVersionCount` → `getMetadataUri(@v)` → `getAddress(@v)`.
 2. **Fetch metadata** — `GET <ipfs-gateway>/<cid>` → parse JSON → validate ABI shape.
-3. **Save to disk** — write `{abi, metadata, info}.json` under `~/.cdm/<targetHash>/contracts/<pkg>/<v>/` and update the `latest` symlink.
-4. **Post-install hooks** — TypeScript: `generateContractTypes` writes `.cdm/contracts.d.ts`. Rust: no-op (the `cdm::import!()` proc-macro reads `~/.cdm/` directly at compile time).
+3. **Save artifacts** — write `{abi, metadata, info}.json` under project `.cdm/contracts/<pkg>/<v>/` and update the `latest` symlink.
+4. **Post-install hooks** — TypeScript: `generateContractTypes` writes `.cdm/contracts.d.ts`. Rust: `cdm::import!()` reads the ABI embedded in `cdm.json` and can materialize the project-local ABI artifact needed by `abi_import!`.
 
-Finally `cdm.json.contracts[targetHash][pkg]` is updated with `{ version, address, abi, metadataCid }`. The inlined ABI makes builds reproducible and offline-capable; the pinned version pins against future `latest` drift.
-
-`~/.cdm/` is shared across workspaces — installing `@polkadot/reputation@7` once benefits every project on the machine.
+Finally `cdm.json.contracts[pkg]` is updated with `{ version, address, abi, metadataCid }`, and `cdm.json.registry` records the registry address used by install. The inlined ABI makes builds reproducible and browser-importable; the pinned version pins against future `latest` drift. Account data remains under user-level CDM state, but installed contract artifacts are project-local.
 
 ## Consumption
 
@@ -101,11 +99,11 @@ mod forum {
 }
 ```
 
-The `cdm::import!()` proc-macro first checks Cargo metadata for a local workspace member with matching `[package.metadata.cdm] package`, and otherwise reads `cdm.json` + `~/.cdm/<targetHash>/contracts/<pkg>/<v>/abi.json` at compile time. `cdm_lookup()` performs the registry read at runtime.
+The `cdm::import!()` proc-macro first checks Cargo metadata for a local workspace member with matching `[package.metadata.cdm] package`, and otherwise reads installed ABI data from the flat `cdm.json` at compile time. `cdm_lookup()` performs the registry read at runtime.
 
 ### TypeScript app
 
-Use `@parity/product-sdk-contracts` (replaces `@dotdm/cdm`):
+Use `@parity/product-sdk-contracts` (replaces `@parity/cdm-codegen`):
 
 ```ts
 import { createChainClient } from "@parity/product-sdk-chain-client";
@@ -138,7 +136,7 @@ await counter.increment.tx();
 const prepared = counter.increment.prepare();
 ```
 
-Material differences from `@dotdm/cdm`:
+Material differences from `@parity/cdm-codegen`:
 
 - Targets `pallet-revive` directly (not Ink) — wholesale replacement, not an upgrade.
 - Consumer owns the chain client; the SDK wraps it (rather than constructing one internally).
@@ -168,13 +166,13 @@ writeFileSync(".cdm/contracts.d.ts", generateContractTypes(resolved));
 - `src/lib/cdm/rust-macros/src/lib.rs` — `cdm::import!()` proc-macro
 - `src/contract/src/lib.rs` — ContractRegistry on-chain contract
 
-**New TypeScript SDK (separate repo, replaces `@dotdm/cdm`):**
+**New TypeScript SDK (separate repo, replaces `@parity/cdm-codegen`):**
 
 - `/Users/charleshetterich/code/product-sdk/product-sdk/packages/contracts/src/manager.ts` — `ContractManager`
 - `/Users/charleshetterich/code/product-sdk/product-sdk/packages/contracts/src/codegen.ts` — `generateContractTypes`
 - `/Users/charleshetterich/code/product-sdk/product-sdk/packages/contracts/README.md` — full API reference
 
-**Solidity build adapters (to lift into `@dotdm/contracts`):**
+**Solidity build adapters (to lift into `@parity/cdm-builder`):**
 
 - `/Users/charleshetterich/code/playground-cli/src/utils/build/detect.ts` — file-based toolchain detection
 - `/Users/charleshetterich/code/playground-cli/src/utils/deploy/contracts.ts` — `compileFoundry`, `compileHardhat`, `extractFoundryBytecode`, `extractHardhatBytecode`, `hexToBytes`, `writeTmpBytecode`

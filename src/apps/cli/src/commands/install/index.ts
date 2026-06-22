@@ -10,16 +10,14 @@ import {
     getRegistryAddress,
     DEFAULT_NODE_URL,
     resolveQueryOrigin,
-} from "@dotdm/env";
+} from "@parity/cdm-env";
 import {
     CONTRACTS_REGISTRY_ABI,
-    computeTargetHash,
     hasBuildableSolidityProject,
     readCdmJson,
     resolveLocalRegistry,
-    resolveTargetRegistryAddress,
     writeCdmJson,
-} from "@dotdm/contracts";
+} from "@parity/cdm-builder";
 import { spinner } from "../../lib/ui";
 import { runInstallWithUI } from "../../lib/install-pipeline";
 import type { InstallResult } from "../../lib/install-pipeline";
@@ -53,13 +51,13 @@ function parseLibraryArg(arg: string): { library: string; version: number | "lat
 
 const install = new Command("install")
     .alias("i")
-    .description("Install CDM contract libraries to ~/.cdm/")
+    .description("Install CDM contract libraries")
     .argument(
         "[libraries...]",
         'CDM libraries (e.g., "@polkadot/reputation" or "@polkadot/reputation:3"). Omit to install all from cdm.json.',
     )
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain", DEFAULT_NODE_URL)
-    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, local)")
+    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, w3s, local)")
     .option("--ipfs-gateway-url <url>", "IPFS gateway URL for fetching metadata")
     .option("--registry-address <address>", "Registry contract address");
 
@@ -71,9 +69,8 @@ type InstallOptions = {
 };
 
 install.action(async (libraries: string[], opts: InstallOptions) => {
-    // Read cdm.json early so its target info can fill in missing options
     const cdmResult = readCdmJson();
-    const cdmJson = cdmResult?.cdmJson ?? { targets: {}, dependencies: {}, contracts: {} };
+    const cdmJson = cdmResult?.cdmJson ?? { dependencies: {}, contracts: {} };
 
     // Resolve chain preset
     if (opts.name && opts.name !== "custom") {
@@ -82,19 +79,6 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
             opts.assethubUrl === DEFAULT_NODE_URL ? preset.assethubUrl : opts.assethubUrl;
         opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? preset.ipfsGatewayUrl;
         opts.registryAddress = opts.registryAddress ?? preset.registryAddress;
-    }
-
-    // If no chain was explicitly selected, fall back to cdm.json's first
-    // target for connection info. `-n` is the stronger signal: when it's set,
-    // we keep the preset values even if cdm.json points elsewhere.
-    const targetEntries = Object.entries(cdmJson.targets);
-    if (!opts.name && targetEntries.length > 0) {
-        const [, target] = targetEntries[0];
-        if (opts.assethubUrl === DEFAULT_NODE_URL) {
-            opts.assethubUrl = target["asset-hub"];
-        }
-        opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? target.bulletin;
-        opts.registryAddress = opts.registryAddress ?? resolveTargetRegistryAddress(target);
     }
 
     if (!opts.ipfsGatewayUrl) {
@@ -117,7 +101,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         );
         process.exit(1);
     }
-    const targetHash = computeTargetHash(opts.assethubUrl, opts.ipfsGatewayUrl, registryAddress);
+    const artifactsDir = resolve(process.cwd(), ".cdm");
 
     // Connect to chain with spinner (matching deploy command style)
     const sp = spinner("AssetHub", opts.assethubUrl);
@@ -139,15 +123,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
     );
     const ipfs = connectIpfsGateway(opts.ipfsGatewayUrl);
 
-    // Update cdm.json targets with resolved connection info
-    cdmJson.targets[targetHash] = {
-        "asset-hub": opts.assethubUrl,
-        bulletin: opts.ipfsGatewayUrl,
-        registry: registryAddress,
-    };
-    if (!cdmJson.dependencies[targetHash]) {
-        cdmJson.dependencies[targetHash] = {};
-    }
+    cdmJson.registry = registryAddress;
 
     // Determine what to install
     let toInstall: { library: string; requestedVersion: number | "latest" }[];
@@ -159,11 +135,9 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         });
     } else {
         // Batch install: read from cdm.json
-        const deps = cdmJson.dependencies[targetHash];
-        if (!deps || Object.keys(deps).length === 0) {
-            console.error(
-                "Error: No library specified and no dependencies found in cdm.json for this target.",
-            );
+        const deps = cdmJson.dependencies;
+        if (Object.keys(deps).length === 0) {
+            console.error("Error: No library specified and no dependencies found in cdm.json.");
             chainClient.destroy();
             process.exit(1);
         }
@@ -178,7 +152,6 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
 
     // Header (matching deploy command style)
     console.log(`\x1b[1mRegistry\x1b[0m   ${registryAddress}`);
-    console.log(`\x1b[1mTarget\x1b[0m     ${targetHash}`);
     console.log(
         `\x1b[1mRust\x1b[0m ${projectType.hasRust ? "\x1b[32m✔\x1b[0m" : "\x1b[2m-\x1b[0m"}` +
             `  \x1b[1mSolidity\x1b[0m ${projectType.hasSolidity ? "\x1b[32m✔\x1b[0m" : "\x1b[2m-\x1b[0m"}` +
@@ -190,19 +163,18 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
         libraries: toInstall,
         registry,
         ipfs,
-        targetHash,
+        artifactsDir,
         ipfsGatewayUrl: opts.ipfsGatewayUrl,
     });
 
     // Update cdm.json dependencies and contracts for successful installs
     if (!cdmJson.contracts) cdmJson.contracts = {};
-    if (!cdmJson.contracts[targetHash]) cdmJson.contracts[targetHash] = {};
 
     for (const result of results) {
         const entry = toInstall.find((t) => t.library === result.library);
         if (entry) {
-            cdmJson.dependencies[targetHash][result.library] = entry.requestedVersion;
-            cdmJson.contracts[targetHash][result.library] = {
+            cdmJson.dependencies[result.library] = entry.requestedVersion;
+            cdmJson.contracts[result.library] = {
                 version: result.version,
                 address: result.address,
                 abi: result.abi,
@@ -219,10 +191,10 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
             await postInstallRust();
         }
         if (projectType.hasSolidity) {
-            await postInstallSolidity(results[results.length - 1]);
+            await postInstallSolidity();
         }
         if (projectType.hasTypeScript) {
-            await postInstallTypeScript(results[results.length - 1]);
+            await postInstallTypeScript();
         }
     }
 

@@ -1,19 +1,15 @@
 import { readFileSync, existsSync, realpathSync } from "fs";
 import { resolve } from "path";
-import { getCdmRoot, getContractDir, resolveContractAbiPath } from "@dotdm/contracts";
+import { getCdmRoot, getContractDir, resolveContractAbiPath } from "@parity/cdm-builder";
 import type { ResolvedContract, AbiEntry } from "./types";
 
-export function resolveContract(
-    targetHash: string,
-    library: string,
-    version: number | "latest",
-): ResolvedContract {
+export function resolveContract(library: string, version: number | "latest"): ResolvedContract {
     // If version is "latest", resolve the symlink
     let resolvedVersion: number;
     if (version === "latest") {
-        const latestLink = resolve(getCdmRoot(), targetHash, "contracts", library, "latest");
+        const latestLink = resolve(getCdmRoot(), "contracts", library, "latest");
         if (!existsSync(latestLink)) {
-            throw new Error(`No "latest" symlink found for ${library} in target ${targetHash}`);
+            throw new Error(`No "latest" symlink found for ${library}`);
         }
         const realPath = realpathSync(latestLink);
         resolvedVersion = parseInt(realPath.split("/").pop()!, 10);
@@ -21,7 +17,7 @@ export function resolveContract(
         resolvedVersion = version;
     }
 
-    const contractDir = getContractDir(targetHash, library, resolvedVersion);
+    const contractDir = getContractDir(library, resolvedVersion);
     if (!existsSync(contractDir)) {
         throw new Error(`Contract ${library}@${resolvedVersion} not found in ${contractDir}`);
     }
@@ -29,7 +25,7 @@ export function resolveContract(
     const infoPath = resolve(contractDir, "info.json");
     const info = JSON.parse(readFileSync(infoPath, "utf-8"));
 
-    const abiPath = resolveContractAbiPath(targetHash, library, resolvedVersion);
+    const abiPath = resolveContractAbiPath(library, resolvedVersion);
     const abi: AbiEntry[] = JSON.parse(readFileSync(abiPath, "utf-8"));
 
     return {

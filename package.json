@@ -4,11 +4,11 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev",
+    "dev": "pnpm --filter @parity/cdm-frontend dev",
     "lint": "turbo lint",
     "clean": "turbo clean",
     "test": "vitest run",
-    "test:e2e:setup": "pnpm --filter @dotdm/utils --filter @dotdm/env --filter @dotdm/contracts build",
+    "test:e2e:setup": "pnpm --filter @parity/cdm-utils --filter @parity/cdm-env --filter @parity/cdm-builder build",
     "test:e2e": "pnpm test:e2e:setup && vitest run --config vitest.e2e.config.ts",
     "format": "biome format --write .",
     "format:check": "biome format ."

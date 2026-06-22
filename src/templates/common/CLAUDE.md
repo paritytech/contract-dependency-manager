@@ -4,7 +4,7 @@ Guidance for working in this CDM template.
 
 ## Toolchain
 
-Rust contracts use `pvm_contract_sdk` from `paritytech/cargo-pvm-contract` branch `sm/cdm` and build with:
+Rust contracts use `pvm_contract_sdk` from `paritytech/cargo-pvm-contract` branch `main` and build with:
 
 ```bash
 cdm build
@@ -64,18 +64,24 @@ counter.increment().call(self).expect("increment failed");
 The import macro resolves in this order:
 
 1. Local workspace package with matching `[package.metadata.cdm] package`.
-2. Installed ABI from `cdm.json` and `~/.cdm`.
+2. Installed ABI from `cdm.json` and project `.cdm`.
 
-For local workspace imports, keep a normal Cargo path dependency on the provider crate so CDM can infer build and deploy order:
+For local workspace imports, declare the dependency in CDM metadata so CDM can
+infer build and deploy order without linking full contract crates together:
 
 ```toml
-[dependencies]
-counter = { path = "../counter" }
+[package.metadata.cdm]
+package = "@example/consumer"
+dependencies = ["@example/counter"]
 ```
+
+Do not add a normal Cargo dependency on another contract crate unless you are
+intentionally sharing ordinary Rust library code; importing a second contract
+crate directly can pull in duplicate contract runtime items.
 
 ## Storage
 
-Prefer the storage helpers re-exported by `pvm_contract_sdk`, such as `Lazy`, `Mapping`, `LazyString`, and `MappingString`. The current target branch supports storage composition and dynamic string/bytes storage, but arbitrary vector storage still needs explicit modelling with mappings.
+Prefer the storage helpers re-exported by `pvm_contract_sdk`, such as `Lazy`, `Mapping`, `LazyString`, and `MappingString`. The main branch supports storage composition and dynamic string/bytes storage, but arbitrary vector storage still needs explicit modelling with mappings.
 
 ## Deployment
 

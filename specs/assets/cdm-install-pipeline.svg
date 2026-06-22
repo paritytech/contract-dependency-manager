@@ -84,14 +84,14 @@
   <circle cx="115" cy="580" r="13" fill="#15803D"/>
   <text x="115" y="585" text-anchor="middle" font-weight="700" font-size="12" fill="#FFFFFF">C</text>
   <text x="140" y="576" font-weight="600" font-size="12" fill="#14532D">save to disk</text>
-  <text x="140" y="594" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">~/.cdm/&lt;th&gt;/contracts/&lt;pkg&gt;/&lt;v&gt;/{abi,metadata,info}.json · update `latest` symlink</text>
+  <text x="140" y="594" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">.cdm/contracts/&lt;pkg&gt;/&lt;v&gt;/{abi,metadata,info}.json · update `latest` symlink</text>
 
   <!-- pill D: codegen -->
   <rect x="90" y="612" width="580" height="44" rx="22" fill="#FFFFFF" stroke="#15803D" stroke-width="1.5"/>
   <circle cx="115" cy="634" r="13" fill="#15803D"/>
   <text x="115" y="639" text-anchor="middle" font-weight="700" font-size="12" fill="#FFFFFF">D</text>
   <text x="140" y="630" font-weight="600" font-size="12" fill="#14532D">post-install hooks</text>
-  <text x="140" y="648" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">TS: generateContractTypes → .cdm/contracts.d.ts   ·   Rust: no-op</text>
+  <text x="140" y="648" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">TS: generateContractTypes → .cdm/contracts.d.ts   ·   Rust: materialize ABI from cdm.json</text>
 
   <text x="380" y="678" text-anchor="middle" font-size="10" font-style="italic" fill="#475569">A → B → C → D for each library, all libraries concurrent</text>
 
@@ -101,18 +101,18 @@
   <!-- final step: update cdm.json -->
   <rect x="60" y="730" width="640" height="60" rx="10" fill="#DCFCE7" stroke="#15803D" stroke-width="2"/>
   <text x="78" y="754" font-weight="700" fill="#14532D">④ update cdm.json</text>
-  <text x="78" y="773" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#15803D">cdm.json.contracts[th][pkg] = { version, address, abi, metadataCid }</text>
+  <text x="78" y="773" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#15803D">cdm.json.contracts[pkg] = { version, address, abi, metadataCid }</text>
 
   <!-- ============================================================== -->
-  <!-- RIGHT SIDE: ~/.cdm/ directory tree + cdm.json table             -->
+  <!-- RIGHT SIDE: .cdm/ directory tree + cdm.json table               -->
   <!-- ============================================================== -->
 
   <text x="730" y="115" font-size="26" font-weight="800" fill="#4338CA">▸</text>
   <text x="760" y="115" font-size="18" font-weight="700" fill="#312E81" letter-spacing="1">on-disk artifacts</text>
-  <text x="760" y="135" font-size="11" fill="#64748B">two outputs: user-global cache + workspace manifest</text>
+  <text x="760" y="135" font-size="11" fill="#64748B">two outputs: project-local artifacts + workspace manifest</text>
 
   <!-- ===== Disk cache tree ===== -->
-  <text x="730" y="170" font-weight="700" font-size="13" fill="#312E81">~/.cdm/  <tspan font-size="10" font-weight="400" font-style="italic" fill="#64748B">— shared across workspaces</tspan></text>
+  <text x="730" y="170" font-weight="700" font-size="13" fill="#312E81">.cdm/  <tspan font-size="10" font-weight="400" font-style="italic" fill="#64748B">— project-local installed artifacts</tspan></text>
 
   <!-- tree styled as code panel -->
   <rect x="720" y="180" width="660" height="320" rx="10" fill="#FFFFFF" stroke="#4338CA" stroke-width="1.5"/>
@@ -126,26 +126,26 @@
   <g font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">
     <!-- root -->
     <g color="#4338CA"><use href="#folderIcon" x="740" y="222" width="18" height="14"/></g>
-    <text x="765" y="234">~/.cdm/</text>
-    <text x="980" y="234" fill="#475569">root</text>
+    <text x="765" y="234">.cdm/</text>
+    <text x="980" y="234" fill="#475569">project artifact root</text>
 
     <!-- bin (striped) -->
     <rect x="720" y="242" width="660" height="22" fill="#F8FAFC"/>
     <g color="#4338CA"><use href="#folderIcon" x="760" y="246" width="16" height="13"/></g>
-    <text x="782" y="258">├── bin/cdm</text>
-    <text x="980" y="258" fill="#475569">installed binary (make install)</text>
+    <text x="782" y="258">├── contracts.d.ts</text>
+    <text x="980" y="258" fill="#475569">TypeScript module augmentation</text>
     <line x1="965" y1="242" x2="965" y2="264" stroke="#C7D2FE" stroke-width="1"/>
 
     <!-- accounts -->
     <g color="#4338CA"><use href="#fileIcon" x="760" y="270" width="14" height="14"/></g>
-    <text x="782" y="282">├── accounts.json</text>
-    <text x="980" y="282" fill="#475569">per-chain stored signers</text>
+    <text x="782" y="282">├── solidity/</text>
+    <text x="980" y="282" fill="#475569">generated Solidity imports</text>
 
     <!-- target hash dir (striped) -->
     <rect x="720" y="290" width="660" height="22" fill="#F8FAFC"/>
     <g color="#4338CA"><use href="#folderIcon" x="760" y="294" width="16" height="13"/></g>
-    <text x="782" y="306">└── &lt;targetHash&gt;/contracts/</text>
-    <text x="980" y="306" fill="#475569">scoped per (asset-hub, ipfs) tuple</text>
+    <text x="782" y="306">└── contracts/</text>
+    <text x="980" y="306" fill="#475569">installed CDM packages</text>
     <line x1="965" y1="290" x2="965" y2="312" stroke="#C7D2FE" stroke-width="1"/>
 
     <!-- pkg name -->
@@ -190,7 +190,7 @@
   </g>
 
   <!-- ===== cdm.json contracts table ===== -->
-  <text x="730" y="535" font-weight="700" font-size="13" fill="#312E81">cdm.json after install  <tspan font-size="10" font-weight="400" font-style="italic" fill="#64748B">— what gets added under contracts[targetHash]</tspan></text>
+  <text x="730" y="535" font-weight="700" font-size="13" fill="#312E81">cdm.json after install  <tspan font-size="10" font-weight="400" font-style="italic" fill="#64748B">— what gets added under contracts[pkg]</tspan></text>
 
   <rect x="720" y="545" width="660" height="245" rx="10" fill="#FFFFFF" stroke="#4338CA" stroke-width="1.5"/>
   <rect x="720" y="545" width="660" height="32" fill="#E0E7FF"/>
@@ -206,7 +206,7 @@
   <rect x="720" y="608" width="660" height="30" fill="#F8FAFC"/>
   <line x1="965" y1="608" x2="965" y2="638" stroke="#C7D2FE" stroke-width="1"/>
   <text x="740" y="627" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">address</text>
-  <text x="980" y="627" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">"0x…"  (same across all CREATE2 targets)</text>
+  <text x="980" y="627" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">"0x…"  (deployed contract address)</text>
 
   <text x="740" y="657" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">abi</text>
   <text x="980" y="657" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">AbiEntry[]  (inlined for offline build / codegen)</text>
@@ -221,14 +221,14 @@
 
   <text x="740" y="725" font-weight="700" font-size="11" fill="#312E81">+ also updated</text>
 
-  <text x="740" y="750" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">targets[th]</text>
-  <text x="980" y="750" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">backfilled if missing (from -n preset)</text>
+  <text x="740" y="750" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">registry</text>
+  <text x="980" y="750" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">"0x…"  (registry used for this snapshot)</text>
 
   <rect x="720" y="758" width="660" height="30" fill="#F8FAFC"/>
   <line x1="965" y1="758" x2="965" y2="788" stroke="#C7D2FE" stroke-width="1"/>
-  <text x="740" y="777" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">dependencies[th][pkg]</text>
-  <text x="980" y="777" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">added if not already present</text>
+  <text x="740" y="777" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#1E293B">dependencies[pkg]</text>
+  <text x="980" y="777" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#475569">requested version ("latest" or pinned)</text>
 
   <!-- footnote on shared cache -->
-  <text x="700" y="855" text-anchor="middle" font-size="11" font-style="italic" fill="#475569">~/.cdm/ is shared across workspaces — installing @org/foo@v once benefits every project on the machine.</text>
+  <text x="700" y="855" text-anchor="middle" font-size="11" font-style="italic" fill="#475569">Installed artifacts are project-local; user accounts remain under ~/.cdm/accounts.json.</text>
 </svg>

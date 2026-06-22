@@ -2,9 +2,12 @@ import React from "react";
 import { Box, Text } from "ink";
 import supportsHyperlinks from "supports-hyperlinks";
 
+/** Whether the terminal supports OSC 8 embedded hyperlinks. */
+export const hyperlinksSupported = supportsHyperlinks.stdout;
+
 /** Terminal hyperlink using OSC 8 escape sequence */
 export function Link({ url, children }: { url: string; children: React.ReactNode }) {
-    if (supportsHyperlinks.stdout) {
+    if (hyperlinksSupported) {
         return (
             <Text>
                 {`\x1b]8;;${url}\x07`}
@@ -13,7 +16,25 @@ export function Link({ url, children }: { url: string; children: React.ReactNode
             </Text>
         );
     }
-    return <Text>{url}</Text>;
+    // No OSC 8 support: render only the short anchor text in the cell so the
+    // table stays aligned. The full URL is surfaced separately on its own line
+    // via <LinkLine>. Rendering the full URL here would squeeze it into a
+    // narrow column and wrap it into an unreadable smear (issue #44).
+    return <Text>{children}</Text>;
+}
+
+/**
+ * A full link printed on its own line, used as a fallback when the terminal
+ * lacks OSC 8 hyperlink support. The URL is rendered outside the table grid so
+ * it stays on a single line instead of being squeezed into a column.
+ */
+export function LinkLine({ label, url }: { label?: string; url: string }) {
+    return (
+        <Text>
+            <Text dimColor>{`  ↳ ${label ? `${label.padEnd(8)} ` : ""}`}</Text>
+            <Text color="cyan">{url}</Text>
+        </Text>
+    );
 }
 
 export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];

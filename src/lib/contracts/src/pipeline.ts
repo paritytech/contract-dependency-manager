@@ -2,13 +2,13 @@ import { dirname, relative, resolve } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import type { PolkadotSigner, SS58String, HexString } from "polkadot-api";
 import { Enum } from "polkadot-api";
-import type { CdmChainClient } from "@dotdm/env";
+import type { CdmChainClient } from "@parity/cdm-env";
 import {
     createContractFromClient,
     type Contract,
     type ContractDef,
 } from "@parity/product-sdk-contracts";
-import { retryWithBackoff, stringifyBigInt } from "@dotdm/utils";
+import { retryWithBackoff, stringifyBigInt } from "@parity/cdm-utils";
 import { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
 
 import {

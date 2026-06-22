@@ -3,15 +3,14 @@ import { getWsProvider } from "polkadot-api/ws";
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import type { PolkadotClient, SS58String, HexString } from "polkadot-api";
 import type { InkSdk } from "@polkadot-api/sdk-ink";
-import type { CdmJson, CdmJsonContract } from "@dotdm/contracts";
-import { ALICE_SS58 } from "@dotdm/utils";
-import { prepareSigner } from "@dotdm/env";
+import type { CdmJson, CdmJsonContract } from "@parity/cdm-builder";
+import { ALICE_SS58 } from "@parity/cdm-utils";
+import { prepareSigner } from "@parity/cdm-env";
 import { wrapContract } from "./wrap";
 import type { CdmContract, CdmContracts, CdmDefaults, CdmOptions } from "./types";
 
 export class Cdm {
     private cdmJson: CdmJson;
-    private targetHash: string;
     private _client: PolkadotClient | null = null;
     private _inkSdk: InkSdk | null = null;
     private ownsClient: boolean = false;
@@ -20,18 +19,12 @@ export class Cdm {
     constructor(cdmJson: CdmJson, options?: CdmOptions) {
         this.cdmJson = cdmJson;
 
-        // Determine target hash
-        if (options?.targetHash) {
-            this.targetHash = options.targetHash;
-        } else {
-            const targets = Object.keys(this.cdmJson.targets);
-            if (targets.length === 0) throw new Error("No targets found in cdm.json");
-            this.targetHash = targets[0];
-        }
-
         if (options?.client) {
             this._client = options.client;
             this.ownsClient = false;
+        } else if (options?.assethubUrl) {
+            this._client = createClient(getWsProvider(options.assethubUrl));
+            this.ownsClient = true;
         }
 
         this.defaults = {
@@ -47,10 +40,7 @@ export class Cdm {
 
     get client(): PolkadotClient {
         if (!this._client) {
-            const target = this.cdmJson.targets[this.targetHash];
-            if (!target) throw new Error(`Target ${this.targetHash} not found in cdm.json`);
-            this._client = createClient(getWsProvider(target["asset-hub"]));
-            this.ownsClient = true;
+            throw new Error("No client configured. Pass options.client or options.assethubUrl.");
         }
         return this._client;
     }
@@ -63,13 +53,11 @@ export class Cdm {
     }
 
     private getContractData(library: string): CdmJsonContract {
-        const contractsForTarget = this.cdmJson.contracts?.[this.targetHash];
-        if (!contractsForTarget || !(library in contractsForTarget)) {
-            throw new Error(
-                `Contract "${library}" not found in cdm.json contracts for target ${this.targetHash}`,
-            );
+        const contract = this.cdmJson.contracts?.[library];
+        if (!contract) {
+            throw new Error(`Contract "${library}" not found in cdm.json contracts`);
         }
-        return contractsForTarget[library];
+        return contract;
     }
 
     getContract<K extends string & keyof CdmContracts>(library: K): CdmContract<CdmContracts[K]> {

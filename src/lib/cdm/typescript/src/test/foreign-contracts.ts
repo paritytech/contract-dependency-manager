@@ -3,14 +3,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { HexString, PolkadotSigner, SS58String } from "polkadot-api";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
-import { ALICE_SS58 } from "@dotdm/utils";
+import { ALICE_SS58 } from "@parity/cdm-utils";
 import {
     CONTRACTS_REGISTRY_ABI,
     ContractDeployer,
     getCdmRoot,
     readCdmLocalJson,
     unwrapQueryOption,
-} from "@dotdm/contracts";
+} from "@parity/cdm-builder";
 import {
     createCdmAssetHubClient,
     getChainPreset,
@@ -18,7 +18,7 @@ import {
     prepareSigner,
     ss58Address,
     type CdmDeployAssetHubApi,
-} from "@dotdm/env";
+} from "@parity/cdm-env";
 
 const defaultCacheDir = () => resolve(getCdmRoot(), "cache/foreign");
 
