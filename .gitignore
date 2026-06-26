@@ -17,6 +17,7 @@ target/
 *-lock.json
 
 src/templates/*/**/.cdm/
+src/lib/cdm/import-test/.cdm/
 !src/templates/*/.papi/descriptors/dist/
 
 reference-repos/
