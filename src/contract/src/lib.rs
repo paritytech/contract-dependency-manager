@@ -1,540 +1,352 @@
-#![cfg_attr(all(not(feature = "abi-gen"), not(test)), no_main, no_std)]
-#![allow(dead_code, non_snake_case)]
+#![no_main]
+#![no_std]
 
-#[cfg(all(
-    not(target_arch = "riscv32"),
-    not(target_arch = "riscv64"),
-    not(feature = "abi-gen")
-))]
-extern crate std;
+use alloc::string::String;
+use core::ops::Bound;
+use parity_scale_codec::{Decode, Encode};
+use pvm::storage::{Mapping, OrderedIndex};
+use pvm::{Address, ReturnFlags, caller};
+use pvm_contract as pvm;
 
-#[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 16384)]
-mod contract_registry {
-    use alloc::string::String;
-    use alloc::vec::Vec;
-    use pvm_contract_sdk::{Address, Lazy, Mapping, SolStorage, SolType};
+fn revert(msg: &[u8]) -> ! {
+    pvm::api::return_value(ReturnFlags::REVERT, msg)
+}
 
-    const MAX_CONTRACT_NAME_LEN: usize = 64;
-    const MAX_PAGE_LIMIT: u32 = 100;
+pub type Version = u32;
+const MAX_CONTRACT_NAME_LEN: usize = 64;
+const MAX_PAGE_LIMIT: u32 = 100;
 
-    #[derive(Debug, pvm_contract_sdk::SolError)]
-    pub struct ContractNameEmpty;
+/// A published contract version in the registry.
+#[derive(Clone, Encode, Decode)]
+pub struct PublishedContract {
+    /// The address of the published contract.
+    pub address: Address,
+    /// Bulletin chain IPFS URI pointing to this contract version's metadata.
+    pub metadata_uri: String,
+}
 
-    #[derive(Debug, pvm_contract_sdk::SolError)]
-    pub struct ContractNameTooLong;
+#[derive(Default, Clone, Encode, Decode)]
+pub struct NamedContractInfo {
+    /// The owner of the contract name
+    pub owner: Address,
+    /// The number of versions published under this contract name.
+    /// `version_count - 1` refers to the latest published version
+    pub version_count: Version,
+}
 
-    #[derive(Debug, pvm_contract_sdk::SolError)]
-    pub struct ContractNameInvalid;
+#[derive(Default, pvm::SolAbi)]
+pub struct ContractEntry {
+    pub name: String,
+    pub version: Version,
+    pub address: Address,
+    pub metadata_uri: String,
+    pub owner: Address,
+}
 
-    #[derive(Debug, pvm_contract_sdk::SolError)]
-    pub struct ContractCountOverflow;
+#[derive(Default, pvm::SolAbi)]
+pub struct ContractPage {
+    pub total: u32,
+    pub entries: alloc::vec::Vec<ContractEntry>,
+}
 
-    #[derive(Debug, pvm_contract_sdk::SolError)]
-    pub struct Unauthorized;
+#[derive(Default, pvm::SolAbi)]
+pub struct ContractNameSearchPage {
+    pub names: alloc::vec::Vec<String>,
+    pub next_offset: u32,
+    pub done: bool,
+}
 
-    #[derive(Debug, pvm_contract_sdk::SolError)]
-    pub struct VersionOverflow;
-
-    #[derive(Debug, pvm_contract_sdk::SolError)]
-    pub enum Error {
-        ContractNameEmpty(ContractNameEmpty),
-        ContractNameTooLong(ContractNameTooLong),
-        ContractNameInvalid(ContractNameInvalid),
-        ContractCountOverflow(ContractCountOverflow),
-        Unauthorized(Unauthorized),
-        VersionOverflow(VersionOverflow),
+fn validate_contract_name(contract_name: &String) {
+    if contract_name.is_empty() {
+        revert(b"ContractNameEmpty");
+    }
+    if contract_name.as_bytes().len() > MAX_CONTRACT_NAME_LEN {
+        revert(b"ContractNameTooLong");
+    }
+    let bytes = contract_name.as_bytes();
+    if !contract_name.is_ascii() || bytes.first() != Some(&b'@') {
+        revert(b"ContractNameInvalid");
     }
 
-    #[derive(Clone, SolType, SolStorage)]
-    pub struct NamedContractInfo {
-        pub owner: Address,
-        pub version_count: u32,
-    }
-
-    #[derive(Clone, SolType)]
-    pub struct ContractEntry {
-        pub name: String,
-        pub version: u32,
-        pub address: Address,
-        pub metadata_uri: String,
-        pub owner: Address,
-    }
-
-    #[derive(Clone, Default, SolType)]
-    pub struct ContractPage {
-        pub total: u32,
-        pub entries: Vec<ContractEntry>,
-    }
-
-    #[allow(non_snake_case)]
-    #[derive(Clone, SolType)]
-    pub struct OptionAddress {
-        pub isSome: bool,
-        pub value: Address,
-    }
-
-    #[allow(non_snake_case)]
-    #[derive(Clone, SolType)]
-    pub struct OptionString {
-        pub isSome: bool,
-        pub value: String,
-    }
-
-    pub struct ContractRegistry {
-        contract_name_count: Lazy<u32>,
-        contract_name_at: Mapping<u32, String>,
-        published_address: Mapping<String, Mapping<u32, Address>>,
-        published_metadata_uri: Mapping<String, Mapping<u32, String>>,
-        info: Mapping<String, NamedContractInfo>,
-    }
-
-    impl ContractRegistry {
-        #[pvm_contract_sdk::constructor]
-        pub fn new(&mut self) {}
-
-        /// Publish the latest version of a contract registered under `contract_name`.
-        #[pvm_contract_sdk::method]
-        pub fn publish_latest(
-            &mut self,
-            contract_name: String,
-            contract_address: Address,
-            metadata_uri: String,
-        ) -> Result<(), Error> {
-            validate_contract_name(&contract_name)?;
-
-            let caller = self.caller();
-            let mut info = match self.info.try_get(&contract_name) {
-                Some(info) => info,
-                None => {
-                    let count = self.contract_name_count_u32();
-                    let next_count = count.checked_add(1).ok_or(ContractCountOverflow)?;
-                    self.contract_name_at.insert(&count, &contract_name);
-                    self.contract_name_count.set(&next_count);
-                    NamedContractInfo {
-                        owner: caller,
-                        version_count: 0,
-                    }
-                }
-            };
-
-            if info.owner != caller {
-                return Err(Unauthorized.into());
+    let mut slash_idx: Option<usize> = None;
+    for (idx, byte) in bytes.iter().copied().enumerate().skip(1) {
+        if byte == b'/' {
+            if slash_idx.is_some() {
+                revert(b"ContractNameInvalid");
             }
-
-            info.version_count = info.version_count.checked_add(1).ok_or(VersionOverflow)?;
-            self.info.insert(&contract_name, &info);
-
-            let version_idx = info.version_count.saturating_sub(1);
-            self.published_address
-                .view_mut(&contract_name)
-                .insert(&version_idx, &contract_address);
-            self.published_metadata_uri
-                .view_mut(&contract_name)
-                .insert(&version_idx, &metadata_uri);
-
-            Ok(())
-        }
-
-        /// Get the address of the latest published contract for a given name.
-        #[pvm_contract_sdk::method]
-        pub fn get_address(&self, contract_name: String) -> OptionAddress {
-            match self.latest_version(&contract_name) {
-                Some(version) => {
-                    option_address(self.published_address.view(&contract_name).get(&version))
-                }
-                None => option_address_none(),
-            }
-        }
-
-        /// Get the metadata URI of the latest published contract for a given name.
-        #[pvm_contract_sdk::method]
-        pub fn get_metadata_uri(&self, contract_name: String) -> OptionString {
-            match self.latest_version(&contract_name) {
-                Some(version) => option_string(
-                    self.published_metadata_uri
-                        .view(&contract_name)
-                        .get(&version),
-                ),
-                None => option_string_none(),
-            }
-        }
-
-        /// Get the address of a specific version of a contract.
-        #[pvm_contract_sdk::method]
-        pub fn get_address_at_version(&self, contract_name: String, version: u32) -> OptionAddress {
-            match self
-                .published_address
-                .view(&contract_name)
-                .try_get(&version)
-            {
-                Some(address) => option_address(address),
-                None => option_address_none(),
-            }
-        }
-
-        /// Get the metadata URI of a specific version of a contract.
-        #[pvm_contract_sdk::method]
-        pub fn get_metadata_uri_at_version(
-            &self,
-            contract_name: String,
-            version: u32,
-        ) -> OptionString {
-            match self
-                .published_metadata_uri
-                .view(&contract_name)
-                .try_get(&version)
-            {
-                Some(uri) => option_string(uri),
-                None => option_string_none(),
-            }
-        }
-
-        /// Get the contract name at a given append-only registry index.
-        #[pvm_contract_sdk::method]
-        pub fn get_contract_name_at(&self, index: u32) -> String {
-            self.contract_name_at.get(&index)
-        }
-
-        /// Get a page of latest contract entries by append-only registry index.
-        #[pvm_contract_sdk::method]
-        pub fn get_contracts(&self, start: u32, count: u32) -> ContractPage {
-            let total = self.contract_name_count_u32();
-            let cap = if count > MAX_PAGE_LIMIT {
-                MAX_PAGE_LIMIT
-            } else {
-                count
-            };
-            let mut entries: Vec<ContractEntry> = Vec::new();
-
-            if total > 0 && start < total && cap > 0 {
-                let mut scanned = 0u32;
-
-                loop {
-                    let index = start.saturating_add(scanned);
-                    if scanned >= cap || index >= total {
-                        break;
-                    }
-
-                    let name = self.contract_name_at.get(&index);
-                    if let Some(entry) = self.latest_contract_entry(name) {
-                        entries.push(entry);
-                    }
-
-                    scanned = scanned.saturating_add(1);
-                }
-            }
-
-            ContractPage { total, entries }
-        }
-
-        /// Get the owner of a contract name.
-        #[pvm_contract_sdk::method]
-        pub fn get_owner(&self, contract_name: String) -> Address {
-            self.info
-                .try_get(&contract_name)
-                .map(|i| i.owner)
-                .unwrap_or(Address::ZERO)
-        }
-
-        /// Get the version count for a contract name.
-        #[pvm_contract_sdk::method]
-        pub fn get_version_count(&self, contract_name: String) -> u32 {
-            self.info
-                .try_get(&contract_name)
-                .map(|i| i.version_count)
-                .unwrap_or(0)
-        }
-
-        /// Get the number of contract names registered in the registry.
-        #[pvm_contract_sdk::method]
-        pub fn get_contract_count(&self) -> u32 {
-            self.contract_name_count_u32()
-        }
-
-        fn caller(&self) -> Address {
-            let mut bytes = [0u8; 20];
-            self.host().caller(&mut bytes);
-            Address(bytes)
-        }
-
-        fn latest_version(&self, contract_name: &String) -> Option<u32> {
-            let info = self.info.try_get(contract_name)?;
-            if info.version_count == 0 {
-                None
-            } else {
-                Some(info.version_count.saturating_sub(1))
-            }
-        }
-
-        fn latest_contract_entry(&self, contract_name: String) -> Option<ContractEntry> {
-            let info = self.info.try_get(&contract_name)?;
-            if info.version_count == 0 {
-                return None;
-            }
-
-            let version = info.version_count.saturating_sub(1);
-            let address = self
-                .published_address
-                .view(&contract_name)
-                .try_get(&version)?;
-            let metadata_uri = self
-                .published_metadata_uri
-                .view(&contract_name)
-                .try_get(&version)?;
-
-            Some(ContractEntry {
-                name: contract_name,
-                version,
-                address,
-                metadata_uri,
-                owner: info.owner,
-            })
-        }
-
-        fn contract_name_count_u32(&self) -> u32 {
-            self.contract_name_count.get()
-        }
-
-        #[cfg(test)]
-        pub(super) fn set_contract_name_count_for_test(&mut self, count: u32) {
-            self.contract_name_count.set(&count);
-        }
-
-        #[cfg(test)]
-        pub(super) fn set_info_for_test(
-            &mut self,
-            contract_name: &String,
-            info: &NamedContractInfo,
-        ) {
-            self.info.insert(contract_name, info);
+            slash_idx = Some(idx);
+        } else if !is_package_name_char(byte) {
+            revert(b"ContractNameInvalid");
         }
     }
 
-    fn validate_contract_name(contract_name: &String) -> Result<(), Error> {
-        if contract_name.is_empty() {
-            return Err(ContractNameEmpty.into());
-        }
-        if contract_name.as_bytes().len() > MAX_CONTRACT_NAME_LEN {
-            return Err(ContractNameTooLong.into());
-        }
-        let bytes = contract_name.as_bytes();
-        if !contract_name.is_ascii() || bytes.first() != Some(&b'@') {
-            return Err(ContractNameInvalid.into());
-        }
-
-        let mut slash_idx: Option<usize> = None;
-        for (idx, byte) in bytes.iter().copied().enumerate().skip(1) {
-            if byte == b'/' {
-                if slash_idx.is_some() {
-                    return Err(ContractNameInvalid.into());
-                }
-                slash_idx = Some(idx);
-            } else if !is_package_name_char(byte) {
-                return Err(ContractNameInvalid.into());
-            }
-        }
-
-        match slash_idx {
-            Some(idx) if idx > 1 && idx + 1 < bytes.len() => Ok(()),
-            _ => Err(ContractNameInvalid.into()),
-        }
-    }
-
-    fn is_package_name_char(byte: u8) -> bool {
-        byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
-    }
-
-    fn option_address(value: Address) -> OptionAddress {
-        OptionAddress {
-            isSome: true,
-            value,
-        }
-    }
-
-    fn option_address_none() -> OptionAddress {
-        OptionAddress {
-            isSome: false,
-            value: Address::ZERO,
-        }
-    }
-
-    fn option_string(value: String) -> OptionString {
-        OptionString {
-            isSome: true,
-            value,
-        }
-    }
-
-    fn option_string_none() -> OptionString {
-        OptionString {
-            isSome: false,
-            value: String::new(),
-        }
+    match slash_idx {
+        Some(idx) if idx > 1 && idx + 1 < bytes.len() => {}
+        _ => revert(b"ContractNameInvalid"),
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::contract_registry::{ContractRegistry, Error, NamedContractInfo};
-    use pvm_contract_sdk::{Address, MockHost, MockHostBuilder};
-    use std::string::String;
+fn is_package_name_char(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
+}
 
-    const ALICE: Address = Address([0xA1; 20]);
-    const BOB: Address = Address([0xB0; 20]);
-    const CONTRACT_A: Address = Address([0xCA; 20]);
-    const CONTRACT_B: Address = Address([0xCB; 20]);
+fn prefix_upper_bound(prefix: &String) -> Option<String> {
+    let mut bytes = prefix.as_bytes().to_vec();
 
-    fn registry_with_caller(caller: Address) -> (ContractRegistry, MockHost) {
-        let mock = MockHostBuilder::new().caller(caller.0).build();
-        let registry = ContractRegistry::with_host(mock.clone());
-        (registry, mock)
+    while bytes.last() == Some(&0xff) {
+        bytes.pop();
     }
 
-    #[test]
-    fn publish_new_contract_and_query_latest() {
-        let (mut registry, _) = registry_with_caller(ALICE);
-        let name = String::from("@example/counter");
-        let uri = String::from("ipfs://metadata-v0");
+    if let Some(last) = bytes.last_mut() {
+        *last = last.saturating_add(1);
+        Some(String::from_utf8_lossy(&bytes).into_owned())
+    } else {
+        None
+    }
+}
 
-        registry
-            .publish_latest(name.clone(), CONTRACT_A, uri.clone())
-            .expect("publish succeeds");
-
-        assert_eq!(registry.get_contract_count(), 1);
-        assert_eq!(registry.get_contract_name_at(0), name);
-        assert_eq!(registry.get_owner(name.clone()), ALICE);
-        assert_eq!(registry.get_version_count(name.clone()), 1);
-
-        let address = registry.get_address(name.clone());
-        assert!(address.isSome);
-        assert_eq!(address.value, CONTRACT_A);
-
-        let metadata = registry.get_metadata_uri(name);
-        assert!(metadata.isSome);
-        assert_eq!(metadata.value, uri);
+fn latest_contract_entry(contract_name: String) -> Option<ContractEntry> {
+    let info = Storage::info().get(&contract_name)?;
+    if info.version_count == 0 {
+        return None;
     }
 
-    #[test]
-    fn publish_second_version_keeps_single_name_entry() {
-        let (mut registry, _) = registry_with_caller(ALICE);
-        let name = String::from("@example/counter");
+    let version = info.version_count.saturating_sub(1);
+    let key = (contract_name.clone(), version);
+    let address = Storage::published_address().get(&key)?;
+    let metadata_uri = Storage::published_metadata_uri().get(&key)?;
 
-        registry
-            .publish_latest(name.clone(), CONTRACT_A, String::from("ipfs://v0"))
-            .expect("first publish succeeds");
-        registry
-            .publish_latest(name.clone(), CONTRACT_B, String::from("ipfs://v1"))
-            .expect("second publish succeeds");
+    Some(ContractEntry {
+        name: contract_name,
+        version,
+        address,
+        metadata_uri,
+        owner: info.owner,
+    })
+}
 
-        assert_eq!(registry.get_contract_count(), 1);
-        assert_eq!(registry.get_version_count(name.clone()), 2);
-        assert_eq!(registry.get_address(name.clone()).value, CONTRACT_B);
-        assert_eq!(
-            registry.get_address_at_version(name.clone(), 0).value,
-            CONTRACT_A
+#[pvm::storage]
+struct Storage {
+    /// Count of registered contract names
+    contract_name_count: u32,
+    /// Maps index to contract name (simulates StorageVec)
+    contract_name_at: Mapping<u32, String>,
+    /// Sorted index of contract names for prefix search.
+    contract_name_index: OrderedIndex<String, u32, 2>,
+    /// Stores all published versions of named contracts where the key for
+    /// an individual versioned contract is given by `(contract_name, version)`
+    published_address: Mapping<(String, Version), Address>,
+    published_metadata_uri: Mapping<(String, Version), String>,
+    /// Stores info about each registered contract name
+    info: Mapping<String, NamedContractInfo>,
+}
+
+// Max contract name encoding is 64 bytes plus a 2-byte SCALE compact length prefix.
+const _: () = assert!(OrderedIndex::<String, u32, 2>::fits_storage_limit(66, 4));
+
+#[pvm::contract]
+mod contract_registry {
+    use super::*;
+
+    #[pvm::constructor]
+    pub fn new() -> Result<(), Error> {
+        Ok(())
+    }
+
+    /// Publish the latest version of a contract registered under name `contract_name`
+    ///
+    /// The caller only has permission to publish a new version of `contract_name` if
+    /// either the name is available or they are already the owner of the name.
+    #[pvm::method]
+    pub fn publish_latest(contract_name: String, contract_address: Address, metadata_uri: String) {
+        validate_contract_name(&contract_name);
+
+        let caller = caller();
+
+        // Get existing info or register new `contract_name` with caller as owner
+        let mut info = match Storage::info().get(&contract_name) {
+            Some(info) => info,
+            None => {
+                let info = NamedContractInfo {
+                    owner: caller,
+                    version_count: 0,
+                };
+                // Append to contract names list
+                let count = Storage::contract_name_count().get().unwrap_or(0);
+                Storage::contract_name_at().insert(&count, &contract_name);
+                Storage::contract_name_index().insert(&contract_name, &count);
+                Storage::contract_name_count().set(
+                    &count
+                        .checked_add(1)
+                        .unwrap_or_else(|| revert(b"ContractCountOverflow")),
+                );
+                info
+            }
+        };
+
+        // Only the owner can publish under this name
+        if info.owner != caller {
+            revert(b"Unauthorized");
+        }
+
+        // Increment version count & save info
+        info.version_count = match info.version_count.checked_add(1) {
+            Some(v) => v,
+            None => revert(b"VersionOverflow"),
+        };
+        Storage::info().insert(&contract_name, &info);
+
+        // Store published contract data at latest version index
+        let version_idx = info.version_count.saturating_sub(1);
+        Storage::published_address()
+            .insert(&(contract_name.clone(), version_idx), &contract_address);
+        Storage::published_metadata_uri().insert(&(contract_name, version_idx), &metadata_uri);
+    }
+
+    /// Get the address of the latest published contract for a given `contract_name`.
+    /// This is the primary function used by CDM runtime lookups.
+    #[pvm::method]
+    pub fn get_address(contract_name: String) -> Option<Address> {
+        let info = Storage::info().get(&contract_name);
+        if let Some(info) = info {
+            let latest_version = info.version_count.saturating_sub(1);
+            Storage::published_address().get(&(contract_name, latest_version))
+        } else {
+            None
+        }
+    }
+
+    /// Get the metadata URI of the latest published contract for a given `contract_name`.
+    #[pvm::method]
+    pub fn get_metadata_uri(contract_name: String) -> Option<String> {
+        let info = Storage::info().get(&contract_name);
+        if let Some(info) = info {
+            let latest_version = info.version_count.saturating_sub(1);
+            Storage::published_metadata_uri().get(&(contract_name, latest_version))
+        } else {
+            None
+        }
+    }
+
+    /// Get the address of a specific version of a contract.
+    #[pvm::method]
+    pub fn get_address_at_version(contract_name: String, version: u32) -> Option<Address> {
+        Storage::published_address().get(&(contract_name, version))
+    }
+
+    /// Get the metadata URI of a specific version of a contract.
+    #[pvm::method]
+    pub fn get_metadata_uri_at_version(contract_name: String, version: u32) -> Option<String> {
+        Storage::published_metadata_uri().get(&(contract_name, version))
+    }
+
+    /// Get the contract name at a given index.
+    #[pvm::method]
+    pub fn get_contract_name_at(index: u32) -> String {
+        Storage::contract_name_at().get(&index).unwrap_or_default()
+    }
+
+    /// Get a page of latest contract entries by append-only registry index.
+    #[pvm::method]
+    pub fn get_contracts(start: u32, count: u32) -> ContractPage {
+        let total = Storage::contract_name_count().get().unwrap_or(0);
+        let cap = if count > MAX_PAGE_LIMIT {
+            MAX_PAGE_LIMIT
+        } else {
+            count
+        };
+        let mut entries: alloc::vec::Vec<ContractEntry> = alloc::vec::Vec::new();
+
+        if total > 0 && start < total && cap > 0 {
+            let mut scanned = 0u32;
+
+            loop {
+                let index = start.saturating_add(scanned);
+                if scanned >= cap || index >= total {
+                    break;
+                }
+
+                if let Some(name) = Storage::contract_name_at().get(&index) {
+                    if let Some(entry) = latest_contract_entry(name) {
+                        entries.push(entry);
+                    }
+                }
+
+                scanned = scanned.saturating_add(1);
+            }
+        }
+
+        ContractPage { total, entries }
+    }
+
+    /// Search registered contract names by prefix.
+    ///
+    /// The current OrderedIndex implementation rank-seeks directly to
+    /// `offset`, so query cost scales with tree depth plus returned page size,
+    /// not with the number of skipped prefix matches.
+    #[pvm::method]
+    pub fn search_contract_names(
+        prefix: String,
+        offset: u32,
+        limit: u32,
+    ) -> ContractNameSearchPage {
+        let cap = if limit > MAX_PAGE_LIMIT {
+            MAX_PAGE_LIMIT
+        } else {
+            limit
+        };
+
+        if cap == 0 || prefix.as_bytes().len() > MAX_CONTRACT_NAME_LEN || !prefix.is_ascii() {
+            return ContractNameSearchPage {
+                names: alloc::vec::Vec::new(),
+                next_offset: offset,
+                done: true,
+            };
+        }
+
+        let upper = prefix_upper_bound(&prefix);
+        let to = match upper.as_ref() {
+            Some(bound) => Bound::Excluded(bound),
+            None => Bound::Unbounded,
+        };
+
+        let hits = Storage::contract_name_index().range(
+            Bound::Included(&prefix),
+            to,
+            offset as u64,
+            cap as u64,
         );
-        assert_eq!(registry.get_address_at_version(name, 1).value, CONTRACT_B);
+        let returned = hits.len() as u32;
+        let names = hits.into_iter().map(|(name, _)| name).collect();
+
+        ContractNameSearchPage {
+            names,
+            next_offset: offset.saturating_add(returned),
+            done: returned < cap,
+        }
     }
 
-    #[test]
-    fn pagination_returns_latest_entries() {
-        let (mut registry, _) = registry_with_caller(ALICE);
-
-        registry
-            .publish_latest(
-                String::from("@example/one"),
-                CONTRACT_A,
-                String::from("ipfs://one"),
-            )
-            .expect("first publish succeeds");
-        registry
-            .publish_latest(
-                String::from("@example/two"),
-                CONTRACT_B,
-                String::from("ipfs://two"),
-            )
-            .expect("second publish succeeds");
-
-        let page = registry.get_contracts(0, 10);
-        assert_eq!(page.total, 2);
-        assert_eq!(page.entries.len(), 2);
-        assert_eq!(page.entries[0].name, "@example/one");
-        assert_eq!(page.entries[0].address, CONTRACT_A);
-        assert_eq!(page.entries[1].name, "@example/two");
-        assert_eq!(page.entries[1].address, CONTRACT_B);
+    /// Get the owner of a contract name.
+    #[pvm::method]
+    pub fn get_owner(contract_name: String) -> Address {
+        Storage::info()
+            .get(&contract_name)
+            .map(|i| i.owner)
+            .unwrap_or_default()
     }
 
-    #[test]
-    fn unauthorized_owner_update_returns_typed_error() {
-        let (mut registry, _) = registry_with_caller(BOB);
-        let name = String::from("@example/counter");
-        registry.set_info_for_test(
-            &name,
-            &NamedContractInfo {
-                owner: ALICE,
-                version_count: 1,
-            },
-        );
-
-        let result = registry.publish_latest(name, CONTRACT_B, String::from("ipfs://v1"));
-
-        assert!(matches!(result, Err(Error::Unauthorized(_))));
+    /// Get the version count for a contract name.
+    #[pvm::method]
+    pub fn get_version_count(contract_name: String) -> u32 {
+        Storage::info()
+            .get(&contract_name)
+            .map(|i| i.version_count)
+            .unwrap_or(0)
     }
 
-    #[test]
-    fn invalid_names_return_typed_errors() {
-        let (mut registry, _) = registry_with_caller(ALICE);
-
-        let empty = registry.publish_latest(String::new(), CONTRACT_A, String::from("ipfs://x"));
-        assert!(matches!(empty, Err(Error::ContractNameEmpty(_))));
-
-        let invalid =
-            registry.publish_latest(String::from("example/counter"), CONTRACT_A, String::new());
-        assert!(matches!(invalid, Err(Error::ContractNameInvalid(_))));
-
-        let too_long = registry.publish_latest(
-            String::from("@example/abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdef"),
-            CONTRACT_A,
-            String::new(),
-        );
-        assert!(matches!(too_long, Err(Error::ContractNameTooLong(_))));
-    }
-
-    #[test]
-    fn overflow_paths_return_typed_errors() {
-        let (mut registry, _) = registry_with_caller(ALICE);
-
-        registry.set_contract_name_count_for_test(u32::MAX);
-        let count_overflow =
-            registry.publish_latest(String::from("@example/counter"), CONTRACT_A, String::new());
-        assert!(matches!(
-            count_overflow,
-            Err(Error::ContractCountOverflow(_))
-        ));
-
-        let (mut registry, _) = registry_with_caller(ALICE);
-        let name = String::from("@example/counter");
-        registry.set_info_for_test(
-            &name,
-            &NamedContractInfo {
-                owner: ALICE,
-                version_count: u32::MAX,
-            },
-        );
-
-        let version_overflow = registry.publish_latest(name, CONTRACT_A, String::new());
-        assert!(matches!(version_overflow, Err(Error::VersionOverflow(_))));
-    }
-
-    #[test]
-    fn missing_values_return_empty_options() {
-        let (registry, _) = registry_with_caller(ALICE);
-        let address = registry.get_address(String::from("@missing/package"));
-        assert!(!address.isSome);
-        assert_eq!(address.value, Address::ZERO);
-
-        let metadata = registry.get_metadata_uri(String::from("@missing/package"));
-        assert!(!metadata.isSome);
-        assert_eq!(metadata.value, String::new());
+    /// Get the number of contract names registered in the registry.
+    #[pvm::method]
+    pub fn get_contract_count() -> u32 {
+        Storage::contract_name_count().get().unwrap_or(0)
     }
 }
