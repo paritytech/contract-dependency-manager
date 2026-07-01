@@ -14,8 +14,6 @@
         "@parity/cdm-builder": "workspace:*",
         "@parity/cdm-env": "workspace:*",
         "@parity/cdm-utils": "workspace:*",
-        "@novasamatech/host-api": "catalog:",
-        "@novasamatech/product-sdk": "catalog:",
         "@parity/product-sdk-chain-client": "catalog:",
         "@parity/product-sdk-cloud-storage": "catalog:",
         "@parity/product-sdk-contracts": "catalog:",
