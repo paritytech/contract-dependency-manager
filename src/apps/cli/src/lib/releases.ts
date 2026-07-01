@@ -75,10 +75,10 @@ export async function resolveLatestReleaseTag(
 async function bestEffortMacosUnquarantine(path: string): Promise<void> {
     if (platform() !== "darwin") return;
     const quoted = `'${path.replace(/'/g, "'\\''")}'`;
-    await runShell(`codesign --sign - --force ${quoted}`, undefined, {
+    await runShell(`codesign --sign - --force ${quoted}`, {
         description: "codesign cdm",
     }).catch(() => {});
-    await runShell(`xattr -c ${quoted}`, undefined, {
+    await runShell(`xattr -c ${quoted}`, {
         description: "clear cdm quarantine attrs",
     }).catch(() => {});
 }

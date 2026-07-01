@@ -61,9 +61,6 @@ export async function runSetupWithUi(opts: {
                     active = undefined;
                 }
             },
-            onData: () => {
-                // Tool output is retained in thrown errors by the process runner.
-            },
             install: !opts.check,
         });
     } catch (err) {

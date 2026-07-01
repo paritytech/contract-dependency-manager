@@ -16,6 +16,15 @@ function run(cmd: string): Promise<string> {
     });
 }
 
+/** Run a command, returning its stdout or null if it exits non-zero. */
+async function tryRun(cmd: string): Promise<string | null> {
+    try {
+        return await run(cmd);
+    } catch {
+        return null;
+    }
+}
+
 function sudo(): string {
     return typeof process.getuid === "function" && process.getuid() === 0 ? "" : "sudo ";
 }
@@ -30,46 +39,45 @@ export async function commandExists(cmd: string): Promise<boolean> {
     if (!/^[a-zA-Z0-9_-]+$/.test(cmd)) {
         throw new Error(`Invalid command name: ${cmd}`);
     }
-    try {
-        await run(`command -v ${cmd}`);
-        return true;
-    } catch {
-        return false;
+    return (await tryRun(`command -v ${cmd}`)) !== null;
+}
+
+/** Install a system package via Homebrew (macOS) or apt (Debian/Ubuntu). */
+async function installSystemPackage(opts: {
+    label: string;
+    brew?: string;
+    apt: string;
+}): Promise<void> {
+    if (opts.brew && platform() === "darwin" && (await commandExists("brew"))) {
+        await runShell(`brew install ${opts.brew}`);
+    } else if (platform() === "linux" && (await commandExists("apt"))) {
+        await runShell(`${sudo()}apt update && ${sudo()}apt install -y ${opts.apt}`);
+    } else {
+        throw new Error(`Cannot install ${opts.label} automatically on this platform.`);
     }
 }
 
 async function hasRustNightly(): Promise<boolean> {
-    try {
-        return (await run("rustup toolchain list")).includes("nightly");
-    } catch {
-        return false;
-    }
+    return (await tryRun("rustup toolchain list"))?.includes("nightly") ?? false;
 }
 
 async function hasRustSrc(): Promise<boolean> {
-    try {
-        return (await run("rustup component list --toolchain nightly")).includes(
+    return (
+        (await tryRun("rustup component list --toolchain nightly"))?.includes(
             "rust-src (installed)",
-        );
-    } catch {
-        return false;
-    }
+        ) ?? false
+    );
 }
 
 export async function hasCargoPvmContract(): Promise<boolean> {
     if (!(await commandExists("cargo"))) return false;
-    try {
-        await run("cargo pvm-contract build --help");
-        return true;
-    } catch {
-        return false;
-    }
+    return (await tryRun("cargo pvm-contract build --help")) !== null;
 }
 
 export interface ToolStep {
     name: string;
     check: () => Promise<boolean>;
-    install: (onData?: (line: string) => void) => Promise<void>;
+    install: () => Promise<void>;
     manualHint?: string;
 }
 
@@ -139,7 +147,14 @@ async function hasCurrentCargoPvmContract(opts: ResolvedCargoPvmContractOptions)
     const stamp = readCargoPvmContractStamp();
     if (!stamp || stamp.repo !== opts.repo || stamp.ref !== opts.ref) return false;
 
-    const latestRevision = await resolveCargoPvmContractRevision(opts.repo, opts.ref);
+    // If the remote is unreachable (offline, transient failure), trust the existing
+    // install rather than aborting setup or forcing a needless reinstall.
+    let latestRevision: string;
+    try {
+        latestRevision = await resolveCargoPvmContractRevision(opts.repo, opts.ref);
+    } catch {
+        return true;
+    }
     return stamp.revision.startsWith(latestRevision) || latestRevision.startsWith(stamp.revision);
 }
 
@@ -186,55 +201,31 @@ export function createToolSteps(opts: CargoPvmContractOptions = {}): ToolStep[] 
         {
             name: "git",
             check: () => commandExists("git"),
-            install: async (onData) => {
-                if (platform() === "darwin" && (await commandExists("brew"))) {
-                    await runShell("brew install git", onData);
-                } else if (platform() === "linux" && (await commandExists("apt"))) {
-                    await runShell(`${sudo()}apt update && ${sudo()}apt install -y git`, onData);
-                } else {
-                    throw new Error("Cannot install git automatically on this platform.");
-                }
-            },
+            install: () => installSystemPackage({ label: "git", brew: "git", apt: "git" }),
             manualHint: "Install git from https://git-scm.com/downloads",
         },
         {
             name: "curl",
             check: () => commandExists("curl"),
-            install: async (onData) => {
-                if (platform() === "darwin" && (await commandExists("brew"))) {
-                    await runShell("brew install curl", onData);
-                } else if (platform() === "linux" && (await commandExists("apt"))) {
-                    await runShell(`${sudo()}apt update && ${sudo()}apt install -y curl`, onData);
-                } else {
-                    throw new Error("Cannot install curl automatically on this platform.");
-                }
-            },
+            install: () => installSystemPackage({ label: "curl", brew: "curl", apt: "curl" }),
             manualHint: "Install curl from https://curl.se/download.html",
         },
         {
             name: "C linker (cc)",
             check: () => commandExists("cc"),
-            install: async (onData) => {
-                if (platform() === "linux" && (await commandExists("apt"))) {
-                    await runShell(
-                        `${sudo()}apt update && ${sudo()}apt install -y build-essential`,
-                        onData,
-                    );
-                } else {
-                    throw new Error("Cannot install a C toolchain automatically on this platform.");
-                }
-            },
+            install: () => installSystemPackage({ label: "a C toolchain", apt: "build-essential" }),
             manualHint:
                 "Debian/Ubuntu: sudo apt install -y build-essential; macOS: xcode-select --install",
         },
         {
             name: "rustup",
             check: () => commandExists("rustup"),
-            install: async (onData) => {
+            install: async () => {
                 await runShell(
                     'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
-                    onData,
-                    { description: "rustup installer" },
+                    {
+                        description: "rustup installer",
+                    },
                 );
                 prependPath(resolve(process.env.CARGO_HOME ?? `${homedir()}/.cargo`, "bin"));
             },
@@ -243,19 +234,18 @@ export function createToolSteps(opts: CargoPvmContractOptions = {}): ToolStep[] 
         {
             name: "Rust nightly",
             check: hasRustNightly,
-            install: (onData) => runShell("rustup toolchain install nightly", onData),
+            install: () => runShell("rustup toolchain install nightly"),
         },
         {
             name: "rust-src",
             check: hasRustSrc,
-            install: (onData) =>
-                runShell("rustup component add rust-src --toolchain nightly", onData),
+            install: () => runShell("rustup component add rust-src --toolchain nightly"),
         },
         {
             name: "cargo-pvm-contract",
             check: () => hasCurrentCargoPvmContract(cargoPvmContract),
-            install: (onData) =>
-                runShell(cargoPvmContractInstallScript(cargoPvmContract), onData, {
+            install: () =>
+                runShell(cargoPvmContractInstallScript(cargoPvmContract), {
                     description: `cargo install cargo-pvm-contract from ${cargoPvmContract.ref}`,
                     failurePrefix: "cargo-pvm-contract build failed",
                 }),
@@ -279,7 +269,6 @@ export async function runToolchainSetup(
         steps?: readonly ToolStep[];
         install?: boolean;
         onEvent?: (event: ToolStepEvent) => void;
-        onData?: (line: string) => void;
     } = {},
 ): Promise<void> {
     const steps = opts.steps ?? TOOL_STEPS;
@@ -299,7 +288,7 @@ export async function runToolchainSetup(
 
         opts.onEvent?.({ step, status: "installing" });
         try {
-            await step.install(opts.onData);
+            await step.install();
             opts.onEvent?.({ step, status: "ok" });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);

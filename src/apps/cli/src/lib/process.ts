@@ -1,20 +1,19 @@
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 
-export interface RunStreamedOptions {
-    cmd: string;
-    args: string[];
-    description?: string;
-    failurePrefix?: string;
-    onData?: (line: string) => void;
-}
-
-export async function runStreamed(opts: RunStreamedOptions): Promise<void> {
-    const description = opts.description ?? `${opts.cmd} ${opts.args.join(" ")}`;
-    const failurePrefix = opts.failurePrefix ?? "Command failed";
+/**
+ * Run a bash command, capturing output. On non-zero exit the promise rejects
+ * with an error carrying the last lines of output for diagnostics.
+ */
+export async function runShell(
+    cmd: string,
+    opts?: { description?: string; failurePrefix?: string },
+): Promise<void> {
+    const description = opts?.description ?? cmd;
+    const failurePrefix = opts?.failurePrefix ?? "Command failed";
 
     await new Promise<void>((resolve, reject) => {
-        const child = spawn(opts.cmd, opts.args, {
+        const child = spawn("bash", ["-c", cmd], {
             stdio: ["ignore", "pipe", "pipe"],
             env: { ...process.env, FORCE_COLOR: process.env.FORCE_COLOR ?? "1" },
         }) as unknown as {
@@ -25,19 +24,16 @@ export async function runStreamed(opts: RunStreamedOptions): Promise<void> {
         };
 
         const tail: string[] = [];
-        const maxTail = 40;
-
-        const forward = (chunk: Buffer) => {
+        const capture = (chunk: Buffer) => {
             for (const line of chunk.toString().split("\n")) {
                 if (!line) continue;
                 tail.push(line);
-                if (tail.length > maxTail) tail.shift();
-                opts.onData?.(line);
+                if (tail.length > 40) tail.shift();
             }
         };
 
-        child.stdout.on("data", forward);
-        child.stderr.on("data", forward);
+        child.stdout.on("data", capture);
+        child.stderr.on("data", capture);
         child.on("error", (err) => {
             reject(new Error(`Failed to spawn "${description}": ${err.message}`, { cause: err }));
         });
@@ -52,19 +48,5 @@ export async function runStreamed(opts: RunStreamedOptions): Promise<void> {
                 ),
             );
         });
-    });
-}
-
-export async function runShell(
-    cmd: string,
-    onData?: (line: string) => void,
-    opts?: { description?: string; failurePrefix?: string },
-): Promise<void> {
-    await runStreamed({
-        cmd: "bash",
-        args: ["-c", cmd],
-        description: opts?.description ?? cmd,
-        failurePrefix: opts?.failurePrefix,
-        onData,
     });
 }
