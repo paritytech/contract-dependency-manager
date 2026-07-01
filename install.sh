@@ -115,11 +115,11 @@ export PATH="$CDM_DIR/bin:$HOME/.local/bin:$PATH"
 if [ "${CDM_SKIP_SETUP:-0}" != "1" ]; then
   echo ""
   echo "Setting up CDM dependencies..."
-  setup_args=()
   if [ -n "${CDM_CARGO_PVM_CONTRACT_REF:-}" ]; then
-    setup_args+=(--cargo-pvm-contract-ref "$CDM_CARGO_PVM_CONTRACT_REF")
+    "$CDM_DIR/bin/$BIN" setup --cargo-pvm-contract-ref "$CDM_CARGO_PVM_CONTRACT_REF"
+  else
+    "$CDM_DIR/bin/$BIN" setup
   fi
-  "$CDM_DIR/bin/$BIN" setup "${setup_args[@]}"
 fi
 
 echo ""
