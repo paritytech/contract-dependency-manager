@@ -1,0 +1,26 @@
+{
+    "name": "@parity/cdm-migrations",
+    "version": "0.0.1",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./registry": "./registry.ts"
+    },
+    "scripts": {
+        "export": "bun run export.ts",
+        "import": "bun run import.ts",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@parity/cdm-builder": "workspace:*",
+        "@parity/cdm-env": "workspace:*",
+        "@parity/cdm-utils": "workspace:*",
+        "@parity/product-sdk-contracts": "catalog:",
+        "polkadot-api": "catalog:"
+    },
+    "devDependencies": {
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "typescript": "catalog:"
+    }
+}

@@ -5,6 +5,7 @@ packages:
   - "src/lib/contracts"
   - "src/lib/scripts"
   - "src/lib/cdm/typescript"
+  - "src/migrations"
 
 catalog:
   polkadot-api: ^2.1.5

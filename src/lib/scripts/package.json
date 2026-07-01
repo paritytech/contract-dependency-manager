@@ -10,6 +10,7 @@
     "dependencies": {
         "@parity/cdm-builder": "workspace:*",
         "@parity/cdm-env": "workspace:*",
+        "@parity/cdm-migrations": "workspace:*",
         "@parity/cdm-utils": "workspace:*"
     },
     "devDependencies": {

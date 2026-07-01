@@ -1,7 +1,7 @@
 export type ProductSdkEnvironment = "paseo" | "summit";
 
 const POLKADOT_REGISTRY_ADDRESS = "";
-const PASEO_REGISTRY_ADDRESS = "0xf62c2ece29cd8df2e10040ecfa5a894a5c5d9cb0";
+const PASEO_REGISTRY_ADDRESS = "0x7671a84f5e7b1bf704f0ad3f43a185ff3d4b303f";
 const W3S_REGISTRY_ADDRESS = "0xa5747e60ae27f93e92019e4021abfc4957050141";
 const LOCAL_REGISTRY_ADDRESS = "";
 

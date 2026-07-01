@@ -2,8 +2,9 @@
 #![no_std]
 
 use alloc::string::String;
+use core::ops::Bound;
 use parity_scale_codec::{Decode, Encode};
-use pvm::storage::Mapping;
+use pvm::storage::{Mapping, OrderedIndex};
 use pvm::{Address, ReturnFlags, caller};
 use pvm_contract as pvm;
 
@@ -48,6 +49,26 @@ pub struct ContractPage {
     pub entries: alloc::vec::Vec<ContractEntry>,
 }
 
+#[derive(Default, pvm::SolAbi)]
+pub struct ContractNameSearchPage {
+    pub names: alloc::vec::Vec<String>,
+    pub next_offset: u32,
+    pub done: bool,
+}
+
+#[derive(pvm::SolAbi)]
+pub struct ImportContractVersion {
+    pub address: Address,
+    pub metadata_uri: String,
+}
+
+#[derive(pvm::SolAbi)]
+pub struct ImportContract {
+    pub contract_name: String,
+    pub owner: Address,
+    pub versions: alloc::vec::Vec<ImportContractVersion>,
+}
+
 fn validate_contract_name(contract_name: &String) {
     if contract_name.is_empty() {
         revert(b"ContractNameEmpty");
@@ -82,6 +103,21 @@ fn is_package_name_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
 }
 
+fn prefix_upper_bound(prefix: &String) -> Option<String> {
+    let mut bytes = prefix.as_bytes().to_vec();
+
+    while bytes.last() == Some(&0xff) {
+        bytes.pop();
+    }
+
+    if let Some(last) = bytes.last_mut() {
+        *last = last.saturating_add(1);
+        Some(String::from_utf8_lossy(&bytes).into_owned())
+    } else {
+        None
+    }
+}
+
 fn latest_contract_entry(contract_name: String) -> Option<ContractEntry> {
     let info = Storage::info().get(&contract_name)?;
     if info.version_count == 0 {
@@ -104,10 +140,14 @@ fn latest_contract_entry(contract_name: String) -> Option<ContractEntry> {
 
 #[pvm::storage]
 struct Storage {
+    /// Admin allowed to import migrated registry data.
+    admin: Address,
     /// Count of registered contract names
     contract_name_count: u32,
     /// Maps index to contract name (simulates StorageVec)
     contract_name_at: Mapping<u32, String>,
+    /// Sorted index of contract names for prefix search.
+    contract_name_index: OrderedIndex<String, u32, 2>,
     /// Stores all published versions of named contracts where the key for
     /// an individual versioned contract is given by `(contract_name, version)`
     published_address: Mapping<(String, Version), Address>,
@@ -116,13 +156,88 @@ struct Storage {
     info: Mapping<String, NamedContractInfo>,
 }
 
+// Max contract name encoding is 64 bytes plus a 2-byte SCALE compact length prefix.
+const _: () = assert!(OrderedIndex::<String, u32, 2>::fits_storage_limit(66, 4));
+
+fn require_admin() {
+    if Storage::admin().get().unwrap_or_default() != caller() {
+        revert(b"UnauthorizedAdmin");
+    }
+}
+
+fn append_contract_name(contract_name: &String) {
+    let count = Storage::contract_name_count().get().unwrap_or(0);
+    Storage::contract_name_at().insert(&count, contract_name);
+    Storage::contract_name_index().insert(contract_name, &count);
+    Storage::contract_name_count().set(
+        &count
+            .checked_add(1)
+            .unwrap_or_else(|| revert(b"ContractCountOverflow")),
+    );
+}
+
+fn import_contract(contract: ImportContract) {
+    let contract_name = contract.contract_name;
+    validate_contract_name(&contract_name);
+
+    if contract.versions.is_empty() {
+        revert(b"ImportVersionsEmpty");
+    }
+    if Storage::info().contains(&contract_name) {
+        revert(b"ImportContractExists");
+    }
+
+    let mut version_count: Version = 0;
+    for version in contract.versions {
+        Storage::published_address()
+            .insert(&(contract_name.clone(), version_count), &version.address);
+        Storage::published_metadata_uri().insert(
+            &(contract_name.clone(), version_count),
+            &version.metadata_uri,
+        );
+        version_count = version_count
+            .checked_add(1)
+            .unwrap_or_else(|| revert(b"VersionOverflow"));
+    }
+
+    let info = NamedContractInfo {
+        owner: contract.owner,
+        version_count,
+    };
+    append_contract_name(&contract_name);
+    Storage::info().insert(&contract_name, &info);
+}
+
 #[pvm::contract]
 mod contract_registry {
     use super::*;
 
     #[pvm::constructor]
     pub fn new() -> Result<(), Error> {
+        Storage::admin().set(&caller());
         Ok(())
+    }
+
+    /// Get the address authorized to import migrated registry state.
+    #[pvm::method]
+    pub fn get_admin() -> Address {
+        Storage::admin().get().unwrap_or_default()
+    }
+
+    /// Transfer migration admin permissions.
+    #[pvm::method]
+    pub fn set_admin(new_admin: Address) {
+        require_admin();
+        Storage::admin().set(&new_admin);
+    }
+
+    /// Import existing registry data into a fresh registry deployment.
+    #[pvm::method]
+    pub fn admin_import_contracts(contracts: alloc::vec::Vec<ImportContract>) {
+        require_admin();
+        for contract in contracts {
+            import_contract(contract);
+        }
     }
 
     /// Publish the latest version of a contract registered under name `contract_name`
@@ -143,14 +258,7 @@ mod contract_registry {
                     owner: caller,
                     version_count: 0,
                 };
-                // Append to contract names list
-                let count = Storage::contract_name_count().get().unwrap_or(0);
-                Storage::contract_name_at().insert(&count, &contract_name);
-                Storage::contract_name_count().set(
-                    &count
-                        .checked_add(1)
-                        .unwrap_or_else(|| revert(b"ContractCountOverflow")),
-                );
+                append_contract_name(&contract_name);
                 info
             }
         };
@@ -248,6 +356,53 @@ mod contract_registry {
         }
 
         ContractPage { total, entries }
+    }
+
+    /// Search registered contract names by prefix.
+    ///
+    /// The current OrderedIndex implementation rank-seeks directly to
+    /// `offset`, so query cost scales with tree depth plus returned page size,
+    /// not with the number of skipped prefix matches.
+    #[pvm::method]
+    pub fn search_contract_names(
+        prefix: String,
+        offset: u32,
+        limit: u32,
+    ) -> ContractNameSearchPage {
+        let cap = if limit > MAX_PAGE_LIMIT {
+            MAX_PAGE_LIMIT
+        } else {
+            limit
+        };
+
+        if cap == 0 || prefix.as_bytes().len() > MAX_CONTRACT_NAME_LEN || !prefix.is_ascii() {
+            return ContractNameSearchPage {
+                names: alloc::vec::Vec::new(),
+                next_offset: offset,
+                done: true,
+            };
+        }
+
+        let upper = prefix_upper_bound(&prefix);
+        let to = match upper.as_ref() {
+            Some(bound) => Bound::Excluded(bound),
+            None => Bound::Unbounded,
+        };
+
+        let hits = Storage::contract_name_index().range(
+            Bound::Included(&prefix),
+            to,
+            offset as u64,
+            cap as u64,
+        );
+        let returned = hits.len() as u32;
+        let names = hits.into_iter().map(|(name, _)| name).collect();
+
+        ContractNameSearchPage {
+            names,
+            next_offset: offset.saturating_add(returned),
+            done: returned < cap,
+        }
     }
 
     /// Get the owner of a contract name.
