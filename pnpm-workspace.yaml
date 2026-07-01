@@ -8,19 +8,17 @@ packages:
   - "src/migrations"
 
 catalog:
-  polkadot-api: ^2.1.5
+  polkadot-api: ^2.1.7
   "@polkadot-api/sdk-ink": ^0.7.0
-  "@novasamatech/host-api": 0.8.7-1
-  "@novasamatech/product-sdk": 0.7.9-4
   "@parity/bulletin-sdk": ^0.3.0
-  "@parity/product-sdk-chain-client": 0.7.0
-  "@parity/product-sdk-cloud-storage": 0.6.0
-  "@parity/product-sdk-contracts": 0.7.3
-  "@parity/product-sdk-descriptors": 0.6.0
-  "@parity/product-sdk-host": 0.8.0
-  "@parity/product-sdk-keys": 0.3.6
-  "@parity/product-sdk-signer": 0.6.3
-  "@parity/product-sdk-tx": 0.2.10
+  "@parity/product-sdk-chain-client": 0.7.7
+  "@parity/product-sdk-cloud-storage": 0.6.7
+  "@parity/product-sdk-contracts": 0.8.3
+  "@parity/product-sdk-descriptors": 0.6.2
+  "@parity/product-sdk-host": 0.12.0
+  "@parity/product-sdk-keys": 0.3.13
+  "@parity/product-sdk-signer": 0.9.0
+  "@parity/product-sdk-tx": 0.2.17
   "@polkadot-api/smoldot": ^0.4.2
   "@polkadot-api/cli": ^0.21.1
   "@polkadot-labs/hdkd": ^0.0.26

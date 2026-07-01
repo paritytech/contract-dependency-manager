@@ -27,7 +27,7 @@ async function createRegistryConnection(networkConfig: NetworkConfig): Promise<R
         throw new Error(`No CDM registry address configured for ${networkConfig.label}.`);
     }
 
-    const client = (await getChainAPI(networkConfig.productSdkEnvironment)) as ProductChainClient;
+    const client = await getChainAPI(networkConfig.productSdkEnvironment);
     const runtime: ContractRuntime = createContractRuntimeFromClient(
         client.raw.assetHub,
         networkConfig.assetHubDescriptor,
