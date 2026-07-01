@@ -3,18 +3,23 @@ name: Release
 on:
     push:
         branches: [main]
+    pull_request:
+        branches: [main]
+        types: [opened, reopened, synchronize, ready_for_review]
 
 permissions:
     contents: write
     actions: read
+    issues: write
     packages: write
+    pull-requests: write
     attestations: write
     id-token: write
 
 jobs:
     release:
         # Skip bot commits (from version bump commits pushed by this workflow)
-        if: github.actor != 'github-actions[bot]'
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
         runs-on: ubuntu-latest
         outputs:
             tag: ${{ steps.tag.outputs.tag }}
@@ -156,6 +161,173 @@ jobs:
                       cdm-darwin-x64
                       cdm-darwin-arm64
                   generate_release_notes: true
+
+    dev-cli-release:
+        if: github.event_name == 'pull_request' && !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository
+        runs-on: ubuntu-latest
+        concurrency:
+            group: dev-cli-release-pr-${{ github.event.pull_request.number }}
+            cancel-in-progress: true
+        env:
+            DEV_TAG: cdm-cli-dev-pr-${{ github.event.pull_request.number }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.event.pull_request.head.sha }}
+                  fetch-depth: 0
+
+            - name: Check for CLI changeset
+              id: cli_changeset
+              run: |
+                  found=false
+                  files=$(git diff --name-only \
+                    "${{ github.event.pull_request.base.sha }}" \
+                    "${{ github.event.pull_request.head.sha }}" \
+                    -- '.changeset/*.md' || true)
+
+                  while IFS= read -r file; do
+                    [ -n "$file" ] || continue
+                    if [ -f "$file" ] && grep -Eq '^"@parity/cdm-cli":[[:space:]]*(patch|minor|major)' "$file"; then
+                      found=true
+                      break
+                    fi
+                  done <<< "$files"
+
+                  echo "found=$found" >> "$GITHUB_OUTPUT"
+                  echo "CLI changeset: $found"
+
+            - name: Remove stale dev release
+              if: steps.cli_changeset.outputs.found != 'true'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh release delete "$DEV_TAG" --yes --cleanup-tag || true
+                  git push origin ":refs/tags/$DEV_TAG" >/dev/null 2>&1 || true
+
+            - name: Remove stale PR comment
+              if: steps.cli_changeset.outputs.found != 'true'
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const marker = "<!-- cdm-cli-dev-release -->";
+                      const { owner, repo } = context.repo;
+                      const issue_number = context.issue.number;
+                      const comments = await github.paginate(github.rest.issues.listComments, {
+                        owner,
+                        repo,
+                        issue_number,
+                      });
+                      for (const comment of comments) {
+                        if (comment.user?.type === "Bot" && comment.body?.includes(marker)) {
+                          await github.rest.issues.deleteComment({
+                            owner,
+                            repo,
+                            comment_id: comment.id,
+                          });
+                        }
+                      }
+
+            - if: steps.cli_changeset.outputs.found == 'true'
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: "1.2.x"
+            - if: steps.cli_changeset.outputs.found == 'true'
+              uses: pnpm/action-setup@v4
+            - if: steps.cli_changeset.outputs.found == 'true'
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - if: steps.cli_changeset.outputs.found == 'true'
+              run: pnpm install --frozen-lockfile
+
+            - name: Compile dev CLI binaries
+              if: steps.cli_changeset.outputs.found == 'true'
+              run: |
+                  make embed-templates
+                  bun build --compile --target=bun-linux-x64 src/apps/cli/src/cli.ts --outfile cdm-linux-x64
+                  bun build --compile --target=bun-linux-arm64 src/apps/cli/src/cli.ts --outfile cdm-linux-arm64
+                  bun build --compile --target=bun-darwin-x64 src/apps/cli/src/cli.ts --outfile cdm-darwin-x64
+                  bun build --compile --target=bun-darwin-arm64 src/apps/cli/src/cli.ts --outfile cdm-darwin-arm64
+
+            - name: Publish dev CLI release
+              if: steps.cli_changeset.outputs.found == 'true'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh release delete "$DEV_TAG" --yes --cleanup-tag || true
+                  git push origin ":refs/tags/$DEV_TAG" >/dev/null 2>&1 || true
+                  gh release create "$DEV_TAG" \
+                    cdm-linux-x64 \
+                    cdm-linux-arm64 \
+                    cdm-darwin-x64 \
+                    cdm-darwin-arm64 \
+                    --target "${{ github.event.pull_request.head.sha }}" \
+                    --title "CDM CLI dev release for PR #${{ github.event.pull_request.number }}" \
+                    --notes "Dev CLI binary for PR #${{ github.event.pull_request.number }} at ${{ github.event.pull_request.head.sha }}." \
+                    --prerelease
+
+            - name: Comment install command
+              if: steps.cli_changeset.outputs.found == 'true'
+              uses: actions/github-script@v7
+              env:
+                  DEV_TAG: ${{ env.DEV_TAG }}
+                  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+              with:
+                  script: |
+                      const marker = "<!-- cdm-cli-dev-release -->";
+                      const { owner, repo } = context.repo;
+                      const issue_number = context.issue.number;
+                      const tag = process.env.DEV_TAG;
+                      const sha = process.env.HEAD_SHA;
+                      const installCommand = `curl -fsSL https://raw.githubusercontent.com/${owner}/${repo}/${sha}/install.sh | CDM_TAG=${tag} bash`;
+                      const updateCommand = `cdm update --tag ${tag}`;
+                      const body = [
+                        marker,
+                        "### CDM CLI dev release",
+                        "",
+                        "This PR includes a `@parity/cdm-cli` changeset, so CI published a dev CLI release for this branch.",
+                        "",
+                        "Install it:",
+                        "",
+                        "```sh",
+                        installCommand,
+                        "```",
+                        "",
+                        "Update an existing install:",
+                        "",
+                        "```sh",
+                        updateCommand,
+                        "```",
+                        "",
+                        `Release tag: \`${tag}\``,
+                        `Commit: \`${sha}\``,
+                      ].join("\n");
+
+                      const comments = await github.paginate(github.rest.issues.listComments, {
+                        owner,
+                        repo,
+                        issue_number,
+                      });
+                      const existing = comments.find(
+                        (comment) => comment.user?.type === "Bot" && comment.body?.includes(marker),
+                      );
+
+                      if (existing) {
+                        await github.rest.issues.updateComment({
+                          owner,
+                          repo,
+                          comment_id: existing.id,
+                          body,
+                        });
+                      } else {
+                        await github.rest.issues.createComment({
+                          owner,
+                          repo,
+                          issue_number,
+                          body,
+                        });
+                      }
 
     docker:
         needs: release

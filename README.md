@@ -23,6 +23,14 @@ curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-mana
 
 Dependency setup can also be re-run later with `cdm setup`.
 
+Update an existing binary with:
+
+```bash
+cdm update
+```
+
+To test a PR dev release, use the `CDM_TAG=...` install command posted by CI, or run `cdm update --tag <dev-release-tag>` from an existing install.
+
 To install CDM while selecting a specific `cargo-pvm-contract` branch:
 
 ```bash
@@ -280,6 +288,16 @@ cdm i -n paseo @yourorg/package:3
 ```
 
 `cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates the flat `cdm.json`, installs ABI/metadata artifacts under project-local `.cdm/contracts/`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`.
+
+### `cdm update`
+
+Update the installed CDM binary from GitHub releases, then refresh toolchain dependencies.
+
+```bash
+cdm update
+cdm update --tag cdm-cli-dev-pr-58
+cdm update --cargo-pvm-contract-ref charles/cdm-integration
+```
 
 ### `cdm template [name]`
 

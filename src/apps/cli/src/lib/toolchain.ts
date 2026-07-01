@@ -1,8 +1,11 @@
 import { exec } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { arch, homedir, platform } from "node:os";
+import { homedir, platform } from "node:os";
 import { resolve } from "node:path";
 import { runShell } from "./process";
+import { cdmHome, releaseAssetName } from "./releases";
+
+export { releaseAssetName };
 
 function run(cmd: string): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -89,10 +92,6 @@ interface CargoPvmContractStamp {
     installedAt: string;
 }
 
-function cdmHome(): string {
-    return process.env.CDM_DIR ?? resolve(homedir(), ".cdm");
-}
-
 function cargoPvmContractStampPath(): string {
     return resolve(cdmHome(), "toolchain", "cargo-pvm-contract.json");
 }
@@ -134,9 +133,7 @@ async function resolveCargoPvmContractRevision(repo: string, ref: string): Promi
     return preferred.split(/\s+/)[0];
 }
 
-async function hasCurrentCargoPvmContract(
-    opts: ResolvedCargoPvmContractOptions,
-): Promise<boolean> {
+async function hasCurrentCargoPvmContract(opts: ResolvedCargoPvmContractOptions): Promise<boolean> {
     if (!(await hasCargoPvmContract())) return false;
 
     const stamp = readCargoPvmContractStamp();
@@ -310,10 +307,4 @@ export async function runToolchainSetup(
             throw err;
         }
     }
-}
-
-export function releaseAssetName(os = platform(), cpu = arch()): string {
-    const normalizedOs = os === "darwin" ? "darwin" : "linux";
-    const normalizedCpu = cpu === "arm64" ? "arm64" : "x64";
-    return `cdm-${normalizedOs}-${normalizedCpu}`;
 }
