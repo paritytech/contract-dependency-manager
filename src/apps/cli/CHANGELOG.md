@@ -1,5 +1,14 @@
 # @dotdm/cli
 
+## 0.8.25
+
+### Patch Changes
+
+- Updated dependencies [79fbc58]
+  - @parity/cdm-env@2.0.8
+  - @parity/cdm-builder@3.1.9
+  - @parity/cdm-codegen@0.6.22
+
 ## 0.8.24
 
 ### Patch Changes

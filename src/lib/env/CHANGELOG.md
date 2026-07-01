@@ -1,5 +1,11 @@
 # @dotdm/env
 
+## 2.0.8
+
+### Patch Changes
+
+- 79fbc58: Refresh Product SDK packages to the 0.17 release line and align `polkadot-api` with the SDK's required version so contract runtime types resolve against a single PAPI instance.
+
 ## 2.0.7
 
 ### Patch Changes
