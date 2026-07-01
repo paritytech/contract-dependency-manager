@@ -15,6 +15,28 @@ curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-mana
 
 This installs the `cdm` binary, the Rust nightly toolchain with `rust-src`, and `cargo-pvm-contract`.
 
+To install a specific release artifact, pass a tag through `VERSION` or `CDM_TAG`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | VERSION=v0.8.25 bash
+```
+
+Dependency setup can also be re-run later with `cdm setup`.
+
+Update an existing binary with:
+
+```bash
+cdm update
+```
+
+To test a PR dev release, use the `CDM_TAG=...` install command posted by CI, or run `cdm update --tag <dev-release-tag>` from an existing install.
+
+To install CDM while selecting a specific `cargo-pvm-contract` branch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | CDM_CARGO_PVM_CONTRACT_REF=charles/cdm-integration bash
+```
+
 ## Quick Start
 
 ```bash
@@ -223,6 +245,16 @@ These templates are compile-ready starter projects and can be built, deployed, p
 
 ## Commands
 
+### `cdm setup`
+
+Install or repair the local CDM toolchain dependencies: Rust nightly, `rust-src`, and `cargo-pvm-contract`.
+
+```bash
+cdm setup
+cdm setup --check
+cdm setup --cargo-pvm-contract-ref charles/cdm-integration
+```
+
 ### `cdm build`
 
 Build all contracts with the selected ContractRegistry address baked in.
@@ -256,6 +288,16 @@ cdm i -n paseo @yourorg/package:3
 ```
 
 `cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates the flat `cdm.json`, installs ABI/metadata artifacts under project-local `.cdm/contracts/`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`.
+
+### `cdm update`
+
+Update the installed CDM binary from GitHub releases, then refresh toolchain dependencies.
+
+```bash
+cdm update
+cdm update --tag cdm-cli-dev-pr-58
+cdm update --cargo-pvm-contract-ref charles/cdm-integration
+```
 
 ### `cdm template [name]`
 
