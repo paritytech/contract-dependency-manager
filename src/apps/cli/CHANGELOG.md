@@ -1,5 +1,11 @@
 # @dotdm/cli
 
+## 0.8.26
+
+### Patch Changes
+
+- a33de04: Refresh the shell installer so binary installation stays small and delegates toolchain dependency setup to the new `cdm setup` command. Add `cdm update` for binary release updates and publish PR-scoped CLI dev releases when a pull request includes a `@parity/cdm-cli` changeset.
+
 ## 0.8.25
 
 ### Patch Changes
