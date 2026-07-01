@@ -3,6 +3,9 @@
     "version": "0.0.1",
     "private": true,
     "type": "module",
+    "exports": {
+        "./registry": "./registry.ts"
+    },
     "scripts": {
         "export": "bun run export.ts",
         "import": "bun run import.ts",

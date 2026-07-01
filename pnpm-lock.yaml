@@ -403,6 +403,9 @@ importers:
       '@parity/cdm-env':
         specifier: workspace:*
         version: link:../env
+      '@parity/cdm-migrations':
+        specifier: workspace:*
+        version: link:../../migrations
       '@parity/cdm-utils':
         specifier: workspace:*
         version: link:../utils

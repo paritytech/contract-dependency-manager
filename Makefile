@@ -1,5 +1,11 @@
 CLI_DIR = src/apps/cli
 TEMPLATE_DIR = src/templates/shared-counter
+DEPLOY_REGISTRY_ARGS = --name $(or $(CHAIN),local)
+DEPLOY_REGISTRY_ARGS += $(if $(SURI),--suri "$(SURI)")
+DEPLOY_REGISTRY_ARGS += $(if $(REGISTRY_ADDRESS),--registry-address $(REGISTRY_ADDRESS))
+DEPLOY_REGISTRY_ARGS += $(if $(MIGRATE_FROM_REGISTRY),--migrate-from-registry $(MIGRATE_FROM_REGISTRY))
+DEPLOY_REGISTRY_ARGS += $(if $(MIGRATION_JSON),--migration-json "$(MIGRATION_JSON)")
+DEPLOY_REGISTRY_ARGS += $(if $(MIGRATION_BATCH_SIZE),--migration-batch-size $(MIGRATION_BATCH_SIZE))
 
 .PHONY: install dev frontend build compile compile-all build-registry deploy-registry build-template test test-macro clean format format-check format-ts format-rs format-ts-check format-rs-check
 
@@ -46,7 +52,7 @@ build-registry:
 deploy-registry: build-registry
 	pnpm --filter @parity/cdm-env build
 	pnpm --filter @parity/cdm-builder build
-	bun run src/lib/scripts/deploy-registry.ts --name $(or $(CHAIN),local) $(if $(SURI),--suri "$(SURI)") $(if $(REGISTRY_ADDRESS),--registry-address $(REGISTRY_ADDRESS))
+	bun run src/lib/scripts/deploy-registry.ts $(DEPLOY_REGISTRY_ARGS)
 
 build-template:
 	cargo pvm-contract build --manifest-path $(CURDIR)/$(TEMPLATE_DIR)/Cargo.toml -p counter

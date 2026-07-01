@@ -18,6 +18,18 @@ pnpm --filter @parity/cdm-migrations import -- -n paseo \
   --batch-size 10
 ```
 
+Deploy a fresh registry and migrate the old registry into it in one command:
+
+```sh
+make deploy-registry CHAIN=paseo \
+  MIGRATE_FROM_REGISTRY=0x... \
+  MIGRATION_JSON=dist/paseo-registry-migration.json \
+  MIGRATION_BATCH_SIZE=10
+```
+
+When `MIGRATION_JSON` is omitted, the deploy script writes the exported snapshot
+to `dist/registry-migration-<chain>-<timestamp>.json`.
+
 The JSON shape matches the contract's `adminImportContracts` input:
 
 ```json
