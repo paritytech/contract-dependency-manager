@@ -23,12 +23,7 @@ function eventDetail(event: ToolStepEvent): string {
 export async function runSetupWithUi(opts: {
     check?: boolean;
     cargoPvmContractRef?: string;
-    heading?: boolean;
 }): Promise<void> {
-    if (opts.heading ?? true) {
-        console.log("\x1b[1mCDM setup\x1b[0m\n");
-    }
-
     let active:
         | {
               step: ToolStep;

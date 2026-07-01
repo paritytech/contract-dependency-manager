@@ -18,8 +18,6 @@ export const updateCommand = new Command("update")
             skipSetup?: boolean;
             cargoPvmContractRef: string;
         }) => {
-            console.log("\x1b[1mCDM update\x1b[0m\n");
-
             const tag = selectReleaseTag(opts.tag, process.env.CDM_TAG, process.env.VERSION);
             const view = spinner("cdm", tag ? `installing ${tag}` : "resolving latest release");
             let result: Awaited<ReturnType<typeof installCdmRelease>>;
@@ -36,7 +34,6 @@ export const updateCommand = new Command("update")
             if (!opts.skipSetup) {
                 console.log("\nSetting up CDM dependencies...");
                 await runSetupWithUi({
-                    heading: false,
                     cargoPvmContractRef: opts.cargoPvmContractRef,
                 });
             }
