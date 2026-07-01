@@ -1,5 +1,11 @@
 # @dotdm/env
 
+## 2.0.7
+
+### Patch Changes
+
+- 40f6516: Update the Paseo registry preset to the migrated ContractRegistry and keep pipeline tests aligned with the env preset.
+
 ## 2.0.6
 
 ### Patch Changes
