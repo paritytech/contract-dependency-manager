@@ -2,7 +2,7 @@ import { dirname, relative, resolve } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import type { PolkadotSigner, SS58String, HexString } from "polkadot-api";
 import { Enum } from "polkadot-api";
-import type { CdmChainClient } from "@parity/cdm-env";
+import { getRegistryAddress, type CdmChainClient } from "@parity/cdm-env";
 import {
     createContractFromClient,
     type Contract,
@@ -1664,7 +1664,7 @@ if (import.meta.vitest) {
                 } as any,
                 signer: deploySigner,
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
-                registryAddress: "0xf62c2ece29cd8df2e10040ecfa5a894a5c5d9cb0",
+                registryAddress: getRegistryAddress("paseo") as HexString,
                 metadataSigner,
                 onEvent: (event) => {
                     if (event.type === "build-start") events.push(`build-start:${event.crate}`);

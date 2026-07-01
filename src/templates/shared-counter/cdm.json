@@ -1,5 +1,5 @@
 {
-  "registry": "0xf62c2ece29cd8df2e10040ecfa5a894a5c5d9cb0",
+  "registry": "0x7671a84f5e7b1bf704f0ad3f43a185ff3d4b303f",
   "dependencies": {
     "@example/counter": "latest",
     "@example/counter-writer": "latest",
@@ -7,8 +7,8 @@
   },
   "contracts": {
     "@example/counter": {
-      "version": 0,
-      "address": "0xC47274C987491d58b99747F344AE661986B580E8",
+      "version": 1,
+      "address": "0x788b8508ABE100431126E04118028050dfB2E584",
       "abi": [
         {
           "type": "constructor",
@@ -35,11 +35,11 @@
           "stateMutability": "view"
         }
       ],
-      "metadataCid": "bafk2bzacedfjnsqjwbzbuvqgelzp5g7klbipuksnsepf3efit55u5l4dsyjkq"
+      "metadataCid": "bafk2bzacecl5ewi6o5ny6seqk4lej5esrvmind4sfwwln4fvhxvmn3rfmzppo"
     },
     "@example/counter-writer": {
       "version": 0,
-      "address": "0xF0cfa61E013aa6E64AbDF15FA8f1E6739B060Bd0",
+      "address": "0x22CBce055A483BA49E1771DD193Ca6e19aBa2FFb",
       "abi": [
         {
           "type": "constructor",
@@ -66,11 +66,11 @@
           "stateMutability": "nonpayable"
         }
       ],
-      "metadataCid": "bafk2bzacebcwes6powrpuyhv5dpemnavts3xylrbaqimr4qebbkyvdu5vsbyq"
+      "metadataCid": "bafk2bzacebbqobnkru6zbp2w4xcsovzugjzksctsyk52wou3xf2wwnnktfot6"
     },
     "@example/counter-reader": {
       "version": 0,
-      "address": "0x45D71e0475F675816380e36e384fF69ebF503Ad1",
+      "address": "0xd27b0181b7b0CAF3d0C5e2473fd82DA7610eF25a",
       "abi": [
         {
           "type": "constructor",
@@ -90,7 +90,7 @@
           "stateMutability": "view"
         }
       ],
-      "metadataCid": "bafk2bzaceaadlofrckys7rtqhaa5j5udfcto2eay4hh4u7tmtm5wh44tejaiw"
+      "metadataCid": "bafk2bzacecya7forr7smnbezntpkn3m66nfn5pcr6fge6t6eilyy2ewelte2w"
     }
   }
 }
