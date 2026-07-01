@@ -46,6 +46,28 @@ function unwrapOption<T>(val: unknown): { isSome: boolean; value: T | undefined 
     return { isSome: false, value: undefined };
 }
 
+function parseSearchPage(value: unknown): { names: string[]; nextOffset: number; done: boolean } {
+    if (Array.isArray(value)) {
+        return {
+            names: Array.isArray(value[0]) ? (value[0] as string[]) : [],
+            nextOffset: Number(value[1] ?? 0),
+            done: Boolean(value[2]),
+        };
+    }
+
+    const page = (value ?? {}) as {
+        names?: unknown;
+        next_offset?: unknown;
+        nextOffset?: unknown;
+        done?: unknown;
+    };
+    return {
+        names: Array.isArray(page.names) ? (page.names as string[]) : [],
+        nextOffset: Number(page.next_offset ?? page.nextOffset ?? 0),
+        done: Boolean(page.done),
+    };
+}
+
 beforeAll(async () => {
     node = await spawnReviveNode();
     const registryAddress = await deployRegistry(node.wsUrl);
@@ -179,5 +201,36 @@ describe("registry publishLatest + post-publish queries", () => {
             expect(lc(row.address)).toBe(lc(ADDR));
             expect(row.metadata_uri ?? row.metadataUri).toBe(URI);
         }
+    });
+});
+
+describe("registry searchContractNames", () => {
+    test("matching prefix returns the registered name", async () => {
+        const r = await registry.searchContractNames.query("@test/", 0, 10);
+        expect(r.success).toBe(true);
+        const page = parseSearchPage(r.value);
+        expect(page.names).toContain(NAME);
+    });
+
+    test("non-matching prefix returns an empty done page", async () => {
+        const r = await registry.searchContractNames.query("@nonexistent/", 0, 10);
+        expect(r.success).toBe(true);
+        const page = parseSearchPage(r.value);
+        expect(page.names).toEqual([]);
+        expect(page.done).toBe(true);
+    });
+
+    test("pagination advances by returned result count", async () => {
+        const first = await registry.searchContractNames.query("@test/", 0, 1);
+        expect(first.success).toBe(true);
+        const firstPage = parseSearchPage(first.value);
+        expect(firstPage.names).toEqual([NAME]);
+        expect(firstPage.nextOffset).toBe(1);
+
+        const second = await registry.searchContractNames.query("@test/", firstPage.nextOffset, 1);
+        expect(second.success).toBe(true);
+        const secondPage = parseSearchPage(second.value);
+        expect(secondPage.names).toEqual([]);
+        expect(secondPage.done).toBe(true);
     });
 });
