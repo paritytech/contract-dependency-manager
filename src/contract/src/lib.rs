@@ -56,6 +56,19 @@ pub struct ContractNameSearchPage {
     pub done: bool,
 }
 
+#[derive(pvm::SolAbi)]
+pub struct ImportContractVersion {
+    pub address: Address,
+    pub metadata_uri: String,
+}
+
+#[derive(pvm::SolAbi)]
+pub struct ImportContract {
+    pub contract_name: String,
+    pub owner: Address,
+    pub versions: alloc::vec::Vec<ImportContractVersion>,
+}
+
 fn validate_contract_name(contract_name: &String) {
     if contract_name.is_empty() {
         revert(b"ContractNameEmpty");
@@ -127,6 +140,8 @@ fn latest_contract_entry(contract_name: String) -> Option<ContractEntry> {
 
 #[pvm::storage]
 struct Storage {
+    /// Admin allowed to import migrated registry data.
+    admin: Address,
     /// Count of registered contract names
     contract_name_count: u32,
     /// Maps index to contract name (simulates StorageVec)
@@ -144,13 +159,85 @@ struct Storage {
 // Max contract name encoding is 64 bytes plus a 2-byte SCALE compact length prefix.
 const _: () = assert!(OrderedIndex::<String, u32, 2>::fits_storage_limit(66, 4));
 
+fn require_admin() {
+    if Storage::admin().get().unwrap_or_default() != caller() {
+        revert(b"UnauthorizedAdmin");
+    }
+}
+
+fn append_contract_name(contract_name: &String) {
+    let count = Storage::contract_name_count().get().unwrap_or(0);
+    Storage::contract_name_at().insert(&count, contract_name);
+    Storage::contract_name_index().insert(contract_name, &count);
+    Storage::contract_name_count().set(
+        &count
+            .checked_add(1)
+            .unwrap_or_else(|| revert(b"ContractCountOverflow")),
+    );
+}
+
+fn import_contract(contract: ImportContract) {
+    let contract_name = contract.contract_name;
+    validate_contract_name(&contract_name);
+
+    if contract.versions.is_empty() {
+        revert(b"ImportVersionsEmpty");
+    }
+    if Storage::info().contains(&contract_name) {
+        revert(b"ImportContractExists");
+    }
+
+    let mut version_count: Version = 0;
+    for version in contract.versions {
+        Storage::published_address()
+            .insert(&(contract_name.clone(), version_count), &version.address);
+        Storage::published_metadata_uri().insert(
+            &(contract_name.clone(), version_count),
+            &version.metadata_uri,
+        );
+        version_count = version_count
+            .checked_add(1)
+            .unwrap_or_else(|| revert(b"VersionOverflow"));
+    }
+
+    let info = NamedContractInfo {
+        owner: contract.owner,
+        version_count,
+    };
+    append_contract_name(&contract_name);
+    Storage::info().insert(&contract_name, &info);
+}
+
 #[pvm::contract]
 mod contract_registry {
     use super::*;
 
     #[pvm::constructor]
     pub fn new() -> Result<(), Error> {
+        Storage::admin().set(&caller());
         Ok(())
+    }
+
+    /// Get the address authorized to import migrated registry state.
+    #[pvm::method]
+    pub fn get_admin() -> Address {
+        Storage::admin().get().unwrap_or_default()
+    }
+
+    /// Transfer migration admin permissions.
+    #[pvm::method]
+    pub fn set_admin(new_admin: Address) {
+        require_admin();
+        Storage::admin().set(&new_admin);
+    }
+
+    /// Import existing registry data into a fresh registry deployment.
+    #[pvm::method]
+    pub fn admin_import_contracts(contracts: alloc::vec::Vec<ImportContract>) {
+        require_admin();
+        for contract in contracts {
+            import_contract(contract);
+        }
     }
 
     /// Publish the latest version of a contract registered under name `contract_name`
@@ -171,15 +258,7 @@ mod contract_registry {
                     owner: caller,
                     version_count: 0,
                 };
-                // Append to contract names list
-                let count = Storage::contract_name_count().get().unwrap_or(0);
-                Storage::contract_name_at().insert(&count, &contract_name);
-                Storage::contract_name_index().insert(&contract_name, &count);
-                Storage::contract_name_count().set(
-                    &count
-                        .checked_add(1)
-                        .unwrap_or_else(|| revert(b"ContractCountOverflow")),
-                );
+                append_contract_name(&contract_name);
                 info
             }
         };

@@ -20,6 +20,44 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
     },
     {
         type: "function",
+        name: "getAdmin",
+        inputs: [],
+        outputs: [{ name: "", type: "address" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "setAdmin",
+        inputs: [{ name: "new_admin", type: "address" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "adminImportContracts",
+        inputs: [
+            {
+                name: "contracts",
+                type: "tuple[]",
+                components: [
+                    { name: "contract_name", type: "string" },
+                    { name: "owner", type: "address" },
+                    {
+                        name: "versions",
+                        type: "tuple[]",
+                        components: [
+                            { name: "address", type: "address" },
+                            { name: "metadata_uri", type: "string" },
+                        ],
+                    },
+                ],
+            },
+        ],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
         name: "publishLatest",
         inputs: [
             { name: "contract_name", type: "string" },
