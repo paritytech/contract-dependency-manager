@@ -7,6 +7,7 @@ import { installCommand } from "./commands/install";
 import { templateCommand } from "./commands/template";
 import { initCommand } from "./commands/init";
 import { accountCommand } from "./commands/account";
+import { setupCommand } from "./commands/setup";
 import packageJson from "../package.json";
 
 const program = new Command();
@@ -22,6 +23,7 @@ program.addCommand(installCommand);
 program.addCommand(templateCommand);
 program.addCommand(initCommand);
 program.addCommand(accountCommand);
+program.addCommand(setupCommand);
 
 // bun --compile quirk: when run with no user args, argv[2] is set to the
 // program name (the argv[0] used to invoke the binary), which commander then

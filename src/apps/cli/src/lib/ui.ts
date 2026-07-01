@@ -17,19 +17,27 @@ import { SPINNER_FRAMES } from "./components/shared";
 /** Plain stdout spinner for connection/setup phases (before Ink rendering starts) */
 export function spinner(label: string, detail: string) {
     let i = 0;
+    let currentDetail = detail;
     const id = setInterval(() => {
         process.stdout.write(
-            `\r\x1b[2K\x1b[1m${label}\x1b[0m ${SPINNER_FRAMES[i++ % SPINNER_FRAMES.length]} ${detail}`,
+            `\r\x1b[2K\x1b[1m${label}\x1b[0m ${SPINNER_FRAMES[i++ % SPINNER_FRAMES.length]} ${currentDetail}`,
         );
     }, 80);
     return {
-        succeed() {
-            clearInterval(id);
-            process.stdout.write(`\r\x1b[2K\x1b[1m${label}\x1b[0m \x1b[32m✔\x1b[0m ${detail}\n`);
+        update(nextDetail: string) {
+            currentDetail = nextDetail;
         },
-        fail() {
+        succeed(finalDetail: string = currentDetail) {
             clearInterval(id);
-            process.stdout.write(`\r\x1b[2K\x1b[1m${label}\x1b[0m \x1b[31m✖\x1b[0m ${detail}\n`);
+            process.stdout.write(
+                `\r\x1b[2K\x1b[1m${label}\x1b[0m \x1b[32m✔\x1b[0m ${finalDetail}\n`,
+            );
+        },
+        fail(finalDetail: string = currentDetail) {
+            clearInterval(id);
+            process.stdout.write(
+                `\r\x1b[2K\x1b[1m${label}\x1b[0m \x1b[31m✖\x1b[0m ${finalDetail}\n`,
+            );
         },
     };
 }

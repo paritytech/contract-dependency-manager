@@ -15,6 +15,20 @@ curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-mana
 
 This installs the `cdm` binary, the Rust nightly toolchain with `rust-src`, and `cargo-pvm-contract`.
 
+To install a specific release artifact, pass a tag through `VERSION` or `CDM_TAG`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | VERSION=v0.8.25 bash
+```
+
+Dependency setup can also be re-run later with `cdm setup`.
+
+To install CDM while selecting a specific `cargo-pvm-contract` branch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | CDM_CARGO_PVM_CONTRACT_REF=charles/cdm-integration bash
+```
+
 ## Quick Start
 
 ```bash
@@ -222,6 +236,16 @@ cdm template foundry-counter
 These templates are compile-ready starter projects and can be built, deployed, published, registered, installed, and consumed through CDM.
 
 ## Commands
+
+### `cdm setup`
+
+Install or repair the local CDM toolchain dependencies: Rust nightly, `rust-src`, and `cargo-pvm-contract`.
+
+```bash
+cdm setup
+cdm setup --check
+cdm setup --cargo-pvm-contract-ref charles/cdm-integration
+```
 
 ### `cdm build`
 
