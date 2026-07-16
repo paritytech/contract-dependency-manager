@@ -34,7 +34,7 @@ catalog:
   ink: ^6.8.0
   "@noble/hashes": ^2.0.1
   multiformats: ^13.4.2
-  vite: ^7.3.1
+  vite: ^7.3.5
   "@vitejs/plugin-react": ^5.1.1
   esbuild: ^0.28.0
   typescript: ^5.9.3
