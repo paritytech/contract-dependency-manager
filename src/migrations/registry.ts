@@ -258,7 +258,8 @@ export async function importRegistrySnapshot(
             const result = await connection.registry.adminImportContracts.tx(batch);
             if (!result.ok) {
                 throw new Error(
-                    `adminImportContracts batch ${Math.floor(start / batchSize) + 1}/${totalBatches} failed: ${JSON.stringify(result)}`,
+                    `adminImportContracts batch ${Math.floor(start / batchSize) + 1}/${totalBatches} failed: ${result.error.message}`,
+                    { cause: result.error },
                 );
             }
             onProgress?.({

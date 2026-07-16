@@ -17,7 +17,9 @@ init.action(async (opts: { name: string }) => {
 
     if (!isKnownChainPreset(chainName) || chainName === "polkadot") {
         console.error(`Init is not available for "${chainName}".`);
-        console.error("Currently only testnet chains (e.g. paseo) support auto-initialization.");
+        console.error(
+            "Currently only testnet chains (e.g. paseo, devnet) support auto-initialization.",
+        );
         process.exit(1);
     }
 

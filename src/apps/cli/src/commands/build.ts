@@ -8,7 +8,7 @@ const build = new Command("build")
     .description("Build all contracts")
     .option("--contracts <names...>", "Only build specific contracts")
     .option("--features <features>", "Cargo feature flags to pass to the build")
-    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, w3s, local)")
+    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, devnet, w3s, local)")
     .option("--registry-address <address>", "Registry contract address to embed")
     .option("--root <path>", "Workspace root directory", process.cwd());
 
