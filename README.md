@@ -144,12 +144,12 @@ This updates `cdm.json`, stores ABI/metadata artifacts under project-local `.cdm
 Install the product-sdk app/runtime packages:
 
 ```bash
-pnpm add @parity/product-sdk-chain-client@^0.5.2 \
-  @parity/product-sdk-contracts@^0.6.2 \
-  @parity/product-sdk-descriptors@^0.5.1 \
-  @parity/product-sdk-signer@^0.5.0 \
-  @parity/product-sdk-tx@^0.2.6 \
-  polkadot-api@^2.1.2
+pnpm add @parity/product-sdk-chain-client@^0.8.0 \
+  @parity/product-sdk-contracts@^0.9.0 \
+  @parity/product-sdk-descriptors@^0.7.0 \
+  @parity/product-sdk-signer@^0.10.0 \
+  @parity/product-sdk-tx@^0.3.0 \
+  polkadot-api@^2.1.7
 ```
 
 In frontend code, use product-sdk:
@@ -276,7 +276,7 @@ cdm deploy -n paseo --suri //Bob
 cdm deploy --registry-address 0x... --assethub-url wss://... --bulletin-url wss://...
 ```
 
-Supported deploy presets are `paseo` and `local`. Use explicit URLs with `--assethub-url`, `--bulletin-url`, and `--registry-address` for custom networks. The `paseo` preset points at Paseo v2.
+Supported deploy presets are `paseo`, `devnet`, and `local`. Use explicit URLs with `--assethub-url`, `--bulletin-url`, and `--registry-address` for custom networks. Note that the `paseo` preset targets **paseo-next** (the Paseo Asset Hub preview/next network, para 1500) — not the Paseo testnet. The `devnet` preset targets the Paseo testnet Asset Hub (para 1000, EVM chain id 420420417) with a ContractRegistry operated by the Polkadot Community Foundation.
 
 ### `cdm install -n <chain> <library>`
 
@@ -287,7 +287,7 @@ cdm i -n paseo @polkadot/contexts @polkadot/profiles
 cdm i -n paseo @yourorg/package:3
 ```
 
-`cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates the flat `cdm.json`, installs ABI/metadata artifacts under project-local `.cdm/contracts/`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`.
+`cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates the flat `cdm.json`, installs ABI/metadata artifacts under project-local `.cdm/contracts/`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`. Use `-n devnet` to resolve packages against the Paseo testnet Asset Hub registry.
 
 ### `cdm update`
 

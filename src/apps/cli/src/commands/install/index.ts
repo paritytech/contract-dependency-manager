@@ -56,7 +56,7 @@ const install = new Command("install")
         'CDM libraries (e.g., "@polkadot/reputation" or "@polkadot/reputation:3"). Omit to install all from cdm.json.',
     )
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain", DEFAULT_NODE_URL)
-    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, w3s, local)")
+    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, devnet, w3s, local)")
     .option("--ipfs-gateway-url <url>", "IPFS gateway URL for fetching metadata")
     .option("--registry-address <address>", "Registry contract address");
 

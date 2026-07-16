@@ -8,6 +8,8 @@ import { getWsProvider } from "polkadot-api/ws";
 import { polkadot_asset_hub } from "@parity/product-sdk-descriptors/polkadot-asset-hub";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
+import { devnet_asset_hub } from "@parity/product-sdk-descriptors/devnet-asset-hub";
+import { devnet_bulletin } from "@parity/product-sdk-descriptors/devnet-bulletin";
 import { summit_asset_hub } from "@parity/product-sdk-descriptors/summit-asset-hub";
 import { summit_bulletin } from "@parity/product-sdk-descriptors/summit-bulletin";
 import { getChainPreset, normalizeChainName, type KnownChainName } from "./known_chains";
@@ -20,9 +22,15 @@ export type CdmDirectChainClient<TChains extends Record<string, ChainDefinition>
     destroy: () => void;
 };
 
-export type CdmDeployAssetHubDescriptor = typeof paseo_asset_hub | typeof summit_asset_hub;
+export type CdmDeployAssetHubDescriptor =
+    | typeof paseo_asset_hub
+    | typeof devnet_asset_hub
+    | typeof summit_asset_hub;
 export type CdmAssetHubDescriptor = CdmDeployAssetHubDescriptor | typeof polkadot_asset_hub;
-export type CdmBulletinDescriptor = typeof paseo_bulletin | typeof summit_bulletin;
+export type CdmBulletinDescriptor =
+    | typeof paseo_bulletin
+    | typeof devnet_bulletin
+    | typeof summit_bulletin;
 
 export type CdmDeployAssetHubApi = TypedApi<CdmDeployAssetHubDescriptor>;
 export type CdmAssetHubApi = TypedApi<CdmAssetHubDescriptor>;
@@ -68,8 +76,12 @@ export interface CdmChainEndpoints {
     chainName?: string;
 }
 
+// `local` reuses the paseo descriptors: product-sdk does not publish a
+// descriptor for local dev chains, and the Revive/registry surface CDM
+// touches is compatible.
 const DEPLOY_CHAIN_DESCRIPTORS = {
     paseo: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
+    devnet: { assetHub: devnet_asset_hub, bulletin: devnet_bulletin },
     w3s: { assetHub: summit_asset_hub, bulletin: summit_bulletin },
     local: { assetHub: paseo_asset_hub, bulletin: paseo_bulletin },
 } as const;
@@ -77,6 +89,7 @@ const DEPLOY_CHAIN_DESCRIPTORS = {
 const ASSET_HUB_DESCRIPTORS = {
     polkadot: polkadot_asset_hub,
     paseo: paseo_asset_hub,
+    devnet: devnet_asset_hub,
     w3s: summit_asset_hub,
     local: paseo_asset_hub,
 } as const;
@@ -85,7 +98,7 @@ function resolveExplicitChainName(chainName: string): KnownChainName | "custom" 
     const normalized = normalizeChainName(chainName);
     if (!normalized) {
         throw new Error(
-            `Unknown chain "${chainName}". Valid names: polkadot, paseo, w3s, local, custom`,
+            `Unknown chain "${chainName}". Valid names: polkadot, paseo, devnet, w3s, local, custom`,
         );
     }
     return normalized;
@@ -101,7 +114,7 @@ function resolveDeployDescriptors(chainName: string | undefined) {
     const descriptorChain = normalized && normalized !== "custom" ? normalized : "paseo";
     if (descriptorChain === "polkadot") {
         throw new Error(
-            'CDM deploy connections are only available for "paseo", "w3s", and "local"; product-sdk does not publish a Polkadot Bulletin descriptor yet.',
+            'CDM deploy connections are only available for "paseo", "devnet", "w3s", and "local"; product-sdk does not publish a Polkadot Bulletin descriptor yet.',
         );
     }
 
@@ -111,7 +124,8 @@ function resolveDeployDescriptors(chainName: string | undefined) {
 /**
  * Connect to both Asset Hub and Bulletin over direct WebSocket RPC.
  *
- * Accepts either a supported deploy chain name (`"paseo"` or `"local"`)
+ * Accepts either a supported deploy chain name (`"paseo"`, `"devnet"`,
+ * `"w3s"`, or `"local"`)
  * resolved through `getChainPreset`, or explicit URLs. Polkadot remains
  * available for Asset-Hub-only install reads, but product-sdk does not publish
  * a Polkadot Bulletin descriptor yet.
@@ -222,5 +236,12 @@ if (import.meta.vitest) {
 
         expect(descriptors.assetHub).toBe(summit_asset_hub);
         expect(descriptors.bulletin).toBe(summit_bulletin);
+    });
+
+    test("devnet deploy connections use devnet descriptors", () => {
+        const descriptors = resolveDeployDescriptors("devnet");
+
+        expect(descriptors.assetHub).toBe(devnet_asset_hub);
+        expect(descriptors.bulletin).toBe(devnet_bulletin);
     });
 }

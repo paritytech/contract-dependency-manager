@@ -1,9 +1,13 @@
 import { getRegistryAddress, type ProductSdkEnvironment } from "@parity/cdm-env/registry";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
+import { devnet_asset_hub } from "@parity/product-sdk-descriptors/devnet-asset-hub";
 import { summit_asset_hub } from "@parity/product-sdk-descriptors/summit-asset-hub";
 
-export type NetworkKey = "paseo" | "w3s";
-type AssetHubDescriptor = typeof paseo_asset_hub | typeof summit_asset_hub;
+export type NetworkKey = "paseo" | "devnet" | "w3s";
+type AssetHubDescriptor =
+    | typeof paseo_asset_hub
+    | typeof devnet_asset_hub
+    | typeof summit_asset_hub;
 
 export interface NetworkConfig {
     key: NetworkKey;
@@ -28,6 +32,14 @@ export const NETWORKS: Record<NetworkKey, NetworkConfig> = {
         productSdkEnvironment: "paseo",
         assetHubDescriptor: paseo_asset_hub,
         registryAddress: registryAddressFor("paseo"),
+    },
+    devnet: {
+        key: "devnet",
+        label: "Devnet",
+        installName: "devnet",
+        productSdkEnvironment: "devnet",
+        assetHubDescriptor: devnet_asset_hub,
+        registryAddress: registryAddressFor("devnet"),
     },
     w3s: {
         key: "w3s",

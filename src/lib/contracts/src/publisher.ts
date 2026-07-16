@@ -37,19 +37,16 @@ export class MetadataPublisher {
         const cid = (await calculateCid(data)).toString();
         const tx = this.bulletinApi.tx.TransactionStorage.store({ data });
 
-        let result: Awaited<ReturnType<typeof submitAndWatch>>;
-        try {
-            result = await submitAndWatch(tx as unknown as SubmittableTransaction, this.signer);
-        } catch (err) {
-            const orig = err instanceof Error ? err.message : String(err);
-            throw new Error(`[Bulletin publish] ${orig}`, { cause: err });
+        const result = await submitAndWatch(tx as unknown as SubmittableTransaction, this.signer);
+        if (!result.ok) {
+            throw new Error(`[Bulletin publish] ${result.error.message}`, { cause: result.error });
         }
 
         return {
             cid,
-            blockNumber: result.block.number,
-            txHash: result.txHash,
-            blockHash: result.block.hash,
+            blockNumber: result.value.block.number,
+            txHash: result.value.txHash,
+            blockHash: result.value.block.hash,
         };
     }
 

@@ -215,24 +215,15 @@ export class ContractDeployer {
     ): Promise<{ address: string; txHash: string; blockHash: string }> {
         const { tx } = await this.dryRunDeploy(pvmPath, cdmPackage, saltVersion, saltScope);
 
-        let result: Awaited<ReturnType<typeof submitAndWatch>>;
-        try {
-            result = await submitAndWatch(tx as unknown as SubmittableTransaction, this.signer, {
-                waitFor: "best-block",
-            });
-        } catch (err) {
-            const orig = err instanceof Error ? err.message : String(err);
-            throw new Error(`[AssetHub deploy] ${orig}`, { cause: err });
-        }
-
+        const result = await submitAndWatch(tx as unknown as SubmittableTransaction, this.signer, {
+            waitFor: "best-block",
+        });
         if (!result.ok) {
-            throw new Error(
-                `[AssetHub deploy] Deployment transaction failed: ${stringifyBigInt(result.dispatchError ?? "unknown dispatch error")}`,
-            );
+            throw new Error(`[AssetHub deploy] ${result.error.message}`, { cause: result.error });
         }
 
         const instantiated = this.api.event.Revive.Instantiated.filter(
-            result.events as Parameters<typeof this.api.event.Revive.Instantiated.filter>[0],
+            result.value.events as Parameters<typeof this.api.event.Revive.Instantiated.filter>[0],
         );
         if (instantiated.length === 0) {
             throw new Error(
@@ -241,7 +232,7 @@ export class ContractDeployer {
         }
 
         const address = instantiated[0].payload.contract;
-        return { address, txHash: result.txHash, blockHash: result.block.hash };
+        return { address, txHash: result.value.txHash, blockHash: result.value.block.hash };
     }
 
     /**
@@ -456,25 +447,19 @@ export class ContractDeployer {
                 addresses[i] = r.address;
                 chunkResult = { txHash: r.txHash, blockHash: r.blockHash, addrs: [r.address] };
             } else {
-                let result: Awaited<ReturnType<typeof batchSubmitAndWatch>>;
-                try {
-                    result = await batchSubmitAndWatch(
-                        idxs.map((i) => prepared[i].tx),
-                        this.api,
-                        this.signer,
-                        { mode: "batch_all", waitFor: "best-block" },
-                    );
-                } catch (err) {
-                    const orig = err instanceof Error ? err.message : String(err);
-                    throw new Error(`${label} ${orig}`, { cause: err });
-                }
+                const result = await batchSubmitAndWatch(
+                    idxs.map((i) => prepared[i].tx),
+                    this.api,
+                    this.signer,
+                    { mode: "batch_all", waitFor: "best-block" },
+                );
                 if (!result.ok) {
-                    throw new Error(
-                        `${label} Batch deploy failed: ${stringifyBigInt(result.dispatchError ?? "unknown dispatch error")}`,
-                    );
+                    throw new Error(`${label} Batch deploy failed: ${result.error.message}`, {
+                        cause: result.error,
+                    });
                 }
                 const instantiated = this.api.event.Revive.Instantiated.filter(
-                    result.events as Parameters<
+                    result.value.events as Parameters<
                         typeof this.api.event.Revive.Instantiated.filter
                     >[0],
                 );
@@ -491,8 +476,8 @@ export class ContractDeployer {
                     addresses[idxs[j]] = chunkAddrs[j];
                 }
                 chunkResult = {
-                    txHash: result.txHash,
-                    blockHash: result.block.hash,
+                    txHash: result.value.txHash,
+                    blockHash: result.value.block.hash,
                     addrs: chunkAddrs,
                 };
             }
@@ -587,7 +572,7 @@ export class ContractDeployer {
             gasLimit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
             storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
         };
-        const registerCalls = await Promise.all(
+        const preparedRegisterCalls = await Promise.all(
             cdmPackages.map((pkg, i) =>
                 registry.publishLatest.prepare(pkg, prepared[i].address, metadataUris[i], {
                     origin: this.origin,
@@ -595,6 +580,15 @@ export class ContractDeployer {
                 }),
             ),
         );
+        const registerCalls = preparedRegisterCalls.map((r, i) => {
+            if (!r.ok) {
+                throw new Error(
+                    `[AssetHub deploy+register] Failed to prepare publishLatest for ${cdmPackages[i]}: ${r.error.message}`,
+                    { cause: r.error },
+                );
+            }
+            return r.value;
+        });
 
         const addresses: string[] = new Array(pvmPaths.length);
 
@@ -608,27 +602,23 @@ export class ContractDeployer {
                 ...idxs.map((i) => registerCalls[i]),
             ];
 
-            let result: Awaited<ReturnType<typeof batchSubmitAndWatch>>;
-            try {
-                result = await batchSubmitAndWatch(chunkCalls, this.api, this.signer, {
-                    mode: "batch_all",
-                    waitFor: "best-block",
-                });
-            } catch (err) {
-                const orig = err instanceof Error ? err.message : String(err);
-                throw new Error(`${label} ${orig}`, { cause: err });
-            }
+            const result = await batchSubmitAndWatch(chunkCalls, this.api, this.signer, {
+                mode: "batch_all",
+                waitFor: "best-block",
+            });
             if (!result.ok) {
-                throw new Error(
-                    `${label} Batch deploy+register failed: ${stringifyBigInt(result.dispatchError ?? "unknown dispatch error")}`,
-                );
+                throw new Error(`${label} Batch deploy+register failed: ${result.error.message}`, {
+                    cause: result.error,
+                });
             }
 
             // Verify on-chain Instantiated events match our precomputed
             // addresses (sanity check — CREATE2 is deterministic, so any
             // mismatch indicates a bug or chain version skew).
             const instantiated = this.api.event.Revive.Instantiated.filter(
-                result.events as Parameters<typeof this.api.event.Revive.Instantiated.filter>[0],
+                result.value.events as Parameters<
+                    typeof this.api.event.Revive.Instantiated.filter
+                >[0],
             );
             if (instantiated.length !== idxs.length) {
                 throw new Error(
@@ -653,8 +643,8 @@ export class ContractDeployer {
                 onChunk({
                     crates: idxs.map((i) => cdmPackages[i]),
                     addresses: idxs.map((i) => addresses[i]),
-                    txHash: result.txHash,
-                    blockHash: result.block.hash,
+                    txHash: result.value.txHash,
+                    blockHash: result.value.block.hash,
                     chunkIndex: ci,
                     totalChunks: chunks.length,
                 });
