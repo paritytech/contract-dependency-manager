@@ -27,11 +27,12 @@ const PASEO_IPFS_GATEWAY_URL = "https://paseo-bulletin-next-ipfs.polkadot.io/ipf
 // 0xd6eec2…11ef2) and its Bulletin ("Bulletin Paseo"). Distinct from the
 // `paseo` preset above, which targets the paseo-next preview network.
 // The Asset Hub URL mirrors the devnet-asset-hub descriptor's wsUrl; the
-// Bulletin URL comes from product-sdk's BULLETIN_RPCS. Metadata for the
-// devnet registry is pinned to public IPFS; Bulletin Paseo has no dedicated
-// HTTP gateway.
+// Bulletin URL comes from product-sdk's BULLETIN_RPCS. The IPFS gateway is the
+// Kubo node the Polkadot Community Foundation operates alongside the devnet
+// Bulletin collator — the collator itself speaks Bitswap only, so content
+// stored on Bulletin Paseo is not reachable from a public IPFS gateway.
 const DEVNET_ASSET_HUB_URL = "wss://asset-hub-paseo-rpc.n.dwellir.com";
-const DEVNET_IPFS_GATEWAY_URL = "https://ipfs.io/ipfs";
+const DEVNET_IPFS_GATEWAY_URL = "https://devnet-ipfs.api.polkadotcommunity.foundation/ipfs";
 
 const KNOWN_CHAINS = {
     polkadot: {
