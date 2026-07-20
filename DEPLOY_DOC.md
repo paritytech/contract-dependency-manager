@@ -118,11 +118,11 @@ Then just validate `cdm.json` contains resolved contract metadata and addresses.
 
 ## 7. Deploy Frontend
 
-Pending W3S environment support in `bulletin-deploy`. Once `bulletin-deploy --list-environments` includes the W3S/Summit environment, a CDM maintainer can redeploy `contracts.dot`:
+The frontend is deployed with [`polkadot-app-deploy`](https://github.com/paritytech/polkadot-app-deploy) (npm: `@parity/polkadot-app-deploy`, the successor of `bulletin-deploy`), which ships the W3S/Summit environment as `summit`. Confirm it appears in `polkadot-app-deploy --list-environments`, then a CDM maintainer can redeploy `contracts.dot`:
 
 ```bash
 cd ../contract-dependency-manager
-BULLETIN_DEPLOY_ENV=w3s src/lib/scripts/deploy-frontend.sh "$CDM_DEPLOY_SURI"
+APP_DEPLOY_ENV=summit src/lib/scripts/deploy-frontend.sh "$CDM_DEPLOY_SURI"
 ```
 
 ## Verify
