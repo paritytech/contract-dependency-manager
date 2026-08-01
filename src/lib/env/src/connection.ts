@@ -67,16 +67,6 @@ export type CdmAssetHubClient = {
     destroy: () => void;
 };
 
-export interface AssetHubConnection {
-    client: PolkadotClient;
-    api: CdmAssetHubApi;
-}
-
-export interface BulletinConnection {
-    client: PolkadotClient;
-    api: CdmBulletinApi;
-}
-
 export interface CdmChainEndpoints {
     assethubUrl: string;
     bulletinUrl: string;

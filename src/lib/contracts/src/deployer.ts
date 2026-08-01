@@ -81,8 +81,8 @@ export const INSTANTIATE_WITH_CODE_STATIC_WEIGHT: WeightLike = {
 /**
  * Output of {@link ContractDeployer.planDeploy}. Exposes everything the
  * pipeline needs to emit a `deploy-plan` diagnostic event BEFORE submission,
- * and everything `deployBatch` / `deployAndRegisterBatch` need to skip
- * re-running the dry-run when the plan is passed back in.
+ * and everything `deployAndRegisterBatch` needs to skip re-running the
+ * dry-run when the plan is passed back in.
  *
  * `prepared[i].tx` is the fully-formed (unsigned) `Revive.instantiate_with_code`
  * call with the gas / storage limits already applied.
@@ -309,26 +309,6 @@ export class ContractDeployer {
     }
 
     /**
-     * Fetch the original uploaded bytecode for the contract at the given address.
-     * Uses ContractInfoOf → PristineCode to get the exact bytes that were deployed,
-     * avoiding any runtime transformation the pallet applies to stored code.
-     * Returns null if no contract exists or the query fails.
-     */
-    async getOnChainCode(address: string): Promise<Uint8Array | null> {
-        try {
-            const addr = address as SizedHex<20>;
-            const info = await this.api.query.Revive.AccountInfoOf.getValue(addr);
-            if (!info || info.account_type.type !== "Contract") return null;
-            const codeHash = info.account_type.value.code_hash;
-            const pristine = await this.api.query.Revive.PristineCode.getValue(codeHash);
-            if (!pristine) return null;
-            return pristine;
-        } catch {
-            return null;
-        }
-    }
-
-    /**
      * Resolve the per-extrinsic weight budget used for weight-aware chunking.
      * Reads `System.BlockWeights().per_class.normal.max_extrinsic` from the
      * runtime and returns it verbatim — no safety factor. The per-item
@@ -356,13 +336,13 @@ export class ContractDeployer {
      * Pre-compute the dry-run + chunking decisions for a set of contracts
      * WITHOUT submitting anything on-chain. Returns the budget used, per-item
      * weights / addresses / storage deposits, the unsigned txs (so callers can
-     * pass the plan back into `deployBatch` / `deployAndRegisterBatch` to
-     * avoid re-doing the dry-run), and the chunk index groups.
+     * pass the plan back into `deployAndRegisterBatch` to avoid re-doing the
+     * dry-run), and the chunk index groups.
      *
      * Callers that need to inspect the plan (e.g. the pipeline's
      * `deploy-plan` diagnostic event) should call this, inspect the returned
-     * fields, then forward the plan to `deployBatch` / `deployAndRegisterBatch`
-     * via the optional `plan` arg so the dry-run work isn't duplicated.
+     * fields, then forward the plan to `deployAndRegisterBatch` via the
+     * optional `plan` arg so the dry-run work isn't duplicated.
      */
     async planDeploy(
         pvmPaths: string[],
@@ -381,120 +361,6 @@ export class ContractDeployer {
             budget,
         );
         return { budget, prepared, chunks };
-    }
-
-    /**
-     * Deploy multiple contracts, weight-aware-chunking them into one or more
-     * `Utility.batch_all` transactions. Each chunk stays atomic (the whole
-     * chunk reverts on any failure inside it); multiple chunks submit
-     * sequentially.
-     *
-     * Returns addresses in the same order as the input paths, plus the number
-     * of chunks submitted. When `onChunk` is provided, it's called
-     * synchronously after each chunk lands, with the chunk's crate names,
-     * addresses, and tx/block hashes.
-     *
-     * NOTE: Cross-chunk atomicity is lost — if chunk 1 lands and chunk 2
-     * fails, chunk 1's deploys stay on-chain. Callers must treat each chunk's
-     * result as independent.
-     */
-    async deployBatch(
-        pvmPaths: string[],
-        cdmPackages?: (string | undefined)[],
-        onChunk?: (result: {
-            crates: (string | undefined)[];
-            addresses: string[];
-            txHash: string;
-            blockHash: string;
-            chunkIndex: number;
-            totalChunks: number;
-        }) => void,
-        opts?: {
-            plan?: DeployPlan;
-            saltVersions?: (DeploySaltVersion | undefined)[];
-            saltScope?: string;
-        },
-    ): Promise<{ addresses: string[]; chunkCount: number }> {
-        if (pvmPaths.length === 0) return { addresses: [], chunkCount: 0 };
-
-        // 1. Dry-run all contracts up front so we have weights + CREATE2-style
-        //    addresses for the chunker — unless a precomputed plan was passed in.
-        // 2. Chunk by cumulative declared weight (already done inside the plan).
-        const plan =
-            opts?.plan ??
-            (await this.planDeploy(pvmPaths, cdmPackages, opts?.saltVersions, opts?.saltScope));
-        const { prepared, chunks } = plan;
-
-        const addresses: string[] = new Array(pvmPaths.length);
-
-        // 3. Submit each chunk sequentially.
-        for (let ci = 0; ci < chunks.length; ci++) {
-            const idxs = chunks[ci];
-            const label = `[AssetHub deploy chunk ${ci + 1}/${chunks.length}]`;
-
-            // Fast path: a single-item chunk via the non-batch path — matches
-            // the pre-chunking one-contract behavior so a user deploying one
-            // contract doesn't pay the Utility.batch_all overhead.
-            let chunkResult: { txHash: string; blockHash: string; addrs: string[] };
-            if (idxs.length === 1) {
-                const i = idxs[0];
-                const r = await this.deploy(
-                    pvmPaths[i],
-                    cdmPackages?.[i],
-                    opts?.saltVersions?.[i],
-                    opts?.saltScope,
-                );
-                addresses[i] = r.address;
-                chunkResult = { txHash: r.txHash, blockHash: r.blockHash, addrs: [r.address] };
-            } else {
-                const result = await batchSubmitAndWatch(
-                    idxs.map((i) => prepared[i].tx),
-                    this.api,
-                    this.signer,
-                    { mode: "batch_all", waitFor: "best-block" },
-                );
-                if (!result.ok) {
-                    throw new Error(`${label} Batch deploy failed: ${result.error.message}`, {
-                        cause: result.error,
-                    });
-                }
-                const instantiated = this.api.event.Revive.Instantiated.filter(
-                    result.value.events as Parameters<
-                        typeof this.api.event.Revive.Instantiated.filter
-                    >[0],
-                );
-                if (instantiated.length !== idxs.length) {
-                    throw new Error(
-                        `${label} Expected ${idxs.length} Instantiated events, got ${instantiated.length}`,
-                    );
-                }
-                const chunkAddrs = instantiated.map(
-                    (e: ReturnType<typeof this.api.event.Revive.Instantiated.filter>[number]) =>
-                        e.payload.contract,
-                );
-                for (let j = 0; j < idxs.length; j++) {
-                    addresses[idxs[j]] = chunkAddrs[j];
-                }
-                chunkResult = {
-                    txHash: result.value.txHash,
-                    blockHash: result.value.block.hash,
-                    addrs: chunkAddrs,
-                };
-            }
-
-            if (onChunk) {
-                onChunk({
-                    crates: idxs.map((i) => cdmPackages?.[i]),
-                    addresses: idxs.map((i) => addresses[i]),
-                    txHash: chunkResult.txHash,
-                    blockHash: chunkResult.blockHash,
-                    chunkIndex: ci,
-                    totalChunks: chunks.length,
-                });
-            }
-        }
-
-        return { addresses, chunkCount: chunks.length };
     }
 
     /**

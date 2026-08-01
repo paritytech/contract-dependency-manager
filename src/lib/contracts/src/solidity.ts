@@ -1,7 +1,6 @@
 import { spawn, spawnSync } from "child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { basename, dirname, join, relative, resolve } from "path";
-import type { AbiEntry } from "./deployer";
 import { findNamedMarkdown, findReadme } from "./detection";
 import type { ContractInfo, ContractToolchain } from "./detection";
 import { solidityLibraryFromImportPath } from "./solidity-imports";
@@ -882,19 +881,6 @@ export async function buildSolidityToolchain(
 
 export function hasBuildableSolidityProject(rootDir: string): boolean {
     return hasFoundryProject(rootDir) || hasHardhatProject(rootDir);
-}
-
-export function readSolidityAbi(artifactPath: string): AbiEntry[] {
-    const artifact = readJson(artifactPath);
-    return Array.isArray(artifact?.abi) ? (artifact.abi as AbiEntry[]) : [];
-}
-
-export function artifactDisplayPath(rootDir: string, path: string): string {
-    return relative(rootDir, path);
-}
-
-export function bytecodeSize(path: string): number {
-    return statSync(path).size;
 }
 
 if (import.meta.vitest) {

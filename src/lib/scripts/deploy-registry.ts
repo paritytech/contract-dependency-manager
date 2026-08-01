@@ -21,9 +21,9 @@ import {
     ss58Address,
     type CdmDeployAssetHubApi,
 } from "@parity/cdm-env";
-import { CONTRACTS_REGISTRY_PACKAGE } from "@parity/cdm-utils";
+import { CONTRACTS_REGISTRY_CRATE, CONTRACTS_REGISTRY_PACKAGE } from "@parity/cdm-utils";
 import { getAccount } from "@parity/cdm-utils/accounts";
-import { ContractDeployer, CONTRACTS_REGISTRY_CRATE } from "@parity/cdm-builder";
+import { ContractDeployer } from "@parity/cdm-builder";
 import {
     exportRegistrySnapshot,
     importRegistrySnapshot,

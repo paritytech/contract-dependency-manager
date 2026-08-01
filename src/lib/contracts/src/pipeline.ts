@@ -135,11 +135,6 @@ export interface DeployContractsOptions {
      */
     metadataSigner?: PolkadotSigner;
 
-    // Tuning (reserved for future use by internal tx layers)
-    waitFor?: "best-block" | "finalized";
-    timeoutMs?: number;
-    gateway?: string;
-
     onEvent?: (e: DeployEvent) => void;
 }
 
@@ -150,7 +145,6 @@ export type DeployEvent =
     | { type: "build-progress"; crate: string; compiled: number; total?: number }
     | { type: "build-done"; crate: string; durationMs: number; bytecodeSize: number }
     | { type: "build-error"; crate: string; error: string }
-    | { type: "check-cached"; crate: string; address: HexString }
     | { type: "check-needs-deploy"; crate: string; address: HexString }
     | {
           /**
@@ -224,7 +218,6 @@ export type DeployEvent =
     | {
           type: "publish-done";
           cids: Record<string, string>;
-          txHash: string;
           durationMs: number;
       }
     | { type: "pipeline-done"; summary: DeploySummary }
@@ -236,7 +229,7 @@ export interface DeploySummary {
         cdmPackage?: string;
         address?: HexString;
         cid?: string;
-        status: "done" | "cached" | "error";
+        status: "done" | "error";
         error?: string;
     }>;
     totalDurationMs: number;
@@ -893,7 +886,7 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
  *  3. Deploy + register on AssetHub in one `Utility.batch_all`
  *
  *  2 and 3 run in parallel per layer — CIDs are precomputed locally from the
- *  metadata bytes (`computeCid`) so the on-chain registration extrinsic
+ *  metadata bytes (`computeBulletinStoreCid`) so the on-chain registration extrinsic
  *  doesn't need to wait for the Bulletin publish to finish. The pipeline
  *  verifies the published CIDs match the precomputed values after the fact.
  *
@@ -919,7 +912,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
             cdmPackage?: string;
             address?: HexString;
             cid?: string;
-            status: "done" | "cached" | "error";
+            status: "done" | "error";
             error?: string;
         }
     >();
@@ -932,7 +925,6 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         const signer = opts.signer;
         const assetHubClient = opts.client.raw.assetHub;
         const bulletinApi = opts.client.bulletin;
-        const bulletinClient = opts.client.raw.bulletin;
 
         const deployer = new ContractDeployer(
             signer,
@@ -940,11 +932,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
             assetHubClient,
             opts.client.assetHub,
         );
-        const publisher = new MetadataPublisher(
-            opts.metadataSigner ?? signer,
-            bulletinApi,
-            bulletinClient,
-        );
+        const publisher = new MetadataPublisher(opts.metadataSigner ?? signer, bulletinApi);
         emit({
             type: "phase",
             name: "connecting-registry",
@@ -1210,7 +1198,6 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 emit({
                     type: "publish-done",
                     cids: cidsOut,
-                    txHash: publishRes.txHash,
                     durationMs: Date.now() - publishT0,
                 });
 
@@ -1225,8 +1212,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 }
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
-                const affected = layerDeployable.filter((c) => status.get(c)?.status !== "cached");
-                for (const crate of affected) {
+                for (const crate of layerDeployable) {
                     const info = build.info.get(crate);
                     failedCrates.add(crate);
                     build.failed.add(crate);
@@ -1245,7 +1231,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 }
                 emit({
                     type: "deploy-register-error",
-                    crates: affected,
+                    crates: layerDeployable,
                     error: msg,
                 });
             }
@@ -1368,7 +1354,7 @@ if (import.meta.vitest) {
         MetadataPublisher: vi.fn().mockImplementation(() => ({
             publishBatch: vi.fn(async (metadataList: unknown[]) => ({
                 cids: metadataList.map(() => "fakeCid123"),
-                txHash: "0xpublish",
+                blockNumber: 42,
             })),
         })),
     }));
@@ -1685,11 +1671,7 @@ if (import.meta.vitest) {
             });
 
             expect(events.indexOf("deploy-done:a")).toBeLessThan(events.indexOf("build-start:b"));
-            expect(mockMetadataPublisher).toHaveBeenCalledWith(
-                metadataSigner,
-                expect.anything(),
-                expect.anything(),
-            );
+            expect(mockMetadataPublisher).toHaveBeenCalledWith(metadataSigner, expect.anything());
         });
 
         test("emits check-needs-deploy from the plan before deploy-plan and submission events", async () => {

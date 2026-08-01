@@ -1,5 +1,9 @@
 import { afterEach, describe, test, expect } from "vitest";
-import { detectContracts, buildDependencyGraph, detectDeploymentOrder } from "../src/detection";
+import {
+    detectContracts,
+    buildDependencyGraph,
+    detectDeploymentOrderLayered,
+} from "../src/detection";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -25,9 +29,10 @@ describe("detection via cargo metadata", () => {
     });
 
     test("topological sort puts counter first", () => {
-        const order = detectDeploymentOrder(TEMPLATE_DIR);
-        expect(order.crateNames[0]).toBe("counter");
-        expect(order.crateNames.length).toBe(3);
+        const order = detectDeploymentOrderLayered(TEMPLATE_DIR);
+        const crateNames = order.layers.flat();
+        expect(crateNames[0]).toBe("counter");
+        expect(crateNames.length).toBe(3);
     });
 
     test("CDM package names come from [package.metadata.cdm] in Cargo.toml", () => {
