@@ -3,7 +3,6 @@ import { render } from "ink";
 import {
     buildContracts,
     deployContracts,
-    detectBuildOrder,
     type BuildContractsOptions,
     type DeployContractsOptions,
     type BuildSummary,
@@ -42,16 +41,6 @@ export function spinner(label: string, detail: string) {
     };
 }
 
-export function progressBar(current: number, total: number, width: number = 20): string {
-    if (total === 0) return "░".repeat(width);
-    const filled = Math.round((current / total) * width);
-    return "█".repeat(filled) + "░".repeat(width - filled);
-}
-
-export function formatDuration(ms: number): string {
-    return `${(ms / 1000).toFixed(1)}s`;
-}
-
 export interface BuildUIOptions extends Omit<BuildContractsOptions, "onEvent"> {}
 
 export interface DeployUIOptions extends Omit<DeployContractsOptions, "onEvent"> {
@@ -61,10 +50,8 @@ export interface DeployUIOptions extends Omit<DeployContractsOptions, "onEvent">
 }
 
 interface RenderArgs {
-    statuses: Map<string, ContractStatus>;
+    adapter: PipelineStatusAdapter;
     displayNames: Map<string, string>;
-    crates: string[];
-    logLines: string[];
     buildOnly: boolean;
     assethubUrl?: string;
     bulletinUrl?: string;
@@ -74,10 +61,9 @@ interface RenderArgs {
 function makeUI(args: RenderArgs) {
     return render(
         React.createElement(DeployTable, {
-            statuses: args.statuses,
+            statuses: args.adapter.statuses,
             displayNames: args.displayNames,
-            crates: args.crates,
-            logLines: args.logLines,
+            logLines: args.adapter.logLines,
             buildOnly: args.buildOnly,
             assethubUrl: args.assethubUrl,
             bulletinUrl: args.bulletinUrl,
@@ -86,43 +72,24 @@ function makeUI(args: RenderArgs) {
     );
 }
 
-function precomputeBuildDisplay(rootDir: string, contracts: string[] | undefined) {
-    const order = detectBuildOrder(rootDir, contracts);
-    const crates = order.layers.flat();
-    const displayNames = new Map<string, string>();
-    for (const contract of order.contracts) {
-        displayNames.set(
-            contract.name,
-            contract.cdmPackage ?? contract.displayName ?? contract.name,
-        );
-    }
-    return { crates, displayNames };
-}
-
 /**
  * Run `buildContracts()` and render progress into the Ink `DeployTable`.
  *
- * The table layout is populated lazily from the `detect` event — crates, layers,
- * and CDM package names are all supplied by the library, not derived up-front
- * in the CLI.
+ * The table layout is populated from the library's `detect` event — the
+ * adapter fills `statuses` (row order) and `displayNames` in place, and the
+ * table re-reads both on every render tick. Nothing is detected up-front in
+ * the CLI.
  */
 export async function runBuildWithUI(opts: BuildUIOptions): Promise<{
     summary: BuildSummary;
     result: PipelineResult;
 }> {
-    const { crates, displayNames } = precomputeBuildDisplay(opts.rootDir, opts.contracts);
-
+    const displayNames = new Map<string, string>();
     const adapter = new PipelineStatusAdapter({
         onCdmPackageDetected: (crate, pkg) => displayNames.set(crate, pkg),
     });
 
-    const app = makeUI({
-        statuses: adapter.statuses,
-        displayNames,
-        crates,
-        logLines: adapter.logLines,
-        buildOnly: true,
-    });
+    const app = makeUI({ adapter, displayNames, buildOnly: true });
 
     let summary: BuildSummary;
     try {
@@ -153,17 +120,14 @@ export async function runDeployWithUI(opts: DeployUIOptions): Promise<{
     summary: DeploySummary;
     result: PipelineResult;
 }> {
-    const { crates, displayNames } = precomputeBuildDisplay(opts.rootDir, opts.contracts);
-
+    const displayNames = new Map<string, string>();
     const adapter = new PipelineStatusAdapter({
         onCdmPackageDetected: (crate, pkg) => displayNames.set(crate, pkg),
     });
 
     const app = makeUI({
-        statuses: adapter.statuses,
+        adapter,
         displayNames,
-        crates,
-        logLines: adapter.logLines,
         buildOnly: false,
         assethubUrl: opts.assethubUrl,
         bulletinUrl: opts.bulletinUrl,

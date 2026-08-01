@@ -1,10 +1,4 @@
-import type {
-    BuildEvent,
-    DeployEvent,
-    BuildSummary,
-    DeploySummary,
-    ContractInfo,
-} from "@parity/cdm-builder";
+import type { BuildEvent, DeployEvent } from "@parity/cdm-builder";
 
 /**
  * CLI-local `ContractStatus` shape that the Ink `DeployTable.tsx` component
@@ -14,16 +8,7 @@ import type {
  * The pipeline itself now lives in `@parity/cdm-builder`; this file only handles
  * event → UI-status translation so the terminal table stays unchanged.
  */
-export type ContractState =
-    | "waiting"
-    | "building"
-    | "built"
-    | "checking"
-    | "cached"
-    | "deploying"
-    | "registering"
-    | "done"
-    | "error";
+export type ContractState = "waiting" | "building" | "built" | "deploying" | "done" | "error";
 
 export interface ContractStatus {
     crateName: string;
@@ -33,8 +18,6 @@ export interface ContractStatus {
     cid?: string;
     deployTxHash?: string;
     deployBlockHash?: string;
-    publishTxHash?: string;
-    publishBlockHash?: string;
     /** Same value as `deployTxHash` since deploy+register are one batch now. */
     registerTxHash?: string;
     registerBlockHash?: string;
@@ -47,53 +30,23 @@ export interface ContractStatus {
     registerInProgress?: boolean;
 }
 
-/**
- * Current "phase" signal emitted by the library to describe dead time between
- * build and per-row deploy spinners. Mirrors the `DeployEvent.phase` variant
- * shape; the adapter stores the latest phase on itself and invokes
- * `onPhaseChange` so the Ink UI can render a spinner above the table.
- */
-export interface PhaseInfo {
-    name:
-        | "connecting-registry"
-        | "checking-versions"
-        | "precomputing-addresses"
-        | "preparing-metadata"
-        | "deploying"
-        | "publishing"
-        | "done";
-    description: string;
-    layer?: number;
-}
-
 export interface AdapterOptions {
-    /** Called on every status mutation (after the update is applied). */
-    onStatusChange?: (crateName: string, status: ContractStatus) => void;
     /** Called when a build reveals a crate's CDM package name. */
     onCdmPackageDetected?: (crateName: string, cdmPackage: string) => void;
-    /** Called when the library emits a `phase` event. */
-    onPhaseChange?: (phase: PhaseInfo | null) => void;
-    /** Called when a process log line is appended to the retained tail. */
-    onLogChange?: (lines: string[]) => void;
 }
 
 /**
- * Build/deploy adapter — maintains a `Map<crate, ContractStatus>` that the Ink
- * UI reads, plus an `onEvent` handler to pass into `buildContracts()` or
- * `deployContracts()`. Also exposes `crates` / `layers` / `contracts` so the UI
- * can render the table layout as soon as detection completes.
+ * Build/deploy adapter — maintains a `Map<crate, ContractStatus>` and a log
+ * tail that the Ink UI reads on each render tick, plus an `onEvent` handler
+ * to pass into `buildContracts()` or `deployContracts()`. Rows appear as the
+ * library's `detect` event populates `statuses`.
  */
 export class PipelineStatusAdapter {
     static readonly LOG_TAIL_LINES = 5;
 
     readonly statuses = new Map<string, ContractStatus>();
     readonly logLines: string[] = [];
-    crates: string[] = [];
-    layers: string[][] = [];
-    contracts: ContractInfo[] = [];
     cdmPackageMap = new Map<string, string>();
-    /** Most recent `phase` event (null until first phase event fires). */
-    phase: PhaseInfo | null = null;
 
     constructor(private opts: AdapterOptions = {}) {}
 
@@ -104,20 +57,15 @@ export class PipelineStatusAdapter {
         if (this.logLines.length > PipelineStatusAdapter.LOG_TAIL_LINES) {
             this.logLines.splice(0, this.logLines.length - PipelineStatusAdapter.LOG_TAIL_LINES);
         }
-        this.opts.onLogChange?.([...this.logLines]);
     }
 
     private clearLogs() {
-        if (this.logLines.length === 0) return;
         this.logLines.splice(0);
-        this.opts.onLogChange?.([]);
     }
 
     private update(crate: string, state: ContractState, extra?: Partial<ContractStatus>) {
         const current = this.statuses.get(crate) ?? { crateName: crate, state: "waiting" };
-        const updated: ContractStatus = { ...current, state, ...extra };
-        this.statuses.set(crate, updated);
-        this.opts.onStatusChange?.(crate, updated);
+        this.statuses.set(crate, { ...current, state, ...extra });
     }
 
     /** Forward a `BuildEvent` (emitted by `buildContracts()`) into the UI map. */
@@ -127,15 +75,11 @@ export class PipelineStatusAdapter {
                 this.appendLog(e.line);
                 return;
             case "detect":
-                this.contracts = e.contracts;
-                this.layers = e.layers;
-                this.crates = e.layers.flat();
                 for (const c of e.contracts) {
                     if (c.cdmPackage) this.cdmPackageMap.set(c.name, c.cdmPackage);
                 }
-                for (const crate of this.crates) {
+                for (const crate of e.layers.flat()) {
                     this.statuses.set(crate, { crateName: crate, state: "waiting" });
-                    this.opts.onStatusChange?.(crate, this.statuses.get(crate)!);
                 }
                 for (const [crate, pkg] of this.cdmPackageMap) {
                     this.opts.onCdmPackageDetected?.(crate, pkg);
@@ -193,26 +137,16 @@ export class PipelineStatusAdapter {
             case "build-error":
                 this.handleBuildEvent(e as BuildEvent);
                 return;
-            case "check-cached":
-                this.update(e.crate, "cached", { address: e.address });
-                return;
             case "check-needs-deploy":
                 // Address precomputed — no state change yet, deploy-register
                 // will follow.
                 return;
             case "deploy-plan":
-                // Diagnostic-only — no per-crate state change. The CLI's
-                // `runDeployWithUI` logs the event to stderr so the user can
-                // see the real budget vs per-contract weights on their next
-                // run. Nothing to mutate here.
+                // Diagnostic-only — no per-crate state change and nothing to
+                // mutate here.
                 return;
             case "phase":
-                this.phase = {
-                    name: e.name,
-                    description: e.description,
-                    layer: e.layer,
-                };
-                this.opts.onPhaseChange?.(this.phase);
+                // Coarse progress signal — not surfaced in the table UI.
                 return;
             case "sign-request":
                 // Not forwarded to UI for now — `deploy-register-start` /
@@ -267,7 +201,6 @@ export class PipelineStatusAdapter {
                     this.update(crate, existing?.state ?? "done", {
                         publishInProgress: false,
                         cid,
-                        publishTxHash: e.txHash,
                     });
                 }
                 return;
@@ -290,21 +223,9 @@ export class PipelineStatusAdapter {
                 return;
         }
     };
-
-    /** Snapshot of addresses suitable for the old `PipelineResult` consumers. */
-    addressesFromSummary(summary: DeploySummary | BuildSummary): Record<string, string> {
-        const out: Record<string, string> = {};
-        for (const c of (summary as DeploySummary).contracts) {
-            const dc = c as { crate: string; address?: string };
-            if (dc.address) out[dc.crate] = dc.address;
-        }
-        return out;
-    }
 }
 
-const ANSI_PATTERN =
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: terminal log sanitization.
-    /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
+const ANSI_PATTERN = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
 
 function cleanLogLine(line: string): string {
     return line.replace(ANSI_PATTERN, "").replace(/\r/g, "").trimEnd();
