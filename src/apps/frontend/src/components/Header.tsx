@@ -5,11 +5,7 @@ import "./Header.css";
 
 const REPO_URL = "https://github.com/paritytech/contract-dependency-manager";
 
-const EXTERNAL_LINKS: { label: string; href: string }[] = [
-    { label: "Docs", href: REPO_URL },
-    { label: "Github", href: REPO_URL },
-    { label: "Playground", href: "https://playground.dot" },
-];
+const EXTERNAL_LINKS: { label: string; href: string }[] = [{ label: "Github", href: REPO_URL }];
 
 export default function Header() {
     return (

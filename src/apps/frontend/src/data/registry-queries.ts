@@ -53,7 +53,6 @@ export async function queryContractByName(
     return {
         name,
         version: String(latestVersion),
-        weeklyCalls: 0,
         address: unwrapOption<string>(addressResult.value),
         metadataUri: unwrapOption<string>(metadataResult.value),
         metadataLoaded: false,
@@ -87,7 +86,6 @@ function parseContractEntry(value: unknown): Package | null {
     return {
         name,
         version: String(Number(version ?? 0)),
-        weeklyCalls: 0,
         address: typeof address === "string" ? address : undefined,
         metadataUri: typeof metadataUri === "string" ? metadataUri : undefined,
         metadataLoaded: false,

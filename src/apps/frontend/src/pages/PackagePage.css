@@ -334,16 +334,6 @@
   border-radius: 999px;
   color: var(--color-text-secondary);
   font-size: 12px;
-  text-decoration: none;
-  transition:
-    background-color 0.1s ease,
-    color 0.1s ease;
-}
-
-.sidebar-keyword:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--color-text-primary);
-  text-decoration: none;
 }
 
 /* ============ Status pages ============ */

@@ -27,7 +27,6 @@ export function SkeletonGrid({ count = 9 }: SkeletonGridProps) {
     return (
         <div className="contract-grid" aria-hidden="true">
             {Array.from({ length: count }).map((_, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative array
                 <SkeletonCard key={i} />
             ))}
         </div>
