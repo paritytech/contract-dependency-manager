@@ -5,6 +5,7 @@ import DOMPurify from "dompurify";
 import Layout from "../components/Layout";
 import { CopyIcon, CheckIcon } from "../components/Icons";
 import { handleExternalClick } from "../lib/external-link";
+import { splitPackageName } from "../lib/package-name";
 import { usePackage } from "../hooks/usePackage";
 import { usePackageVersions } from "../hooks/usePackageVersions";
 import type { PackageVersionInfo } from "../data/registry-queries";
@@ -55,12 +56,6 @@ function getBadgeClass(entry: AbiEntry): string {
     }
 }
 
-function splitName(name: string): { prefix: string; leaf: string } {
-    const idx = name.lastIndexOf("/");
-    if (idx < 0) return { prefix: "", leaf: name };
-    return { prefix: name.slice(0, idx + 1), leaf: name.slice(idx + 1) };
-}
-
 function shortAddress(addr: string): string {
     if (addr.length <= 14) return addr;
     return `${addr.slice(0, 8)}…${addr.slice(-6)}`;
@@ -76,7 +71,6 @@ function ParamType({ param, depth = 0 }: { param: AbiParam; depth?: number }) {
                 <span className="abi-tuple-fields">
                     {param.components.map((c, i) => (
                         <span
-                            // biome-ignore lint/suspicious/noArrayIndexKey: tuple field index is stable
                             key={i}
                             className="abi-tuple-field"
                             style={{ paddingLeft: `${(depth + 1) * 16}px` }}
@@ -139,7 +133,6 @@ function AbiEntryCard({ entry }: { entry: AbiEntry }) {
                                 </thead>
                                 <tbody>
                                     {inputs.map((p, i) => (
-                                        // biome-ignore lint/suspicious/noArrayIndexKey: param index is stable
                                         <tr key={i}>
                                             <td>
                                                 <code>{p.name || `_${i}`}</code>
@@ -167,7 +160,6 @@ function AbiEntryCard({ entry }: { entry: AbiEntry }) {
                                 </thead>
                                 <tbody>
                                     {outputs.map((p, i) => (
-                                        // biome-ignore lint/suspicious/noArrayIndexKey: param index is stable
                                         <tr key={i}>
                                             <td>
                                                 <code>{p.name || `_${i}`}</code>
@@ -309,7 +301,6 @@ function VersionsTab({ pkg, versions, loading, error }: VersionsTabProps) {
         return (
             <div className="versions-skeleton">
                 {Array.from({ length: 3 }).map((_, i) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: fixed decorative array
                     <span key={i} className="skeleton-bar skeleton-bar--abi-row" />
                 ))}
             </div>
@@ -374,7 +365,6 @@ function PackageBody({ pkg, activeTab, setActiveTab }: PackageBodyProps) {
                     (pkg.readme ? (
                         <div
                             className="package-readme"
-                            // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized via DOMPurify
                             dangerouslySetInnerHTML={{
                                 __html: DOMPurify.sanitize(marked.parse(pkg.readme) as string),
                             }}
@@ -397,7 +387,6 @@ function PackageBody({ pkg, activeTab, setActiveTab }: PackageBodyProps) {
                     ) : metadataPending ? (
                         <div className="abi-skeleton">
                             {Array.from({ length: 5 }).map((_, i) => (
-                                // biome-ignore lint/suspicious/noArrayIndexKey: fixed decorative array
                                 <span key={i} className="skeleton-bar skeleton-bar--abi-row" />
                             ))}
                         </div>
@@ -449,7 +438,6 @@ function PackageSkeleton() {
                 </div>
                 <aside className="package-sidebar">
                     {Array.from({ length: 4 }).map((_, i) => (
-                        // biome-ignore lint/suspicious/noArrayIndexKey: fixed decorative array
                         <div key={i} className="sidebar-section">
                             <span className="skeleton-bar skeleton-bar--side-label" />
                             <span className="skeleton-bar skeleton-bar--side-value" />
@@ -505,7 +493,7 @@ export default function PackagePage() {
     }
 
     const installCmd = `cdm i -n ${networkConfig.installName} ${pkg.name}`;
-    const split = splitName(pkg.name);
+    const split = splitPackageName(pkg.name);
     const metadataPending = !pkg.metadataLoaded && !!pkg.metadataUri;
 
     return (

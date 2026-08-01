@@ -19,12 +19,8 @@ import {
 } from "@parity/cdm-builder";
 import { spinner } from "../../lib/ui";
 import { runInstallWithUI } from "../../lib/install-pipeline";
-import type { InstallResult } from "../../lib/install-pipeline";
-import { postInstallRust } from "./rust";
 import { postInstallSolidity } from "./solidity";
 import { postInstallTypeScript } from "./typescript";
-
-export type { InstallResult } from "../../lib/install-pipeline";
 
 function detectProjectType(dir: string): {
     hasRust: boolean;
@@ -184,11 +180,9 @@ install.action(async (libraries: string[], rawOpts: InstallOptions) => {
 
     writeCdmJson(cdmJson);
 
-    // Run post-install hooks and update status line
+    // Run post-install hooks and update status line. Rust projects need no
+    // post-install step: cdm.json (written above) is all cdm::import! reads.
     if (results.length > 0) {
-        if (projectType.hasRust) {
-            await postInstallRust();
-        }
         if (projectType.hasSolidity) {
             await postInstallSolidity();
         }

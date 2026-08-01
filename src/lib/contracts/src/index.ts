@@ -1,14 +1,10 @@
 export {
     type ContractInfo,
     type ContractToolchain,
-    type DeploymentOrder,
     type DeploymentOrderLayered,
     detectContracts,
     buildDependencyGraph,
-    toposort,
     toposortLayers,
-    createCrateToPackageMap,
-    detectDeploymentOrder,
     detectDeploymentOrderLayered,
     getGitRemoteUrl,
     readReadmeContent,
@@ -52,12 +48,7 @@ export {
     writeBuildManifest,
 } from "./build-manifest";
 
-export {
-    type BuildResult,
-    type BuildProgressCallback,
-    pvmContractBuild,
-    pvmContractBuildAsync,
-} from "./builder";
+export { type BuildResult, type BuildProgressCallback, pvmContractBuildAsync } from "./builder";
 
 export {
     type AbiParam,
@@ -74,15 +65,7 @@ export {
 
 export { MetadataPublisher } from "./publisher";
 
-export { computeCid } from "./cid";
-
 export { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
-
-export {
-    GAS_LIMIT,
-    STORAGE_DEPOSIT_LIMIT,
-    CONTRACTS_REGISTRY_CRATE,
-} from "@parity/cdm-utils";
 
 export {
     getCdmRoot,
@@ -92,13 +75,7 @@ export {
     resolveContractAbiPath,
 } from "./store";
 
-export {
-    type CdmJsonContract,
-    type CdmJson,
-    normalizeCdmJson,
-    readCdmJson,
-    writeCdmJson,
-} from "./cdm-json";
+export { type CdmJsonContract, type CdmJson, readCdmJson, writeCdmJson } from "./cdm-json";
 
 export { type CdmLocalJson, readCdmLocalJson, resolveFeatures } from "./cdm-local-json";
 

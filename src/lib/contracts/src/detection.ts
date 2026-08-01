@@ -29,15 +29,6 @@ export interface ContractInfo {
     dependsOnCrates: string[];
 }
 
-export interface DeploymentOrder {
-    /** Crate names in deployment order */
-    crateNames: string[];
-    /** CDM package names in deployment order (null for contracts without CDM) */
-    cdmPackages: (string | null)[];
-    /** Full contract info for each contract, in deployment order */
-    contracts: ContractInfo[];
-}
-
 export interface DeploymentOrderLayered {
     /** Layers of crate names - each layer can be processed in parallel */
     layers: string[][];
@@ -229,73 +220,6 @@ export function buildDependencyGraph(contracts: ContractInfo[]): Map<string, str
 }
 
 /**
- * Topological sort using Kahn's algorithm.
- * Returns nodes in dependency order (dependencies come first).
- */
-export function toposort(graph: Map<string, string[]>): string[] {
-    const inDegree = new Map<string, number>();
-    const dependents = new Map<string, string[]>();
-
-    for (const [node, deps] of graph) {
-        if (!inDegree.has(node)) {
-            inDegree.set(node, 0);
-        }
-        if (!dependents.has(node)) {
-            dependents.set(node, []);
-        }
-
-        for (const dep of deps) {
-            if (!inDegree.has(dep)) {
-                inDegree.set(dep, 0);
-            }
-            if (!dependents.has(dep)) {
-                dependents.set(dep, []);
-            }
-        }
-    }
-
-    for (const [node, deps] of graph) {
-        inDegree.set(node, deps.length);
-        for (const dep of deps) {
-            dependents.get(dep)!.push(node);
-        }
-    }
-
-    const queue: string[] = [];
-    for (const [node, degree] of inDegree) {
-        if (degree === 0) {
-            queue.push(node);
-        }
-    }
-    queue.sort();
-
-    const result: string[] = [];
-
-    while (queue.length > 0) {
-        queue.sort();
-        const node = queue.shift()!;
-        result.push(node);
-
-        for (const dependent of dependents.get(node) || []) {
-            const newDegree = inDegree.get(dependent)! - 1;
-            inDegree.set(dependent, newDegree);
-            if (newDegree === 0) {
-                queue.push(dependent);
-            }
-        }
-    }
-
-    if (result.length !== inDegree.size) {
-        const remaining = [...inDegree.entries()]
-            .filter(([_, degree]) => degree > 0)
-            .map(([node]) => node);
-        throw new Error(`Circular dependency detected involving: ${remaining.join(", ")}`);
-    }
-
-    return result;
-}
-
-/**
  * Topological sort (layered) using modified Kahn's algorithm.
  * Collects ALL zero-in-degree nodes at each iteration as a layer.
  * Each layer can be processed in parallel.
@@ -352,41 +276,6 @@ export function toposortLayers(graph: Map<string, string[]>): string[][] {
     }
 
     return layers;
-}
-
-/**
- * Create a mapping from crate name to CDM package name.
- */
-export function createCrateToPackageMap(contracts: ContractInfo[]): Map<string, string> {
-    const map = new Map<string, string>();
-    for (const contract of contracts) {
-        if (contract.cdmPackage) {
-            map.set(contract.name, contract.cdmPackage);
-        }
-    }
-    return map;
-}
-
-/**
- * Detect contracts and determine deployment order based on dependencies.
- * Uses cargo metadata for reliable workspace and dependency resolution.
- */
-export function detectDeploymentOrder(rootDir: string): DeploymentOrder {
-    const contracts = detectContracts(rootDir);
-    const graph = buildDependencyGraph(contracts);
-    const sortedCrates = toposort(graph);
-
-    const crateToPackage = createCrateToPackageMap(contracts);
-    const sortedPackages = sortedCrates.map((crate) => crateToPackage.get(crate) || null);
-
-    const crateToContract = new Map(contracts.map((c) => [c.name, c]));
-    const sortedContracts = sortedCrates.map((crate) => crateToContract.get(crate)!);
-
-    return {
-        crateNames: sortedCrates,
-        cdmPackages: sortedPackages,
-        contracts: sortedContracts,
-    };
 }
 
 /**
@@ -516,30 +405,6 @@ if (import.meta.vitest) {
         });
     });
 
-    describe("toposort", () => {
-        test("handles empty graph", () => {
-            const result = toposort(new Map());
-            expect(result).toEqual([]);
-        });
-
-        test("handles linear chain", () => {
-            const graph = new Map([
-                ["c", ["b"]],
-                ["b", ["a"]],
-                ["a", []],
-            ]);
-            expect(toposort(graph)).toEqual(["a", "b", "c"]);
-        });
-
-        test("detects circular dependencies", () => {
-            const graph = new Map([
-                ["a", ["b"]],
-                ["b", ["a"]],
-            ]);
-            expect(() => toposort(graph)).toThrow("Circular dependency");
-        });
-    });
-
     describe("toposortLayers", () => {
         test("diamond graph", () => {
             const graph = new Map([
@@ -559,6 +424,15 @@ if (import.meta.vitest) {
             ]);
             const result = toposortLayers(graph);
             expect(result).toEqual([["A"], ["B"], ["C"]]);
+        });
+
+        test("linear chain declared in reverse still flattens dependencies-first", () => {
+            const graph = new Map([
+                ["c", ["b"]],
+                ["b", ["a"]],
+                ["a", []],
+            ]);
+            expect(toposortLayers(graph).flat()).toEqual(["a", "b", "c"]);
         });
 
         test("all independent", () => {

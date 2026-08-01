@@ -81,7 +81,6 @@ export default function SearchPage() {
                 ) : connecting || (loading && packages.length === 0) ? (
                     <div className="search-results-list">
                         {Array.from({ length: 6 }).map((_, i) => (
-                            // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative array
                             <SkeletonCard key={i} />
                         ))}
                     </div>

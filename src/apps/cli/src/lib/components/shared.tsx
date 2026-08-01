@@ -92,10 +92,6 @@ export function Failed() {
     return <Text color="red">✖</Text>;
 }
 
-export function Cached() {
-    return <Text color="blue">~</Text>;
-}
-
 export function LogTail({
     lines,
     height,

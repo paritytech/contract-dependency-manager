@@ -1,24 +1,12 @@
 import { Link } from "react-router-dom";
 import { metadataCidFromUri } from "../data/registry-queries";
+import { splitPackageName } from "../lib/package-name";
 import type { Package } from "../data/types";
 import "./PackageCard.css";
 
 interface PackageCardProps {
     pkg: Package;
     linkTarget?: string;
-}
-
-function formatCalls(n: number): string {
-    return n.toLocaleString();
-}
-
-function splitPackageName(name: string): { prefix: string; leaf: string } {
-    const idx = name.lastIndexOf("/");
-    if (idx < 0) return { prefix: "", leaf: name };
-    return {
-        prefix: name.slice(0, idx + 1),
-        leaf: name.slice(idx + 1),
-    };
 }
 
 export default function PackageCard({ pkg, linkTarget }: PackageCardProps) {
@@ -53,11 +41,6 @@ export default function PackageCard({ pkg, linkTarget }: PackageCardProps) {
                     <span className="skeleton-bar skeleton-bar--author" />
                 ) : (
                     <span />
-                )}
-                {pkg.weeklyCalls != null && (
-                    <span className="package-card-downloads">
-                        {formatCalls(pkg.weeklyCalls)} weekly calls
-                    </span>
                 )}
                 {pkg.publishedDate ? (
                     <span className="package-card-date">{pkg.publishedDate}</span>

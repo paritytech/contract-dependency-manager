@@ -25,7 +25,7 @@ export class MetadataPublisher {
     public signer: PolkadotSigner;
     public bulletinApi: CdmBulletinApi;
 
-    constructor(signer: PolkadotSigner, api: CdmBulletinApi, _client?: unknown) {
+    constructor(signer: PolkadotSigner, api: CdmBulletinApi) {
         this.signer = signer;
         this.bulletinApi = api;
     }
@@ -54,11 +54,8 @@ export class MetadataPublisher {
      * Publish metadata for multiple contracts. Submits sequentially — one tx
      * per item — as required by Bulletin's nonce ordering.
      */
-    async publishBatch(
-        metadataList: Metadata[],
-    ): Promise<{ cids: string[]; blockNumber: number; txHash: string; blockHash: string }> {
-        if (metadataList.length === 0)
-            return { cids: [], blockNumber: 0, txHash: "", blockHash: "" };
+    async publishBatch(metadataList: Metadata[]): Promise<{ cids: string[]; blockNumber: number }> {
+        if (metadataList.length === 0) return { cids: [], blockNumber: 0 };
 
         const N = metadataList.length;
         const cids: string[] = [];
@@ -80,12 +77,7 @@ export class MetadataPublisher {
             lastBlockNumber = result.blockNumber;
         }
 
-        return {
-            cids,
-            blockNumber: lastBlockNumber,
-            txHash: "",
-            blockHash: "",
-        };
+        return { cids, blockNumber: lastBlockNumber };
     }
 }
 

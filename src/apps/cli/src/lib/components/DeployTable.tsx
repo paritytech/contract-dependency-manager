@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
-import type { ContractStatus, PhaseInfo } from "../deploy-pipeline";
+import type { ContractStatus } from "../deploy-pipeline";
 import {
     Link,
     LinkLine,
@@ -12,7 +12,6 @@ import {
     Idle,
     Done,
     Failed,
-    Cached,
     LogTail,
     truncateAddress,
     shortHash,
@@ -26,11 +25,9 @@ const COL_PHASE = 5;
 const COL_ADDR = 14;
 
 /** Infer which phase failed based on what fields exist on the status */
-function errorPhase(s: ContractStatus): "build" | "deploy" | "metadata" | "register" {
-    // Register failed: both deploy and publish completed, error during register
-    if (s.address && s.publishTxHash) return "register";
-    // Deploy completed but publish didn't: metadata/publish failure
-    if (s.address && !s.publishTxHash && s.cid) return "metadata";
+function errorPhase(s: ContractStatus): "build" | "deploy" | "metadata" {
+    // Deploy completed: metadata/publish failure
+    if (s.address && s.cid) return "metadata";
     if (s.bytecodeSize !== undefined) return "deploy";
     // Build completed: deploy phase (or parallel deploy+publish) failed
     if (
@@ -81,9 +78,9 @@ function ContractRow({
     } else if (state === "waiting") {
         buildCell = <EmptyBar />;
     } else {
-        // built/deploying/deployed/publishing/registering/done — show completed bar
-        // plus the compiled bytecode size (base-10 kB/MB) if the library
-        // populated `bytecodeSize` on the status.
+        // built/deploying/done — show completed bar plus the compiled
+        // bytecode size (base-10 kB/MB) if the library populated
+        // `bytecodeSize` on the status.
         const bp = s?.buildProgress;
         if (bp?.total && bp.total > 0) {
             buildCell = (
@@ -109,52 +106,19 @@ function ContractRow({
         );
     }
 
-    // Cached state — show cache indicator across all deploy columns
-    if (state === "cached") {
-        return (
-            <Box>
-                <Cell width={COL_CONTRACT}>
-                    <Text bold wrap="truncate">
-                        {name}
-                    </Text>
-                </Cell>
-                <Cell width={COL_BUILD}>{buildCell}</Cell>
-                <Cell width={COL_PHASE}>
-                    <Cached />
-                </Cell>
-                <Cell width={COL_PHASE}>
-                    <Cached />
-                </Cell>
-                <Cell width={COL_PHASE}>
-                    <Cached />
-                </Cell>
-                <Cell width={COL_ADDR}>
-                    {s?.address ? <Text dimColor>{truncateAddress(s.address)}</Text> : <Idle />}
-                </Cell>
-            </Box>
-        );
-    }
-
     // Deploy column — use deployInProgress flag for spinner
     let deployCell: React.ReactNode;
-    if (state === "checking") {
-        deployCell = <Spinner tick={tick} />;
-    } else if (s?.deployInProgress) {
+    if (s?.deployInProgress) {
         deployCell = <Spinner tick={tick} />;
     } else if (state === "error" && errorPhase(s!) === "deploy") {
         deployCell = <Failed />;
-    } else if (
-        ["registering", "done"].includes(state) &&
-        s?.deployTxHash &&
-        s?.deployBlockHash &&
-        assethubUrl
-    ) {
+    } else if (state === "done" && s?.deployTxHash && s?.deployBlockHash && assethubUrl) {
         deployCell = (
             <Link url={pjsExplorerUrl(assethubUrl, s.deployBlockHash)}>
                 <Text color="green">{shortHash(s.deployTxHash)}</Text>
             </Link>
         );
-    } else if (["registering", "done"].includes(state)) {
+    } else if (state === "done") {
         deployCell = <Done />;
     } else {
         deployCell = <Idle />;
@@ -166,14 +130,12 @@ function ContractRow({
         metaCell = <Spinner tick={tick} />;
     } else if (state === "error" && errorPhase(s!) === "metadata") {
         metaCell = <Failed />;
-    } else if (["registering", "done"].includes(state) && s?.cid && ipfsGatewayUrl) {
+    } else if (state === "done" && s?.cid && ipfsGatewayUrl) {
         metaCell = (
             <Link url={ipfsUrl(ipfsGatewayUrl, s.cid)}>
                 <Text color="green">{shortHash(s.cid)}</Text>
             </Link>
         );
-    } else if (["registering", "done"].includes(state) && s?.publishTxHash) {
-        metaCell = <Done />;
     } else {
         metaCell = <Idle />;
     }
@@ -182,8 +144,6 @@ function ContractRow({
     let registerCell: React.ReactNode;
     if (s?.registerInProgress) {
         registerCell = <Spinner tick={tick} />;
-    } else if (state === "error" && errorPhase(s!) === "register") {
-        registerCell = <Failed />;
     } else if (state === "done" && s?.registerTxHash && s?.registerBlockHash && assethubUrl) {
         registerCell = (
             <Link url={pjsExplorerUrl(assethubUrl, s.registerBlockHash)}>
@@ -226,15 +186,10 @@ function ContractRow({
     // full link on its own line below the row. Conditions mirror the cell
     // rendering above so an inline line appears iff a cell shows a link.
     const linkDefs: { label: string; url: string }[] = [];
-    if (
-        ["registering", "done"].includes(state) &&
-        s?.deployTxHash &&
-        s?.deployBlockHash &&
-        assethubUrl
-    ) {
+    if (state === "done" && s?.deployTxHash && s?.deployBlockHash && assethubUrl) {
         linkDefs.push({ label: "deploy", url: pjsExplorerUrl(assethubUrl, s.deployBlockHash) });
     }
-    if (["registering", "done"].includes(state) && s?.cid && ipfsGatewayUrl) {
+    if (state === "done" && s?.cid && ipfsGatewayUrl) {
         linkDefs.push({ label: "metadata", url: ipfsUrl(ipfsGatewayUrl, s.cid) });
     }
     if (state === "done" && s?.registerTxHash && s?.registerBlockHash && assethubUrl) {
@@ -261,7 +216,6 @@ function ContractRow({
 export interface DeployTableProps {
     statuses: Map<string, ContractStatus>;
     displayNames: Map<string, string>;
-    crates: string[];
     buildOnly: boolean;
     assethubUrl?: string;
     bulletinUrl?: string;
@@ -273,7 +227,6 @@ export interface DeployTableProps {
 export function DeployTable({
     statuses,
     displayNames,
-    crates,
     buildOnly,
     assethubUrl,
     ipfsGatewayUrl,
@@ -287,10 +240,9 @@ export function DeployTable({
         return () => clearInterval(timer);
     }, []);
 
-    const rowCrates = [
-        ...crates,
-        ...Array.from(statuses.keys()).filter((crate) => !crates.includes(crate)),
-    ];
+    // Row order comes from `statuses` insertion order, which the adapter
+    // fills in layered deployment order on the `detect` event.
+    const rowCrates = Array.from(statuses.keys());
 
     // Collect and group errors for display below table. Toolchain-level
     // failures often apply to every contract in a build batch, and printing

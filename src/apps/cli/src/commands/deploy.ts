@@ -12,8 +12,12 @@ import {
     type CdmChainClient,
 } from "@parity/cdm-env";
 import { getAccount } from "@parity/cdm-utils/accounts";
-import { ALICE_SS58, CONTRACTS_REGISTRY_PACKAGE } from "@parity/cdm-utils";
-import { ContractDeployer, CONTRACTS_REGISTRY_CRATE, resolveFeatures } from "@parity/cdm-builder";
+import {
+    ALICE_SS58,
+    CONTRACTS_REGISTRY_CRATE,
+    CONTRACTS_REGISTRY_PACKAGE,
+} from "@parity/cdm-utils";
+import { ContractDeployer, resolveFeatures } from "@parity/cdm-builder";
 import type { HexString } from "polkadot-api";
 import { ensureAccountMapped } from "../lib/account-mapping";
 import { runDeployWithUI, spinner } from "../lib/ui";

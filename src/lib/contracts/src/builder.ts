@@ -1,5 +1,5 @@
 import { resolve } from "path";
-import { execFileSync, spawn } from "child_process";
+import { spawn } from "child_process";
 
 export interface BuildResult {
     crateName: string;
@@ -16,35 +16,13 @@ export type BuildProgressCallback = (
 ) => void;
 
 /**
- * Build a single contract using `cargo pvm-contract build`.
+ * Build a single contract asynchronously with progress tracking, using
+ * `cargo pvm-contract build`.
  *
  * `registryAddress` is embedded into the contract via `CONTRACTS_REGISTRY_ADDR`
  * and must be resolved explicitly by the caller (CLI/pipeline) — there is no
  * implicit default, so an omitted address can never silently embed the wrong
  * network's registry.
- */
-export function pvmContractBuild(
-    rootDir: string,
-    crateName: string,
-    features: string | undefined,
-    registryAddress: string,
-): void {
-    const manifestPath = resolve(rootDir, "Cargo.toml");
-    const args = ["pvm-contract", "build", "--manifest-path", manifestPath, "-p", crateName];
-    if (features) {
-        args.push("--features", features);
-    }
-    const env: Record<string, string> = {
-        ...(process.env as Record<string, string>),
-        CONTRACTS_REGISTRY_ADDR: registryAddress,
-    };
-    execFileSync("cargo", args, { cwd: rootDir, stdio: "inherit", env });
-}
-
-/**
- * Build a single contract asynchronously with progress tracking.
- *
- * See {@link pvmContractBuild} for why `registryAddress` is required.
  */
 export async function pvmContractBuildAsync(
     rootDir: string,

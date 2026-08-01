@@ -18,7 +18,6 @@ export interface Package {
     version: string;
     description?: string;
     author?: string;
-    weeklyCalls?: number;
     license?: string;
     keywords?: string[];
     publishedDate?: string;
@@ -27,7 +26,6 @@ export interface Package {
     homepage?: string;
     readme?: string;
     dependencies?: Record<string, string>;
-    versions?: { version: string; date: string }[];
     abi?: AbiEntry[];
     address?: string;
     metadataUri?: string;

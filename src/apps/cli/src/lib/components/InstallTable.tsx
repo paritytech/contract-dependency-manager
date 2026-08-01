@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { relative } from "node:path";
 import { Box, Text } from "ink";
 import type { InstallStatus } from "../install-pipeline";
 import {
@@ -87,12 +88,17 @@ function InstallRow({
 
     // When OSC 8 hyperlinks aren't available, the metadata cell only shows the
     // short CID hash; surface the full link on its own line below the row.
-    const hasLink = state === "done" && s?.metadataCid && ipfsGatewayUrl;
-    if (hyperlinksSupported || !hasLink) return row;
+    const showLinkLine =
+        !hyperlinksSupported && state === "done" && s?.metadataCid && ipfsGatewayUrl;
+    // After a successful install, show where the artifacts landed.
+    const savedPath =
+        state === "done" && s?.savedPath ? relative(process.cwd(), s.savedPath) : null;
+    if (!showLinkLine && !savedPath) return row;
     return (
         <Box flexDirection="column">
             {row}
-            <LinkLine url={ipfsUrl(ipfsGatewayUrl!, s!.metadataCid!)} />
+            {showLinkLine && <LinkLine url={ipfsUrl(ipfsGatewayUrl!, s!.metadataCid!)} />}
+            {savedPath && <Text dimColor>{`  ↳ ${savedPath}`}</Text>}
         </Box>
     );
 }

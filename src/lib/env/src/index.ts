@@ -10,8 +10,6 @@ export { resolveQueryOrigin } from "./query_origin";
 export { DEFAULT_NODE_URL } from "@parity/cdm-utils";
 
 export type {
-    AssetHubConnection,
-    BulletinConnection,
     IpfsGateway,
     CdmChainClient,
     CdmAssetHubClient,
