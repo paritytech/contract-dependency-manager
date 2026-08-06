@@ -130,6 +130,16 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
+        name: "transferName",
+        inputs: [
+            { name: "contract_name", type: "string" },
+            { name: "new_owner", type: "address" },
+        ],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
         name: "getAddress",
         inputs: [{ name: "contract_name", type: "string" }],
         outputs: [
@@ -265,6 +275,7 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     { type: "error", name: "ImportContractExists", inputs: [] },
     { type: "error", name: "VersionOverflow", inputs: [] },
     { type: "error", name: "BadImplementation", inputs: [] },
+    { type: "error", name: "InvalidNewOwner", inputs: [] },
     {
         type: "event",
         name: "Published",

@@ -215,6 +215,36 @@ mod contract_registry {
             Ok(())
         }
 
+        /// Transfer ownership of a registered name. Only the current owner
+        /// may transfer; the new owner alone can publish subsequent versions.
+        #[pvm_contract_sdk::method]
+        pub fn transfer_name(
+            &mut self,
+            contract_name: String,
+            new_owner: Address,
+        ) -> Result<(), Error> {
+            self.require_unfrozen()?;
+            if new_owner == Address::ZERO {
+                // Fat-finger guard: an accidental zero transfer would
+                // irreversibly lock the name. Giving a name up on purpose is
+                // done by transferring to a burn address — that locks it at
+                // its current versions, since publishing can only claim names
+                // with no versions and a burn owner never matches a caller.
+                return Err(InvalidNewOwner.into());
+            }
+
+            let mut info = self.info.get(&contract_name);
+            // version_count == 0 ⇒ unregistered: owner is zero and the caller
+            // can never match it, so this also rejects unknown names.
+            if info.version_count == 0 || info.owner != self.caller() {
+                return Err(Unauthorized.into());
+            }
+
+            info.owner = new_owner;
+            self.info.insert(&contract_name, &info);
+            Ok(())
+        }
+
         // ─── Queries ─────────────────────────────────────────────────────
 
         /// Latest published address for `contract_name`, as an option-shaped
@@ -382,7 +412,8 @@ mod tests {
     use super::types::{
         ContractEntry, ContractFrozen, ContractNameEmpty, ContractNameInvalid, ContractNameTooLong,
         ContractPage, ImportContract, ImportContractExists, ImportContractVersion,
-        ImportVersionsEmpty, OptionalAddress, OptionalString, Unauthorized, UnauthorizedAdmin,
+        ImportVersionsEmpty, InvalidNewOwner, OptionalAddress, OptionalString, Unauthorized,
+        UnauthorizedAdmin,
     };
     use pvm_contract_sdk::{
         Address, MockHost, MockHostBuilder, OutSink, Outcome, SolEncode, const_selector, keccak256,
@@ -922,6 +953,84 @@ mod tests {
         );
     }
 
+    // ─── transferName ────────────────────────────────────────────────────────
+
+    #[test]
+    fn transfer_name_hands_ownership_to_new_owner() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, ADDR_1, URI_1);
+
+        assert_eq!(contract.transfer_name(NAME.into(), Address(BOB)), Ok(()));
+        assert_eq!(contract.get_owner(NAME.into()), Address(BOB));
+
+        // The old owner is locked out; the new owner publishes freely.
+        assert_eq!(
+            contract.publish_latest(NAME.into(), Address(ADDR_2), URI_2.into()),
+            Err(Unauthorized.into())
+        );
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(
+            as_bob.publish_latest(NAME.into(), Address(ADDR_2), URI_2.into()),
+            Ok(())
+        );
+        assert_eq!(as_bob.get_version_count(NAME.into()), 2);
+    }
+
+    #[test]
+    fn transfer_name_rejects_non_owner_and_unregistered() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, ADDR_1, URI_1);
+
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(
+            as_bob.transfer_name(NAME.into(), Address(BOB)),
+            Err(Unauthorized.into())
+        );
+        assert_eq!(
+            contract.transfer_name("@cdm/unregistered".into(), Address(BOB)),
+            Err(Unauthorized.into())
+        );
+        assert_eq!(contract.get_owner(NAME.into()), Address(ALICE));
+    }
+
+    #[test]
+    fn transfer_name_rejects_zero_new_owner() {
+        let (mut contract, _mock) = deployed(ALICE);
+        publish(&mut contract, NAME, ADDR_1, URI_1);
+        assert_eq!(
+            contract.transfer_name(NAME.into(), Address::ZERO),
+            Err(InvalidNewOwner.into())
+        );
+    }
+
+    #[test]
+    fn transfer_name_respects_freeze() {
+        let (admin, mock) = deployed(ADMIN);
+        let (mut as_alice, alice_mock) = fork_with_caller(&mock, ALICE);
+        publish(&mut as_alice, NAME, ADDR_1, URI_1);
+
+        // Freeze from the admin's view of the same storage.
+        let (mut admin_again, admin_mock) = fork_with_caller(&alice_mock, ADMIN);
+        assert_eq!(admin_again.freeze(), Ok(()));
+
+        // Non-admin transfers are blocked while frozen…
+        let (mut alice_frozen, _) = fork_with_caller(&admin_mock, ALICE);
+        assert_eq!(
+            alice_frozen.transfer_name(NAME.into(), Address(BOB)),
+            Err(ContractFrozen.into())
+        );
+
+        // …and work again after unfreeze.
+        let (mut admin_thaw, thaw_mock) = fork_with_caller(&admin_mock, ADMIN);
+        assert_eq!(admin_thaw.unfreeze(), Ok(()));
+        let (mut alice_thawed, _) = fork_with_caller(&thaw_mock, ALICE);
+        assert_eq!(
+            alice_thawed.transfer_name(NAME.into(), Address(BOB)),
+            Ok(())
+        );
+        let _ = admin;
+    }
+
     // ─── setCode ─────────────────────────────────────────────────────────────
 
     #[test]
@@ -1137,6 +1246,10 @@ mod tests {
             ("isFrozen()", vec![]),
             ("setAdmin(address)", encode(&Address(ADMIN))),
             ("setCode(address)", encode(&Address(NEW_IMPL))),
+            (
+                "transferName(string,address)",
+                encode(&(String::from(NAME), Address(BOB))),
+            ),
             ("freeze()", vec![]),
             ("unfreeze()", vec![]),
             (

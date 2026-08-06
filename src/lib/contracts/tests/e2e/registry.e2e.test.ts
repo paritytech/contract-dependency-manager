@@ -249,6 +249,24 @@ describe("registry upgrade + admin surface", () => {
         expect(lc(code.value)).toBe(lc(implAddress));
     });
 
+    test("transferName hands a name to a new owner and locks out the old one", async () => {
+        const TRANSFER_NAME = "@test/transferred";
+        const NEW_OWNER = "0x2222222222222222222222222222222222222222";
+
+        const published = await registry.publishLatest.tx(TRANSFER_NAME, ADDR, URI);
+        expect(published.ok).toBe(true);
+
+        const transferred = await registry.transferName.tx(TRANSFER_NAME, NEW_OWNER);
+        expect(transferred.ok).toBe(true);
+
+        const owner = await registry.getOwner.query(TRANSFER_NAME);
+        expect(lc(owner.value)).toBe(lc(NEW_OWNER));
+
+        // The previous owner may no longer publish under the name.
+        const republish = await registry.publishLatest.tx(TRANSFER_NAME, ADDR, URI);
+        expect(republish.ok).toBe(false);
+    });
+
     test("getAdmin/setAdmin round-trip (self-assignment)", async () => {
         const before = await registry.getAdmin.query();
         expect(before.success).toBe(true);
