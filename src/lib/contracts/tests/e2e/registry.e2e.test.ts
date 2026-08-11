@@ -1,13 +1,18 @@
-// End-to-end registry validation against a live `revive-dev-node`.
+// End-to-end registry validation against a local PPN (product-preview-net).
 //
-// The suite spawns a fresh node + deploys the registry once (`beforeAll`) —
+// The suite connects to the running network + deploys the registry once
+// (`beforeAll`) —
 // the harness shells out to `deploy-registry.ts`, which bootstraps the
 // CREATE3 factory, deploys the implementation blob, deploys the EIP-1967
-// proxy through the factory, and hands back the proxy address. All calls
-// below go through the proxy with
+// proxy through the factory, uploads the per-name proxy blob, and hands
+// back the proxy address. All calls below go through the proxy with
 // the implementation's ABI, via the same code path CDM's TS pipeline uses
 // (`createContractFromClient` + the embedded `CONTRACTS_REGISTRY_ABI`).
 // Each assertion is its own `test()` for granular failure attribution.
+//
+// The suite is valid against BOTH a fresh ephemeral PPN and a long-running
+// local one: names are unique per run and count assertions are relative to
+// the baseline captured before publishing.
 //
 // Gated to the `e2e/` directory by `vitest.e2e.config.ts` so `pnpm test`
 // (unit only) stays fast; run this suite via `pnpm test:e2e`.
@@ -22,19 +27,23 @@ import { ALICE_SS58 } from "@parity/cdm-utils";
 // undefined. The dedicated subpath maps straight to `dist/abi.js`.
 import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder/abi";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
-import { spawnReviveNode, deployRegistry, type NodeHandle } from "./harness";
+import { connectPpn, deployRegistry, type PpnHandle } from "./harness";
 
-const NAME = "@test/roundtrip";
+// Unique per run so the suite holds on networks with prior registry state.
+const RUN = Date.now().toString(36);
+const NAME = `@test/rt-${RUN}`;
 const ADDR = "0x1111111111111111111111111111111111111111" as HexString;
 // 59-byte URI exercises the spilled-chunks (long-form) Solidity string layout.
 const URI = "ipfs://bafy2bzaceblahblahQmExampleLongCidExercisingSpilledChunks";
-// 1.0.0 as a packed semver key: major<<64 | minor<<32 | patch.
+// Packed semver keys: major<<64 | minor<<32 | patch.
 const KEY_1_0_0 = 1n << 64n;
 const KEY_1_1_0 = (1n << 64n) | (1n << 32n);
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
 
-let node: NodeHandle;
+let ppn: PpnHandle;
 let chainClient: CdmAssetHubClient;
+// Contract count before this run published anything.
+let baselineCount: number;
 // The implementation blob's address — the proxy delegates every call to it.
 let implAddress: string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,12 +67,12 @@ function unwrapOption<T>(val: unknown): { isSome: boolean; value: T | undefined 
 }
 
 beforeAll(async () => {
-    node = await spawnReviveNode();
-    const deployed = await deployRegistry(node.wsUrl);
+    ppn = await connectPpn();
+    const deployed = await deployRegistry(ppn.wsUrl);
     implAddress = deployed.implAddress;
 
     const signer = prepareSigner("Alice");
-    chainClient = await createCdmAssetHubClient(node.wsUrl, "local");
+    chainClient = await createCdmAssetHubClient(ppn.wsUrl, "local");
     await chainClient.raw.assetHub.getChainSpecData();
     registry = await createContractFromClient(
         chainClient.raw.assetHub,
@@ -72,14 +81,16 @@ beforeAll(async () => {
         CONTRACTS_REGISTRY_ABI,
         { defaultSigner: signer, defaultOrigin: ALICE_SS58 },
     );
-}, 180_000);
+
+    const count = await registry.getContractCount.query();
+    baselineCount = Number(count.value ?? 0);
+}, 300_000);
 
 afterAll(async () => {
     chainClient?.destroy();
-    await node?.kill();
 });
 
-describe("registry pre-publish (empty state)", () => {
+describe("registry pre-publish (this run's name unseen)", () => {
     test("getVersionCount of an unregistered name returns 0", async () => {
         const r = await registry.getVersionCount.query(NAME);
         expect(r.success).toBe(true);
@@ -98,9 +109,9 @@ describe("registry pre-publish (empty state)", () => {
         expect(unwrapOption(r.value).isSome).toBe(false);
     });
 
-    test("getContractCount is 0", async () => {
+    test("getContractCount matches the pre-run baseline", async () => {
         const r = await registry.getContractCount.query();
-        expect(r.value).toBe(0);
+        expect(Number(r.value)).toBe(baselineCount);
     });
 
     test("isFrozen is false initially", async () => {
@@ -172,6 +183,43 @@ describe("registry publish + post-publish queries", () => {
         expect(row.metadata_uri ?? row.metadataUri).toBe(URI);
     });
 
+    test("getMetadataUri returns the long-form URI (exercises spilled chunks)", async () => {
+        const r = await registry.getMetadataUri.query(NAME);
+        const opt = unwrapOption<string>(r.value);
+        expect(opt.isSome).toBe(true);
+        expect(opt.value).toBe(URI);
+    });
+
+    test("getAddressAtVersion(0) returns that version's target", async () => {
+        const r = await registry.getAddressAtVersion.query(NAME, 0);
+        const opt = unwrapOption<string>(r.value);
+        expect(opt.isSome).toBe(true);
+        expect(lc(opt.value)).toBe(lc(ADDR));
+    });
+
+    test("getMetadataUriAtVersion(0) matches the latest URI", async () => {
+        const r = await registry.getMetadataUriAtVersion.query(NAME, 0);
+        const opt = unwrapOption<string>(r.value);
+        expect(opt.isSome).toBe(true);
+        expect(opt.value).toBe(URI);
+    });
+
+    test("getContractNameAt(baseline) returns the registered name", async () => {
+        const r = await registry.getContractNameAt.query(baselineCount);
+        expect(r.value).toBe(NAME);
+    });
+
+    test("getOwner returns a non-zero address (the signer's mapped EVM addr)", async () => {
+        const r = await registry.getOwner.query(NAME);
+        expect(typeof r.value).toBe("string");
+        expect(lc(r.value)).not.toBe(ZERO_ADDR);
+    });
+
+    test("getContractCount grew by exactly one", async () => {
+        const r = await registry.getContractCount.query();
+        expect(Number(r.value)).toBe(baselineCount + 1);
+    });
+
     test("second publish keeps the address stable and bumps the latest key", async () => {
         const r = await registry.publish.tx(NAME, KEY_1_1_0, ADDR, URI);
         expect(r.ok).toBe(true);
@@ -195,46 +243,8 @@ describe("registry publish + post-publish queries", () => {
         expect(BigInt(min.value)).toBe(KEY_1_1_0);
     });
 
-    test("getMetadataUri returns the long-form URI (exercises spilled chunks)", async () => {
-        const r = await registry.getMetadataUri.query(NAME);
-        const opt = unwrapOption<string>(r.value);
-        expect(opt.isSome).toBe(true);
-        expect(opt.value).toBe(URI);
-    });
-
-    test("getAddressAtVersion(0) returns that version's target", async () => {
-        const r = await registry.getAddressAtVersion.query(NAME, 0);
-        const opt = unwrapOption<string>(r.value);
-        expect(opt.isSome).toBe(true);
-        expect(lc(opt.value)).toBe(lc(ADDR));
-    });
-
-    test("getMetadataUriAtVersion(0) matches the latest URI", async () => {
-        const r = await registry.getMetadataUriAtVersion.query(NAME, 0);
-        const opt = unwrapOption<string>(r.value);
-        expect(opt.isSome).toBe(true);
-        expect(opt.value).toBe(URI);
-    });
-
-    test("getContractNameAt(0) returns the registered name", async () => {
-        const r = await registry.getContractNameAt.query(0);
-        expect(r.value).toBe(NAME);
-    });
-
-    test("getOwner returns a non-zero address (the signer's mapped EVM addr)", async () => {
-        const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
-        const r = await registry.getOwner.query(NAME);
-        expect(typeof r.value).toBe("string");
-        expect(lc(r.value)).not.toBe(ZERO_ADDR);
-    });
-
-    test("getContractCount is now 1", async () => {
-        const r = await registry.getContractCount.query();
-        expect(r.value).toBe(1);
-    });
-
     test("getContracts returns latest package details in one page", async () => {
-        const r = await registry.getContracts.query(0, 10);
+        const r = await registry.getContracts.query(baselineCount, 10);
         expect(r.success).toBe(true);
 
         const value = r.value;
@@ -286,7 +296,7 @@ describe("registry freeze / unfreeze", () => {
     });
 
     test("the admin can still publish while frozen", async () => {
-        const FROZEN_NAME = "@test/frozen";
+        const FROZEN_NAME = `@test/frozen-${RUN}`;
         const r = await registry.publish.tx(FROZEN_NAME, KEY_1_0_0, ADDR, URI);
         expect(r.ok).toBe(true);
 
@@ -323,7 +333,7 @@ describe("registry upgrade + admin surface", () => {
         const before = await registry.getAdmin.query();
         expect(before.success).toBe(true);
         const admin = String(before.value);
-        expect(lc(admin)).not.toBe("0x0000000000000000000000000000000000000000");
+        expect(lc(admin)).not.toBe(ZERO_ADDR);
 
         const r = await registry.setAdmin.tx(admin);
         expect(r.ok).toBe(true);

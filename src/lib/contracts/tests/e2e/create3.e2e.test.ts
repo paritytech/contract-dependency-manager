@@ -1,5 +1,5 @@
-// End-to-end validation of the CREATE3 address derivation against a live
-// `revive-dev-node` — the ground truth for the whole scheme: after the
+// End-to-end validation of the CREATE3 address derivation against a local
+// PPN (product-preview-net) — the ground truth for the whole scheme: after the
 // harness deploys the registry through the factory, the factory's on-chain
 // `predict(salt)`, the offline TS mirror (`predictCreate3Address`), and the
 // address the registry actually landed at must all agree.
@@ -22,9 +22,9 @@ import { CREATE3_FACTORY_ABI } from "@parity/cdm-builder/abi";
 import { CREATE3_CHILD_CODE_HASH, predictCreate3Address } from "../../src/create3";
 import { computeDeploySalt } from "../../src/deployer";
 import { hexToBytes } from "../../src/solidity";
-import { spawnReviveNode, deployRegistry, type NodeHandle, type DeployedRegistry } from "./harness";
+import { connectPpn, deployRegistry, type PpnHandle, type DeployedRegistry } from "./harness";
 
-let node: NodeHandle;
+let ppn: PpnHandle;
 let chainClient: CdmAssetHubClient;
 let deployed: DeployedRegistry;
 let factory: Contract<ContractDef>;
@@ -36,11 +36,11 @@ function lc(v: unknown): string {
 }
 
 beforeAll(async () => {
-    node = await spawnReviveNode();
-    deployed = await deployRegistry(node.wsUrl);
+    ppn = await connectPpn();
+    deployed = await deployRegistry(ppn.wsUrl);
 
     const signer = prepareSigner("Alice");
-    chainClient = await createCdmAssetHubClient(node.wsUrl, "local");
+    chainClient = await createCdmAssetHubClient(ppn.wsUrl, "local");
     await chainClient.raw.assetHub.getChainSpecData();
     factory = createContractFromClient(
         chainClient.raw.assetHub,
@@ -49,11 +49,10 @@ beforeAll(async () => {
         CREATE3_FACTORY_ABI,
         { defaultSigner: signer, defaultOrigin: ALICE_SS58 },
     );
-}, 180_000);
+}, 300_000);
 
 afterAll(async () => {
     chainClient?.destroy();
-    await node?.kill();
 });
 
 describe("CREATE3 address derivation", () => {

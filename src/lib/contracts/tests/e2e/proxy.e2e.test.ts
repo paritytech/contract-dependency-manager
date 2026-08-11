@@ -1,4 +1,4 @@
-// End-to-end per-name proxy validation against a live `revive-dev-node`.
+// End-to-end per-name proxy validation against a local PPN (product-preview-net).
 //
 // This is the suite that proves the versioned-proxy model does what it
 // promises: one stable address per name, multiple implementation versions
@@ -33,16 +33,18 @@ import {
 import { createContractFromClient } from "@parity/product-sdk-contracts";
 import { submitAndWatch, type SubmittableTransaction } from "@parity/product-sdk-tx";
 import {
-    spawnReviveNode,
+    connectPpn,
     deployRegistry,
     deployBlob,
     ensureTemplateBuilt,
     COUNTER_PVM,
     COUNTER_ABI_JSON,
-    type NodeHandle,
+    type PpnHandle,
 } from "./harness";
 
-const NAME = "@test/shared-counter";
+// Unique per run so the suite holds on networks with prior registry state.
+const RUN = Date.now().toString(36);
+const NAME = `@test/counter-${RUN}`;
 const URI = "ipfs://bafyproxye2e";
 const KEY_1_0_0 = packVersionKey(1, 0, 0);
 const KEY_1_1_0 = packVersionKey(1, 1, 0);
@@ -61,7 +63,7 @@ const GET_COUNT = selector("getCount()");
 const UNSUPPORTED_VERSION = selector("UnsupportedVersion(uint128,uint128)");
 const UNKNOWN_VERSION = selector("UnknownVersion()");
 
-let node: NodeHandle;
+let ppn: PpnHandle;
 let chainClient: CdmAssetHubClient;
 let registryAddress: string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -123,13 +125,13 @@ function addressWord(address: string): string {
 }
 
 beforeAll(async () => {
-    node = await spawnReviveNode();
-    const deployed = await deployRegistry(node.wsUrl);
+    ppn = await connectPpn();
+    const deployed = await deployRegistry(ppn.wsUrl);
     registryAddress = deployed.address;
     await ensureTemplateBuilt();
 
     signer = prepareSigner("Alice");
-    chainClient = await createCdmAssetHubClient(node.wsUrl, "local");
+    chainClient = await createCdmAssetHubClient(ppn.wsUrl, "local");
     await chainClient.raw.assetHub.getChainSpecData();
     api = chainClient.raw.assetHub.getTypedApi(chainClient.descriptors.assetHub);
 
@@ -149,7 +151,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
     chainClient?.destroy();
-    await node?.kill();
 });
 
 describe("publish creates the per-name proxy", () => {

@@ -1,19 +1,27 @@
-// E2E test harness: spawn revive-dev-node, deploy the registry, tear down.
+// E2E test harness: connect to a local PPN (product-preview-net), deploy the
+// registry, hand back endpoints.
 //
-// Modelled on cargo-pvm-contract's `pvm-contract-e2e-tests::SubstrateDevNode`
-// (per-test port allocation + Drop kills the child), but native to the CDM TS
-// stack so vitest can drive it directly. Each call to `spawnReviveNode()`
-// returns a fresh `NodeHandle` whose `.kill()` is meant to run in an
-// `afterAll` hook.
+// The suite runs against a full local Polkadot product environment — relay,
+// Asset Hub (2s blocks), Bulletin, IPFS gateway — instead of a single dev
+// node, so tests can cover the real cross-chain flow: registry state on
+// Asset Hub, metadata on Bulletin, content served by the IPFS gateway.
 //
-// Requires:
-//   - `revive-dev-node` on $PATH (install:
-//       cargo install --git https://github.com/paritytech/polkadot-sdk --bin revive-dev-node)
-//   - `@parity/cdm-builder` + `@parity/cdm-env` + `@parity/cdm-utils` dist/ built (pnpm build:ts)
-//   - the registry implementation + proxy .polkavm binaries (built lazily on
-//     first `deployRegistry()` call via `pnpm build:registry`)
+// Requires a running PPN (one command, prebuilt binaries, ~seconds to boot):
+//
+//   git clone git@github.com:paritytech/preview-net-v1 && cd preview-net-v1
+//   make start            # persistent local network
+//   make start EPHEMERAL=1  # throwaway network (what CI uses)
+//
+// PPN serves Asset Hub on :10020, Bulletin on :10030, and the IPFS gateway
+// on :8080 — matching @parity/cdm-env's `local` preset. Override with
+// E2E_ASSETHUB_URL / E2E_BULLETIN_URL / E2E_IPFS_GATEWAY_URL.
+//
+// The registry deploy is idempotent (CREATE3 — the address is a pure
+// function of the dev signer and the salts), so the suite works against
+// both a fresh ephemeral network and a long-running local one; tests use
+// per-run unique names and baseline-relative counts accordingly.
 
-import { spawn, execFile } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -24,7 +32,7 @@ import { GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "@parity/cdm-utils";
 
 // Deploy via `bun run src/lib/scripts/deploy-registry.ts` rather than
 // invoking `ContractDeployer` programmatically: the deploy dry-run behaves
-// differently under Node than under Bun on the dev-node — Node reports
+// differently under Node than under Bun — Node reports
 // `Module(Revive(StackUnderflow))` for the exact same code path that
 // succeeds under Bun. Until the divergence is rooted out (likely papi's
 // encoding of the upload payload), the script is the canonical deploy path.
@@ -50,26 +58,21 @@ export const COUNTER_ABI_JSON = resolve(
     "src/templates/shared-counter/target/release/counter.abi.json",
 );
 
-// Per-process port counter. Different vitest workers would collide; we don't
-// fan out e2e suites across workers today (vitest.e2e.config.ts pins
-// `--no-file-parallelism`).
-let nextPort = 29545;
-function allocatePort(): number {
-    return nextPort++;
-}
-
-export interface NodeHandle {
+export interface PpnHandle {
+    /** Asset Hub WebSocket endpoint (registry lives here). */
     wsUrl: string;
-    port: number;
-    /** SIGTERM the child; SIGKILL after 3s if it hasn't exited. */
-    kill(): Promise<void>;
+    /** Bulletin chain WebSocket endpoint (metadata storage). */
+    bulletinUrl: string;
+    /** IPFS gateway base URL, `/ipfs`-suffixed (serves Bulletin content). */
+    ipfsGatewayUrl: string;
 }
 
-async function pollRpcReady(port: number, timeoutMs = 60_000): Promise<void> {
+async function pollRpcReady(url: string, timeoutMs = 60_000): Promise<void> {
+    const httpUrl = url.replace(/^ws/, "http");
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
         try {
-            const res = await fetch(`http://127.0.0.1:${port}`, {
+            const res = await fetch(httpUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -89,54 +92,23 @@ async function pollRpcReady(port: number, timeoutMs = 60_000): Promise<void> {
         }
         await new Promise((r) => setTimeout(r, 500));
     }
-    throw new Error(`revive-dev-node did not become ready on port ${port} within ${timeoutMs}ms`);
+    throw new Error(
+        `No chain RPC answering at ${url}. Is PPN running?\n` +
+            `  Start it with \`make start\` in a preview-net-v1 checkout ` +
+            `(or \`make start EPHEMERAL=1\` for a throwaway network).`,
+    );
 }
 
-export async function spawnReviveNode(): Promise<NodeHandle> {
-    const port = allocatePort();
-    const child = spawn(
-        "revive-dev-node",
-        ["--dev", "--rpc-port", String(port), "--no-prometheus", "--log", "error"],
-        { stdio: ["ignore", "pipe", "pipe"] },
-    );
-
-    if (child.pid === undefined) {
-        throw new Error(
-            "Failed to spawn `revive-dev-node`. Install:\n" +
-                "  cargo install --git https://github.com/paritytech/polkadot-sdk --bin revive-dev-node",
-        );
-    }
-
-    let stderr = "";
-    child.stderr?.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString();
-    });
-    child.once("error", (err) => {
-        throw new Error(
-            `revive-dev-node spawn error: ${err.message}\n(node stderr so far: ${stderr})`,
-        );
-    });
-
-    try {
-        await pollRpcReady(port);
-    } catch (e) {
-        child.kill();
-        throw new Error(`${(e as Error).message}\n(node stderr: ${stderr})`);
-    }
-
-    return {
-        wsUrl: `ws://127.0.0.1:${port}`,
-        port,
-        async kill() {
-            if (child.exitCode !== null) return;
-            child.kill("SIGTERM");
-            for (let i = 0; i < 30; i++) {
-                if (child.exitCode !== null) return;
-                await new Promise((r) => setTimeout(r, 100));
-            }
-            child.kill("SIGKILL");
-        },
+/** Verify the local PPN endpoints are up and return them. */
+export async function connectPpn(): Promise<PpnHandle> {
+    const handle: PpnHandle = {
+        wsUrl: process.env.E2E_ASSETHUB_URL ?? "ws://127.0.0.1:10020",
+        bulletinUrl: process.env.E2E_BULLETIN_URL ?? "ws://127.0.0.1:10030",
+        ipfsGatewayUrl: process.env.E2E_IPFS_GATEWAY_URL ?? "http://127.0.0.1:8080/ipfs",
     };
+    await pollRpcReady(handle.wsUrl);
+    await pollRpcReady(handle.bulletinUrl);
+    return handle;
 }
 
 async function ensureRegistryBuilt(): Promise<void> {
@@ -216,8 +188,8 @@ export interface DeployedRegistry {
  * Build the registry blobs (if needed) and deploy them against `wsUrl` —
  * CREATE3 factory bootstrap first (frozen artifacts), then the
  * implementation blob (plain CREATE2), then the proxy THROUGH the factory.
- * Returns the proxy address (the registry address consumers use) plus the
- * implementation and factory addresses.
+ * Idempotent: on a network that already has the registry it verifies and
+ * returns the existing addresses.
  *
  * Spawns `bun run src/lib/scripts/deploy-registry.ts`. See the import-site
  * note above for why we don't invoke `ContractDeployer` directly under Node.

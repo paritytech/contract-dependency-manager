@@ -107,7 +107,7 @@ pnpm deploy:registry -- --name local  # bun run src/lib/scripts/deploy-registry.
 
 # Testing
 pnpm test                     # vitest + test:macro + test:rust
-pnpm test:e2e                 # end-to-end tests (requires revive-dev-node)
+pnpm test:e2e                 # end-to-end tests (requires a running local PPN — see tests/e2e/harness.ts)
 pnpm test:macro               # Compile cdm::import! consumer to PolkaVM
 pnpm test:rust                # Host-side Rust unit tests
 

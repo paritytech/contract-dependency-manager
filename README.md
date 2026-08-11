@@ -331,11 +331,12 @@ pnpm dev
 
 # Run tests
 pnpm test                # unit tests: vitest + macro + host-side Rust
-pnpm test:e2e            # end-to-end: spawns revive-dev-node, deploys
-                         # the registry, exercises every method.
-                         # Requires `revive-dev-node` and `bun` on $PATH:
-                         #   cargo install --git https://github.com/paritytech/polkadot-sdk --bin revive-dev-node
-                         #   curl -fsSL https://bun.sh/install | bash
+pnpm test:e2e            # end-to-end against a local PPN (product-preview-net):
+                         # deploys the registry and exercises Asset Hub +
+                         # Bulletin + IPFS gateway alignment. Requires `bun`
+                         # and a running PPN:
+                         #   git clone git@github.com:paritytech/preview-net-v1
+                         #   cd preview-net-v1 && make start
 
 # Full gate: format check + typecheck + build + tests
 pnpm check

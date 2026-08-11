@@ -120,3 +120,95 @@ jobs:
               run: pnpm build:registry
             - name: Check embedded registry ABI against generated ABI
               run: pnpm vitest run src/lib/contracts/tests/registry-abi-sync.test.ts
+
+    e2e:
+        name: E2E
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        steps:
+            - uses: actions/checkout@v4
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: "1.2.x"
+            - uses: pnpm/action-setup@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+            # Registry contracts build with build-std against the PolkaVM JSON
+            # target (see .cargo/config.toml), which needs nightly + rust-src.
+            - uses: dtolnay/rust-toolchain@nightly
+              with:
+                  components: rust-src
+            - name: Resolve cargo-pvm-contract revision
+              id: pvm-rev
+              run: |
+                  rev="$(git ls-remote https://github.com/paritytech/cargo-pvm-contract.git refs/heads/main | cut -f1)"
+                  echo "rev=${rev}" >> "$GITHUB_OUTPUT"
+            - name: Cache cargo-pvm-contract binary
+              id: cache-pvm-bin
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cargo/bin/cargo-pvm-contract
+                  key: cargo-pvm-contract-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}
+            - name: Cache cargo dependencies and registry build artifacts
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      target
+                  key: e2e-cargo-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}-${{ hashFiles('src/contract/**/Cargo.toml') }}
+                  restore-keys: |
+                      e2e-cargo-${{ runner.os }}-
+                      templates-cargo-${{ runner.os }}-
+            - name: Install cargo-pvm-contract
+              if: steps.cache-pvm-bin.outputs.cache-hit != 'true'
+              run: |
+                  tmp_dir="$(mktemp -d)"
+                  git init -q "$tmp_dir"
+                  git -C "$tmp_dir" remote add origin https://github.com/paritytech/cargo-pvm-contract.git
+                  git -C "$tmp_dir" fetch -q --depth 1 origin "${{ steps.pvm-rev.outputs.rev }}"
+                  git -C "$tmp_dir" checkout -q FETCH_HEAD
+                  host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
+                  cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
+            - name: Build registry contracts
+              run: pnpm build:registry
+            # The suite runs against a full local Polkadot product environment
+            # (PPN: relay + Asset Hub + Bulletin + IPFS gateway), started from
+            # prebuilt release binaries — nothing is compiled. preview-net-v1
+            # is a private repo, so its checkout and release downloads use the
+            # PPN_GITHUB_TOKEN secret (fine-grained PAT, contents:read on
+            # paritytech/preview-net-v1).
+            - name: Checkout preview-net-v1
+              uses: actions/checkout@v4
+              with:
+                  repository: paritytech/preview-net-v1
+                  token: ${{ secrets.PPN_GITHUB_TOKEN }}
+                  path: .ppn
+            - name: Start ephemeral PPN
+              env:
+                  GITHUB_TOKEN: ${{ secrets.PPN_GITHUB_TOKEN }}
+              run: |
+                  cd .ppn
+                  nohup make start EPHEMERAL=1 > ppn.log 2>&1 &
+                  echo "Waiting for Asset Hub (:10020) and Bulletin (:10030)..."
+                  # Warm-cache boots are ~20s; leave headroom for the first-run
+                  # binary downloads and slower CI disks. TCP-open is enough
+                  # here — the test harness re-probes actual RPC readiness.
+                  for i in $(seq 1 300); do
+                      if nc -z 127.0.0.1 10020 && nc -z 127.0.0.1 10030; then
+                          echo "PPN ready after ~${i}s"
+                          exit 0
+                      fi
+                      sleep 1
+                  done
+                  echo "PPN did not become ready; last log lines:" >&2
+                  tail -50 ppn.log >&2
+                  exit 1
+            - name: Run e2e suite
+              run: pnpm test:e2e
+            - name: PPN logs on failure
+              if: failure()
+              run: tail -100 .ppn/ppn.log || true
