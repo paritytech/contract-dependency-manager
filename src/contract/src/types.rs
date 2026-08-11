@@ -1,6 +1,6 @@
 //! ABI-facing types and errors for the registry contract.
 //!
-//! Everything here is plain data: the `#[contract]` module in `lib.rs` holds
+//! Everything here is plain data: the `#[contract]` module in `main.rs` holds
 //! only storage and method bodies.
 
 use alloc::string::String;
@@ -9,11 +9,14 @@ use contract_registry_core::naming::NameError;
 use pvm_contract_sdk::{Address, SolError, SolStorage, SolType};
 
 /// A single row of `getContracts`: the latest published version of a
-/// registered name.
+/// registered name. `version_key` is the packed semver key (legacy versions
+/// derive as `0.0.(index+1)`); `address` follows `getAddress` semantics —
+/// the per-name proxy when one exists, the latest standalone contract for
+/// legacy names.
 #[derive(Debug, PartialEq, Eq, SolType)]
 pub struct ContractEntry {
     pub name: String,
-    pub version: u32,
+    pub version_key: u128,
     pub address: Address,
     pub metadata_uri: String,
     pub owner: Address,
@@ -67,30 +70,48 @@ pub struct ContractPage {
     pub entries: Vec<ContractEntry>,
 }
 
-/// One version of a contract in an `adminImportContracts` payload.
+/// One version row of `getVersionAt`, option-shaped like the other getters.
+/// `target` is the implementation contract for proxied names and the
+/// standalone published contract for legacy versions.
 #[derive(Debug, PartialEq, Eq, SolType)]
-pub struct ImportContractVersion {
-    pub address: Address,
+pub struct OptionalVersionEntry {
+    pub is_some: bool,
+    pub version_key: u128,
+    pub target: Address,
     pub metadata_uri: String,
 }
 
-/// A full contract history in an `adminImportContracts` payload. Field order
-/// is load-bearing: it must match the `cdm.registry.v1` snapshot schema the
-/// migration tooling encodes against.
+/// One version of a contract in an `adminImportContracts` payload.
+#[derive(Debug, PartialEq, Eq, SolType)]
+pub struct ImportContractVersion {
+    pub version_key: u128,
+    pub target: Address,
+    pub metadata_uri: String,
+}
+
+/// A full contract history in an `adminImportContracts` payload. `proxy` is
+/// the name's already-deployed per-name proxy, or zero for a legacy name —
+/// import records state, it never instantiates.
 #[derive(Debug, PartialEq, Eq, SolType)]
 pub struct ImportContract {
     pub contract_name: String,
     pub owner: Address,
+    pub proxy: Address,
     pub versions: Vec<ImportContractVersion>,
 }
 
-/// Owner and version count for a registered name. Static (20 + 4 bytes), so
-/// it packs into a single storage slot. `version_count == 0` means the name
-/// is unregistered — every registered name has at least one version.
+/// Owner, published version count, and per-name proxy for a registered name.
+///
+/// Field order is load-bearing for the in-place v1 → v2 storage upgrade:
+/// `owner` and `version_count` pack into the first slot exactly as v1 wrote
+/// them, and `proxy` lands in a second slot v1 never touched — so pre-upgrade
+/// records read back with `proxy == 0`, the legacy marker, with no migration.
+/// `version_count == 0` means the name is unregistered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, SolType, SolStorage)]
 pub struct NamedContractInfo {
     pub owner: Address,
     pub version_count: u32,
+    pub proxy: Address,
 }
 
 #[derive(Debug, PartialEq, Eq, SolError)]
@@ -124,6 +145,26 @@ pub struct VersionOverflow;
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct BadImplementation;
 
+/// Version key is zero or not a packed `major.minor.patch` triple.
+#[derive(Debug, PartialEq, Eq, SolError)]
+pub struct InvalidVersionKey;
+
+/// Published keys must be strictly increasing per name (legacy versions
+/// count as `0.0.(index+1)`).
+#[derive(Debug, PartialEq, Eq, SolError)]
+pub struct VersionNotMonotonic {
+    pub attempted: u128,
+    pub latest: u128,
+}
+
+/// First publish needs the per-name proxy blob's code hash configured.
+#[derive(Debug, PartialEq, Eq, SolError)]
+pub struct ProxyCodeHashUnset;
+
+/// Operation requires a per-name proxy, but the name is legacy (no proxy).
+#[derive(Debug, PartialEq, Eq, SolError)]
+pub struct NoProxy;
+
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub enum Error {
     Unauthorized(Unauthorized),
@@ -136,6 +177,10 @@ pub enum Error {
     ImportContractExists(ImportContractExists),
     VersionOverflow(VersionOverflow),
     BadImplementation(BadImplementation),
+    InvalidVersionKey(InvalidVersionKey),
+    VersionNotMonotonic(VersionNotMonotonic),
+    ProxyCodeHashUnset(ProxyCodeHashUnset),
+    NoProxy(NoProxy),
 }
 
 impl From<NameError> for Error {

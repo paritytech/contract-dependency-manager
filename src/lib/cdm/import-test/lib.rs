@@ -3,9 +3,9 @@
 // Workspace-sibling integration test for `cdm::import!`.
 //
 // The macro is exercised end-to-end: it locates cdm.json at this crate's
-// root, resolves @test/sample → version 1 from `dependencies`, reads the
+// root, resolves @test/sample → version 1.0.0 from `contracts`, reads the
 // inline ABI from the `contracts` entry, and materializes it to
-// ./.cdm/contracts/@test/sample/1/abi.json (gitignored) at expansion time
+// ./.cdm/contracts/@test/sample/1.0.0/abi.json (gitignored) at expansion time
 // before handing it to `abi_import!`.
 //
 // `ping_imported` references `.ping().call(self)` to force `cdm::import!` to

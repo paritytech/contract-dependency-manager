@@ -6,6 +6,7 @@ members = [
     "src/contract/create3/child",
     "src/contract/create3/factory",
     "src/contract/proxy",
+    "src/contract/registry-proxy",
     "src/lib/cdm/rust",
     "src/lib/cdm/rust-macros",
     "src/lib/cdm/rust-macros/pvm-cdm",

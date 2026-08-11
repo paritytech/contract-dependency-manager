@@ -36,6 +36,21 @@ pub const ADMIN_SLOT: [u8; 32] = eip1967_slot(b"eip1967.proxy.admin");
 /// Non-zero while the registry is frozen (reads only, admin exempt).
 pub const FROZEN_SLOT: [u8; 32] = eip1967_slot(b"cdm.registry.frozen");
 
+/// Per-name proxy: floor version key below which versioned calls revert
+/// `UnsupportedVersion`. Zero means no floor.
+/// `0xfd72a9137a39672ad1c11d82c8f2377dc3795fa498e00ec272c1d6c9fedb4974`
+pub const MIN_SUPPORTED_SLOT: [u8; 32] = eip1967_slot(b"cdm.proxy.min_supported");
+
+/// Per-name proxy: root of the append-only sorted `StorageVec<u128>` of
+/// published version keys.
+/// `0x4e93495f6e85b7c6270ce6ca5329a45ffd3d2b50e2ffac2c2f3d80e29a7ae4d2`
+pub const VERSION_KEYS_SLOT: [u8; 32] = eip1967_slot(b"cdm.proxy.version_keys");
+
+/// Per-name proxy: root of the `Mapping<u128, Address>` from version key to
+/// implementation.
+/// `0x95017cb99a656583260fc72407f66dd08850fc86ea2c1cd064a6c3c51785b8ee`
+pub const IMPL_OF_SLOT: [u8; 32] = eip1967_slot(b"cdm.proxy.impl_of");
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -62,8 +77,35 @@ mod tests {
 
     #[test]
     fn slots_are_distinct() {
-        assert_ne!(IMPLEMENTATION_SLOT, ADMIN_SLOT);
-        assert_ne!(IMPLEMENTATION_SLOT, FROZEN_SLOT);
-        assert_ne!(ADMIN_SLOT, FROZEN_SLOT);
+        let all = [
+            IMPLEMENTATION_SLOT,
+            ADMIN_SLOT,
+            FROZEN_SLOT,
+            MIN_SUPPORTED_SLOT,
+            VERSION_KEYS_SLOT,
+            IMPL_OF_SLOT,
+        ];
+        for (i, a) in all.iter().enumerate() {
+            for b in &all[i + 1..] {
+                assert_ne!(a, b);
+            }
+        }
+    }
+
+    #[test]
+    fn proxy_slots_are_pinned() {
+        // Mirrored in TS tooling; a drift here silently re-homes proxy state.
+        assert_eq!(
+            hex(MIN_SUPPORTED_SLOT),
+            "fd72a9137a39672ad1c11d82c8f2377dc3795fa498e00ec272c1d6c9fedb4974"
+        );
+        assert_eq!(
+            hex(VERSION_KEYS_SLOT),
+            "4e93495f6e85b7c6270ce6ca5329a45ffd3d2b50e2ffac2c2f3d80e29a7ae4d2"
+        );
+        assert_eq!(
+            hex(IMPL_OF_SLOT),
+            "95017cb99a656583260fc72407f66dd08850fc86ea2c1cd064a6c3c51785b8ee"
+        );
     }
 }
