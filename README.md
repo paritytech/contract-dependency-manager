@@ -284,10 +284,11 @@ Install published contracts for Rust imports, Solidity imports, and product-sdk 
 
 ```bash
 cdm i -n paseo @polkadot/contexts @polkadot/profiles
-cdm i -n paseo @yourorg/package:3
+cdm i -n paseo @yourorg/package:1.2.3
+cdm i -n paseo "@yourorg/package:^1.2"
 ```
 
-`cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates the flat `cdm.json`, installs ABI/metadata artifacts under project-local `.cdm/contracts/`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`. Use `-n devnet` to resolve packages against the Paseo testnet Asset Hub registry.
+A version spec after `:` may be an exact semver version or an npm-style range (resolved against the published versions at install time); omitting it installs `latest`. `cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates the flat `cdm.json` (pinning the resolved version and the package's stable address), installs ABI/metadata artifacts under project-local `.cdm/contracts/`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`. Use `-n devnet` to resolve packages against the Paseo testnet Asset Hub registry.
 
 ### `cdm update`
 
