@@ -23,6 +23,14 @@ export interface TxOpts {
     value?: bigint;
     gasLimit?: { refTime: bigint; proofSize: bigint };
     storageDepositLimit?: bigint;
+    /**
+     * When to resolve the tx Promise. Default: `"finalized"` (preserves
+     * existing behavior). Set to `"best-block"` to return as soon as the tx
+     * is included in a block — typically 5-10x faster on chains with slow
+     * GRANDPA finality (e.g., local zombienet, dev networks). For local dev
+     * loops where finality guarantees aren't needed this is a large UX win.
+     */
+    waitFor?: "best-block" | "finalized";
 }
 
 // Transaction call result

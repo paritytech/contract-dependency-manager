@@ -1,4 +1,5 @@
 import type { SS58String } from "polkadot-api";
+import { submitAndWatch } from "@polkadot-apps/tx";
 import type { AbiEntry, CdmDefaults, QueryResult, TxOpts, TxResult } from "./types";
 
 type PapiInkContract = any; // papi's InkSdk contract type
@@ -97,7 +98,16 @@ export function wrapContract(
                             storageDepositLimit: overrides.storageDepositLimit,
                         }),
                     });
-                    const result = await tx.signAndSubmit(signer);
+                    // submitAndWatch resolves at the chosen lifecycle event.
+                    // Default 'finalized' preserves existing behavior; callers
+                    // can opt into 'best-block' for ~5-10x faster resolution
+                    // on chains where GRANDPA finality lags block time.
+                    // submitAndWatch transparently handles InkSDK's
+                    // AsyncTransaction wrapper via its `.waited` Promise, so
+                    // passing `tx` directly works.
+                    const result = await submitAndWatch(tx, signer, {
+                        waitFor: overrides?.waitFor ?? "finalized",
+                    });
                     return {
                         txHash: result.txHash,
                         blockHash: result.block?.hash ?? "",
