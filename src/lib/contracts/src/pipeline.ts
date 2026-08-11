@@ -37,25 +37,89 @@ import {
     type SolidityAbiEntry,
     solidityImportPathForLibrary,
 } from "./solidity-imports";
-import { ContractDeployer, type AbiEntry, type DeploySaltVersion, type Metadata } from "./deployer";
+import { ContractDeployer, type AbiEntry, type Metadata } from "./deployer";
 import { MetadataPublisher } from "./publisher";
+import { isPublishableKey, keyToSemver, semverToKey } from "./proxy";
 
-async function queryRegistryVersionCounts(
+async function queryRegistryLatestKeys(
     contract: Contract<ContractDef>,
     pkgs: string[],
-): Promise<Map<string, number>> {
+): Promise<Map<string, bigint>> {
     const entries = await Promise.all(
-        pkgs.map(async (pkg): Promise<readonly [string, number]> => {
-            const versionResult = await contract.getVersionCount.query(pkg);
+        pkgs.map(async (pkg): Promise<readonly [string, bigint]> => {
+            const latestResult = await contract.getLatestKey.query(pkg);
 
-            if (!versionResult.success || typeof versionResult.value !== "number") {
-                throw new Error(`Failed to query registry version count for "${pkg}"`);
+            if (!latestResult.success || typeof latestResult.value !== "bigint") {
+                throw new Error(`Failed to query registry latest version key for "${pkg}"`);
             }
 
-            return [pkg, versionResult.value];
+            return [pkg, latestResult.value];
         }),
     );
     return new Map(entries);
+}
+
+/**
+ * The name's STABLE address from `registry.getAddress` — the per-name proxy
+ * for proxied names, the latest standalone contract for legacy (v1-era)
+ * names. This is the address consumers call and the one baked into generated
+ * imports; the per-version implementation address is a registry detail.
+ */
+async function queryRegistryStableAddress(
+    contract: Contract<ContractDef>,
+    pkg: string,
+): Promise<HexString> {
+    const result = await contract.getAddress.query(pkg);
+    const option =
+        result.success && result.value && typeof result.value === "object"
+            ? (result.value as { isSome?: boolean; value?: unknown })
+            : undefined;
+    if (!option?.isSome || typeof option.value !== "string") {
+        throw new Error(`Failed to resolve the stable address for "${pkg}" from the registry`);
+    }
+    return option.value as HexString;
+}
+
+/**
+ * A deployable contract's publish version, resolved from the crate's
+ * Cargo.toml `[package].version`. Strict `X.Y.Z` only — anything else (or a
+ * missing version, e.g. a Solidity target without one) is a configuration
+ * error worth failing the whole deploy for before any build starts.
+ */
+function resolveContractVersion(contract: ContractInfo): { version: string; key: bigint } {
+    const raw = contract.version;
+    if (raw === undefined || raw === "") {
+        throw new Error(
+            `Contract "${contract.name}" has no version — cdm deploy publishes the exact ` +
+                `"X.Y.Z" semver from the crate's Cargo.toml [package].version.`,
+        );
+    }
+    let key: bigint;
+    try {
+        key = semverToKey(raw);
+    } catch {
+        throw new Error(
+            `Contract "${contract.name}" has invalid version "${raw}" — cdm deploy requires ` +
+                `an exact "X.Y.Z" semver in Cargo.toml [package].version ` +
+                `(no ranges, prerelease, or build tags).`,
+        );
+    }
+    if (!isPublishableKey(key)) {
+        throw new Error(
+            `Contract "${contract.name}" version "${raw}" is reserved — bump Cargo.toml ` +
+                `[package].version to at least 0.0.1.`,
+        );
+    }
+    return { version: keyToSemver(key), key };
+}
+
+/** Render an on-chain version key for humans; raw digits if it isn't packed semver. */
+function formatVersionKey(key: bigint): string {
+    try {
+        return keyToSemver(key);
+    } catch {
+        return String(key);
+    }
 }
 
 /**
@@ -154,6 +218,23 @@ export type DeployEvent =
     | { type: "check-needs-deploy"; crate: string; address: HexString }
     | {
           /**
+           * The crate's Cargo.toml version key is ≤ the registry's latest for
+           * its CDM package, so the contract is already published — it is
+           * skipped entirely (no build, no deploy, no metadata publish) and
+           * lands in the summary with status `"up-to-date"`.
+           *
+           * `version` is the local crate semver, `latest` the on-chain latest
+           * semver, and `address` the name's stable address
+           * (`registry.getAddress`) when it resolved.
+           */
+          type: "check-up-to-date";
+          crate: string;
+          version: string;
+          latest: string;
+          address?: HexString;
+      }
+    | {
+          /**
            * Coarse "what's happening right now" signal for the dead time
            * between build-done and the first per-row deploy spinner. Fires
            * synchronously — consumers (CLI TUI, playground) can use the
@@ -162,7 +243,7 @@ export type DeployEvent =
            *
            * `name` values:
            *  - `connecting-registry`    — creating the ContractRegistry handle
-           *  - `checking-versions`       — querying registry version counts
+           *  - `checking-versions`       — querying registry latest version keys
            *  - `precomputing-addresses`  — dry-run planDeploy for CREATE2 addrs
            *  - `preparing-metadata`      — assembling ABI/readme/etc for publish
            *  - `deploying`               — about to emit `deploy-register-start`
@@ -213,11 +294,28 @@ export type DeployEvent =
       }
     | { type: "deploy-register-start"; crates: string[] }
     | {
+          /**
+           * One per landed chunk. `addresses` are the chunk's on-chain
+           * instantiations — the per-version IMPLEMENTATION contracts. The
+           * name-level address consumers should call arrives afterwards in
+           * `stable-addresses` (and in the summary).
+           */
           type: "deploy-register-done";
           addresses: Record<string, HexString>;
           txHash: string;
           blockHash: string;
           durationMs: number;
+      }
+    | {
+          /**
+           * Fired once per layer after its whole deploy+register batch
+           * confirms, mapping each crate to its STABLE address from
+           * `registry.getAddress` — the per-name proxy created by the
+           * registry on first publish. This is the address baked into
+           * generated imports and reported in the summary.
+           */
+          type: "stable-addresses";
+          addresses: Record<string, HexString>;
       }
     | { type: "deploy-register-error"; crates: string[]; error: string }
     | { type: "publish-start"; crates: string[] }
@@ -234,9 +332,15 @@ export interface DeploySummary {
     contracts: Array<{
         crate: string;
         cdmPackage?: string;
+        /**
+         * The name's STABLE address (`registry.getAddress`) — the per-name
+         * proxy for v2 names — not the per-version implementation.
+         */
         address?: HexString;
+        /** Crate semver: the version published, or already on-chain for `"up-to-date"`. */
+        version?: string;
         cid?: string;
-        status: "done" | "cached" | "error";
+        status: "done" | "cached" | "up-to-date" | "error";
         error?: string;
     }>;
     totalDurationMs: number;
@@ -830,17 +934,35 @@ function readAbiEntries(path: string | undefined): AbiEntry[] {
     return [];
 }
 
+/**
+ * The `storageLayout` object from the same generated `.abi.json` artifact
+ * `readAbiEntries` parses. Optional in the published metadata — toolchains
+ * without layout output (and pre-layout artifacts) simply omit it.
+ */
+function readStorageLayout(path: string | undefined): unknown {
+    if (!path || !existsSync(path)) return undefined;
+    try {
+        const parsed = JSON.parse(readFileSync(path, "utf-8")) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return (parsed as { storageLayout?: unknown }).storageLayout;
+        }
+    } catch {
+        // ignore — metadata publishes without a layout
+    }
+    return undefined;
+}
+
 function writeSolidityImportForDeployable(
     rootDir: string,
     deployable: DeployableContract,
     address: HexString,
-    version: DeploySaltVersion,
+    version: string,
 ): void {
     const generated = generateSolidityImport({
         library: deployable.cdmPackage,
         address,
         abi: readAbiEntries(deployable.abiPath) as SolidityAbiEntry[],
-        version: typeof version === "bigint" ? Number(version) : version,
+        version,
     });
     writeGeneratedSolidityFile(rootDir, generated);
 }
@@ -886,11 +1008,18 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
 /**
  * Full pipeline: for each dependency layer, build then deploy/register.
  *
- *  1. Query the next registry version index for each CDM-annotated crate.
- *     That version is included in its CREATE2 salt so repeated publishes get
- *     fresh addresses instead of colliding with previous deployments.
+ *  1. Resolve each CDM-annotated crate's publish version from its Cargo.toml
+ *     `[package].version` (strict `X.Y.Z`) and compare its packed version key
+ *     against the registry's `getLatestKey`. Crates whose key is ≤ the
+ *     on-chain latest are already published: they're marked `"up-to-date"`
+ *     and skipped entirely, which makes `cdm deploy` idempotent. The semver
+ *     is included in each CREATE2 salt so repeated publishes get fresh
+ *     implementation addresses instead of colliding with previous versions.
  *  2. Publish metadata to Bulletin (1 tx per CDM crate) AND
- *  3. Deploy + register on AssetHub in one `Utility.batch_all`
+ *  3. Deploy + `registry.publish(name, versionKey, address, metadataUri)` on
+ *     AssetHub in one `Utility.batch_all`. A first publish makes the registry
+ *     instantiate the name's per-name proxy — the name's permanent address —
+ *     which is resolved via `getAddress` after the batch confirms.
  *
  *  2 and 3 run in parallel per layer — CIDs are precomputed locally from the
  *  metadata bytes (`computeCid`) so the on-chain registration extrinsic
@@ -918,8 +1047,9 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         {
             cdmPackage?: string;
             address?: HexString;
+            version?: string;
             cid?: string;
-            status: "done" | "cached" | "error";
+            status: "done" | "cached" | "up-to-date" | "error";
             error?: string;
         }
     >();
@@ -963,15 +1093,80 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
             failed: new Set<string>(),
             info: new Map(),
         };
-        const nextVersionByCrate = new Map<string, DeploySaltVersion>();
         let { contractMap, cdmPackageMap } = buildContractIndexes(opts.rootDir, detected, build);
 
-        // ---- 3. per-layer build + deploy loop ----
+        // ---- 3. resolve crate versions + skip already-published versions ----
+        //
+        // Version source of truth is each crate's Cargo.toml [package].version;
+        // an invalid or missing version is a configuration error that aborts
+        // the deploy before anything is built or submitted. A crate whose
+        // packed key is not strictly greater than the registry's latest for
+        // its package is already published — it's marked "up-to-date" and
+        // excluded from every later phase, making `cdm deploy` idempotent.
+        // (`getLatestKey` returns 0 for unregistered names, so fresh names
+        // always deploy.)
+        const versionedContracts = contracts.filter((contract) => contract.cdmPackage);
+        const versionByCrate = new Map<string, { version: string; key: bigint }>();
+        for (const contract of versionedContracts) {
+            versionByCrate.set(contract.name, resolveContractVersion(contract));
+        }
+
+        emit({
+            type: "phase",
+            name: "checking-versions",
+            description: "Checking registry for already-published versions",
+        });
+        const latestKeys = await queryRegistryLatestKeys(
+            registryContract,
+            versionedContracts.map((contract) => contract.cdmPackage!),
+        );
+
+        const upToDateCrates = new Set<string>();
+        const upToDateChecks = await Promise.all(
+            versionedContracts.map(async (contract) => {
+                const resolved = versionByCrate.get(contract.name)!;
+                const latest = latestKeys.get(contract.cdmPackage!) ?? 0n;
+                if (resolved.key > latest) return null;
+
+                let stableAddress: HexString | undefined;
+                try {
+                    stableAddress = await queryRegistryStableAddress(
+                        registryContract,
+                        contract.cdmPackage!,
+                    );
+                } catch {
+                    // Diagnostic only — the version is known published, so a
+                    // failed address read must not fail an otherwise no-op run.
+                }
+                return { contract, resolved, latest, stableAddress };
+            }),
+        );
+        for (const check of upToDateChecks) {
+            if (!check) continue;
+            const { contract, resolved, latest, stableAddress } = check;
+            upToDateCrates.add(contract.name);
+            status.set(contract.name, {
+                status: "up-to-date",
+                cdmPackage: contract.cdmPackage!,
+                version: resolved.version,
+                address: stableAddress,
+            });
+            emit({
+                type: "check-up-to-date",
+                crate: contract.name,
+                version: resolved.version,
+                latest: formatVersionKey(latest),
+                address: stableAddress,
+            });
+        }
+
+        // ---- 4. per-layer build + deploy loop ----
         const failedCrates = new Set<string>();
         const addresses: Record<string, HexString> = {};
 
         for (let layerIndex = 0; layerIndex < detected.layers.length; layerIndex++) {
-            const layer = detected.layers[layerIndex];
+            const layer = detected.layers[layerIndex].filter((crate) => !upToDateCrates.has(crate));
+            if (layer.length === 0) continue;
             const builtCrates = await runBuildLayer(
                 opts.rootDir,
                 detected,
@@ -1008,27 +1203,13 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 const deployableCrates = deployables.map((contract) => contract.crate);
                 const deployablePackages = deployables.map((contract) => contract.cdmPackage);
 
-                emit({
-                    type: "phase",
-                    name: "checking-versions",
-                    description: `Checking layer ${layerIndex + 1} registry versions`,
-                    layer: layerIndex,
-                });
-                const versionCounts = await queryRegistryVersionCounts(
-                    registryContract,
-                    deployablePackages,
-                );
-                for (const contract of deployables) {
-                    const versionCount =
-                        nextVersionByCrate.get(contract.crate) ??
-                        versionCounts.get(contract.cdmPackage);
-                    if (versionCount === undefined) {
-                        throw new Error(
-                            `Failed to query registry version count for "${contract.cdmPackage}"`,
-                        );
+                const resolvedVersions = deployables.map((contract) => {
+                    const resolved = versionByCrate.get(contract.crate);
+                    if (!resolved) {
+                        throw new Error(`Missing resolved version for "${contract.cdmPackage}"`);
                     }
-                    nextVersionByCrate.set(contract.crate, versionCount);
-                }
+                    return resolved;
+                });
 
                 const cidMap: Record<string, string> = {};
                 const metadataList: Metadata[] = [];
@@ -1045,6 +1226,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     const readmeContent = readReadmeContent(contract.readmePath);
                     const repository = contract.repository ?? getGitRemoteUrl(opts.rootDir) ?? "";
                     const abi = readAbiEntries(deployable.abiPath);
+                    const storageLayout = readStorageLayout(deployable.abiPath);
                     const meta: Metadata = {
                         publish_block: 0,
                         published_at: publishedAt,
@@ -1054,6 +1236,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                         homepage: contract.homepage ?? "",
                         repository,
                         abi,
+                        ...(storageLayout !== undefined ? { storage_layout: storageLayout } : {}),
                     };
                     metadataList.push(meta);
                     cidMap[deployable.crate] = await computeBulletinStoreCid(
@@ -1062,15 +1245,8 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 }
 
                 const pvmPaths = deployables.map((contract) => contract.pvmPath);
-                const saltVersions = deployables.map((contract) => {
-                    const version = nextVersionByCrate.get(contract.crate);
-                    if (version === undefined) {
-                        throw new Error(
-                            `Missing registry version count for "${contract.cdmPackage}"`,
-                        );
-                    }
-                    return version;
-                });
+                const saltVersions = resolvedVersions.map((resolved) => resolved.version);
+                const versionKeys = resolvedVersions.map((resolved) => resolved.key);
                 const metadataUris = deployables.map((contract) => cidMap[contract.crate]);
 
                 // Plan BEFORE submission: a single dry-run per contract yields
@@ -1151,10 +1327,11 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 const publishT0 = Date.now();
                 let deployCursor = 0;
 
-                const [deployRes, publishRes] = await Promise.all([
+                const [, publishRes] = await Promise.all([
                     deployer.deployAndRegisterBatch(
                         pvmPaths,
                         deployablePackages,
+                        versionKeys,
                         registryContract,
                         metadataUris,
                         (chunk) => {
@@ -1192,8 +1369,20 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     }),
                 ]);
 
+                // The batch instantiated per-version IMPLEMENTATIONS; the
+                // address consumers call is the name's stable address (the
+                // per-name proxy the registry created on first publish).
+                // Resolve it now that the publishes have landed and bake THAT
+                // into the generated Solidity imports and the summary.
+                const stableAddresses = await Promise.all(
+                    deployables.map((deployable) =>
+                        queryRegistryStableAddress(registryContract, deployable.cdmPackage),
+                    ),
+                );
+                const stableByCrate: Record<string, HexString> = {};
                 for (let i = 0; i < deployables.length; i++) {
-                    const address = deployRes.addresses[i] as HexString;
+                    const address = stableAddresses[i];
+                    stableByCrate[deployableCrates[i]] = address;
                     addresses[deployableCrates[i]] = address;
                     writeSolidityImportForDeployable(
                         opts.rootDir,
@@ -1202,6 +1391,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                         saltVersions[i],
                     );
                 }
+                emit({ type: "stable-addresses", addresses: stableByCrate });
 
                 const cidsOut: Record<string, string> = {};
                 for (let i = 0; i < deployables.length; i++) {
@@ -1219,6 +1409,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     status.set(deployable.crate, {
                         status: "done",
                         address: addresses[deployable.crate],
+                        version: versionByCrate.get(deployable.crate)?.version,
                         cid: cidMap[deployable.crate],
                         cdmPackage: deployable.cdmPackage,
                     });
@@ -1261,6 +1452,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     crate,
                     cdmPackage: s.cdmPackage,
                     address: s.address,
+                    version: s.version,
                     cid: s.cid,
                     status: s.status,
                     error: s.status === "error" ? s.error : undefined,
@@ -1315,11 +1507,7 @@ if (import.meta.vitest) {
     }));
 
     vi.mock("@parity/product-sdk-contracts", () => ({
-        createContractFromClient: vi.fn(async () => ({
-            getVersionCount: {
-                query: vi.fn(async () => ({ success: true, value: 0 })),
-            },
-        })),
+        createContractFromClient: vi.fn(),
     }));
 
     vi.mock("./deployer", async () => {
@@ -1341,6 +1529,7 @@ if (import.meta.vitest) {
                     async (
                         pvmPaths: string[],
                         _packages: string[],
+                        _versionKeys: bigint[],
                         _registry: unknown,
                         _metadataUris: string[],
                         onChunk: (chunk: {
@@ -1392,7 +1581,38 @@ if (import.meta.vitest) {
         detectSolidityBuildTargets: mockDetectSolidity,
     } = await import("./solidity");
     const { MetadataPublisher: mockMetadataPublisher } = await import("./publisher");
-    const { writeFileSync: mockWriteFileSync } = await import("fs");
+    const { writeFileSync: mockWriteFileSync, readFileSync: mockReadFileSync } = await import("fs");
+    const { createContractFromClient: mockCreateContract } = await import(
+        "@parity/product-sdk-contracts"
+    );
+
+    /** Deterministic 20-byte stable address per package for the fake registry. */
+    function stableAddressFor(pkg: string): string {
+        const sum = Array.from(pkg).reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        return `0x${sum.toString(16).padStart(40, "a")}`;
+    }
+
+    /**
+     * Fake registry handle: `getLatestKey` answers from `latestKeys` (0n =
+     * unregistered, the on-chain default), `getAddress` resolves each
+     * package's deterministic stable address.
+     */
+    function makeRegistryMock(latestKeys: Record<string, bigint> = {}) {
+        return {
+            getLatestKey: {
+                query: vi.fn(async (pkg: string) => ({
+                    success: true,
+                    value: latestKeys[pkg] ?? 0n,
+                })),
+            },
+            getAddress: {
+                query: vi.fn(async (pkg: string) => ({
+                    success: true,
+                    value: { isSome: true, value: stableAddressFor(pkg) },
+                })),
+            },
+        };
+    }
 
     type CI = ContractInfo;
 
@@ -1400,12 +1620,14 @@ if (import.meta.vitest) {
         layers: string[][],
         deps: Record<string, string[]> = {},
         cdm: Record<string, string> = {},
+        versions: Record<string, string> = {},
     ): DeploymentOrderLayered {
         const contractMap = new Map<string, CI>();
         for (const layer of layers) {
             for (const crate of layer) {
                 contractMap.set(crate, {
                     name: crate,
+                    version: versions[crate] ?? "0.1.0",
                     cdmPackage: cdm[crate] ?? null,
                     description: null,
                     authors: [],
@@ -1436,6 +1658,8 @@ if (import.meta.vitest) {
             stderr: "",
             durationMs: 100,
         }));
+        (mockCreateContract as any).mockImplementation(async () => makeRegistryMock());
+        (mockReadFileSync as any).mockImplementation(() => Buffer.from("[]"));
     });
 
     function makePolkadotSigner(fill: number): PolkadotSigner {
@@ -1716,6 +1940,7 @@ if (import.meta.vitest) {
                         "deploy-register-start",
                         "publish-start",
                         "deploy-register-done",
+                        "stable-addresses",
                         "publish-done",
                     ].includes(event.type),
                 )
@@ -1729,6 +1954,7 @@ if (import.meta.vitest) {
                 "deploy-register-start",
                 "publish-start",
                 "deploy-register-done",
+                "stable-addresses",
                 "publish-done",
             ]);
 
@@ -1776,6 +2002,175 @@ if (import.meta.vitest) {
                 status: "error",
                 error: "Dry-run failed: boom",
             });
+        });
+
+        test("skips crates whose version is already published (up-to-date)", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder(
+                    [["a", "b"]],
+                    {},
+                    { a: "@example/a", b: "@example/b" },
+                    { a: "0.1.0", b: "1.2.3" },
+                ),
+            );
+            // a: on-chain latest 0.2.0 ≥ local 0.1.0 → skip; b: unregistered.
+            (mockCreateContract as any).mockImplementation(async () =>
+                makeRegistryMock({ "@example/a": semverToKey("0.2.0") }),
+            );
+            const { ContractDeployer: MockedDeployer } = await import("./deployer");
+            const batchCalls: unknown[][] = [];
+            (MockedDeployer as any).mockImplementationOnce(() => ({
+                planDeploy: vi.fn(async (pvmPaths: string[]) => ({
+                    prepared: pvmPaths.map((_path, index) => ({
+                        address: `0x${String(index + 1).padStart(40, "0")}`,
+                        gasLimit: { ref_time: 1n, proof_size: 1n },
+                        extrinsicWeight: { ref_time: 1n, proof_size: 1n },
+                        storageDeposit: 0n,
+                    })),
+                    budget: { ref_time: 10n, proof_size: 10n },
+                    chunks: [pvmPaths.map((_path, index) => index)],
+                })),
+                deployAndRegisterBatch: vi.fn(async (...args: unknown[]) => {
+                    batchCalls.push(args);
+                    const pvmPaths = args[0] as string[];
+                    const onChunk = args[5] as (chunk: {
+                        addresses: string[];
+                        txHash: string;
+                        blockHash: string;
+                    }) => void;
+                    const addresses = pvmPaths.map(
+                        (_path, index) => `0x${String(index + 1).padStart(40, "0")}`,
+                    );
+                    onChunk({ addresses, txHash: "0xdeploy", blockHash: "0xblock" });
+                    return { addresses };
+                }),
+            }));
+
+            const events: DeployEvent[] = [];
+            const summary = await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                onEvent: (event) => events.push(event),
+            });
+
+            // Only b builds and deploys; a is excluded from every phase.
+            expect((mockBuild as any).mock.calls.map((call: unknown[]) => call[1])).toEqual(["b"]);
+            expect(events.find((event) => event.type === "check-up-to-date")).toEqual({
+                type: "check-up-to-date",
+                crate: "a",
+                version: "0.1.0",
+                latest: "0.2.0",
+                address: stableAddressFor("@example/a"),
+            });
+
+            expect(summary.contracts.find((c) => c.crate === "a")).toMatchObject({
+                status: "up-to-date",
+                version: "0.1.0",
+                address: stableAddressFor("@example/a"),
+            });
+            expect(summary.contracts.find((c) => c.crate === "b")).toMatchObject({
+                status: "done",
+                version: "1.2.3",
+                address: stableAddressFor("@example/b"),
+            });
+
+            // The register leg publishes b's packed semver key only.
+            expect(batchCalls).toHaveLength(1);
+            expect(batchCalls[0][1]).toEqual(["@example/b"]);
+            expect(batchCalls[0][2]).toEqual([semverToKey("1.2.3")]);
+        });
+
+        test("re-running an already-published workspace deploys nothing", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder([["a"]], {}, { a: "@example/a" }, { a: "1.0.0" }),
+            );
+            (mockCreateContract as any).mockImplementation(async () =>
+                makeRegistryMock({ "@example/a": semverToKey("1.0.0") }),
+            );
+
+            const events: DeployEvent[] = [];
+            const summary = await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                onEvent: (event) => events.push(event),
+            });
+
+            expect(mockBuild).not.toHaveBeenCalled();
+            expect(events.some((event) => event.type === "deploy-register-start")).toBe(false);
+            expect(summary.contracts).toEqual([
+                {
+                    crate: "a",
+                    cdmPackage: "@example/a",
+                    address: stableAddressFor("@example/a"),
+                    version: "1.0.0",
+                    cid: undefined,
+                    status: "up-to-date",
+                    error: undefined,
+                },
+            ]);
+        });
+
+        test("publishes storage_layout from the build artifact when present", async () => {
+            (mockDetect as any).mockReturnValue(makeOrder([["a"]], {}, { a: "@example/a" }));
+            (mockReadFileSync as any).mockImplementation((path: unknown) =>
+                String(path).endsWith(".abi.json")
+                    ? Buffer.from(
+                          JSON.stringify({
+                              abi: [{ type: "function", name: "ping", inputs: [] }],
+                              storageLayout: { storage: [], types: {} },
+                          }),
+                      )
+                    : Buffer.from("[]"),
+            );
+            const { MetadataPublisher: MockedPublisher } = await import("./publisher");
+            const published: unknown[][] = [];
+            (MockedPublisher as any).mockImplementationOnce(() => ({
+                publishBatch: vi.fn(async (metadataList: unknown[]) => {
+                    published.push(metadataList);
+                    return { cids: metadataList.map(() => "fakeCid123"), txHash: "0xpublish" };
+                }),
+            }));
+
+            await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+            });
+
+            expect(published).toHaveLength(1);
+            expect(published[0][0]).toMatchObject({
+                abi: [{ type: "function", name: "ping", inputs: [] }],
+                storage_layout: { storage: [], types: {} },
+            });
+        });
+
+        test("aborts before building when a crate version is not exact semver", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder([["a"]], {}, { a: "@example/a" }, { a: "0.1" }),
+            );
+
+            const events: DeployEvent[] = [];
+            await expect(
+                deployContracts({
+                    rootDir: "/fake",
+                    client: makeFakeClient(),
+                    signer: makePolkadotSigner(1),
+                    origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                    registryAddress: getRegistryAddress("paseo") as HexString,
+                    onEvent: (event) => events.push(event),
+                }),
+            ).rejects.toThrow('Contract "a" has invalid version "0.1"');
+
+            expect(mockBuild).not.toHaveBeenCalled();
+            expect(events.at(-1)).toMatchObject({ type: "pipeline-error" });
         });
     });
 }

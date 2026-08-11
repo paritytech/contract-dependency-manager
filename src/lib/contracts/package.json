@@ -12,6 +12,10 @@
         "./abi": {
             "types": "./dist/abi.d.ts",
             "import": "./dist/abi.js"
+        },
+        "./proxy": {
+            "types": "./dist/proxy.d.ts",
+            "import": "./dist/proxy.js"
         }
     },
     "files": ["dist"],
@@ -19,7 +23,7 @@
         "access": "public"
     },
     "scripts": {
-        "build": "tsup src/index.ts src/abi.ts --format esm --dts --clean",
+        "build": "tsup src/index.ts src/abi.ts src/proxy.ts --format esm --dts --clean",
         "typecheck": "tsc --noEmit",
         "clean": "rm -rf dist"
     },
@@ -32,10 +36,12 @@
         "@parity/product-sdk-descriptors": "catalog:",
         "@parity/product-sdk-tx": "catalog:",
         "multiformats": "catalog:",
-        "polkadot-api": "catalog:"
+        "polkadot-api": "catalog:",
+        "semver": "catalog:"
     },
     "devDependencies": {
         "@types/node": "catalog:",
+        "@types/semver": "catalog:",
         "tsup": "catalog:",
         "typescript": "catalog:"
     }

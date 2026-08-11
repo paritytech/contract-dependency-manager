@@ -14,5 +14,15 @@ export default defineConfig({
 		],
 		reporters: "verbose",
 		environment: "node",
+		server: {
+			deps: {
+				// Workspace packages are symlinked, so vite would inline and
+				// re-transform their built tsup chunks, leaving code-split
+				// export bindings undefined. Resolve them like node instead
+				// (tests that import a workspace PACKAGE run against its
+				// dist — build it first, e.g. `turbo build --filter=...`).
+				external: [/src\/lib\/(contracts|env|utils)\/dist\//],
+			},
+		},
 	},
 });

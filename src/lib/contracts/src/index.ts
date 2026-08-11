@@ -77,10 +77,20 @@ export {
 export {
     type DeployRegistryOptions,
     type RegistryDeployPrediction,
+    type UpgradeRegistryOptions,
+    bumpPackageSuffix,
     encodeProxyConstructorArgs,
     predictRegistryDeploy,
     deployRegistryWithProxy,
+    upgradeRegistryImplementation,
 } from "./registry-deploy";
+
+export {
+    type FrozenContractProxyArtifact,
+    CONTRACT_PROXY_ARTIFACTS_DIR,
+    CONTRACT_PROXY_CODE_HASH,
+    loadContractProxyArtifact,
+} from "./proxy-artifacts";
 
 export {
     type FrozenCreate3Artifact,
@@ -102,6 +112,36 @@ export { MetadataPublisher } from "./publisher";
 export { computeCid } from "./cid";
 
 export { CONTRACTS_REGISTRY_ABI, CONTRACTS_REGISTRY_PROXY_ABI } from "./abi/registry";
+
+export {
+    META_HEADER_LEN,
+    META_KEY,
+    PROXY_ERROR_SIGNATURES,
+    PROXY_MAGIC,
+    PROXY_META,
+    PROXY_META_SIGNATURES,
+    PROXY_SLOTS,
+    VERSIONED_HEADER_LEN,
+    decodeAddressWord,
+    decodeU128Word,
+    decodeVersionPair,
+    encodeProxyAdmin,
+    encodeProxyImplOf,
+    encodeProxyLatest,
+    encodeProxyMinSupported,
+    encodeProxyPublish,
+    encodeProxyResolveMax,
+    encodeProxySetAdmin,
+    encodeProxySetMinSupported,
+    encodeProxyVersionAt,
+    encodeProxyVersionCount,
+    encodeVersionedCall,
+    isPublishableKey,
+    keyToSemver,
+    packVersionKey,
+    semverToKey,
+    unpackVersionKey,
+} from "./proxy";
 
 export { CREATE3_FACTORY_ABI } from "./abi/create3-factory";
 

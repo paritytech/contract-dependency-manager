@@ -117,14 +117,14 @@ describe("install round-trip preserves new-shape ABI", () => {
 
         const savedPath = saveContract({
             library: "round_trip_fixture",
-            version: 0,
+            version: "1.2.3",
             abi: fetchedAbi,
             metadata: fetched,
             address: "0x0000000000000000000000000000000000000001",
             metadataCid: "bafy-test-cid",
         });
 
-        expect(savedPath).toBe(getContractDir("round_trip_fixture", 0));
+        expect(savedPath).toBe(getContractDir("round_trip_fixture", "1.2.3"));
 
         const rereadAbi = JSON.parse(readFileSync(resolve(savedPath, "abi.json"), "utf-8"));
         expect(rereadAbi).toEqual(sampleAbi);
@@ -135,9 +135,28 @@ describe("install round-trip preserves new-shape ABI", () => {
         const info = JSON.parse(readFileSync(resolve(savedPath, "info.json"), "utf-8"));
         expect(info).toEqual({
             name: "round_trip_fixture",
-            version: 0,
+            version: "1.2.3",
             address: "0x0000000000000000000000000000000000000001",
             metadataCid: "bafy-test-cid",
         });
+    });
+
+    test("legacy numeric versions keep index-named directories", () => {
+        // v1-era pins record the raw registry index; the store must keep using
+        // it verbatim as the path segment so old cdm.json files still resolve.
+        const savedPath = saveContract({
+            library: "round_trip_fixture",
+            version: 0,
+            abi: sampleAbi,
+            metadata: sampleMetadata,
+            address: "0x0000000000000000000000000000000000000002",
+            metadataCid: "bafy-legacy-cid",
+        });
+
+        expect(savedPath).toBe(getContractDir("round_trip_fixture", 0));
+        expect(savedPath.endsWith("/0")).toBe(true);
+
+        const info = JSON.parse(readFileSync(resolve(savedPath, "info.json"), "utf-8"));
+        expect(info.version).toBe(0);
     });
 });

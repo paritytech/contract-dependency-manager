@@ -9,6 +9,12 @@ export interface ContractInfo {
     name: string;
     /** Human-readable display name when it differs from the stable internal name. */
     displayName?: string;
+    /**
+     * Crate version from Cargo.toml `[package].version` — the source of truth
+     * for the semver a `cdm deploy` publishes. Absent for targets without a
+     * Cargo manifest (e.g. Solidity contracts).
+     */
+    version?: string;
     /** Source toolchain that produced or will produce this contract artifact. */
     toolchain?: ContractToolchain;
     /** CDM package name (e.g., "@polkadot/reputation") - null if no CDM macro or not yet built */
@@ -63,6 +69,7 @@ interface CargoTarget {
 interface CargoPackage {
     name: string;
     id: string;
+    version: string;
     description: string | null;
     authors: string[];
     homepage: string | null;
@@ -198,6 +205,7 @@ export function detectContracts(rootDir: string): ContractInfo[] {
         return {
             name: pkg.name,
             displayName: pkg.name,
+            version: pkg.version,
             toolchain: "rust",
             cdmPackage: extractCdmPackage(pkg),
             description: pkg.description,
