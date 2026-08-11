@@ -21,6 +21,7 @@ import {
 } from "./shared";
 
 const COL_CONTRACT = 24;
+const COL_VERSION = 9;
 const COL_BUILD = 20;
 const COL_PHASE = 5;
 const COL_ADDR = 14;
@@ -109,6 +110,16 @@ function ContractRow({
         );
     }
 
+    // Version column — the crate's Cargo.toml semver (the version being
+    // published, or already on-chain for up-to-date rows).
+    const versionCell = s?.version ? (
+        <Text dimColor wrap="truncate">
+            {s.version}
+        </Text>
+    ) : (
+        <Idle />
+    );
+
     // Cached state — show cache indicator across all deploy columns
     if (state === "cached") {
         return (
@@ -118,7 +129,40 @@ function ContractRow({
                         {name}
                     </Text>
                 </Cell>
+                <Cell width={COL_VERSION}>{versionCell}</Cell>
                 <Cell width={COL_BUILD}>{buildCell}</Cell>
+                <Cell width={COL_PHASE}>
+                    <Cached />
+                </Cell>
+                <Cell width={COL_PHASE}>
+                    <Cached />
+                </Cell>
+                <Cell width={COL_PHASE}>
+                    <Cached />
+                </Cell>
+                <Cell width={COL_ADDR}>
+                    {s?.address ? <Text dimColor>{truncateAddress(s.address)}</Text> : <Idle />}
+                </Cell>
+            </Box>
+        );
+    }
+
+    // Up-to-date state — this Cargo.toml version is already published, so
+    // the pipeline skipped the crate entirely (no build, deploy, or publish).
+    // Mirrors the cached row's skip markers; the address is the name's stable
+    // address when the registry resolved it.
+    if (state === "up-to-date") {
+        return (
+            <Box>
+                <Cell width={COL_CONTRACT}>
+                    <Text bold wrap="truncate">
+                        {name}
+                    </Text>
+                </Cell>
+                <Cell width={COL_VERSION}>{versionCell}</Cell>
+                <Cell width={COL_BUILD}>
+                    <Text dimColor>up-to-date</Text>
+                </Cell>
                 <Cell width={COL_PHASE}>
                     <Cached />
                 </Cell>
@@ -212,6 +256,7 @@ function ContractRow({
                     {name}
                 </Text>
             </Cell>
+            <Cell width={COL_VERSION}>{versionCell}</Cell>
             <Cell width={COL_BUILD}>{buildCell}</Cell>
             <Cell width={COL_PHASE}>{deployCell}</Cell>
             <Cell width={COL_PHASE}>{metaCell}</Cell>

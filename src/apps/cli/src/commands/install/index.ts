@@ -16,6 +16,8 @@ import {
     hasBuildableSolidityProject,
     readCdmJson,
     writeCdmJson,
+    type InstallLibraryRequest,
+    type InstallRequestedVersion,
 } from "@parity/cdm-builder";
 import { spinner } from "../../lib/ui";
 import { runInstallWithUI } from "../../lib/install-pipeline";
@@ -38,12 +40,20 @@ function detectProjectType(dir: string): {
     };
 }
 
-function parseLibraryArg(arg: string): { library: string; version: number | "latest" } {
+/**
+ * Split a `library[:spec]` CLI argument. The text after the LAST `:` is a
+ * version spec passed through verbatim — `"latest"`, an exact semver
+ * (`"1.2.3"`), or an npm-style range (`"^1.2"`) — except a bare integer,
+ * which is a LEGACY v1 registry version index and resolves as a number.
+ */
+function parseLibraryArg(arg: string): { library: string; version: InstallRequestedVersion } {
     const colonIdx = arg.lastIndexOf(":");
-    if (colonIdx > 0) {
-        const lib = arg.slice(0, colonIdx);
-        const ver = parseInt(arg.slice(colonIdx + 1), 10);
-        if (!isNaN(ver)) return { library: lib, version: ver };
+    if (colonIdx > 0 && colonIdx < arg.length - 1) {
+        const spec = arg.slice(colonIdx + 1);
+        return {
+            library: arg.slice(0, colonIdx),
+            version: /^\d+$/.test(spec) ? Number(spec) : spec,
+        };
     }
     return { library: arg, version: "latest" };
 }
@@ -53,7 +63,9 @@ const install = new Command("install")
     .description("Install CDM contract libraries")
     .argument(
         "[libraries...]",
-        'CDM libraries (e.g., "@polkadot/reputation" or "@polkadot/reputation:3"). Omit to install all from cdm.json.',
+        'CDM libraries with an optional version spec: "latest", an exact semver, an npm-style ' +
+            'range, or a legacy v1 index (e.g., "@polkadot/reputation", "@polkadot/reputation:1.2.3", ' +
+            '"@polkadot/reputation:^1.2", "@polkadot/reputation:3"). Omit to install all from cdm.json.',
     )
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
     .option("-n, --name <name>", "Chain preset name (polkadot, paseo, devnet, local)")
@@ -125,7 +137,7 @@ install.action(async (libraries: string[], rawOpts: InstallOptions) => {
     cdmJson.registry = registryAddress;
 
     // Determine what to install
-    let toInstall: { library: string; requestedVersion: number | "latest" }[];
+    let toInstall: InstallLibraryRequest[];
 
     if (libraries.length > 0) {
         toInstall = libraries.map((arg) => {
@@ -133,7 +145,8 @@ install.action(async (libraries: string[], rawOpts: InstallOptions) => {
             return { library: parsed.library, requestedVersion: parsed.version };
         });
     } else {
-        // Batch install: read from cdm.json
+        // Batch install: read from cdm.json. Values pass through verbatim —
+        // "latest"/semver/range strings, or legacy v1 numeric indices.
         const deps = cdmJson.dependencies;
         if (Object.keys(deps).length === 0) {
             console.error("Error: No library specified and no dependencies found in cdm.json.");
@@ -142,7 +155,7 @@ install.action(async (libraries: string[], rawOpts: InstallOptions) => {
         }
         toInstall = Object.entries(deps).map(([lib, ver]) => ({
             library: lib,
-            requestedVersion: ver === "latest" ? ("latest" as const) : Number(ver),
+            requestedVersion: ver,
         }));
     }
 
@@ -209,6 +222,51 @@ export const installCommand = install;
 
 if (import.meta.vitest) {
     const { describe, expect, test } = import.meta.vitest;
+
+    describe("parseLibraryArg", () => {
+        test("a bare library installs latest", () => {
+            expect(parseLibraryArg("@org/pkg")).toEqual({
+                library: "@org/pkg",
+                version: "latest",
+            });
+        });
+
+        test("an exact semver passes through verbatim, not truncated to an integer", () => {
+            expect(parseLibraryArg("@org/pkg:1.2.3")).toEqual({
+                library: "@org/pkg",
+                version: "1.2.3",
+            });
+        });
+
+        test("npm-style ranges pass through verbatim", () => {
+            expect(parseLibraryArg("@org/pkg:^1.2")).toEqual({
+                library: "@org/pkg",
+                version: "^1.2",
+            });
+            expect(parseLibraryArg("@org/pkg:~0.3.4")).toEqual({
+                library: "@org/pkg",
+                version: "~0.3.4",
+            });
+        });
+
+        test('an explicit "latest" stays a string', () => {
+            expect(parseLibraryArg("@org/pkg:latest")).toEqual({
+                library: "@org/pkg",
+                version: "latest",
+            });
+        });
+
+        test("a bare integer resolves as a legacy v1 index number", () => {
+            expect(parseLibraryArg("@org/pkg:3")).toEqual({ library: "@org/pkg", version: 3 });
+        });
+
+        test("only the last colon splits the spec", () => {
+            expect(parseLibraryArg("@org/pkg:extra:^2.0")).toEqual({
+                library: "@org/pkg:extra",
+                version: "^2.0",
+            });
+        });
+    });
 
     describe("resolveInstallOptions", () => {
         test("an explicitly passed Asset Hub URL wins over the preset even when it equals the default", () => {

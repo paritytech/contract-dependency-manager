@@ -15,6 +15,7 @@ export interface AbiEntry {
 
 export interface Package {
     name: string;
+    /** Latest published version as a semver string (e.g. "1.2.3"). */
     version: string;
     description?: string;
     author?: string;
@@ -30,6 +31,10 @@ export interface Package {
     versions?: { version: string; date: string }[];
     abi?: AbiEntry[];
     address?: string;
+    /** Per-name proxy (the name's stable address); unset for legacy names. */
+    proxyAddress?: string;
+    /** Lowest still-supported semver version; unset when no floor is set. */
+    minSupportedVersion?: string;
     metadataUri?: string;
     metadataLoaded?: boolean;
 }
