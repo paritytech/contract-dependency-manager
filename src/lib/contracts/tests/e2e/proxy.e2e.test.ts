@@ -29,7 +29,7 @@ import {
     encodeProxyVersionCount,
     encodeVersionedCall,
     packVersionKey,
-} from "@parity/cdm-builder";
+} from "@parity/cdm-builder/proxy";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
 import { submitAndWatch, type SubmittableTransaction } from "@parity/product-sdk-tx";
 import {
@@ -82,20 +82,46 @@ function lc(v: unknown): string {
     return String(v).toLowerCase();
 }
 
-/** Dry-run a raw contract call (versioned/meta wire formats have no ABI). */
+/** Plain hex → bytes, matching product-sdk's own calldata handling. */
+function hexBytes(hex: string): Uint8Array {
+    const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
+    const out = new Uint8Array(stripped.length / 2);
+    for (let i = 0; i < out.length; i++) {
+        out[i] = Number.parseInt(stripped.slice(i * 2, i * 2 + 2), 16);
+    }
+    return out;
+}
+
+/** Dry-run a raw contract call (versioned/meta wire formats have no ABI).
+ * Argument types mirror product-sdk's own `dryRunCall` exactly — a hex
+ * string `dest` and `Uint8Array` calldata — which is the combination PPN's
+ * runtime metadata encodes without an `Incompatible runtime entry` error. */
 async function dryRunCall(
     dest: string,
     input: string,
 ): Promise<{ success: boolean; reverted: boolean; data: string }> {
-    const r = await api.apis.ReviveApi.call(ALICE_SS58, dest, 0n, undefined, undefined, input, {
-        at: "best",
-    });
+    const r = await api.apis.ReviveApi.call(
+        ALICE_SS58,
+        dest,
+        0n,
+        undefined,
+        undefined,
+        hexBytes(input),
+        { at: "best" },
+    );
     if (!r.result.success) {
         return { success: false, reverted: false, data: "0x" };
     }
     const flags = Number(r.result.value.flags);
+    const raw = r.result.value.data;
     const data =
-        typeof r.result.value.data === "string" ? r.result.value.data : r.result.value.data.asHex();
+        typeof raw === "string"
+            ? raw
+            : raw instanceof Uint8Array
+              ? `0x${Array.from(raw)
+                    .map((b) => b.toString(16).padStart(2, "0"))
+                    .join("")}`
+              : raw.asHex();
     return { success: true, reverted: (flags & 1) === 1, data: lc(data) };
 }
 
@@ -104,14 +130,16 @@ async function rawCallTx(dest: string, input: string): Promise<void> {
     const tx = api.tx.Revive.call({
         dest,
         value: 0n,
-        gas_limit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
+        weight_limit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
         storage_deposit_limit: STORAGE_DEPOSIT_LIMIT,
-        data: input,
+        data: hexBytes(input),
     });
     const result = await submitAndWatch(tx as unknown as SubmittableTransaction, signer, {
         waitFor: "best-block",
     });
-    expect(result.ok).toBe(true);
+    if (!result.ok) {
+        throw new Error(`rawCallTx failed: ${JSON.stringify(result.error)}`);
+    }
 }
 
 /** Right-aligned 32-byte word containing a u128, as lowercase hex (no 0x). */
@@ -133,7 +161,10 @@ beforeAll(async () => {
     signer = prepareSigner("Alice");
     chainClient = await createCdmAssetHubClient(ppn.wsUrl, "local");
     await chainClient.raw.assetHub.getChainSpecData();
-    api = chainClient.raw.assetHub.getTypedApi(chainClient.descriptors.assetHub);
+    // The unsafe api skips descriptor compatibility checks — the generated
+    // descriptors lag PPN's runtime for Revive.call/ReviveApi.call, and
+    // product-sdk itself falls back to the unsafe api for the same reason.
+    api = chainClient.raw.assetHub.getUnsafeApi();
 
     registry = await createContractFromClient(
         chainClient.raw.assetHub,
