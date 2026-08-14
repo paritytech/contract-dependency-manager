@@ -27,7 +27,7 @@ export const CONTRACT_PROXY_ARTIFACTS_DIR = "src/contract/proxy/artifacts";
  * `artifacts/manifest.json` and with the blob bytes themselves.
  */
 export const CONTRACT_PROXY_CODE_HASH =
-    "0x959b99e1624fa9654075c182f46b6672567d06098cfef5f54bcfe4b89e8ba192";
+    "0x525fcab6a2cdea6111b967df024b388b0cc79d8a90d753f097e5dda70b545249";
 
 /** The frozen per-name proxy blob loaded from the repo, hash-verified. */
 export interface FrozenContractProxyArtifact {

@@ -157,6 +157,20 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
+        name: "freezeContract",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "unfreezeContract",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
         name: "getAddress",
         inputs: [{ name: "contract_name", type: "string" }],
         outputs: [
@@ -419,6 +433,23 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
             {
                 name: "version_key",
                 type: "uint128",
+                indexed: false,
+            },
+        ],
+        anonymous: false,
+    },
+    {
+        type: "event",
+        name: "ContractFrozenSet",
+        inputs: [
+            {
+                name: "name",
+                type: "string",
+                indexed: true,
+            },
+            {
+                name: "frozen",
+                type: "bool",
                 indexed: false,
             },
         ],

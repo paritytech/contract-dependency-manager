@@ -37,6 +37,11 @@ export const PROXY_META = {
     setMinSupported: "0xe84411e5",
     /** admin (the registry) only */
     setAdmin: "0x704b6c02",
+    /** admin (the registry) only */
+    freeze: "0x62a5af3b",
+    /** admin (the registry) only */
+    unfreeze: "0x6a28f000",
+    frozen: "0x054f7d9c",
     implOf: "0xdf379e50",
     latest: "0x52bfe789",
     minSupported: "0x900fc468",
@@ -48,6 +53,9 @@ export const PROXY_META_SIGNATURES: Record<keyof typeof PROXY_META, string> = {
     publish: "publish(uint128,address)",
     setMinSupported: "setMinSupported(uint128)",
     setAdmin: "setAdmin(address)",
+    freeze: "freeze()",
+    unfreeze: "unfreeze()",
+    frozen: "frozen()",
     implOf: "implOf(uint128)",
     latest: "latest()",
     minSupported: "minSupported()",
@@ -67,6 +75,7 @@ export const PROXY_ERROR_SIGNATURES = [
     "MinNotMonotonic(uint128,uint128)",
     "MinAboveLatest(uint128,uint128)",
     "NoVersions()",
+    "ContractFrozen()",
 ] as const;
 
 /**
@@ -79,6 +88,7 @@ export const PROXY_SLOTS = {
     implementation: "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
     admin: "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103",
     minSupported: "0xfd72a9137a39672ad1c11d82c8f2377dc3795fa498e00ec272c1d6c9fedb4974",
+    frozen: "0x10b1d4d74ddd28d4b6cf1edaae553682872a3b66c3a70e34907a42073c69e558",
     latestKey: "0x7d2e53e7260319608bac9e6f155af7a188ade8cda24ee2259128ceb1248eceb0",
     implOf: "0x95017cb99a656583260fc72407f66dd08850fc86ea2c1cd064a6c3c51785b8ee",
 } as const;
@@ -255,6 +265,20 @@ export function encodeProxySetAdmin(admin: string): Hex {
     return encodeMetaCall(PROXY_META.setAdmin, wordAddress(admin));
 }
 
+/** Registry-only: halt all delegation (the migration pause switch). */
+export function encodeProxyFreeze(): Hex {
+    return encodeMetaCall(PROXY_META.freeze);
+}
+
+/** Registry-only: resume delegation. */
+export function encodeProxyUnfreeze(): Hex {
+    return encodeMetaCall(PROXY_META.unfreeze);
+}
+
+export function encodeProxyFrozen(): Hex {
+    return encodeMetaCall(PROXY_META.frozen);
+}
+
 export function encodeProxyImplOf(key: bigint): Hex {
     return encodeMetaCall(PROXY_META.implOf, wordU128(key));
 }
@@ -333,6 +357,7 @@ if (import.meta.vitest) {
             expect(slot("eip1967.proxy.implementation")).toBe(PROXY_SLOTS.implementation);
             expect(slot("eip1967.proxy.admin")).toBe(PROXY_SLOTS.admin);
             expect(slot("cdm.proxy.min_supported")).toBe(PROXY_SLOTS.minSupported);
+            expect(slot("cdm.proxy.frozen")).toBe(PROXY_SLOTS.frozen);
             expect(slot("cdm.proxy.latest_key")).toBe(PROXY_SLOTS.latestKey);
             expect(slot("cdm.proxy.impl_of")).toBe(PROXY_SLOTS.implOf);
         });

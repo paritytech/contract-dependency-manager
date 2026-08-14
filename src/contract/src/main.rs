@@ -64,6 +64,15 @@ mod contract_registry {
         pub version_key: u128,
     }
 
+    /// The owner froze or unfroze the name's proxy (all delegation halts
+    /// while frozen — the pause switch for storage migrations).
+    #[derive(pvm_contract_sdk::SolEvent)]
+    pub struct ContractFrozenSet {
+        #[indexed]
+        pub name: String,
+        pub frozen: bool,
+    }
+
     /// EIP-1967 standard event, so proxy-aware tooling picks up upgrades.
     #[derive(pvm_contract_sdk::SolEvent)]
     pub struct Upgraded {
@@ -273,7 +282,7 @@ mod contract_registry {
                 self.names.push(&contract_name);
             }
             self.info.insert(&contract_name, &info);
-            self.versions.view_mut(&contract_name).insert(
+            self.versions.entry(&contract_name).insert(
                 &index,
                 &VersionRecord {
                     version_key,
@@ -281,7 +290,7 @@ mod contract_registry {
                 },
             );
             self.metadata_uri_of
-                .view_mut(&contract_name)
+                .entry(&contract_name)
                 .insert(&index, &metadata_uri);
 
             Published {
@@ -322,6 +331,20 @@ mod contract_registry {
             Ok(())
         }
 
+        /// Freeze the name's proxy: every plain and versioned call reverts
+        /// `ContractFrozen()` until `unfreezeContract`. Owner-only. The meta
+        /// plane and registry operations (including publish) stay live, so
+        /// the migration flow is freeze → publish → unfreeze → ratchet.
+        #[pvm_contract_sdk::method]
+        pub fn freeze_contract(&mut self, contract_name: String) -> Result<(), Error> {
+            self.set_contract_frozen(contract_name, true)
+        }
+
+        #[pvm_contract_sdk::method]
+        pub fn unfreeze_contract(&mut self, contract_name: String) -> Result<(), Error> {
+            self.set_contract_frozen(contract_name, false)
+        }
+
         // ─── Queries ─────────────────────────────────────────────────────
 
         /// The name's stable address — its per-name proxy — as an
@@ -338,7 +361,7 @@ mod contract_registry {
         #[pvm_contract_sdk::method]
         pub fn get_metadata_uri(&self, contract_name: String) -> OptionalString {
             self.latest_index(&contract_name)
-                .map(|index| self.metadata_uri_of.view(&contract_name).get(&index))
+                .map(|index| self.metadata_uri_of.get(&contract_name).get(&index))
                 .into()
         }
 
@@ -373,12 +396,12 @@ mod contract_registry {
                     metadata_uri: String::new(),
                 };
             }
-            let record = self.versions.view(&contract_name).get(&index);
+            let record = self.versions.get(&contract_name).get(&index);
             OptionalVersionEntry {
                 is_some: true,
                 version_key: record.version_key,
                 target: record.target,
-                metadata_uri: self.metadata_uri_of.view(&contract_name).get(&index),
+                metadata_uri: self.metadata_uri_of.get(&contract_name).get(&index),
             }
         }
 
@@ -454,16 +477,16 @@ mod contract_registry {
         fn latest_key(&self, contract_name: &String, info: &NamedContractInfo) -> Option<u128> {
             info.version_count
                 .checked_sub(1)
-                .map(|index| self.versions.view(contract_name).get(&index).version_key)
+                .map(|index| self.versions.get(contract_name).get(&index).version_key)
         }
 
         fn latest_entry(&self, name: String) -> Option<ContractEntry> {
             let info = self.info.get(&name);
             let index = info.version_count.checked_sub(1)?;
             Some(ContractEntry {
-                version_key: self.versions.view(&name).get(&index).version_key,
+                version_key: self.versions.get(&name).get(&index).version_key,
                 address: info.proxy,
-                metadata_uri: self.metadata_uri_of.view(&name).get(&index),
+                metadata_uri: self.metadata_uri_of.get(&name).get(&index),
                 owner: info.owner,
                 name,
             })
@@ -508,6 +531,29 @@ mod contract_registry {
             self.call_proxy(proxy, &calldata);
         }
 
+        fn set_contract_frozen(
+            &mut self,
+            contract_name: String,
+            frozen: bool,
+        ) -> Result<(), Error> {
+            self.require_unfrozen()?;
+            let info = self.info.get(&contract_name);
+            if info.version_count == 0 || info.owner != self.caller() {
+                return Err(Unauthorized.into());
+            }
+
+            let selector = if frozen { meta::FREEZE } else { meta::UNFREEZE };
+            let calldata = meta_header(selector);
+            self.call_proxy(&info.proxy, &calldata);
+
+            ContractFrozenSet {
+                name: contract_name,
+                frozen,
+            }
+            .emit(self.host());
+            Ok(())
+        }
+
         /// Call the proxy, bubbling its revert (e.g. `VersionNotMonotonic`,
         /// `MinAboveLatest`) unchanged so publishers see the precise error.
         fn call_proxy(&mut self, proxy: &Address, calldata: &[u8]) {
@@ -549,8 +595,8 @@ mod contract_registry {
                 return Err(NoProxy.into());
             }
 
-            let mut versions = self.versions.view_mut(&contract_name);
-            let mut metadata_uris = self.metadata_uri_of.view_mut(&contract_name);
+            let mut versions = self.versions.entry(&contract_name);
+            let mut metadata_uris = self.metadata_uri_of.entry(&contract_name);
             let mut version_count: u32 = 0;
             let mut last_key: u128 = 0;
             for version in contract.versions {
@@ -1026,6 +1072,33 @@ mod tests {
         );
         assert_eq!(
             as_bob.set_min_supported("@cdm/missing".into(), V1_0_0),
+            Err(Unauthorized.into())
+        );
+    }
+
+    #[test]
+    fn freeze_contract_forwards_and_requires_owner() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+        mock.take_recorded_calls();
+
+        assert_eq!(contract.freeze_contract(NAME.into()), Ok(()));
+        assert_eq!(contract.unfreeze_contract(NAME.into()), Ok(()));
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![
+                (PROXY, meta_calldata(meta::FREEZE, &[])),
+                (PROXY, meta_calldata(meta::UNFREEZE, &[])),
+            ]
+        );
+
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(
+            as_bob.freeze_contract(NAME.into()),
+            Err(Unauthorized.into())
+        );
+        assert_eq!(
+            as_bob.unfreeze_contract("@cdm/missing".into()),
             Err(Unauthorized.into())
         );
     }
@@ -1650,6 +1723,8 @@ mod tests {
                 "setMinSupported(string,uint128)",
                 encode(&(name.clone(), V1_0_0)),
             ),
+            ("freezeContract(string)", encode(&name)),
+            ("unfreezeContract(string)", encode(&name)),
             ("getAddress(string)", encode(&name)),
             ("getMetadataUri(string)", encode(&name)),
             ("getProxy(string)", encode(&name)),

@@ -41,6 +41,12 @@ pub const FROZEN_SLOT: [u8; 32] = eip1967_slot(b"cdm.registry.frozen");
 /// `0xfd72a9137a39672ad1c11d82c8f2377dc3795fa498e00ec272c1d6c9fedb4974`
 pub const MIN_SUPPORTED_SLOT: [u8; 32] = eip1967_slot(b"cdm.proxy.min_supported");
 
+/// Per-name proxy: non-zero while the owner has frozen the contract — all
+/// delegation reverts `ContractFrozen()` until unfrozen; the meta plane and
+/// registry admin operations stay live.
+/// `0x10b1d4d74ddd28d4b6cf1edaae553682872a3b66c3a70e34907a42073c69e558`
+pub const PROXY_FROZEN_SLOT: [u8; 32] = eip1967_slot(b"cdm.proxy.frozen");
+
 /// Per-name proxy: the latest published version key, for the monotonic
 /// publish check and the `latest()` meta query. Zero before first publish.
 /// `0x7d2e53e7260319608bac9e6f155af7a188ade8cda24ee2259128ceb1248eceb0`
@@ -82,6 +88,7 @@ mod tests {
             ADMIN_SLOT,
             FROZEN_SLOT,
             MIN_SUPPORTED_SLOT,
+            PROXY_FROZEN_SLOT,
             LATEST_KEY_SLOT,
             IMPL_OF_SLOT,
         ];
@@ -98,6 +105,10 @@ mod tests {
         assert_eq!(
             hex(MIN_SUPPORTED_SLOT),
             "fd72a9137a39672ad1c11d82c8f2377dc3795fa498e00ec272c1d6c9fedb4974"
+        );
+        assert_eq!(
+            hex(PROXY_FROZEN_SLOT),
+            "10b1d4d74ddd28d4b6cf1edaae553682872a3b66c3a70e34907a42073c69e558"
         );
         assert_eq!(
             hex(LATEST_KEY_SLOT),

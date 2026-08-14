@@ -23,11 +23,16 @@
 #[cfg(target_arch = "riscv64")]
 polkavm_derive::min_stack_size!(131072);
 
-#[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 262144)]
+// Bump allocator: the routing frame makes a handful of one-shot
+// allocations (calldata/returndata copies, meta words) and never frees —
+// bump is smaller and simpler than picoalloc for that profile, and the
+// implementations it delegates to bring their own allocators anyway.
+#[pvm_contract_sdk::contract(allocator = "bump", allocator_size = 262144)]
 mod contract_proxy {
     use alloc::vec;
     use contract_registry_core::slots::{
         ADMIN_SLOT, IMPL_OF_SLOT, IMPLEMENTATION_SLOT, LATEST_KEY_SLOT, MIN_SUPPORTED_SLOT,
+        PROXY_FROZEN_SLOT,
     };
     use contract_registry_core::versioning::{
         CallRoute, META_HEADER_LEN, VERSIONED_HEADER_LEN, is_publishable_key, meta, route_calldata,
@@ -101,6 +106,11 @@ mod contract_proxy {
     #[derive(Debug, PartialEq, Eq, SolError)]
     pub struct NoVersions;
 
+    /// The owner has frozen the contract: no calls are delegated until
+    /// `unfreeze`. The meta plane keeps answering.
+    #[derive(Debug, PartialEq, Eq, SolError)]
+    pub struct ContractFrozen;
+
     #[derive(Debug, PartialEq, Eq, SolError)]
     pub enum Error {
         UnknownVersion(UnknownVersion),
@@ -114,6 +124,7 @@ mod contract_proxy {
         MinNotMonotonic(MinNotMonotonic),
         MinAboveLatest(MinAboveLatest),
         NoVersions(NoVersions),
+        ContractFrozen(ContractFrozen),
     }
 
     pub struct ContractProxy {
@@ -132,6 +143,10 @@ mod contract_proxy {
         /// `latest()` meta query. Zero before the first publish.
         #[slot(raw = LATEST_KEY_SLOT)]
         latest_key: Lazy<u128>,
+        /// Owner-controlled freeze: while set, nothing is delegated —
+        /// the pause switch for storage migrations.
+        #[slot(raw = PROXY_FROZEN_SLOT)]
+        frozen: Lazy<bool>,
         /// Version key → implementation, the routing table.
         #[slot(raw = IMPL_OF_SLOT)]
         impl_of: Mapping<u128, Address>,
@@ -160,6 +175,7 @@ mod contract_proxy {
 
             match route_calldata(&input) {
                 CallRoute::Plain => {
+                    self.require_unfrozen()?;
                     let target = self.latest_impl.get();
                     if target == Address::ZERO {
                         return Err(NoVersions.into());
@@ -167,6 +183,7 @@ mod contract_proxy {
                     self.delegate(&target, &input)
                 }
                 CallRoute::Versioned(key) => {
+                    self.require_unfrozen()?;
                     let min_supported = self.min_supported.get();
                     if key < min_supported {
                         return Err(UnsupportedVersion {
@@ -245,6 +262,17 @@ mod contract_proxy {
                     self.set_min_supported(key)?;
                     self.respond(&[])
                 }
+                meta::FROZEN => self.respond(&word_bool(self.frozen.get())),
+                meta::FREEZE => {
+                    self.require_admin()?;
+                    self.frozen.set(&true);
+                    self.respond(&[])
+                }
+                meta::UNFREEZE => {
+                    self.require_admin()?;
+                    self.frozen.set(&false);
+                    self.respond(&[])
+                }
                 meta::SET_ADMIN => {
                     self.require_admin()?;
                     let new_admin = address_arg(args, 0)?;
@@ -310,6 +338,13 @@ mod contract_proxy {
 
         // ─── Internals ───────────────────────────────────────────────────
 
+        fn require_unfrozen(&self) -> Result<(), Error> {
+            if self.frozen.get() {
+                return Err(ContractFrozen.into());
+            }
+            Ok(())
+        }
+
         fn require_admin(&self) -> Result<(), Error> {
             let mut caller = [0u8; 20];
             self.host().caller(&mut caller);
@@ -364,6 +399,12 @@ mod contract_proxy {
     fn word_address(address: &Address) -> [u8; 32] {
         let mut word = [0u8; 32];
         word[12..].copy_from_slice(&address.0);
+        word
+    }
+
+    fn word_bool(value: bool) -> [u8; 32] {
+        let mut word = [0u8; 32];
+        word[31] = value as u8;
         word
     }
 }
@@ -858,6 +899,61 @@ mod tests {
             Some(&state),
         );
         assert_eq!(result, Ok(()));
+    }
+
+    // ─── Freeze ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn freeze_blocks_delegation_but_not_the_meta_plane() {
+        let state = published(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2)]);
+        let (result, state) = run(REGISTRY, meta_calldata(meta::FREEZE, &[]), Some(&state));
+        assert_eq!(result, Ok(()));
+
+        // Plain and versioned calls both refuse to delegate.
+        let (result, state) = run(STRANGER, vec![0xAA, 0xBB, 0xCC, 0xDD], Some(&state));
+        assert!(matches!(result, Err(Error::ContractFrozen(_))));
+        let (result, state) = run(STRANGER, versioned_calldata(V1_0_0, &[0x01]), Some(&state));
+        assert!(matches!(result, Err(Error::ContractFrozen(_))));
+
+        // The meta plane keeps answering...
+        let (_proxy, mock) = proxy_call(STRANGER, meta_calldata(meta::FROZEN, &[]), Some(&state));
+        let mut proxy = ContractProxy::with_host(mock.clone());
+        assert!(proxy.fallback().is_ok());
+        let mut frozen_word = [0u8; 32];
+        frozen_word[31] = 1;
+        assert_eq!(mock.take_return_value().unwrap().data, frozen_word.to_vec());
+
+        // ... and admin operations still work: publish while frozen, unfreeze.
+        let (result, state) = run(
+            REGISTRY,
+            meta_calldata(meta::PUBLISH, &publish_args(V2_0_0, IMPL_3)),
+            Some(&mock),
+        );
+        assert_eq!(result, Ok(()));
+        let (result, state) = run(REGISTRY, meta_calldata(meta::UNFREEZE, &[]), Some(&state));
+        assert_eq!(result, Ok(()));
+
+        // Delegation resumes at the new latest.
+        let (_proxy, mock) = proxy_call(STRANGER, vec![0x01, 0x02, 0x03, 0x04], Some(&state));
+        mock.mock_call(IMPL_3, Ok(vec![]));
+        let mut proxy = ContractProxy::with_host(mock.clone());
+        assert!(proxy.fallback().is_ok());
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(IMPL_3, vec![0x01, 0x02, 0x03, 0x04])]
+        );
+    }
+
+    #[test]
+    fn freeze_requires_admin() {
+        let state = published(&[(V1_0_0, IMPL_1)]);
+        for calldata in [
+            meta_calldata(meta::FREEZE, &[]),
+            meta_calldata(meta::UNFREEZE, &[]),
+        ] {
+            let (result, _mock) = run(STRANGER, calldata, Some(&state));
+            assert!(matches!(result, Err(Error::UnauthorizedAdmin(_))));
+        }
     }
 
     // ─── Malformed input ─────────────────────────────────────────────────

@@ -112,6 +112,12 @@ pub mod meta {
     pub const SET_MIN_SUPPORTED: [u8; 4] = meta_selector(b"setMinSupported(uint128)");
     /// `setAdmin(address)` = `0x704b6c02` (admin).
     pub const SET_ADMIN: [u8; 4] = meta_selector(b"setAdmin(address)");
+    /// `freeze()` = `0x62a5af3b` (admin).
+    pub const FREEZE: [u8; 4] = meta_selector(b"freeze()");
+    /// `unfreeze()` = `0x6a28f000` (admin).
+    pub const UNFREEZE: [u8; 4] = meta_selector(b"unfreeze()");
+    /// `frozen()` = `0x054f7d9c`.
+    pub const FROZEN: [u8; 4] = meta_selector(b"frozen()");
     /// `implOf(uint128)` = `0xdf379e50`.
     pub const IMPL_OF: [u8; 4] = meta_selector(b"implOf(uint128)");
     /// `latest()` = `0x52bfe789`.
@@ -142,6 +148,9 @@ mod tests {
         assert_eq!(hex4(meta::PUBLISH), "c3853395");
         assert_eq!(hex4(meta::SET_MIN_SUPPORTED), "e84411e5");
         assert_eq!(hex4(meta::SET_ADMIN), "704b6c02");
+        assert_eq!(hex4(meta::FREEZE), "62a5af3b");
+        assert_eq!(hex4(meta::UNFREEZE), "6a28f000");
+        assert_eq!(hex4(meta::FROZEN), "054f7d9c");
         assert_eq!(hex4(meta::IMPL_OF), "df379e50");
         assert_eq!(hex4(meta::LATEST), "52bfe789");
         assert_eq!(hex4(meta::MIN_SUPPORTED), "900fc468");

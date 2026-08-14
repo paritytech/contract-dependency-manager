@@ -14,7 +14,7 @@ abi-gen = ["pvm-contract-sdk/abi-gen"]
 contract-registry-core = { path = "../core" }
 pvm-contract-sdk.workspace = true
 polkavm-derive.workspace = true
-picoalloc.workspace = true
+pvm-bump-allocator.workspace = true
 
 [dev-dependencies]
 pvm-contract-sdk = { workspace = true, features = ["std"] }

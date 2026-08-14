@@ -21,6 +21,8 @@ import { ALICE_SS58, GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "@parity/cdm-utils"
 import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder/abi";
 import {
     encodeProxyAdmin,
+    encodeProxyFreeze,
+    encodeProxyFrozen,
     encodeProxyImplOf,
     encodeProxyLatest,
     encodeProxyMinSupported,
@@ -60,6 +62,7 @@ const GET_COUNT = selector("getCount()");
 // Proxy revert selectors (signatures pinned in contract-proxy + proxy.ts).
 const UNSUPPORTED_VERSION = selector("UnsupportedVersion(uint128,uint128)");
 const UNKNOWN_VERSION = selector("UnknownVersion()");
+const CONTRACT_FROZEN = selector("ContractFrozen()");
 
 let ppn: PpnHandle;
 let chainClient: CdmAssetHubClient;
@@ -310,6 +313,41 @@ describe("min-supported ratchet", () => {
         const r = await counter.increment.tx();
         expect(r.ok).toBe(true);
         const count = await counter.getCount.query();
+        expect(Number(count.value)).toBe(4);
+    });
+});
+
+describe("freeze / unfreeze", () => {
+    test("owner freezes through the registry; all delegation halts", async () => {
+        const r = await registry.freezeContract.tx(NAME);
+        expect(r.ok).toBe(true);
+
+        // Plain and versioned calls both revert ContractFrozen().
+        const plain = await dryRunCall(proxyAddress, GET_COUNT);
+        expect(plain.reverted).toBe(true);
+        expect(plain.data.startsWith(CONTRACT_FROZEN)).toBe(true);
+        const versioned = await dryRunCall(proxyAddress, encodeVersionedCall(KEY_1_1_0, GET_COUNT));
+        expect(versioned.reverted).toBe(true);
+        expect(versioned.data.startsWith(CONTRACT_FROZEN)).toBe(true);
+
+        // The meta plane keeps answering.
+        const frozen = await dryRunCall(proxyAddress, encodeProxyFrozen());
+        expect(frozen.reverted).toBe(false);
+        expect(BigInt(frozen.data)).toBe(1n);
+    });
+
+    test("direct freeze at the proxy is registry-only", async () => {
+        const r = await dryRunCall(proxyAddress, encodeProxyFreeze());
+        expect(r.success).toBe(true);
+        expect(r.reverted).toBe(true);
+    });
+
+    test("unfreeze restores delegation", async () => {
+        const r = await registry.unfreezeContract.tx(NAME);
+        expect(r.ok).toBe(true);
+
+        const count = await counter.getCount.query();
+        expect(count.success).toBe(true);
         expect(Number(count.value)).toBe(4);
     });
 });
