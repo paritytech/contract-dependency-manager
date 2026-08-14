@@ -112,10 +112,6 @@ pub mod meta {
     pub const SET_MIN_SUPPORTED: [u8; 4] = meta_selector(b"setMinSupported(uint128)");
     /// `setAdmin(address)` = `0x704b6c02` (admin).
     pub const SET_ADMIN: [u8; 4] = meta_selector(b"setAdmin(address)");
-    /// `versionCount()` = `0x8aad29e1`.
-    pub const VERSION_COUNT: [u8; 4] = meta_selector(b"versionCount()");
-    /// `versionAt(uint32)` = `0xb79a1b90`.
-    pub const VERSION_AT: [u8; 4] = meta_selector(b"versionAt(uint32)");
     /// `implOf(uint128)` = `0xdf379e50`.
     pub const IMPL_OF: [u8; 4] = meta_selector(b"implOf(uint128)");
     /// `latest()` = `0x52bfe789`.
@@ -124,8 +120,6 @@ pub mod meta {
     pub const MIN_SUPPORTED: [u8; 4] = meta_selector(b"minSupported()");
     /// `admin()` = `0xf851a440`.
     pub const ADMIN: [u8; 4] = meta_selector(b"admin()");
-    /// `resolveMax(uint128,uint128)` = `0x8829d71d`.
-    pub const RESOLVE_MAX: [u8; 4] = meta_selector(b"resolveMax(uint128,uint128)");
 }
 
 #[cfg(test)]
@@ -148,13 +142,10 @@ mod tests {
         assert_eq!(hex4(meta::PUBLISH), "c3853395");
         assert_eq!(hex4(meta::SET_MIN_SUPPORTED), "e84411e5");
         assert_eq!(hex4(meta::SET_ADMIN), "704b6c02");
-        assert_eq!(hex4(meta::VERSION_COUNT), "8aad29e1");
-        assert_eq!(hex4(meta::VERSION_AT), "b79a1b90");
         assert_eq!(hex4(meta::IMPL_OF), "df379e50");
         assert_eq!(hex4(meta::LATEST), "52bfe789");
         assert_eq!(hex4(meta::MIN_SUPPORTED), "900fc468");
         assert_eq!(hex4(meta::ADMIN), "f851a440");
-        assert_eq!(hex4(meta::RESOLVE_MAX), "8829d71d");
     }
 
     #[test]
@@ -224,11 +215,11 @@ mod tests {
     fn routes_meta_calldata() {
         let mut data = MAGIC.to_vec();
         data.extend_from_slice(&META_KEY.to_be_bytes());
-        data.extend_from_slice(&meta::VERSION_COUNT);
-        assert_eq!(route_calldata(&data), CallRoute::Meta(meta::VERSION_COUNT));
+        data.extend_from_slice(&meta::LATEST);
+        assert_eq!(route_calldata(&data), CallRoute::Meta(meta::LATEST));
         // Args after the meta selector don't change the route.
         data.extend_from_slice(&[0u8; 32]);
-        assert_eq!(route_calldata(&data), CallRoute::Meta(meta::VERSION_COUNT));
+        assert_eq!(route_calldata(&data), CallRoute::Meta(meta::LATEST));
     }
 
     #[test]

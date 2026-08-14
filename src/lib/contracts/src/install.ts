@@ -5,7 +5,7 @@ import { join } from "path";
 import { maxSatisfying, validRange } from "semver";
 import { stringifyBigInt } from "@parity/cdm-utils";
 import { decodedErrorSignature, type AbiEntry } from "./deployer";
-import { keyToSemver, packVersionKey, semverToKey } from "./proxy";
+import { keyToSemver, semverToKey } from "./proxy";
 import { saveContract } from "./store";
 
 /**
@@ -13,11 +13,9 @@ import { saveContract } from "./store";
  * - `"latest"` — the newest published version;
  * - an exact semver (`"1.2.3"`) — matched against on-chain version keys;
  * - an npm-style semver range (`"^1.2.3"`) — resolved to the greatest
- *   satisfying published version;
- * - a number — a LEGACY registry version INDEX from v1-era manifests,
- *   resolved positionally through the v1 query surface.
+ *   satisfying published version.
  */
-export type InstallRequestedVersion = string | number;
+export type InstallRequestedVersion = string;
 
 export interface InstallLibraryRequest {
     library: string;
@@ -26,22 +24,11 @@ export interface InstallLibraryRequest {
 
 export interface InstallResult {
     library: string;
+    /** The resolved semver — recorded in `cdm.json` and used as the artifact directory. */
+    version: string;
     /**
-     * The value to record in `cdm.json` and use as the artifact directory:
-     * the resolved semver string, or the raw index for legacy numeric
-     * requests.
-     */
-    version: string | number;
-    /**
-     * The resolved version's semver. Equal to `version` for semver-era
-     * requests; derived as `0.0.(index + 1)` — the registry's own rule for
-     * v1 rows — for legacy numeric requests.
-     */
-    semver: string;
-    /**
-     * The address to call: the name's STABLE address (`registry.getAddress`
-     * — the per-name proxy for proxied names) for semver-era requests, or the
-     * pinned version's standalone contract for legacy numeric requests.
+     * The name's STABLE address (`registry.getAddress` — its per-name proxy),
+     * which serves every published version and stays correct across upgrades.
      */
     address: string;
     abi: AbiEntry[];
@@ -62,7 +49,7 @@ export type InstallEvent =
     | {
           type: "query-done";
           library: string;
-          version: string | number;
+          version: string;
           address: string;
           metadataCid: string;
       }
@@ -189,12 +176,10 @@ function queryFailure(action: string, library: string, value: unknown): Error {
 
 /**
  * The resolved target of an install request — everything needed before the
- * metadata fetch. `version`/`semver`/`address` semantics match
- * {@link InstallResult}.
+ * metadata fetch. `version`/`address` semantics match {@link InstallResult}.
  */
 interface ResolvedInstallVersion {
-    version: string | number;
-    semver: string;
+    version: string;
     metadataCid: string;
     contractAddress: string;
 }
@@ -230,11 +215,7 @@ async function queryVersionCount(
     return versionResult.value;
 }
 
-/**
- * One version row by index. `getVersionAt` serves BOTH eras — the registry
- * derives v1 rows' keys as `0.0.(index + 1)` itself — so the returned key is
- * always a packed semver.
- */
+/** One version row by index; the returned key is a packed semver. */
 async function queryVersionRow(
     library: string,
     index: number,
@@ -286,10 +267,9 @@ async function queryAllVersionRows(
 }
 
 /**
- * The name's STABLE address from `getAddress` — the per-name proxy for
- * proxied names, the latest standalone contract for legacy names. This is
- * what goes into `cdm.json` for semver-era requests: the proxy serves every
- * published version, so it stays correct across upgrades.
+ * The name's STABLE address from `getAddress` — its per-name proxy. This is
+ * what goes into `cdm.json`: the proxy serves every published version, so it
+ * stays correct across upgrades.
  */
 async function queryStableAddress(
     library: string,
@@ -318,12 +298,11 @@ async function finishRowResolution(
     registry: RegistryContract,
     registryAddress?: string,
 ): Promise<ResolvedInstallVersion> {
-    const semver = keyToSemver(row.key);
     if (!row.metadataUri) {
         throw new Error(`No metadata URI found for "${library}"`);
     }
     const contractAddress = await queryStableAddress(library, registry, registryAddress);
-    return { version: semver, semver, metadataCid: row.metadataUri, contractAddress };
+    return { version: keyToSemver(row.key), metadataCid: row.metadataUri, contractAddress };
 }
 
 async function resolveLatest(
@@ -369,80 +348,11 @@ async function resolveRange(
     return finishRowResolution(library, rowBySemver.get(best)!, registry, registryAddress);
 }
 
-/**
- * Legacy numeric pins resolve through the v1 query surface — the only one
- * v1-era registries expose — so old manifests keep working against every
- * registry generation. The pinned version's own standalone address is
- * returned (v1 semantics: each version is a separate contract) and the
- * semver derives locally by the registry's v1 rule, `0.0.(index + 1)`.
- */
-async function resolveLegacyIndex(
-    library: string,
-    requestedVersion: number,
-    registry: RegistryContract,
-    registryAddress?: string,
-): Promise<ResolvedInstallVersion> {
-    if (!Number.isInteger(requestedVersion) || requestedVersion < 0) {
-        throw new Error(`Invalid version index ${requestedVersion} for "${library}"`);
-    }
-
-    let metaResult;
-    try {
-        metaResult = await registry.getMetadataUriAtVersion.query(library, requestedVersion);
-    } catch (err) {
-        rethrowRegistryQueryError(
-            err,
-            `Version ${requestedVersion} of "${library}" not found in registry`,
-            registryAddress,
-        );
-    }
-    if (!metaResult.success) {
-        throw queryFailure(
-            `Failed to query metadata URI for version ${requestedVersion}`,
-            library,
-            metaResult.value,
-        );
-    }
-    const metadataCid = unwrapOption<string>(metaResult.value) ?? "";
-    if (!metadataCid) {
-        throw new Error(`Version ${requestedVersion} of "${library}" not found in registry`);
-    }
-
-    let addrResult;
-    try {
-        addrResult = await registry.getAddressAtVersion.query(library, requestedVersion);
-    } catch (err) {
-        rethrowRegistryQueryError(
-            err,
-            `Failed to fetch address for "${library}" version ${requestedVersion} from registry`,
-            registryAddress,
-        );
-    }
-    if (!addrResult.success) {
-        throw queryFailure(
-            `Failed to query address for version ${requestedVersion}`,
-            library,
-            addrResult.value,
-        );
-    }
-    const contractAddress = unwrapOption<string>(addrResult.value) ?? "";
-
-    return {
-        version: requestedVersion,
-        semver: keyToSemver(packVersionKey(0, 0, requestedVersion + 1)),
-        metadataCid,
-        contractAddress,
-    };
-}
-
 function resolveRequestedVersion(
     request: InstallLibraryRequest,
     opts: InstallContractsOptions,
 ): Promise<ResolvedInstallVersion> {
     const { library, requestedVersion } = request;
-    if (typeof requestedVersion === "number") {
-        return resolveLegacyIndex(library, requestedVersion, opts.registry, opts.registryAddress);
-    }
     if (requestedVersion === "latest") {
         return resolveLatest(library, opts.registry, opts.registryAddress);
     }
@@ -466,7 +376,7 @@ function resolveRequestedVersion(
     }
     throw new Error(
         `Invalid version request "${requestedVersion}" for "${library}" — use "latest", ` +
-            `an exact "X.Y.Z", a semver range, or a legacy numeric index`,
+            `an exact "X.Y.Z", or a semver range`,
     );
 }
 
@@ -480,10 +390,7 @@ async function installOne(
     emit?.({ type: "install-start", library, requestedVersion });
     emit?.({ type: "query-start", library });
 
-    const { version, semver, metadataCid, contractAddress } = await resolveRequestedVersion(
-        request,
-        opts,
-    );
+    const { version, metadataCid, contractAddress } = await resolveRequestedVersion(request, opts);
 
     emit?.({ type: "query-done", library, version, address: contractAddress, metadataCid });
     emit?.({ type: "fetch-start", library, metadataCid });
@@ -507,7 +414,6 @@ async function installOne(
     const result = {
         library,
         version,
-        semver,
         address: contractAddress,
         abi: abi as AbiEntry[],
         savedPath,
@@ -582,8 +488,7 @@ if (import.meta.vitest) {
 
     /**
      * Two published rows: 1.0.0 at index 0 and 1.1.0 at index 1, fronted by
-     * a stable (proxy) address. The v1 surface answers index queries so
-     * legacy numeric pins can be exercised against the same fake.
+     * a stable (proxy) address.
      */
     function fakeRegistry() {
         const rows = [
@@ -604,8 +509,6 @@ if (import.meta.vitest) {
                     ),
             },
             getAddress: { query: async () => queryResult(option("0xstable")) },
-            getMetadataUriAtVersion: { query: async () => queryResult(option("bafy-v0")) },
-            getAddressAtVersion: { query: async () => queryResult(option("0xv0")) },
         } as unknown as RegistryContract;
     }
 
@@ -655,7 +558,6 @@ if (import.meta.vitest) {
                 expect(summary.results[0]).toMatchObject({
                     library: "@example/counter",
                     version: "1.1.0",
-                    semver: "1.1.0",
                     address: "0xstable",
                     metadataCid: "bafy-latest",
                 });
@@ -688,7 +590,6 @@ if (import.meta.vitest) {
                 expect(summary.success).toBe(true);
                 expect(summary.results[0]).toMatchObject({
                     version: "1.0.0",
-                    semver: "1.0.0",
                     address: "0xstable",
                     metadataCid: "bafy-v0",
                 });
@@ -732,29 +633,6 @@ if (import.meta.vitest) {
             );
         });
 
-        test("resolves legacy numeric pins by index with the per-version address", async () => {
-            const root = mkdtempSync(join(tmpdir(), "cdm-install-"));
-            process.env.CDM_ROOT = root;
-
-            try {
-                const summary = await installContracts(installOpts(0));
-
-                expect(summary.success).toBe(true);
-                // version stays the raw index (path segment + cdm.json value);
-                // the semver derives by the registry's v1 rule 0.0.(index+1);
-                // the address is THAT version's standalone contract.
-                expect(summary.results[0]).toMatchObject({
-                    version: 0,
-                    semver: "0.0.1",
-                    address: "0xv0",
-                    metadataCid: "bafy-v0",
-                });
-                expect(summary.results[0].savedPath.endsWith("/0")).toBe(true);
-            } finally {
-                rmSync(root, { recursive: true, force: true });
-            }
-        });
-
         test("rejects version requests that are neither semver nor a range", async () => {
             const summary = await installContracts(installOpts("not-a-version"));
 
@@ -770,8 +648,8 @@ if (import.meta.vitest) {
 
             try {
                 const summary = await installContracts(
-                    installOpts(0, {
-                        libraries: [{ library: "@example/missing", requestedVersion: 0 }],
+                    installOpts("latest", {
+                        libraries: [{ library: "@example/missing", requestedVersion: "latest" }],
                         ipfs: {
                             fetch: async () => ({
                                 json: async () => ({ abi: [] }),

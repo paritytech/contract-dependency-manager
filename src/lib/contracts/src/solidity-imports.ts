@@ -115,11 +115,11 @@ export interface SolidityAbiEntry {
 
 export interface SolidityImportContract {
     library: string;
-    /** The name's stable address (per-name proxy for registry-v2 names). */
+    /** The name's stable address (its per-name proxy). */
     address: string;
     abi: SolidityAbiEntry[];
-    /** Semver string, or a numeric legacy registry version index. */
-    version?: string | number;
+    /** Installed semver, recorded in the generated header comment. */
+    version?: string;
 }
 
 export interface SolidityLocalBuildImportContract {

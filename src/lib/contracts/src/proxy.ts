@@ -37,13 +37,10 @@ export const PROXY_META = {
     setMinSupported: "0xe84411e5",
     /** admin (the registry) only */
     setAdmin: "0x704b6c02",
-    versionCount: "0x8aad29e1",
-    versionAt: "0xb79a1b90",
     implOf: "0xdf379e50",
     latest: "0x52bfe789",
     minSupported: "0x900fc468",
     admin: "0xf851a440",
-    resolveMax: "0x8829d71d",
 } as const;
 
 /** Signatures behind each meta selector, for derivation tests and docs. */
@@ -51,13 +48,10 @@ export const PROXY_META_SIGNATURES: Record<keyof typeof PROXY_META, string> = {
     publish: "publish(uint128,address)",
     setMinSupported: "setMinSupported(uint128)",
     setAdmin: "setAdmin(address)",
-    versionCount: "versionCount()",
-    versionAt: "versionAt(uint32)",
     implOf: "implOf(uint128)",
     latest: "latest()",
     minSupported: "minSupported()",
     admin: "admin()",
-    resolveMax: "resolveMax(uint128,uint128)",
 };
 
 /** Revert signatures the proxy can raise, keyed by selector hex. */
@@ -85,7 +79,7 @@ export const PROXY_SLOTS = {
     implementation: "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
     admin: "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103",
     minSupported: "0xfd72a9137a39672ad1c11d82c8f2377dc3795fa498e00ec272c1d6c9fedb4974",
-    versionKeys: "0x4e93495f6e85b7c6270ce6ca5329a45ffd3d2b50e2ffac2c2f3d80e29a7ae4d2",
+    latestKey: "0x7d2e53e7260319608bac9e6f155af7a188ade8cda24ee2259128ceb1248eceb0",
     implOf: "0x95017cb99a656583260fc72407f66dd08850fc86ea2c1cd064a6c3c51785b8ee",
 } as const;
 
@@ -187,12 +181,6 @@ function wordU128(value: bigint): Uint8Array {
     return concatBytes(new Uint8Array(16), u128Bytes(value, "version key"));
 }
 
-function wordU32(value: number): Uint8Array {
-    const word = new Uint8Array(32);
-    new DataView(word.buffer).setUint32(28, value);
-    return word;
-}
-
 function wordAddress(address: string): Uint8Array {
     const bytes = hexToBytes(address, "address");
     if (bytes.length !== 20) {
@@ -267,14 +255,6 @@ export function encodeProxySetAdmin(admin: string): Hex {
     return encodeMetaCall(PROXY_META.setAdmin, wordAddress(admin));
 }
 
-export function encodeProxyVersionCount(): Hex {
-    return encodeMetaCall(PROXY_META.versionCount);
-}
-
-export function encodeProxyVersionAt(index: number): Hex {
-    return encodeMetaCall(PROXY_META.versionAt, wordU32(index));
-}
-
 export function encodeProxyImplOf(key: bigint): Hex {
     return encodeMetaCall(PROXY_META.implOf, wordU128(key));
 }
@@ -291,18 +271,13 @@ export function encodeProxyAdmin(): Hex {
     return encodeMetaCall(PROXY_META.admin);
 }
 
-/** Greatest published key in `[lo, hi]` (0 = none) — binary search on-chain. */
-export function encodeProxyResolveMax(lo: bigint, hi: bigint): Hex {
-    return encodeMetaCall(PROXY_META.resolveMax, wordU128(lo), wordU128(hi));
-}
-
 // ─── Meta return decoders ──────────────────────────────────────────────────
 
 function toBytesInput(data: Hex | Uint8Array): Uint8Array {
     return typeof data === "string" ? hexToBytes(data, "meta return data") : data;
 }
 
-/** Decode a single u128 word (`versionCount`, `minSupported`, `resolveMax`). */
+/** Decode a single u128 word (`minSupported`). */
 export function decodeU128Word(data: Hex | Uint8Array): bigint {
     return wordToU128(readWord(toBytesInput(data), 0, "u128 word"), "u128 word");
 }
@@ -312,7 +287,7 @@ export function decodeAddressWord(data: Hex | Uint8Array): Hex {
     return wordToAddress(readWord(toBytesInput(data), 0, "address word"));
 }
 
-/** Decode a `(u128 key, address)` pair (`versionAt`, `latest`). */
+/** Decode a `(u128 key, address)` pair (`latest`). */
 export function decodeVersionPair(data: Hex | Uint8Array): { key: bigint; target: Hex } {
     const bytes = toBytesInput(data);
     return {
@@ -358,7 +333,7 @@ if (import.meta.vitest) {
             expect(slot("eip1967.proxy.implementation")).toBe(PROXY_SLOTS.implementation);
             expect(slot("eip1967.proxy.admin")).toBe(PROXY_SLOTS.admin);
             expect(slot("cdm.proxy.min_supported")).toBe(PROXY_SLOTS.minSupported);
-            expect(slot("cdm.proxy.version_keys")).toBe(PROXY_SLOTS.versionKeys);
+            expect(slot("cdm.proxy.latest_key")).toBe(PROXY_SLOTS.latestKey);
             expect(slot("cdm.proxy.impl_of")).toBe(PROXY_SLOTS.implOf);
         });
     });

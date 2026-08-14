@@ -1,5 +1,6 @@
 import { dirname, relative, resolve } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { keccak_256 } from "@noble/hashes/sha3.js";
 import type { PolkadotSigner, SS58String, HexString } from "polkadot-api";
 import { getRegistryAddress, type CdmChainClient } from "@parity/cdm-env";
 import {
@@ -37,9 +38,9 @@ import {
     type SolidityAbiEntry,
     solidityImportPathForLibrary,
 } from "./solidity-imports";
-import { ContractDeployer, type AbiEntry, type Metadata } from "./deployer";
+import { ContractDeployer, type AbiEntry, type AbiParam, type Metadata } from "./deployer";
 import { MetadataPublisher } from "./publisher";
-import { isPublishableKey, keyToSemver, semverToKey } from "./proxy";
+import { isPublishableKey, keyToSemver, PROXY_MAGIC, semverToKey } from "./proxy";
 
 async function queryRegistryLatestKeys(
     contract: Contract<ContractDef>,
@@ -60,9 +61,8 @@ async function queryRegistryLatestKeys(
 }
 
 /**
- * The name's STABLE address from `registry.getAddress` — the per-name proxy
- * for proxied names, the latest standalone contract for legacy (v1-era)
- * names. This is the address consumers call and the one baked into generated
+ * The name's STABLE address from `registry.getAddress` — its per-name proxy.
+ * This is the address consumers call and the one baked into generated
  * imports; the per-version implementation address is a registry detail.
  */
 async function queryRegistryStableAddress(
@@ -952,6 +952,36 @@ function readStorageLayout(path: string | undefined): unknown {
     return undefined;
 }
 
+/** Canonical ABI signature (`name(type1,type2)`) with tuple components expanded. */
+function abiFunctionSignature(entry: AbiEntry): string {
+    const canonicalType = (param: AbiParam): string => {
+        const match = param.type.match(/^tuple((?:\[\d*\])*)$/);
+        if (!match) return param.type;
+        return `(${(param.components ?? []).map(canonicalType).join(",")})${match[1]}`;
+    };
+    return `${entry.name}(${(entry.inputs ?? []).map(canonicalType).join(",")})`;
+}
+
+/**
+ * ABI function signatures whose 4-byte selector equals `magic` (`PROXY_MAGIC`
+ * in production; injectable only because no signature colliding with the real
+ * magic is known to test with). Calldata starting with those bytes is claimed
+ * by the per-name proxy's versioned/meta plane, so a colliding method is
+ * unreachable through the proxy's plain (latest-version) call path.
+ */
+function findProxyMagicCollisions(abi: AbiEntry[], magic: string = PROXY_MAGIC): string[] {
+    return abi
+        .filter((entry) => entry.type === "function" && entry.name)
+        .map(abiFunctionSignature)
+        .filter((signature) => {
+            const hash = keccak_256(new TextEncoder().encode(signature));
+            const selector = Array.from(hash.subarray(0, 4), (byte) =>
+                byte.toString(16).padStart(2, "0"),
+            ).join("");
+            return `0x${selector}` === magic;
+        });
+}
+
 function writeSolidityImportForDeployable(
     rootDir: string,
     deployable: DeployableContract,
@@ -1226,6 +1256,16 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     const readmeContent = readReadmeContent(contract.readmePath);
                     const repository = contract.repository ?? getGitRemoteUrl(opts.rootDir) ?? "";
                     const abi = readAbiEntries(deployable.abiPath);
+                    for (const signature of findProxyMagicCollisions(abi)) {
+                        emit({
+                            type: "log",
+                            source: "publish",
+                            line:
+                                `warning: ${deployable.cdmPackage} function ${signature} has ` +
+                                `selector ${PROXY_MAGIC}, the CDM proxy call prefix — plain calls ` +
+                                `through the name's proxy will never reach it`,
+                        });
+                    }
                     const storageLayout = readStorageLayout(deployable.abiPath);
                     const meta: Metadata = {
                         publish_block: 0,
@@ -1866,6 +1906,44 @@ if (import.meta.vitest) {
                 expect.any(Array),
                 expect.any(Object),
             );
+        });
+    });
+
+    describe("findProxyMagicCollisions", () => {
+        test("flags functions whose canonical selector matches the proxy magic", () => {
+            const transfer: AbiEntry = {
+                type: "function",
+                name: "transfer",
+                inputs: [
+                    { name: "to", type: "address" },
+                    { name: "amount", type: "uint256" },
+                ],
+                outputs: [],
+            };
+            const sweep: AbiEntry = {
+                type: "function",
+                name: "sweep",
+                inputs: [
+                    {
+                        name: "batch",
+                        type: "tuple[]",
+                        components: [
+                            { name: "to", type: "address" },
+                            { name: "amount", type: "uint256" },
+                        ],
+                    },
+                ],
+                outputs: [],
+            };
+            // transfer(address,uint256) → 0xa9059cbb, standing in for the magic
+            // to exercise the collision path.
+            expect(findProxyMagicCollisions([transfer, sweep], "0xa9059cbb")).toEqual([
+                "transfer(address,uint256)",
+            ]);
+            // Tuples expand to canonical component lists before hashing.
+            expect(abiFunctionSignature(sweep)).toBe("sweep((address,uint256)[])");
+            // Nothing in an ordinary ABI collides with the real magic.
+            expect(findProxyMagicCollisions([transfer, sweep])).toEqual([]);
         });
     });
 

@@ -41,10 +41,10 @@ pub const FROZEN_SLOT: [u8; 32] = eip1967_slot(b"cdm.registry.frozen");
 /// `0xfd72a9137a39672ad1c11d82c8f2377dc3795fa498e00ec272c1d6c9fedb4974`
 pub const MIN_SUPPORTED_SLOT: [u8; 32] = eip1967_slot(b"cdm.proxy.min_supported");
 
-/// Per-name proxy: root of the append-only sorted `StorageVec<u128>` of
-/// published version keys.
-/// `0x4e93495f6e85b7c6270ce6ca5329a45ffd3d2b50e2ffac2c2f3d80e29a7ae4d2`
-pub const VERSION_KEYS_SLOT: [u8; 32] = eip1967_slot(b"cdm.proxy.version_keys");
+/// Per-name proxy: the latest published version key, for the monotonic
+/// publish check and the `latest()` meta query. Zero before first publish.
+/// `0x7d2e53e7260319608bac9e6f155af7a188ade8cda24ee2259128ceb1248eceb0`
+pub const LATEST_KEY_SLOT: [u8; 32] = eip1967_slot(b"cdm.proxy.latest_key");
 
 /// Per-name proxy: root of the `Mapping<u128, Address>` from version key to
 /// implementation.
@@ -82,7 +82,7 @@ mod tests {
             ADMIN_SLOT,
             FROZEN_SLOT,
             MIN_SUPPORTED_SLOT,
-            VERSION_KEYS_SLOT,
+            LATEST_KEY_SLOT,
             IMPL_OF_SLOT,
         ];
         for (i, a) in all.iter().enumerate() {
@@ -100,8 +100,8 @@ mod tests {
             "fd72a9137a39672ad1c11d82c8f2377dc3795fa498e00ec272c1d6c9fedb4974"
         );
         assert_eq!(
-            hex(VERSION_KEYS_SLOT),
-            "4e93495f6e85b7c6270ce6ca5329a45ffd3d2b50e2ffac2c2f3d80e29a7ae4d2"
+            hex(LATEST_KEY_SLOT),
+            "7d2e53e7260319608bac9e6f155af7a188ade8cda24ee2259128ceb1248eceb0"
         );
         assert_eq!(
             hex(IMPL_OF_SLOT),

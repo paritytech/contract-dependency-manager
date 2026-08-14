@@ -25,8 +25,6 @@ import {
     encodeProxyLatest,
     encodeProxyMinSupported,
     encodeProxyPublish,
-    encodeProxyResolveMax,
-    encodeProxyVersionCount,
     encodeVersionedCall,
     packVersionKey,
 } from "@parity/cdm-builder/proxy";
@@ -265,10 +263,7 @@ describe("multiple versions over one storage", () => {
 });
 
 describe("meta plane", () => {
-    test("versionCount / latest / implOf / admin / minSupported", async () => {
-        const count = await dryRunCall(proxyAddress, encodeProxyVersionCount());
-        expect(count.data).toBe(`0x${u128Word(2n)}`);
-
+    test("latest / implOf / admin / minSupported", async () => {
         const latest = await dryRunCall(proxyAddress, encodeProxyLatest());
         expect(latest.data).toBe(`0x${u128Word(KEY_1_1_0)}${addressWord(implB)}`);
 
@@ -281,22 +276,6 @@ describe("meta plane", () => {
 
         const min = await dryRunCall(proxyAddress, encodeProxyMinSupported());
         expect(min.data).toBe(`0x${u128Word(0n)}`);
-    });
-
-    test("resolveMax binary-searches the published range", async () => {
-        // ^1.0.0 → highest published 1.x = 1.1.0
-        const r = await dryRunCall(
-            proxyAddress,
-            encodeProxyResolveMax(KEY_1_0_0, packVersionKey(1, 0xffffffff, 0xffffffff)),
-        );
-        expect(r.data).toBe(`0x${u128Word(KEY_1_1_0)}`);
-
-        // An empty range resolves to 0.
-        const none = await dryRunCall(
-            proxyAddress,
-            encodeProxyResolveMax(packVersionKey(2, 0, 0), packVersionKey(3, 0, 0)),
-        );
-        expect(none.data).toBe(`0x${u128Word(0n)}`);
     });
 
     test("meta admin ops from a non-registry caller revert", async () => {

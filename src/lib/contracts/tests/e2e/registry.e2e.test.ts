@@ -190,20 +190,6 @@ describe("registry publish + post-publish queries", () => {
         expect(opt.value).toBe(URI);
     });
 
-    test("getAddressAtVersion(0) returns that version's target", async () => {
-        const r = await registry.getAddressAtVersion.query(NAME, 0);
-        const opt = unwrapOption<string>(r.value);
-        expect(opt.isSome).toBe(true);
-        expect(lc(opt.value)).toBe(lc(ADDR));
-    });
-
-    test("getMetadataUriAtVersion(0) matches the latest URI", async () => {
-        const r = await registry.getMetadataUriAtVersion.query(NAME, 0);
-        const opt = unwrapOption<string>(r.value);
-        expect(opt.isSome).toBe(true);
-        expect(opt.value).toBe(URI);
-    });
-
     test("getContractNameAt(baseline) returns the registered name", async () => {
         const r = await registry.getContractNameAt.query(baselineCount);
         expect(r.value).toBe(NAME);

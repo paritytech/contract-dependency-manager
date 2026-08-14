@@ -3,16 +3,15 @@ import { resolve } from "path";
 import { getCdmRoot, getContractDir, resolveContractAbiPath } from "@parity/cdm-builder";
 import type { ResolvedContract, AbiEntry } from "./types";
 
-export function resolveContract(library: string, version: number | "latest"): ResolvedContract {
-    // If version is "latest", resolve the symlink
-    let resolvedVersion: number;
+export function resolveContract(library: string, version: string): ResolvedContract {
+    // If version is "latest", resolve the symlink to its semver directory
+    let resolvedVersion: string;
     if (version === "latest") {
         const latestLink = resolve(getCdmRoot(), "contracts", library, "latest");
         if (!existsSync(latestLink)) {
             throw new Error(`No "latest" symlink found for ${library}`);
         }
-        const realPath = realpathSync(latestLink);
-        resolvedVersion = parseInt(realPath.split("/").pop()!, 10);
+        resolvedVersion = realpathSync(latestLink).split("/").pop()!;
     } else {
         resolvedVersion = version;
     }

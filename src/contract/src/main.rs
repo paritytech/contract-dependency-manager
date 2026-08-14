@@ -7,12 +7,7 @@
 //! The registry is also a factory: the first publish of a name instantiates
 //! that name's per-name proxy (`contract-proxy`) at a deterministic CREATE2
 //! address (`salt = keccak256(name)`, empty constructor input), then every
-//! version publish registers `(version key, implementation)` with it. Names
-//! recorded by the v1 registry have no proxy (`info.proxy == 0`, "legacy");
-//! their version keys derive as `0.0.(index + 1)` and their first post-v2
-//! publish upgrades them onto a proxy. The v1 → v2 storage layout is
-//! append-only, so `setCode` needs no data migration (see `NamedContractInfo`
-//! and the `key_of` mapping).
+//! version publish registers `(version key, implementation)` with it.
 //!
 //! The admin, implementation, and frozen flags live at fixed pseudo-random
 //! slots (see `contract_registry_core::slots`) so future implementations can
@@ -41,9 +36,7 @@ mod contract_registry {
     use contract_registry_core::MAX_PAGE_LIMIT;
     use contract_registry_core::naming::validate_contract_name;
     use contract_registry_core::slots::{ADMIN_SLOT, FROZEN_SLOT, IMPLEMENTATION_SLOT};
-    use contract_registry_core::versioning::{
-        MAGIC, META_KEY, is_publishable_key, meta, pack_version,
-    };
+    use contract_registry_core::versioning::{MAGIC, META_KEY, is_publishable_key, meta};
     use pvm_contract_sdk::{Address, CallFlags, HostApi, Lazy, Mapping, StorageVec};
 
     #[derive(pvm_contract_sdk::SolEvent)]
@@ -90,22 +83,15 @@ mod contract_registry {
         pub frozen: bool,
     }
 
-    /// Slot layout is append-only against the v1 registry so `setCode` never
-    /// migrates data: slots 0–3 keep their v1 meaning (with `info` values
-    /// growing into a second, previously-zero slot), slots 4+ are new.
     pub struct ContractRegistry {
         /// Registered names in registration order; drives `getContracts` paging.
         names: StorageVec<String>,
-        /// Name → owner, version count, per-name proxy (zero = legacy).
+        /// Name → owner, version count, per-name proxy.
         info: Mapping<String, NamedContractInfo>,
-        /// name → version index → target (implementation for proxied names,
-        /// the standalone published contract for legacy versions).
-        address_of: Mapping<String, Mapping<u32, Address>>,
+        /// name → version index → (packed semver key, implementation).
+        versions: Mapping<String, Mapping<u32, VersionRecord>>,
         /// name → version index → metadata URI (Bulletin/IPFS).
         metadata_uri_of: Mapping<String, Mapping<u32, String>>,
-        /// name → version index → packed semver key. Zero (v1 rows, which
-        /// never wrote this mapping) derives as `0.0.(index + 1)`.
-        key_of: Mapping<String, Mapping<u32, u128>>,
         /// Mirror of each proxy's min-supported floor, for cheap reads.
         min_supported_of: Mapping<String, u128>,
         /// Code hash of the per-name proxy blob (pre-uploaded per chain);
@@ -260,7 +246,7 @@ mod contract_registry {
                 return Err(Unauthorized.into());
             }
 
-            if let Some(latest) = self.latest_key_of(&contract_name, &info) {
+            if let Some(latest) = self.latest_key(&contract_name, &info) {
                 if version_key <= latest {
                     return Err(VersionNotMonotonic {
                         attempted: version_key,
@@ -287,12 +273,13 @@ mod contract_registry {
                 self.names.push(&contract_name);
             }
             self.info.insert(&contract_name, &info);
-            self.address_of
-                .view_mut(&contract_name)
-                .insert(&index, &target);
-            self.key_of
-                .view_mut(&contract_name)
-                .insert(&index, &version_key);
+            self.versions.view_mut(&contract_name).insert(
+                &index,
+                &VersionRecord {
+                    version_key,
+                    target,
+                },
+            );
             self.metadata_uri_of
                 .view_mut(&contract_name)
                 .insert(&index, &metadata_uri);
@@ -321,9 +308,6 @@ mod contract_registry {
             if info.version_count == 0 || info.owner != self.caller() {
                 return Err(Unauthorized.into());
             }
-            if info.proxy == Address::ZERO {
-                return Err(NoProxy.into());
-            }
 
             let mut calldata = meta_header(meta::SET_MIN_SUPPORTED);
             calldata.extend_from_slice(&word_u128(version_key));
@@ -340,15 +324,14 @@ mod contract_registry {
 
         // ─── Queries ─────────────────────────────────────────────────────
 
-        /// The name's stable address, as an option-shaped
-        /// `(bool isSome, address value)` tuple. For proxied names this is
-        /// the per-name proxy (permanent); for legacy names, the latest
-        /// published contract. This is the hot path used by `cdm::import!`
-        /// runtime lookups — its 64-byte wire format is frozen.
+        /// The name's stable address — its per-name proxy — as an
+        /// option-shaped `(bool isSome, address value)` tuple. This is the
+        /// hot path used by `cdm::import!` runtime lookups — its 64-byte
+        /// wire format is frozen.
         #[pvm_contract_sdk::method]
         pub fn get_address(&self, contract_name: String) -> OptionalAddress {
             let info = self.info.get(&contract_name);
-            self.resolved_address(&contract_name, &info).into()
+            (info.version_count > 0).then_some(info.proxy).into()
         }
 
         /// Latest metadata URI for `contract_name`, option-shaped.
@@ -359,18 +342,18 @@ mod contract_registry {
                 .into()
         }
 
-        /// The name's per-name proxy, option-shaped; none for legacy names.
+        /// The name's per-name proxy, option-shaped. Alias of `getAddress`,
+        /// kept for tooling that asks the explicit question.
         #[pvm_contract_sdk::method]
         pub fn get_proxy(&self, contract_name: String) -> OptionalAddress {
-            let proxy = self.info.get(&contract_name).proxy;
-            (proxy != Address::ZERO).then_some(proxy).into()
+            self.get_address(contract_name)
         }
 
         /// Latest published version key; zero for unregistered names.
         #[pvm_contract_sdk::method]
         pub fn get_latest_key(&self, contract_name: String) -> u128 {
             let info = self.info.get(&contract_name);
-            self.latest_key_of(&contract_name, &info).unwrap_or(0)
+            self.latest_key(&contract_name, &info).unwrap_or(0)
         }
 
         /// The name's min-supported floor (registry mirror); zero = none.
@@ -390,36 +373,13 @@ mod contract_registry {
                     metadata_uri: String::new(),
                 };
             }
+            let record = self.versions.view(&contract_name).get(&index);
             OptionalVersionEntry {
                 is_some: true,
-                version_key: self.key_at(&contract_name, index),
-                target: self.address_of.view(&contract_name).get(&index),
+                version_key: record.version_key,
+                target: record.target,
                 metadata_uri: self.metadata_uri_of.view(&contract_name).get(&index),
             }
-        }
-
-        /// Target address at a version index (implementation for proxied
-        /// names, standalone contract for legacy), option-shaped.
-        #[pvm_contract_sdk::method]
-        pub fn get_address_at_version(
-            &self,
-            contract_name: String,
-            version: u32,
-        ) -> OptionalAddress {
-            self.version_exists(&contract_name, version)
-                .then(|| self.address_of.view(&contract_name).get(&version))
-                .into()
-        }
-
-        #[pvm_contract_sdk::method]
-        pub fn get_metadata_uri_at_version(
-            &self,
-            contract_name: String,
-            version: u32,
-        ) -> OptionalString {
-            self.version_exists(&contract_name, version)
-                .then(|| self.metadata_uri_of.view(&contract_name).get(&version))
-                .into()
         }
 
         /// The contract name at a registration index; empty when out of range.
@@ -491,45 +451,18 @@ mod contract_registry {
             version < self.info.get(contract_name).version_count
         }
 
-        /// Version key at an index; v1 rows (which never wrote `key_of`)
-        /// derive as `0.0.(index + 1)` — index 0 was "version 0" but key 0
-        /// is the reserved meta namespace.
-        fn key_at(&self, contract_name: &String, index: u32) -> u128 {
-            let key = self.key_of.view(contract_name).get(&index);
-            if key != 0 {
-                key
-            } else {
-                pack_version(0, 0, index.saturating_add(1))
-            }
-        }
-
-        fn latest_key_of(&self, contract_name: &String, info: &NamedContractInfo) -> Option<u128> {
+        fn latest_key(&self, contract_name: &String, info: &NamedContractInfo) -> Option<u128> {
             info.version_count
                 .checked_sub(1)
-                .map(|index| self.key_at(contract_name, index))
-        }
-
-        /// `getAddress` semantics: the proxy when one exists, else the
-        /// latest published contract (legacy), else none.
-        fn resolved_address(
-            &self,
-            contract_name: &String,
-            info: &NamedContractInfo,
-        ) -> Option<Address> {
-            if info.proxy != Address::ZERO {
-                return Some(info.proxy);
-            }
-            info.version_count
-                .checked_sub(1)
-                .map(|index| self.address_of.view(contract_name).get(&index))
+                .map(|index| self.versions.view(contract_name).get(&index).version_key)
         }
 
         fn latest_entry(&self, name: String) -> Option<ContractEntry> {
             let info = self.info.get(&name);
             let index = info.version_count.checked_sub(1)?;
             Some(ContractEntry {
-                version_key: self.key_at(&name, index),
-                address: self.resolved_address(&name, &info)?,
+                version_key: self.versions.view(&name).get(&index).version_key,
+                address: info.proxy,
                 metadata_uri: self.metadata_uri_of.view(&name).get(&index),
                 owner: info.owner,
                 name,
@@ -612,8 +545,11 @@ mod contract_registry {
                 return Err(ImportContractExists.into());
             }
 
-            let mut addresses = self.address_of.view_mut(&contract_name);
-            let mut keys = self.key_of.view_mut(&contract_name);
+            if contract.proxy == Address::ZERO {
+                return Err(NoProxy.into());
+            }
+
+            let mut versions = self.versions.view_mut(&contract_name);
             let mut metadata_uris = self.metadata_uri_of.view_mut(&contract_name);
             let mut version_count: u32 = 0;
             let mut last_key: u128 = 0;
@@ -629,8 +565,13 @@ mod contract_registry {
                     .into());
                 }
                 last_key = version.version_key;
-                addresses.insert(&version_count, &version.target);
-                keys.insert(&version_count, &version.version_key);
+                versions.insert(
+                    &version_count,
+                    &VersionRecord {
+                        version_key: version.version_key,
+                        target: version.target,
+                    },
+                );
                 metadata_uris.insert(&version_count, &version.metadata_uri);
                 version_count = version_count.checked_add(1).ok_or(VersionOverflow)?;
             }
@@ -778,8 +719,6 @@ mod tests {
         }
     }
 
-    const LEGACY: [u8; 20] = [0u8; 20];
-
     fn word_addr(address: [u8; 20]) -> [u8; 32] {
         let mut word = [0u8; 32];
         word[12..].copy_from_slice(&address);
@@ -881,8 +820,8 @@ mod tests {
         assert_eq!(contract.get_metadata_uri(NAME.into()), some_uri(URI_1));
         // The implementation is recorded per version.
         assert_eq!(
-            contract.get_address_at_version(NAME.into(), 0),
-            some_addr(ADDR_1)
+            contract.get_version_at(NAME.into(), 0).target,
+            Address(ADDR_1)
         );
         assert_eq!(contract.get_contract_count(), 1);
         assert_eq!(contract.get_contract_name_at(0), NAME);
@@ -1051,126 +990,6 @@ mod tests {
         assert_eq!(contract.get_contract_count(), 0);
     }
 
-    // ─── Legacy names (v1 records: no proxy, derived keys) ───────────────────
-
-    #[test]
-    fn legacy_versions_derive_keys_and_resolve_last_address() {
-        let (mut contract, _mock) = deployed(ADMIN);
-        contract
-            .admin_import_contracts(vec![import(
-                NAME,
-                ALICE,
-                LEGACY,
-                &[
-                    (pack_version(0, 0, 1), ADDR_1, "ipfs://a0"),
-                    (pack_version(0, 0, 2), ADDR_2, "ipfs://a1"),
-                ],
-            )])
-            .unwrap();
-
-        // No proxy: getAddress falls back to the latest published contract,
-        // exactly the v1 semantics.
-        assert_eq!(contract.get_proxy(NAME.into()), none_addr());
-        assert_eq!(contract.get_address(NAME.into()), some_addr(ADDR_2));
-        assert_eq!(contract.get_latest_key(NAME.into()), pack_version(0, 0, 2));
-    }
-
-    #[test]
-    fn pre_upgrade_rows_read_as_legacy_with_derived_keys() {
-        // Simulate a v1 record surviving `setCode`: version rows exist but
-        // `key_of` was never written (v1 had no such mapping) and the info
-        // row has no proxy word. The in-place upgrade must read it as legacy
-        // with keys 0.0.(index+1). Import under distinctive keys, then erase
-        // exactly those key rows to reproduce the v1 layout — if the erase
-        // missed, the assertions below would see 1.0.0/2.0.0, not the
-        // derived legacy keys.
-        let (mut contract, mock) = deployed(ADMIN);
-        contract
-            .admin_import_contracts(vec![import(
-                NAME,
-                ALICE,
-                LEGACY,
-                &[(V1_0_0, ADDR_1, URI_1), (V2_0_0, ADDR_2, URI_2)],
-            )])
-            .unwrap();
-        let dump = mock.storage_dump();
-        let key_rows: Vec<_> = dump
-            .iter()
-            .filter(|(_, value)| {
-                value.as_slice() == word_u128(V1_0_0).as_slice()
-                    || value.as_slice() == word_u128(V2_0_0).as_slice()
-            })
-            .map(|(key, _)| key.clone())
-            .collect();
-        assert_eq!(key_rows.len(), 2, "expected exactly the two key_of rows");
-        for row in key_rows {
-            mock.set_raw_storage(row, vec![0u8; 32]);
-        }
-
-        assert_eq!(contract.get_latest_key(NAME.into()), pack_version(0, 0, 2));
-        assert_eq!(
-            contract.get_version_at(NAME.into(), 0),
-            OptionalVersionEntry {
-                is_some: true,
-                version_key: pack_version(0, 0, 1),
-                target: Address(ADDR_1),
-                metadata_uri: URI_1.into(),
-            }
-        );
-    }
-
-    #[test]
-    fn first_v2_publish_on_legacy_name_creates_proxy_and_flips_address() {
-        let (mut contract, mock) = deployed(ADMIN);
-        contract
-            .admin_import_contracts(vec![import(
-                NAME,
-                ALICE,
-                LEGACY,
-                &[(pack_version(0, 0, 1), ADDR_1, URI_1)],
-            )])
-            .unwrap();
-
-        // A key at or below the derived legacy latest is rejected.
-        let (mut as_alice, mock) = fork_with_caller(&mock, ALICE);
-        assert_eq!(
-            as_alice.publish(
-                NAME.into(),
-                pack_version(0, 0, 1),
-                Address(ADDR_2),
-                URI_2.into()
-            ),
-            Err(VersionNotMonotonic {
-                attempted: pack_version(0, 0, 1),
-                latest: pack_version(0, 0, 1),
-            }
-            .into())
-        );
-
-        // The owner's next real version upgrades the name onto a proxy.
-        assert_eq!(
-            as_alice.publish(NAME.into(), V1_0_0, Address(ADDR_2), URI_2.into()),
-            Ok(())
-        );
-        assert_eq!(as_alice.get_proxy(NAME.into()), some_addr(PROXY));
-        assert_eq!(as_alice.get_address(NAME.into()), some_addr(PROXY));
-        assert_eq!(as_alice.get_version_count(NAME.into()), 2);
-        // History spans both eras.
-        assert_eq!(
-            as_alice.get_version_at(NAME.into(), 0).version_key,
-            pack_version(0, 0, 1)
-        );
-        assert_eq!(as_alice.get_version_at(NAME.into(), 1).version_key, V1_0_0);
-        // Only the new version was registered with the proxy.
-        assert_eq!(
-            mock.take_recorded_calls(),
-            vec![(
-                PROXY,
-                meta_calldata(meta::PUBLISH, &[&word_u128(V1_0_0), &word_addr(ADDR_2)]),
-            )]
-        );
-    }
-
     // ─── setMinSupported ─────────────────────────────────────────────────────
 
     #[test]
@@ -1195,22 +1014,12 @@ mod tests {
     }
 
     #[test]
-    fn set_min_supported_requires_owner_and_proxy() {
-        let (mut contract, mock) = deployed(ADMIN);
-        // A legacy name and a proxied name, both owned by ALICE.
-        contract
-            .admin_import_contracts(vec![import(
-                "@cdm/legacy",
-                ALICE,
-                LEGACY,
-                &[(pack_version(0, 0, 1), ADDR_1, URI_1)],
-            )])
-            .unwrap();
-        let (mut as_alice, alice_mock) = fork_with_caller(&mock, ALICE);
-        publish(&mut as_alice, NAME, V1_0_0, ADDR_1, URI_1);
+    fn set_min_supported_requires_owner() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
 
         // Not the owner (also covers unregistered names, which have no owner).
-        let (mut as_bob, _) = fork_with_caller(&alice_mock, BOB);
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
         assert_eq!(
             as_bob.set_min_supported(NAME.into(), V1_0_0),
             Err(Unauthorized.into())
@@ -1218,12 +1027,6 @@ mod tests {
         assert_eq!(
             as_bob.set_min_supported("@cdm/missing".into(), V1_0_0),
             Err(Unauthorized.into())
-        );
-
-        // Owner, but a legacy name has no proxy to enforce the floor.
-        assert_eq!(
-            as_alice.set_min_supported("@cdm/legacy".into(), pack_version(0, 0, 1)),
-            Err(NoProxy.into())
         );
     }
 
@@ -1238,11 +1041,6 @@ mod tests {
         assert_eq!(contract.get_proxy(NAME.into()), none_addr());
         assert_eq!(contract.get_latest_key(NAME.into()), 0);
         assert_eq!(contract.get_min_supported(NAME.into()), 0);
-        assert_eq!(contract.get_address_at_version(NAME.into(), 0), none_addr());
-        assert_eq!(
-            contract.get_metadata_uri_at_version(NAME.into(), 0),
-            none_uri()
-        );
         assert!(!contract.get_version_at(NAME.into(), 0).is_some);
         assert_eq!(contract.get_owner(NAME.into()), Address::ZERO);
         assert_eq!(contract.get_version_count(NAME.into()), 0);
@@ -1255,21 +1053,22 @@ mod tests {
 
     #[test]
     fn get_contracts_pages_latest_entries_by_registration_order() {
-        // Legacy histories (distinct addresses, no instantiation) plus one
-        // proxied name, to cover both entry shapes.
+        // Two imported histories plus one live publish; every entry resolves
+        // to its proxy (all the same address under MockHost's single global
+        // instantiate mock).
         let (mut contract, _mock) = deployed(ALICE);
         contract
             .admin_import_contracts(vec![
                 import(
                     "@cdm/alpha",
                     ALICE,
-                    LEGACY,
+                    PROXY,
                     &[(pack_version(0, 0, 1), ADDR_1, "ipfs://alpha")],
                 ),
                 import(
                     "@cdm/beta",
                     ALICE,
-                    LEGACY,
+                    PROXY,
                     &[
                         (pack_version(0, 0, 1), ADDR_1, "ipfs://beta-v0"),
                         (pack_version(0, 0, 2), ADDR_2, "ipfs://beta-v1"),
@@ -1286,9 +1085,9 @@ mod tests {
             metadata_uri: uri.into(),
             owner: Address(ALICE),
         };
-        // Legacy entries resolve to their latest target; proxied to the proxy.
-        let alpha = || entry("@cdm/alpha", pack_version(0, 0, 1), ADDR_1, "ipfs://alpha");
-        let beta = || entry("@cdm/beta", pack_version(0, 0, 2), ADDR_2, "ipfs://beta-v1");
+
+        let alpha = || entry("@cdm/alpha", pack_version(0, 0, 1), PROXY, "ipfs://alpha");
+        let beta = || entry("@cdm/beta", pack_version(0, 0, 2), PROXY, "ipfs://beta-v1");
         let gamma = || entry("@cdm/gamma", V1_0_0, PROXY, "ipfs://gamma");
 
         // Full page: every entry carries its latest version.
@@ -1315,7 +1114,7 @@ mod tests {
                 import(
                     &format!("@scope/pkg{i}"),
                     ALICE,
-                    LEGACY,
+                    PROXY,
                     &[(pack_version(0, 0, 1), ADDR_1, URI_1)],
                 )
             })
@@ -1345,7 +1144,7 @@ mod tests {
             import(
                 "@cdm/alpha",
                 ALICE,
-                LEGACY,
+                PROXY,
                 &[
                     (pack_version(0, 0, 1), ADDR_1, "ipfs://a0"),
                     (pack_version(0, 0, 2), ADDR_2, "ipfs://a1"),
@@ -1362,21 +1161,17 @@ mod tests {
         // Versions land in payload order; the latest resolves.
         assert_eq!(contract.get_version_count("@cdm/alpha".into()), 2);
         assert_eq!(contract.get_owner("@cdm/alpha".into()), Address(ALICE));
-        assert_eq!(contract.get_address("@cdm/alpha".into()), some_addr(ADDR_2));
-        assert_eq!(
-            contract.get_address_at_version("@cdm/alpha".into(), 0),
-            some_addr(ADDR_1)
-        );
-        assert_eq!(
-            contract.get_metadata_uri_at_version("@cdm/alpha".into(), 0),
-            some_uri("ipfs://a0")
-        );
+        assert_eq!(contract.get_address("@cdm/alpha".into()), some_addr(PROXY));
+        let first = contract.get_version_at("@cdm/alpha".into(), 0);
+        assert_eq!(first.version_key, pack_version(0, 0, 1));
+        assert_eq!(first.target, Address(ADDR_1));
+        assert_eq!(first.metadata_uri, "ipfs://a0");
         assert_eq!(
             contract.get_metadata_uri("@cdm/alpha".into()),
             some_uri("ipfs://a1")
         );
 
-        // A proxied import resolves to its recorded proxy.
+        // Every import resolves to its recorded proxy.
         assert_eq!(contract.get_version_count("@cdm/beta".into()), 1);
         assert_eq!(contract.get_owner("@cdm/beta".into()), Address(BOB));
         assert_eq!(contract.get_address("@cdm/beta".into()), some_addr(PROXY));
@@ -1390,7 +1185,7 @@ mod tests {
             .admin_import_contracts(vec![import(
                 "@cdm/alpha",
                 ALICE,
-                LEGACY,
+                PROXY,
                 &[(pack_version(0, 0, 1), ADDR_1, URI_1)],
             )])
             .unwrap();
@@ -1413,7 +1208,7 @@ mod tests {
             as_alice.admin_import_contracts(vec![import(
                 "@cdm/alpha",
                 ALICE,
-                LEGACY,
+                PROXY,
                 &[(pack_version(0, 0, 1), ADDR_1, URI_1)]
             )]),
             Err(UnauthorizedAdmin.into())
@@ -1426,7 +1221,7 @@ mod tests {
         let (mut contract, _mock) = deployed(ADMIN);
 
         assert_eq!(
-            contract.admin_import_contracts(vec![import("@cdm/alpha", ALICE, LEGACY, &[])]),
+            contract.admin_import_contracts(vec![import("@cdm/alpha", ALICE, PROXY, &[])]),
             Err(ImportVersionsEmpty.into())
         );
         assert_eq!(contract.get_contract_count(), 0);
@@ -1442,7 +1237,7 @@ mod tests {
             contract.admin_import_contracts(vec![import(
                 NAME,
                 ALICE,
-                LEGACY,
+                PROXY,
                 &[(V2_0_0, ADDR_2, URI_2)]
             )]),
             Err(ImportContractExists.into())
@@ -1454,7 +1249,7 @@ mod tests {
             .admin_import_contracts(vec![import(
                 "@cdm/alpha",
                 ALICE,
-                LEGACY,
+                PROXY,
                 &[(pack_version(0, 0, 1), ADDR_1, URI_1)],
             )])
             .unwrap();
@@ -1462,7 +1257,7 @@ mod tests {
             contract.admin_import_contracts(vec![import(
                 "@cdm/alpha",
                 BOB,
-                LEGACY,
+                PROXY,
                 &[(pack_version(0, 0, 2), ADDR_2, URI_2)]
             )]),
             Err(ImportContractExists.into())
@@ -1478,10 +1273,21 @@ mod tests {
             contract.admin_import_contracts(vec![import(
                 "cdm/alpha",
                 ALICE,
-                LEGACY,
+                PROXY,
                 &[(pack_version(0, 0, 1), ADDR_1, URI_1)]
             )]),
             Err(ContractNameInvalid.into())
+        );
+
+        // Every name has a proxy; a zero proxy is not importable.
+        assert_eq!(
+            contract.admin_import_contracts(vec![import(
+                "@cdm/alpha",
+                ALICE,
+                [0u8; 20],
+                &[(pack_version(0, 0, 1), ADDR_1, URI_1)]
+            )]),
+            Err(NoProxy.into())
         );
 
         // Keys must be publishable and strictly increasing within an entry.
@@ -1489,7 +1295,7 @@ mod tests {
             contract.admin_import_contracts(vec![import(
                 "@cdm/alpha",
                 ALICE,
-                LEGACY,
+                PROXY,
                 &[(0, ADDR_1, URI_1)]
             )]),
             Err(InvalidVersionKey.into())
@@ -1498,7 +1304,7 @@ mod tests {
             contract.admin_import_contracts(vec![import(
                 "@cdm/alpha",
                 ALICE,
-                LEGACY,
+                PROXY,
                 &[
                     (pack_version(0, 0, 2), ADDR_1, URI_1),
                     (pack_version(0, 0, 2), ADDR_2, URI_2),
@@ -1599,7 +1405,7 @@ mod tests {
             contract.admin_import_contracts(vec![import(
                 "@cdm/alpha",
                 ALICE,
-                LEGACY,
+                PROXY,
                 &[(pack_version(0, 0, 1), ADDR_2, URI_2)]
             )]),
             Ok(())
@@ -1850,14 +1656,6 @@ mod tests {
             ("getLatestKey(string)", encode(&name)),
             ("getMinSupported(string)", encode(&name)),
             ("getVersionAt(string,uint32)", encode(&(name.clone(), 0u32))),
-            (
-                "getAddressAtVersion(string,uint32)",
-                encode(&(name.clone(), 0u32)),
-            ),
-            (
-                "getMetadataUriAtVersion(string,uint32)",
-                encode(&(name.clone(), 0u32)),
-            ),
             ("getOwner(string)", encode(&name)),
             ("getVersionCount(string)", encode(&name)),
             ("getContractNameAt(uint32)", encode(&0u32)),
@@ -1877,7 +1675,7 @@ mod tests {
                 encode(&vec![import(
                     "@cdm/imported",
                     ALICE,
-                    LEGACY,
+                    PROXY,
                     &[(V2_0_0, ADDR_2, URI_2)],
                 )]),
             ),

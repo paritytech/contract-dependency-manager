@@ -2,32 +2,23 @@ import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve } from "path";
 
 /**
- * A resolved dependency snapshot in `cdm.json`.
- *
- * `version` spans two registry eras:
- * - string — a semver version (`"1.2.3"`) published to the v2 factory
- *   registry; `address` is the name's STABLE address (the per-name proxy for
- *   proxied names).
- * - number — a v1-era registry version INDEX. Only used as an artifact path
- *   segment; `address` is that version's standalone contract.
+ * A resolved dependency snapshot in `cdm.json`. `version` is the installed
+ * semver; `address` is the name's STABLE address (its per-name proxy).
  */
 export interface CdmJsonContract {
-    version: string | number;
+    version: string;
     address: string;
     abi: unknown[];
     metadataCid?: string;
 }
 
 /**
- * Flat project manifest.
- *
- * `dependencies` values are version REQUESTS, also spanning both eras:
- * - string — `"latest"`, an exact semver (`"1.2.3"`), or an npm-style range
- *   (`"^1.2.3"`) resolved against v2 semver version keys.
- * - number — a v1-era legacy version index, resolved positionally.
+ * Flat project manifest. `dependencies` values are version REQUESTS:
+ * `"latest"`, an exact semver (`"1.2.3"`), or an npm-style range (`"^1.2.3"`)
+ * resolved against on-chain semver version keys.
  */
 export interface CdmJson {
-    dependencies: Record<string, string | number>;
+    dependencies: Record<string, string>;
     contracts?: Record<string, CdmJsonContract>;
     registry?: string;
 }
@@ -56,28 +47,12 @@ if (import.meta.vitest) {
     const { describe, expect, test } = import.meta.vitest;
 
     describe("normalizeCdmJson", () => {
-        test("keeps semver-era manifests unchanged", () => {
+        test("keeps manifests unchanged", () => {
             const manifest = {
                 dependencies: { "@example/counter": "^1.2.0", "@example/other": "latest" },
                 contracts: {
                     "@example/counter": {
                         version: "1.2.3",
-                        address: "0x0000000000000000000000000000000000000001",
-                        abi: [],
-                    },
-                },
-                registry: "0x0000000000000000000000000000000000000002",
-            };
-
-            expect(normalizeCdmJson(manifest)).toEqual(manifest);
-        });
-
-        test("keeps legacy numeric-index manifests unchanged", () => {
-            const manifest = {
-                dependencies: { "@example/counter": 1 },
-                contracts: {
-                    "@example/counter": {
-                        version: 1,
                         address: "0x0000000000000000000000000000000000000001",
                         abi: [],
                     },

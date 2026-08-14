@@ -54,16 +54,16 @@ The metadata blob composition is in the right panel of the publish-pipeline diag
 
 The registry is a `pallet-revive` contract on Asset Hub, CREATE2-deployed under `@cdm/registry.2`. It is split into an EIP-1967 proxy (the stable registry address, supporting admin `setCode` upgrades and `freeze`) and a delegate-called implementation contract that holds the logic. Registry addresses are environment-scoped and resolved through `@parity/cdm-env` (`getRegistryAddress(name)`, defaulting to Paseo); custom environments can still pass `--registry-address`. `cdm.json.registry` records the registry used for the installed snapshot.
 
-Beyond its catalog role the registry is a **factory**: the first publish of a name CREATE2-instantiates that name's proxy (`contract-proxy`, a frozen blob whose code hash the registry stores), which permanently owns the name's address, storage, and balance. Versions are implementation contracts the proxy delegate-calls, so every version runs against the same state and the name's address never changes again. The proxy reserves no selectors — plain calls pass through to the latest implementation untouched; a `[magic][versionKey]` calldata prefix routes to an exact version; and a `[magic][0][selector]` meta plane serves CDM queries and the registry-only admin operations (`publish`, `setMinSupported`, `setAdmin`). Names registered before this model ("legacy") have no proxy: they resolve to their latest standalone contract exactly as before, and their first new publish upgrades them onto a proxy (with fresh state — old deployments are not proxies and cannot be retrofitted).
+Beyond its catalog role the registry is a **factory**: the first publish of a name CREATE2-instantiates that name's proxy (`contract-proxy`, a frozen blob whose code hash the registry stores), which permanently owns the name's address, storage, and balance. Versions are implementation contracts the proxy delegate-calls, so every version runs against the same state and the name's address never changes again. The proxy reserves no selectors — plain calls pass through to the latest implementation untouched; a `[magic][versionKey]` calldata prefix routes to an exact version; and a `[magic][0][selector]` meta plane serves CDM queries and the registry-only admin operations (`publish`, `setMinSupported`, `setAdmin`).
 
 Key invariants:
 
 - **First-write-wins ownership.** First publisher of a name becomes its owner. Subsequent calls revert unless `caller == info[name].owner`.
-- **Monotonic semver.** Versions are semver triples packed as `major<<64 | minor<<32 | patch` (u128). No overwrite, no delete, no yank: every publish must be strictly greater than the last, so the version list is append-only sorted and binary-searchable. Legacy version indices derive as `0.0.(index+1)`. Old versions remain queryable — and, behind a proxy, callable — indefinitely.
+- **Monotonic semver.** Versions are semver triples packed as `major<<64 | minor<<32 | patch` (u128). No overwrite, no delete, no yank: every publish must be strictly greater than the last, so the registry's version list is append-only sorted. Old versions remain queryable — and, behind the proxy, callable — indefinitely.
 - **Min-supported ratchet.** A name's owner can raise (never lower) a floor version; versioned calls below it revert `UnsupportedVersion` at the proxy. This is the explicit storage-migration escape hatch: when a new version reshapes state incompatibly, stale pinned consumers get a precise error instead of silent corruption. Plain (latest) calls are unaffected.
 - **Org prefixes are not reserved.** Anyone can claim `@polkadot/foo` if no one else has. Org-level access control (e.g., OpenGov-owned `@polkadot/*`) is an open design question.
 
-The Storage struct and query surface (`get_address`, `get_metadata_uri`, `get_owner`, `get_proxy`, `get_latest_key`, `get_min_supported`, `get_version_count`, `get_version_at`, `get_contract_count`, enumeration via `get_contract_name_at`, plus legacy `_at_version` variants) are in the right pane of the diagram.
+The Storage struct and query surface (`get_address`, `get_metadata_uri`, `get_owner`, `get_proxy`, `get_latest_key`, `get_min_supported`, `get_version_count`, `get_version_at`, `get_contract_count`, enumeration via `get_contract_name_at`) are in the right pane of the diagram.
 
 ## Install pipeline
 
@@ -71,7 +71,7 @@ The Storage struct and query surface (`get_address`, `get_metadata_uri`, `get_ow
 
 `cdm install` reads flat package dependencies from `cdm.json`, resolves the target environment from CLI input (`-n <preset>` or explicit URLs/address), then in parallel per library:
 
-1. **Resolve version** — the requested spec (`latest`, exact `1.2.3`, or a range like `^1.2`) resolves against the registry's version list (`getVersionCount` + `getVersionAt`, npm-style `maxSatisfying` for ranges) to one exact published version. Numeric pins from pre-semver cdm.json files resolve as legacy indices.
+1. **Resolve version** — the requested spec (`latest`, exact `1.2.3`, or a range like `^1.2`) resolves against the registry's version list (`getVersionCount` + `getVersionAt`, npm-style `maxSatisfying` for ranges) to one exact published version.
 2. **Fetch metadata** — `GET <ipfs-gateway>/<cid>` → parse JSON → validate ABI shape.
 3. **Save artifacts** — write `{abi, metadata, info}.json` under project `.cdm/contracts/<pkg>/<semver>/` and update the `latest` symlink.
 4. **Post-install hooks** — TypeScript: `generateContractTypes` writes `.cdm/contracts.d.ts`. Rust: `cdm::import!()` reads the ABI embedded in `cdm.json` and can materialize the project-local ABI artifact needed by `abi_import!`.

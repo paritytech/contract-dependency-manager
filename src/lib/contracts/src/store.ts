@@ -11,24 +11,18 @@ export function getCdmRoot(artifactsDir?: string): string {
 }
 
 /**
- * Directory a contract version's artifacts live in. `version` is a semver
- * string (`"1.2.3"`) for registry-v2 installs or a numeric legacy version
- * index for v1-era pins — either way the directory segment is its string
- * form.
+ * Directory a contract version's artifacts live in:
+ * `<root>/contracts/<library>/<semver>`.
  */
-export function getContractDir(
-    library: string,
-    version: string | number,
-    artifactsDir?: string,
-): string {
-    return resolve(getCdmRoot(artifactsDir), "contracts", library, String(version));
+export function getContractDir(library: string, version: string, artifactsDir?: string): string {
+    return resolve(getCdmRoot(artifactsDir), "contracts", library, version);
 }
 
 export interface SaveContractOptions {
     artifactsDir?: string;
     library: string;
-    /** Semver string, or a numeric legacy version index. Recorded as given. */
-    version: string | number;
+    /** The installed semver — used verbatim as the directory segment. */
+    version: string;
     abi: unknown[];
     metadata: unknown;
     address: string;
@@ -61,14 +55,14 @@ export function saveContract(opts: SaveContractOptions): string {
     try {
         unlinkSync(latestLink);
     } catch {}
-    symlinkSync(String(opts.version), latestLink);
+    symlinkSync(opts.version, latestLink);
 
     return dir;
 }
 
 export function resolveContractAbiPath(
     library: string,
-    version: string | number,
+    version: string,
     artifactsDir?: string,
 ): string {
     return resolve(getContractDir(library, version, artifactsDir), "abi.json");

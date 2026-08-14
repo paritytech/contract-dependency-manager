@@ -8,27 +8,10 @@ use std::process::Command;
 
 #[derive(serde::Deserialize)]
 struct CdmJsonContract {
-    version: CdmJsonVersion,
+    /// Resolved semver version, e.g. `"1.2.3"`. Used as the ABI cache path
+    /// segment.
+    version: String,
     abi: serde_json::Value,
-}
-
-/// A resolved version in cdm.json: a semver string (`"1.2.3"`) in the current
-/// format, a bare registry index (`1`) in pre-semver files. Only used as the
-/// ABI cache path segment.
-#[derive(serde::Deserialize)]
-#[serde(untagged)]
-enum CdmJsonVersion {
-    LegacyIndex(u64),
-    Semver(String),
-}
-
-impl CdmJsonVersion {
-    fn as_path_segment(&self) -> String {
-        match self {
-            Self::Semver(version) => version.clone(),
-            Self::LegacyIndex(index) => index.to_string(),
-        }
-    }
 }
 
 #[derive(serde::Deserialize)]
@@ -321,7 +304,7 @@ fn resolve_installed_abi(
     let abi_path = cdm_root
         .join("contracts")
         .join(package_name)
-        .join(contract.version.as_path_segment())
+        .join(&contract.version)
         .join("abi.json");
 
     if !abi_path.exists() {
@@ -348,25 +331,23 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn cdm_json_version_accepts_semver_strings_and_legacy_indices() {
-        let semver: CdmJson = serde_json::from_value(json!({
+    fn cdm_json_versions_are_semver_strings() {
+        let cdm: CdmJson = serde_json::from_value(json!({
             "dependencies": { "@test/sample": "^1.2.0" },
             "contracts": { "@test/sample": { "version": "1.2.3", "abi": [] } },
         }))
         .unwrap();
-        let legacy: CdmJson = serde_json::from_value(json!({
+        assert_eq!(
+            cdm.contracts.as_ref().unwrap()["@test/sample"].version,
+            "1.2.3"
+        );
+
+        // Pre-semver numeric pins are a hard error: reinstall to migrate.
+        let legacy = serde_json::from_value::<CdmJson>(json!({
             "dependencies": { "@test/sample": 1 },
             "contracts": { "@test/sample": { "version": 1, "abi": [] } },
-        }))
-        .unwrap();
-
-        let segment = |cdm: &CdmJson| {
-            cdm.contracts.as_ref().unwrap()["@test/sample"]
-                .version
-                .as_path_segment()
-        };
-        assert_eq!(segment(&semver), "1.2.3");
-        assert_eq!(segment(&legacy), "1");
+        }));
+        assert!(legacy.is_err());
     }
 
     #[test]

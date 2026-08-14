@@ -43,17 +43,12 @@ function detectProjectType(dir: string): {
 /**
  * Split a `library[:spec]` CLI argument. The text after the LAST `:` is a
  * version spec passed through verbatim — `"latest"`, an exact semver
- * (`"1.2.3"`), or an npm-style range (`"^1.2"`) — except a bare integer,
- * which is a LEGACY v1 registry version index and resolves as a number.
+ * (`"1.2.3"`), or an npm-style range (`"^1.2"`) — validated downstream.
  */
 function parseLibraryArg(arg: string): { library: string; version: InstallRequestedVersion } {
     const colonIdx = arg.lastIndexOf(":");
     if (colonIdx > 0 && colonIdx < arg.length - 1) {
-        const spec = arg.slice(colonIdx + 1);
-        return {
-            library: arg.slice(0, colonIdx),
-            version: /^\d+$/.test(spec) ? Number(spec) : spec,
-        };
+        return { library: arg.slice(0, colonIdx), version: arg.slice(colonIdx + 1) };
     }
     return { library: arg, version: "latest" };
 }
@@ -63,9 +58,9 @@ const install = new Command("install")
     .description("Install CDM contract libraries")
     .argument(
         "[libraries...]",
-        'CDM libraries with an optional version spec: "latest", an exact semver, an npm-style ' +
-            'range, or a legacy v1 index (e.g., "@polkadot/reputation", "@polkadot/reputation:1.2.3", ' +
-            '"@polkadot/reputation:^1.2", "@polkadot/reputation:3"). Omit to install all from cdm.json.',
+        'CDM libraries with an optional version spec: "latest", an exact semver, or an npm-style ' +
+            'range (e.g., "@polkadot/reputation", "@polkadot/reputation:1.2.3", ' +
+            '"@polkadot/reputation:^1.2"). Omit to install all from cdm.json.',
     )
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
     .option("-n, --name <name>", "Chain preset name (polkadot, paseo, devnet, local)")
@@ -146,10 +141,20 @@ install.action(async (libraries: string[], rawOpts: InstallOptions) => {
         });
     } else {
         // Batch install: read from cdm.json. Values pass through verbatim —
-        // "latest"/semver/range strings, or legacy v1 numeric indices.
+        // "latest", an exact semver, or an npm-style range.
         const deps = cdmJson.dependencies;
         if (Object.keys(deps).length === 0) {
             console.error("Error: No library specified and no dependencies found in cdm.json.");
+            chainClient.destroy();
+            process.exit(1);
+        }
+        const numericPin = Object.entries(deps).find(([, ver]) => typeof ver !== "string");
+        if (numericPin) {
+            console.error(
+                `Error: cdm.json pins "${numericPin[0]}" to ${JSON.stringify(numericPin[1])} — ` +
+                    "legacy numeric version pins are no longer supported — reinstall with " +
+                    `\`cdm i ${numericPin[0]}\`.`,
+            );
             chainClient.destroy();
             process.exit(1);
         }
@@ -256,8 +261,8 @@ if (import.meta.vitest) {
             });
         });
 
-        test("a bare integer resolves as a legacy v1 index number", () => {
-            expect(parseLibraryArg("@org/pkg:3")).toEqual({ library: "@org/pkg", version: 3 });
+        test("a bare integer passes through as a string spec", () => {
+            expect(parseLibraryArg("@org/pkg:3")).toEqual({ library: "@org/pkg", version: "3" });
         });
 
         test("only the last colon splits the spec", () => {

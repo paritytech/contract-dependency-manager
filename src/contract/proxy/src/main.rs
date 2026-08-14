@@ -27,12 +27,12 @@ polkavm_derive::min_stack_size!(131072);
 mod contract_proxy {
     use alloc::vec;
     use contract_registry_core::slots::{
-        ADMIN_SLOT, IMPL_OF_SLOT, IMPLEMENTATION_SLOT, MIN_SUPPORTED_SLOT, VERSION_KEYS_SLOT,
+        ADMIN_SLOT, IMPL_OF_SLOT, IMPLEMENTATION_SLOT, LATEST_KEY_SLOT, MIN_SUPPORTED_SLOT,
     };
     use contract_registry_core::versioning::{
         CallRoute, META_HEADER_LEN, VERSIONED_HEADER_LEN, is_publishable_key, meta, route_calldata,
     };
-    use pvm_contract_sdk::{Address, CallFlags, HostApi, Lazy, Mapping, SolError, StorageVec};
+    use pvm_contract_sdk::{Address, CallFlags, HostApi, Lazy, Mapping, SolError};
 
     /// EIP-1967 standard event, emitted on every publish (the latest
     /// implementation is this proxy's EIP-1967 implementation), so
@@ -128,10 +128,10 @@ mod contract_proxy {
         /// `UnsupportedVersion`. Zero = no floor.
         #[slot(raw = MIN_SUPPORTED_SLOT)]
         min_supported: Lazy<u128>,
-        /// Published keys, append-only and strictly increasing — sorted by
-        /// construction, so range queries binary-search it.
-        #[slot(raw = VERSION_KEYS_SLOT)]
-        version_keys: StorageVec<u128>,
+        /// Latest published key, for the monotonic publish check and the
+        /// `latest()` meta query. Zero before the first publish.
+        #[slot(raw = LATEST_KEY_SLOT)]
+        latest_key: Lazy<u128>,
         /// Version key → implementation, the routing table.
         #[slot(raw = IMPL_OF_SLOT)]
         impl_of: Mapping<u128, Address>,
@@ -216,31 +216,15 @@ mod contract_proxy {
 
         fn dispatch_meta(&mut self, selector: [u8; 4], args: &[u8]) -> Result<(), Error> {
             match selector {
-                meta::VERSION_COUNT => {
-                    let count = self.version_keys.len() as u32;
-                    self.respond(&word_u128(count as u128))
-                }
-                meta::VERSION_AT => {
-                    let index = u32_arg(args, 0)?;
-                    if u64::from(index) >= self.version_keys.len() {
-                        return Err(UnknownVersion.into());
-                    }
-                    let key = self.version_keys.get(u64::from(index));
-                    let mut out = [0u8; 64];
-                    out[..32].copy_from_slice(&word_u128(key));
-                    out[32..].copy_from_slice(&word_address(&self.impl_of.get(&key)));
-                    self.respond(&out)
-                }
                 meta::IMPL_OF => {
                     let key = u128_arg(args, 0)?;
                     self.respond(&word_address(&self.impl_of.get(&key)))
                 }
                 meta::LATEST => {
-                    let len = self.version_keys.len();
-                    if len == 0 {
+                    let key = self.latest_key.get();
+                    if key == 0 {
                         return Err(NoVersions.into());
                     }
-                    let key = self.version_keys.get(len - 1);
                     let mut out = [0u8; 64];
                     out[..32].copy_from_slice(&word_u128(key));
                     out[32..].copy_from_slice(&word_address(&self.latest_impl.get()));
@@ -248,11 +232,6 @@ mod contract_proxy {
                 }
                 meta::MIN_SUPPORTED => self.respond(&word_u128(self.min_supported.get())),
                 meta::ADMIN => self.respond(&word_address(&self.admin.get())),
-                meta::RESOLVE_MAX => {
-                    let lo = u128_arg(args, 0)?;
-                    let hi = u128_arg(args, 1)?;
-                    self.respond(&word_u128(self.resolve_max(lo, hi)))
-                }
                 meta::PUBLISH => {
                     self.require_admin()?;
                     let key = u128_arg(args, 0)?;
@@ -287,18 +266,15 @@ mod contract_proxy {
             if implementation == Address::ZERO {
                 return Err(InvalidImplementation.into());
             }
-            let len = self.version_keys.len();
-            if len > 0 {
-                let latest = self.version_keys.get(len - 1);
-                if key <= latest {
-                    return Err(VersionNotMonotonic {
-                        attempted: key,
-                        latest,
-                    }
-                    .into());
+            let latest = self.latest_key.get();
+            if key <= latest && latest != 0 {
+                return Err(VersionNotMonotonic {
+                    attempted: key,
+                    latest,
                 }
+                .into());
             }
-            self.version_keys.push(&key);
+            self.latest_key.set(&key);
             self.impl_of.insert(&key, &implementation);
             self.latest_impl.set(&implementation);
             Upgraded { implementation }.emit(self.host());
@@ -317,11 +293,10 @@ mod contract_proxy {
                 }
                 .into());
             }
-            let len = self.version_keys.len();
-            if len == 0 {
+            let latest = self.latest_key.get();
+            if latest == 0 {
                 return Err(NoVersions.into());
             }
-            let latest = self.version_keys.get(len - 1);
             if key > latest {
                 return Err(MinAboveLatest {
                     requested: key,
@@ -331,27 +306,6 @@ mod contract_proxy {
             }
             self.min_supported.set(&key);
             Ok(())
-        }
-
-        /// Greatest published key in `[lo, hi]`, or 0 when the range is
-        /// empty. Binary search — the publish rules keep `version_keys`
-        /// strictly increasing.
-        fn resolve_max(&self, lo: u128, hi: u128) -> u128 {
-            let mut left = 0u64;
-            let mut right = self.version_keys.len();
-            while left < right {
-                let mid = left + (right - left) / 2;
-                if self.version_keys.get(mid) <= hi {
-                    left = mid + 1;
-                } else {
-                    right = mid;
-                }
-            }
-            if left == 0 {
-                return 0;
-            }
-            let candidate = self.version_keys.get(left - 1);
-            if candidate >= lo { candidate } else { 0 }
         }
 
         // ─── Internals ───────────────────────────────────────────────────
@@ -389,16 +343,6 @@ mod contract_proxy {
         let mut bytes = [0u8; 16];
         bytes.copy_from_slice(&word[16..]);
         Ok(u128::from_be_bytes(bytes))
-    }
-
-    fn u32_arg(args: &[u8], index: usize) -> Result<u32, Error> {
-        let word = word_at(args, index)?;
-        if word[..28] != [0u8; 28] {
-            return Err(MalformedCall.into());
-        }
-        let mut bytes = [0u8; 4];
-        bytes.copy_from_slice(&word[28..]);
-        Ok(u32::from_be_bytes(bytes))
     }
 
     fn address_arg(args: &[u8], index: usize) -> Result<Address, Error> {
@@ -443,7 +387,6 @@ mod tests {
     const IMPL_2: [u8; 20] = [0x22; 20];
     const IMPL_3: [u8; 20] = [0x33; 20];
 
-    const V0_0_1: u128 = pack_version(0, 0, 1);
     const V0_1_0: u128 = pack_version(0, 1, 0);
     const V1_0_0: u128 = pack_version(1, 0, 0);
     const V1_2_3: u128 = pack_version(1, 2, 3);
@@ -469,12 +412,6 @@ mod tests {
     fn word_u128(value: u128) -> [u8; 32] {
         let mut word = [0u8; 32];
         word[16..].copy_from_slice(&value.to_be_bytes());
-        word
-    }
-
-    fn word_u32(value: u32) -> [u8; 32] {
-        let mut word = [0u8; 32];
-        word[28..].copy_from_slice(&value.to_be_bytes());
         word
     }
 
@@ -839,28 +776,18 @@ mod tests {
     fn meta_queries_return_abi_words() {
         let state = published(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2)]);
 
+        // Point lookup of a non-latest version — the routing table.
         let (_proxy, mock) = proxy_call(
             STRANGER,
-            meta_calldata(meta::VERSION_COUNT, &[]),
+            meta_calldata(meta::IMPL_OF, &word_u128(V1_0_0)),
             Some(&state),
         );
         let mut proxy = ContractProxy::with_host(mock.clone());
         assert!(proxy.fallback().is_ok());
         assert_eq!(
             mock.take_return_value().unwrap().data,
-            word_u128(2).to_vec()
+            word_addr(IMPL_1).to_vec()
         );
-
-        let (_proxy, mock) = proxy_call(
-            STRANGER,
-            meta_calldata(meta::VERSION_AT, &word_u32(0)),
-            Some(&state),
-        );
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-        let mut expected = word_u128(V1_0_0).to_vec();
-        expected.extend_from_slice(&word_addr(IMPL_1));
-        assert_eq!(mock.take_return_value().unwrap().data, expected);
 
         let (_proxy, mock) = proxy_call(
             STRANGER,
@@ -900,59 +827,6 @@ mod tests {
             mock.take_return_value().unwrap().data,
             word_u128(0).to_vec()
         );
-    }
-
-    #[test]
-    fn resolve_max_binary_searches_the_sorted_keys() {
-        let state = published(&[
-            (V0_0_1, IMPL_1),
-            (V0_1_0, IMPL_1),
-            (V1_0_0, IMPL_2),
-            (V1_2_3, IMPL_2),
-            (V2_0_0, IMPL_3),
-        ]);
-
-        let cases: &[(u128, u128, u128)] = &[
-            // ^1.0.0 → highest 1.x
-            (V1_0_0, pack_version(1, u32::MAX, u32::MAX), V1_2_3),
-            // ~0.1 → 0.1.0
-            (V0_1_0, pack_version(0, 1, u32::MAX), V0_1_0),
-            // exact hit
-            (V2_0_0, V2_0_0, V2_0_0),
-            // empty range between published keys
-            (pack_version(1, 3, 0), pack_version(1, 9, 9), 0),
-            // everything
-            (0, u128::MAX >> 32, V2_0_0),
-            // below everything
-            (0, 0, 0),
-        ];
-        for (lo, hi, expected) in cases {
-            let mut args = word_u128(*lo).to_vec();
-            args.extend_from_slice(&word_u128(*hi));
-            let (_proxy, mock) = proxy_call(
-                STRANGER,
-                meta_calldata(meta::RESOLVE_MAX, &args),
-                Some(&state),
-            );
-            let mut proxy = ContractProxy::with_host(mock.clone());
-            assert!(proxy.fallback().is_ok());
-            assert_eq!(
-                mock.take_return_value().unwrap().data,
-                word_u128(*expected).to_vec(),
-                "resolveMax({lo:#x}, {hi:#x})"
-            );
-        }
-    }
-
-    #[test]
-    fn version_at_out_of_range_reverts() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        let (result, _mock) = run(
-            STRANGER,
-            meta_calldata(meta::VERSION_AT, &word_u32(1)),
-            Some(&state),
-        );
-        assert!(matches!(result, Err(Error::UnknownVersion(_))));
     }
 
     // ─── Admin transfer ──────────────────────────────────────────────────

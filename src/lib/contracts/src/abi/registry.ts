@@ -240,44 +240,6 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
-        name: "getAddressAtVersion",
-        inputs: [
-            { name: "contract_name", type: "string" },
-            { name: "version", type: "uint32" },
-        ],
-        outputs: [
-            {
-                name: "",
-                type: "tuple",
-                components: [
-                    { name: "isSome", type: "bool" },
-                    { name: "value", type: "address" },
-                ],
-            },
-        ],
-        stateMutability: "view",
-    },
-    {
-        type: "function",
-        name: "getMetadataUriAtVersion",
-        inputs: [
-            { name: "contract_name", type: "string" },
-            { name: "version", type: "uint32" },
-        ],
-        outputs: [
-            {
-                name: "",
-                type: "tuple",
-                components: [
-                    { name: "isSome", type: "bool" },
-                    { name: "value", type: "string" },
-                ],
-            },
-        ],
-        stateMutability: "view",
-    },
-    {
-        type: "function",
         name: "getContractNameAt",
         inputs: [{ name: "index", type: "uint32" }],
         outputs: [{ name: "", type: "string" }],

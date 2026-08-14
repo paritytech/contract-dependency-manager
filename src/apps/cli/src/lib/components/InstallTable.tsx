@@ -41,11 +41,9 @@ function InstallRow({
     } else if (state === "error" && !s?.version) {
         versionCell = <Failed />;
     } else if (s?.version !== undefined) {
-        // Semver strings render verbatim ("1.2.3"); a bare legacy index keeps
-        // the old "v{n}" form so both eras stay distinguishable.
         versionCell = (
             <Text color="green" wrap="truncate">
-                {typeof s.version === "number" ? `v${s.version}` : s.version}
+                {s.version}
             </Text>
         );
     } else {

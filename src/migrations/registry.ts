@@ -13,14 +13,12 @@ import {
     resolveQueryOrigin,
     ss58Address,
 } from "@parity/cdm-env";
-import { CONTRACTS_REGISTRY_ABI, packVersionKey } from "@parity/cdm-builder";
+import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder";
 import { getAccount } from "@parity/cdm-utils/accounts";
 import type {
     ImportContract,
     MigratedContract,
-    MigratedContractV2,
     MigratedContractVersion,
-    MigratedContractVersionV2,
     RegistryMigrationSnapshot,
 } from "./types";
 
@@ -79,12 +77,13 @@ function errorText(err: unknown): string {
 }
 
 /**
- * What probing a v2-only selector on a pre-versioning registry looks like:
- * a typed `UnknownSelector()` revert on newer dispatchers, or zero/garbage
- * return data (viem `AbiDecoding*` failures) on the oldest ones. Anything
- * else (transport failures, timeouts) is a real error and must propagate.
+ * What probing a versioned-registry selector on an unsupported registry looks
+ * like: a typed `UnknownSelector()` revert on newer dispatchers, or
+ * zero/garbage return data (viem `AbiDecoding*` failures) on the oldest ones.
+ * Anything else (transport failures, timeouts) is a real error and must
+ * propagate.
  */
-function isLegacySurfaceError(err: unknown): boolean {
+function isUnversionedSurfaceError(err: unknown): boolean {
     const msg = errorText(err);
     return (
         msg.includes("UnknownSelector") ||
@@ -96,18 +95,27 @@ function isLegacySurfaceError(err: unknown): boolean {
 }
 
 /**
- * Whether the registry speaks the versioned (v2) surface — `getVersionAt`,
- * `getProxy`, `getProxyCodeHash`. Probed with the cheapest v2-only view;
- * a legacy registry rejects the unknown selector, surfacing as a failed
- * query or a decode error.
+ * Fails fast unless the registry speaks the versioned surface —
+ * `getVersionAt`, `getProxy`, `getProxyCodeHash`. Probed with the cheapest
+ * versioned-only view; a registry without it rejects the unknown selector,
+ * surfacing as a failed query or a decode error.
  */
-async function detectVersionedRegistry(registry: RegistryContract): Promise<boolean> {
+async function requireVersionedRegistry(
+    registry: RegistryContract,
+    registryAddress: HexString,
+): Promise<void> {
+    let supported: boolean;
     try {
-        const result = await registry.getProxyCodeHash.query();
-        return result.success === true;
+        supported = (await registry.getProxyCodeHash.query()).success === true;
     } catch (err) {
-        if (isLegacySurfaceError(err)) return false;
-        throw err;
+        if (!isUnversionedSurfaceError(err)) throw err;
+        supported = false;
+    }
+    if (!supported) {
+        throw new Error(
+            `Registry at ${registryAddress} does not expose the versioned registry surface ` +
+                `(getVersionAt/getProxy) and is not supported by this tooling`,
+        );
     }
 }
 
@@ -173,66 +181,6 @@ export async function connectRegistry(
     };
 }
 
-async function exportVersion(
-    registry: RegistryContract,
-    contractName: string,
-    version: number,
-): Promise<MigratedContractVersion> {
-    const [addressResult, metadataResult] = await Promise.all([
-        registry.getAddressAtVersion.query(contractName, version),
-        registry.getMetadataUriAtVersion.query(contractName, version),
-    ]);
-    const address = unwrapOption<string>(
-        requireSuccess(addressResult, `getAddressAtVersion(${contractName}, ${version})`),
-    );
-    const metadataUri = unwrapOption<string>(
-        requireSuccess(metadataResult, `getMetadataUriAtVersion(${contractName}, ${version})`),
-    );
-
-    if (!address) {
-        throw new Error(`Missing address for ${contractName} version ${version}`);
-    }
-    if (metadataUri === undefined) {
-        throw new Error(`Missing metadata URI for ${contractName} version ${version}`);
-    }
-
-    return {
-        address: address as HexString,
-        metadata_uri: metadataUri,
-    };
-}
-
-async function exportContract(
-    registry: RegistryContract,
-    index: number,
-): Promise<MigratedContract> {
-    const nameResult = await registry.getContractNameAt.query(index);
-    const contractName = requireSuccess<string>(nameResult, `getContractNameAt(${index})`);
-    if (!contractName) {
-        throw new Error(`Empty contract name at index ${index}`);
-    }
-
-    const [ownerResult, versionCountResult] = await Promise.all([
-        registry.getOwner.query(contractName),
-        registry.getVersionCount.query(contractName),
-    ]);
-    const owner = requireSuccess<string>(ownerResult, `getOwner(${contractName})`);
-    const versionCount = Number(
-        requireSuccess<number>(versionCountResult, `getVersionCount(${contractName})`),
-    );
-
-    const versions: MigratedContractVersion[] = [];
-    for (let version = 0; version < versionCount; version++) {
-        versions.push(await exportVersion(registry, contractName, version));
-    }
-
-    return {
-        contract_name: contractName,
-        owner: owner as HexString,
-        versions,
-    };
-}
-
 /** Decoded `getVersionAt` row (flat option-shaped tuple). */
 interface VersionAtRow {
     isSome: boolean;
@@ -241,11 +189,11 @@ interface VersionAtRow {
     metadata_uri: string;
 }
 
-async function exportVersionV2(
+async function exportVersion(
     registry: RegistryContract,
     contractName: string,
     index: number,
-): Promise<MigratedContractVersionV2> {
+): Promise<MigratedContractVersion> {
     const result = await registry.getVersionAt.query(contractName, index);
     const row = requireSuccess<VersionAtRow>(result, `getVersionAt(${contractName}, ${index})`);
     if (!row?.isSome) {
@@ -258,10 +206,10 @@ async function exportVersionV2(
     };
 }
 
-async function exportContractV2(
+async function exportContract(
     registry: RegistryContract,
     index: number,
-): Promise<MigratedContractV2> {
+): Promise<MigratedContract> {
     const nameResult = await registry.getContractNameAt.query(index);
     const contractName = requireSuccess<string>(nameResult, `getContractNameAt(${index})`);
     if (!contractName) {
@@ -277,13 +225,14 @@ async function exportContractV2(
     const versionCount = Number(
         requireSuccess<number>(versionCountResult, `getVersionCount(${contractName})`),
     );
-    const proxy =
-        unwrapOption<string>(requireSuccess(proxyResult, `getProxy(${contractName})`)) ??
-        ZERO_ADDRESS;
+    const proxy = unwrapOption<string>(requireSuccess(proxyResult, `getProxy(${contractName})`));
+    if (!proxy || proxy === ZERO_ADDRESS) {
+        throw new Error(`Missing per-name proxy for ${contractName}`);
+    }
 
-    const versions: MigratedContractVersionV2[] = [];
+    const versions: MigratedContractVersion[] = [];
     for (let version = 0; version < versionCount; version++) {
-        versions.push(await exportVersionV2(registry, contractName, version));
+        versions.push(await exportVersion(registry, contractName, version));
     }
 
     return {
@@ -299,37 +248,27 @@ export async function exportRegistrySnapshot(
 ): Promise<RegistryMigrationSnapshot> {
     const connection = await connectRegistry(opts);
     try {
-        // Versioned registries export real version keys and per-name proxies
-        // (`cdm.registry.v2`); legacy registries only have index-ordered
-        // histories, exported verbatim as `cdm.registry.v1`.
-        const versioned = await detectVersionedRegistry(connection.registry);
+        await requireVersionedRegistry(connection.registry, connection.registryAddress);
         const total = Number(
             requireSuccess<number>(
                 await connection.registry.getContractCount.query(),
                 "getContractCount",
             ),
         );
-        const base = {
-            exported_at: new Date().toISOString(),
-            chain: opts.name,
-            assethub_url: connection.assethubUrl,
-            registry_address: connection.registryAddress,
-            contract_count: total,
-        };
-
-        if (versioned) {
-            const contracts: MigratedContractV2[] = [];
-            for (let index = 0; index < total; index++) {
-                contracts.push(await exportContractV2(connection.registry, index));
-            }
-            return { schema: "cdm.registry.v2", ...base, contracts };
-        }
 
         const contracts: MigratedContract[] = [];
         for (let index = 0; index < total; index++) {
             contracts.push(await exportContract(connection.registry, index));
         }
-        return { schema: "cdm.registry.v1", ...base, contracts };
+        return {
+            schema: "cdm.registry.v2",
+            exported_at: new Date().toISOString(),
+            chain: opts.name,
+            assethub_url: connection.assethubUrl,
+            registry_address: connection.registryAddress,
+            contract_count: total,
+            contracts,
+        };
     } finally {
         connection.destroy();
     }
@@ -344,7 +283,7 @@ export async function writeRegistrySnapshot(
 
 export async function readRegistrySnapshot(path: string): Promise<RegistryMigrationSnapshot> {
     const snapshot = JSON.parse(await readFile(path, "utf8")) as RegistryMigrationSnapshot;
-    if (snapshot.schema !== "cdm.registry.v1" && snapshot.schema !== "cdm.registry.v2") {
+    if (snapshot.schema !== "cdm.registry.v2") {
         throw new Error(
             `Unsupported registry migration schema: ${(snapshot as { schema?: unknown }).schema}`,
         );
@@ -355,30 +294,18 @@ export async function readRegistrySnapshot(path: string): Promise<RegistryMigrat
     return snapshot;
 }
 
-/** 20 zero bytes — the registry's "no per-name proxy" marker. */
+/** 20 zero bytes — never a valid per-name proxy. */
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as HexString;
 
 /**
- * v1 histories carry no version keys: the registry derives index `N` of a
- * legacy record as `0.0.(N + 1)`, so imports must mirror that for records
- * to keep resolving to the same versions after migration. Proxy is zero —
- * legacy names have none until their next publish instantiates one.
+ * Snapshot entries carry keys and proxies verbatim; only the bigints revive.
+ * Every name must bring its live per-name proxy — the registry has no
+ * proxy-less records.
  */
-export function legacyContractToImport(contract: MigratedContract): ImportContract {
-    return {
-        contract_name: contract.contract_name,
-        owner: contract.owner,
-        proxy: ZERO_ADDRESS,
-        versions: contract.versions.map((version, index) => ({
-            version_key: packVersionKey(0, 0, index + 1),
-            target: version.address,
-            metadata_uri: version.metadata_uri,
-        })),
-    };
-}
-
-/** v2 snapshots carry keys and proxies verbatim; only the bigints revive. */
-export function versionedContractToImport(contract: MigratedContractV2): ImportContract {
+export function contractToImport(contract: MigratedContract): ImportContract {
+    if (!contract.proxy || contract.proxy === ZERO_ADDRESS) {
+        throw new Error(`Snapshot entry for ${contract.contract_name} has no per-name proxy`);
+    }
     return {
         contract_name: contract.contract_name,
         owner: contract.owner,
@@ -391,11 +318,9 @@ export function versionedContractToImport(contract: MigratedContractV2): ImportC
     };
 }
 
-/** Snapshot (either schema) → `adminImportContracts` payload entries. */
+/** Snapshot → `adminImportContracts` payload entries. */
 export function snapshotToImportContracts(snapshot: RegistryMigrationSnapshot): ImportContract[] {
-    return snapshot.schema === "cdm.registry.v1"
-        ? snapshot.contracts.map(legacyContractToImport)
-        : snapshot.contracts.map(versionedContractToImport);
+    return snapshot.contracts.map(contractToImport);
 }
 
 function resolveSigner(opts: ImportOptions) {

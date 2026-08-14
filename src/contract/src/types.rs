@@ -9,10 +9,8 @@ use contract_registry_core::naming::NameError;
 use pvm_contract_sdk::{Address, SolError, SolStorage, SolType};
 
 /// A single row of `getContracts`: the latest published version of a
-/// registered name. `version_key` is the packed semver key (legacy versions
-/// derive as `0.0.(index+1)`); `address` follows `getAddress` semantics —
-/// the per-name proxy when one exists, the latest standalone contract for
-/// legacy names.
+/// registered name. `version_key` is the packed semver key; `address` is the
+/// name's per-name proxy — its permanent address.
 #[derive(Debug, PartialEq, Eq, SolType)]
 pub struct ContractEntry {
     pub name: String,
@@ -71,8 +69,7 @@ pub struct ContractPage {
 }
 
 /// One version row of `getVersionAt`, option-shaped like the other getters.
-/// `target` is the implementation contract for proxied names and the
-/// standalone published contract for legacy versions.
+/// `target` is the implementation contract the proxy delegate-calls for it.
 #[derive(Debug, PartialEq, Eq, SolType)]
 pub struct OptionalVersionEntry {
     pub is_some: bool,
@@ -90,8 +87,8 @@ pub struct ImportContractVersion {
 }
 
 /// A full contract history in an `adminImportContracts` payload. `proxy` is
-/// the name's already-deployed per-name proxy, or zero for a legacy name —
-/// import records state, it never instantiates.
+/// the name's already-deployed per-name proxy — import records state for
+/// disaster recovery, it never instantiates.
 #[derive(Debug, PartialEq, Eq, SolType)]
 pub struct ImportContract {
     pub contract_name: String,
@@ -100,13 +97,17 @@ pub struct ImportContract {
     pub versions: Vec<ImportContractVersion>,
 }
 
+/// One published version: the packed semver key and the implementation
+/// contract the name's proxy delegate-calls for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, SolType, SolStorage)]
+pub struct VersionRecord {
+    pub version_key: u128,
+    pub target: Address,
+}
+
 /// Owner, published version count, and per-name proxy for a registered name.
-///
-/// Field order is load-bearing for the in-place v1 → v2 storage upgrade:
-/// `owner` and `version_count` pack into the first slot exactly as v1 wrote
-/// them, and `proxy` lands in a second slot v1 never touched — so pre-upgrade
-/// records read back with `proxy == 0`, the legacy marker, with no migration.
-/// `version_count == 0` means the name is unregistered.
+/// `version_count == 0` means the name is unregistered; every registered
+/// name has a proxy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, SolType, SolStorage)]
 pub struct NamedContractInfo {
     pub owner: Address,
@@ -149,8 +150,7 @@ pub struct BadImplementation;
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct InvalidVersionKey;
 
-/// Published keys must be strictly increasing per name (legacy versions
-/// count as `0.0.(index+1)`).
+/// Published keys must be strictly increasing per name.
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct VersionNotMonotonic {
     pub attempted: u128,
@@ -161,7 +161,7 @@ pub struct VersionNotMonotonic {
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct ProxyCodeHashUnset;
 
-/// Operation requires a per-name proxy, but the name is legacy (no proxy).
+/// Import payload carries a zero proxy address; every name has a proxy.
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct NoProxy;
 
