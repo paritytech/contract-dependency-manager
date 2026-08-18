@@ -31,6 +31,7 @@ cdm.local.json
 # Frozen CREATE3 artifacts are committed on purpose: their exact bytes are
 # part of every CREATE3-derived address (see src/contract/create3/).
 !src/contract/create3/artifacts/*.polkavm
+!src/contract/proxy/artifacts/*.polkavm
 
 # Working registry-migration snapshots (the deploy script writes timestamped
 # copies under dist/; the migrations export CLI defaults to this path)

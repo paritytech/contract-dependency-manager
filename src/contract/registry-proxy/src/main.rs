@@ -14,9 +14,6 @@
 #[cfg(target_arch = "riscv64")]
 polkavm_derive::min_stack_size!(131072);
 
-// Bump allocator: pure passthrough — a handful of one-shot allocations per
-// call, nothing freed-then-reused. Halves the blob vs picoalloc, which is
-// recurring savings: this code loads on every registry call.
 #[pvm_contract_sdk::contract(allocator = "bump", allocator_size = 262144)]
 mod registry_proxy {
     use alloc::vec;

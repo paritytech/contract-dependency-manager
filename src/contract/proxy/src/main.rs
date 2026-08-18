@@ -23,10 +23,6 @@
 #[cfg(target_arch = "riscv64")]
 polkavm_derive::min_stack_size!(131072);
 
-// Bump allocator: the routing frame makes a handful of one-shot
-// allocations (calldata/returndata copies, meta words) and never frees —
-// bump is smaller and simpler than picoalloc for that profile, and the
-// implementations it delegates to bring their own allocators anyway.
 #[pvm_contract_sdk::contract(allocator = "bump", allocator_size = 262144)]
 mod contract_proxy {
     use alloc::vec;
