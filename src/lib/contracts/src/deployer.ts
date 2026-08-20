@@ -222,6 +222,15 @@ export interface Metadata {
      * CIDs unchanged.
      */
     storage_layout?: unknown;
+    /**
+     * Deterministic blake2b-256 digest of the contract's source inputs
+     * (`computeSourceHash`) — a SOURCE hash, deliberately not a bytecode
+     * hash, since PolkaVM output varies across toolchain revisions. Lets
+     * `cdm deploy` warn when an up-to-date version's local sources changed
+     * without a version bump. Optional: older publishes omit it, and readers
+     * must tolerate its absence.
+     */
+    source_hash?: string;
 }
 
 /**

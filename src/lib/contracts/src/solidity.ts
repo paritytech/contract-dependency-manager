@@ -407,6 +407,31 @@ function collectCdmImportPackages(
     return packages;
 }
 
+/**
+ * The LOCAL Solidity source files a target is built from: the target's own
+ * source plus every relatively-imported project `.sol` file, followed
+ * recursively (mirroring `collectCdmImportPackages`' traversal). Library
+ * imports and generated `.cdm/solidity` stubs are excluded — they are not
+ * part of the contract's own sources. Feeds the publish-time source hash.
+ */
+export function collectLocalSoliditySources(rootDir: string, sourcePath: string): string[] {
+    const files: string[] = [];
+    const visited = new Set<string>();
+    const visit = (path: string) => {
+        const resolved = resolve(path);
+        if (visited.has(resolved) || !existsSync(resolved)) return;
+        if (isWithinGeneratedCdmSolidity(rootDir, resolved)) return;
+        visited.add(resolved);
+        files.push(resolved);
+        for (const specifier of extractImportSpecifiers(readFileSync(resolved, "utf-8"))) {
+            if (!specifier.startsWith(".") || !specifier.endsWith(".sol")) continue;
+            visit(resolve(dirname(resolved), specifier));
+        }
+    };
+    visit(sourcePath);
+    return files;
+}
+
 function attachSolidityDependencies(
     rootDir: string,
     targets: SolidityBuildTarget[],

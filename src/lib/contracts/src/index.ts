@@ -20,6 +20,7 @@ export {
     type SolidityBuildTarget,
     type SolidityToolchain,
     buildSolidityToolchain,
+    collectLocalSoliditySources,
     detectSolidityBuildTargets,
     extractFoundryBytecode,
     extractHardhatBytecode,
@@ -110,6 +111,8 @@ export {
 export { MetadataPublisher } from "./publisher";
 
 export { computeCid } from "./cid";
+
+export { computeSourceHash } from "./source-hash";
 
 export { CONTRACTS_REGISTRY_ABI, CONTRACTS_REGISTRY_PROXY_ABI } from "./abi/registry";
 
