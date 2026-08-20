@@ -80,18 +80,26 @@ async function queryRegistryStableAddress(
     return option.value as HexString;
 }
 
+/** Where a contract's toolchain declares its publish version, for error advice. */
+function versionSource(contract: ContractInfo): string {
+    return contract.toolchain === "foundry" || contract.toolchain === "hardhat"
+        ? `a "/// @custom:cdm-version X.Y.Z" NatSpec tag next to the contract's @custom:cdm tag`
+        : "the crate's Cargo.toml [package].version";
+}
+
 /**
- * A deployable contract's publish version, resolved from the crate's
- * Cargo.toml `[package].version`. Strict `X.Y.Z` only — anything else (or a
- * missing version, e.g. a Solidity target without one) is a configuration
- * error worth failing the whole deploy for before any build starts.
+ * A deployable contract's publish version — Rust crates declare it in
+ * Cargo.toml `[package].version`, Solidity contracts in a
+ * `@custom:cdm-version` NatSpec tag. Strict `X.Y.Z` only — anything else (or
+ * a missing version) is a configuration error worth failing the whole deploy
+ * for before any build starts.
  */
 function resolveContractVersion(contract: ContractInfo): { version: string; key: bigint } {
     const raw = contract.version;
     if (raw === undefined || raw === "") {
         throw new Error(
             `Contract "${contract.name}" has no version — cdm deploy publishes the exact ` +
-                `"X.Y.Z" semver from the crate's Cargo.toml [package].version.`,
+                `"X.Y.Z" semver from ${versionSource(contract)}.`,
         );
     }
     let key: bigint;
@@ -100,14 +108,14 @@ function resolveContractVersion(contract: ContractInfo): { version: string; key:
     } catch {
         throw new Error(
             `Contract "${contract.name}" has invalid version "${raw}" — cdm deploy requires ` +
-                `an exact "X.Y.Z" semver in Cargo.toml [package].version ` +
+                `an exact "X.Y.Z" semver in ${versionSource(contract)} ` +
                 `(no ranges, prerelease, or build tags).`,
         );
     }
     if (!isPublishableKey(key)) {
         throw new Error(
-            `Contract "${contract.name}" version "${raw}" is reserved — bump Cargo.toml ` +
-                `[package].version to at least 0.0.1.`,
+            `Contract "${contract.name}" version "${raw}" is reserved — bump the version in ` +
+                `${versionSource(contract)} to at least 0.0.1.`,
         );
     }
     return { version: keyToSemver(key), key };
@@ -1127,7 +1135,8 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
 
         // ---- 3. resolve crate versions + skip already-published versions ----
         //
-        // Version source of truth is each crate's Cargo.toml [package].version;
+        // Version source of truth is each crate's Cargo.toml [package].version
+        // (Rust) or the contract's @custom:cdm-version NatSpec tag (Solidity);
         // an invalid or missing version is a configuration error that aborts
         // the deploy before anything is built or submitted. A crate whose
         // packed key is not strictly greater than the registry's latest for
@@ -1661,6 +1670,7 @@ if (import.meta.vitest) {
         deps: Record<string, string[]> = {},
         cdm: Record<string, string> = {},
         versions: Record<string, string> = {},
+        toolchains: Record<string, ContractToolchain> = {},
     ): DeploymentOrderLayered {
         const contractMap = new Map<string, CI>();
         for (const layer of layers) {
@@ -1668,6 +1678,7 @@ if (import.meta.vitest) {
                 contractMap.set(crate, {
                     name: crate,
                     version: versions[crate] ?? "0.1.0",
+                    toolchain: toolchains[crate],
                     cdmPackage: cdm[crate] ?? null,
                     description: null,
                     authors: [],
@@ -2249,6 +2260,38 @@ if (import.meta.vitest) {
 
             expect(mockBuild).not.toHaveBeenCalled();
             expect(events.at(-1)).toMatchObject({ type: "pipeline-error" });
+        });
+
+        test("missing-version error points Rust contracts at Cargo.toml", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder([["a"]], {}, { a: "@example/a" }, { a: "" }, { a: "rust" }),
+            );
+
+            await expect(
+                deployContracts({
+                    rootDir: "/fake",
+                    client: makeFakeClient(),
+                    signer: makePolkadotSigner(1),
+                    origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                    registryAddress: getRegistryAddress("paseo") as HexString,
+                }),
+            ).rejects.toThrow(/Cargo\.toml \[package\]\.version/);
+        });
+
+        test("missing-version error points Solidity contracts at the NatSpec tag", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder([["a"]], {}, { a: "@example/a" }, { a: "" }, { a: "foundry" }),
+            );
+
+            await expect(
+                deployContracts({
+                    rootDir: "/fake",
+                    client: makeFakeClient(),
+                    signer: makePolkadotSigner(1),
+                    origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                    registryAddress: getRegistryAddress("paseo") as HexString,
+                }),
+            ).rejects.toThrow(/@custom:cdm-version/);
         });
     });
 }

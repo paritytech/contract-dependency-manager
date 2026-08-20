@@ -163,6 +163,7 @@ function collectSolidityFiles(dir: string, out: string[] = []): string[] {
 interface SolidityContractDefinition {
     contractName: string;
     cdmPackage: string | null;
+    version: string | null;
     description: string | null;
     authors: string[];
     homepage: string | null;
@@ -244,6 +245,7 @@ function parsePrecedingNatSpec(source: string, declarationIndex: number) {
     const tags = parseNatSpecTags(comment);
     return {
         cdmPackage: comment?.match(CDM_NATSPEC_RE)?.[1] ?? null,
+        version: firstNatSpecValue(tags, ["custom:cdm-version"]),
         description: firstNatSpecValue(tags, ["custom:description", "notice", "dev"]),
         authors: [...(tags.get("author") ?? []), ...(tags.get("custom:author") ?? [])].filter(
             (author) => author.trim().length > 0,
@@ -496,6 +498,7 @@ export function detectSolidityBuildTargets(rootDir: string): SolidityBuildTarget
                     name: definition.cdmPackage ?? definition.contractName,
                     displayName: definition.cdmPackage ?? definition.contractName,
                     toolchain,
+                    version: definition.version ?? undefined,
                     cdmPackage: definition.cdmPackage,
                     description: definition.description ?? meta.description,
                     authors: definition.authors.length > 0 ? definition.authors : meta.authors,
@@ -963,6 +966,36 @@ if (import.meta.vitest) {
                 "@example/counter-a",
                 "@example/counter-b",
             ]);
+        });
+
+        test("parses @custom:cdm-version from NatSpec", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts"), { recursive: true });
+            writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
+            writeFileSync(
+                join(root, "contracts", "Counters.sol"),
+                `
+                /// @custom:cdm @example/counter-a
+                /// @custom:cdm-version 1.2.3
+                contract CounterA {}
+
+                /**
+                 * @custom:cdm @example/counter-b
+                 * @custom:cdm-version 4.5.6
+                 */
+                contract CounterB {}
+
+                /// @custom:cdm @example/counter-c
+                contract CounterC {}
+                `,
+            );
+
+            const targets = detectSolidityBuildTargets(root);
+            const byName = new Map(targets.map((target) => [target.contractName, target]));
+
+            expect(byName.get("CounterA")?.version).toBe("1.2.3");
+            expect(byName.get("CounterB")?.version).toBe("4.5.6");
+            expect(byName.get("CounterC")?.version).toBeUndefined();
         });
 
         test("uses contract NatSpec metadata before project package metadata", () => {

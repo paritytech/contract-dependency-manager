@@ -110,12 +110,15 @@ other.do_something().call(self).expect("OtherCallFailed");
 
 For workspace-local packages, `cdm::import!` resolves the ABI through Cargo metadata when the provider crate declares the matching `[package.metadata.cdm] package`. For external packages, run `cdm i -n paseo @someorg/other-contract` first; the macro falls back to the flat `cdm.json` snapshot and materializes any ABI file it needs under the project-local `.cdm/` directory.
 
-Solidity contracts use NatSpec for their own CDM package name:
+Solidity contracts use NatSpec for their own CDM package name and publish version:
 
 ```solidity
 /// @custom:cdm @yourorg/mycontract
+/// @custom:cdm-version 0.1.0
 contract MyContract {}
 ```
+
+`@custom:cdm-version` plays the role Cargo.toml `[package].version` plays for Rust crates: a strict `X.Y.Z` semver that `cdm deploy` publishes, skipping versions the registry already has.
 
 To call an installed CDM contract from Solidity, import the generated interface:
 
