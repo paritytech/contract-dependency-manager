@@ -115,11 +115,20 @@ async function queryLatestPublishedSourceHash(
 
 /**
  * Best-effort source-drift probe for an `up-to-date` crate: recompute the
- * local source hash and compare it with the latest published one. Returns the
- * differing pair only on a genuine mismatch; every other outcome — no gateway
- * supplied, unhashable local sources, metadata without a `source_hash` (older
- * publishes), or any query/fetch failure — resolves to `undefined` so the
- * up-to-date path stays exactly as silent and non-fatal as before.
+ * local source hash and compare it with the latest published one.
+ *
+ * PRECONDITION: only call this when the crate's local version key EQUALS the
+ * registry's latest — then the latest row's metadata is the publish of this
+ * exact version and the comparison is meaningful. `up-to-date` also covers
+ * checkouts that are BEHIND the chain (local key < latest, e.g. deploying
+ * from an old branch), where the local sources are expected to differ from
+ * the latest publish; comparing there would warn spuriously.
+ *
+ * Returns the differing pair only on a genuine mismatch; every other outcome
+ * — no gateway supplied, unhashable local sources, metadata without a
+ * `source_hash` (older publishes), or any query/fetch failure — resolves to
+ * `undefined` so the up-to-date path stays exactly as silent and non-fatal
+ * as before.
  */
 async function checkUpToDateSourceDrift(
     rootDir: string,
@@ -309,16 +318,19 @@ export type DeployEvent =
           /**
            * An `up-to-date` crate whose locally recomputed source hash
            * differs from the `source_hash` in its latest published metadata —
-           * the sources changed but the version wasn't bumped. Advisory only:
-           * emitted right after the crate's `check-up-to-date`, it changes no
-           * statuses and never fails the pipeline. Requires the `ipfs` option;
-           * older publishes without a `source_hash` (and any fetch failure)
-           * emit nothing.
+           * the sources changed but the version wasn't bumped. Only emitted
+           * when the local version key EQUALS the registry's latest (the
+           * latest publish is of this exact version); a checkout that is
+           * merely BEHIND the chain never triggers it. Advisory only: emitted
+           * right after the crate's `check-up-to-date`, it changes no
+           * statuses and never fails the pipeline. Requires the `ipfs`
+           * option; older publishes without a `source_hash` (and any fetch
+           * failure) emit nothing.
            */
           type: "check-source-drift";
           crate: string;
           cdmPackage: string;
-          /** The local crate semver (same value as the on-chain latest). */
+          /** The local crate semver — guaranteed equal to the on-chain latest. */
           version: string;
           localHash: string;
           publishedHash: string;
@@ -1258,12 +1270,19 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     // Diagnostic only — the version is known published, so a
                     // failed address read must not fail an otherwise no-op run.
                 }
-                const drift = await checkUpToDateSourceDrift(
-                    opts.rootDir,
-                    contract,
-                    registryContract,
-                    opts.ipfs,
-                );
+                // Drift is only checked when the local version IS the
+                // on-chain latest — a checkout BEHIND the chain (key <
+                // latest) is expected to differ from the latest publish's
+                // sources, so comparing would warn spuriously.
+                const drift =
+                    resolved.key === latest
+                        ? await checkUpToDateSourceDrift(
+                              opts.rootDir,
+                              contract,
+                              registryContract,
+                              opts.ipfs,
+                          )
+                        : undefined;
                 return { contract, resolved, latest, stableAddress, drift };
             }),
         );
@@ -2502,6 +2521,38 @@ if (import.meta.vitest) {
             expect(failed.events.some((event) => event.type === "check-source-drift")).toBe(false);
             expect(failed.summary.contracts[0]).toMatchObject({
                 crate: "a",
+                status: "up-to-date",
+            });
+        });
+
+        test("skips the drift check entirely when the local version is behind the chain", async () => {
+            // Local 1.0.0 vs on-chain latest 1.2.0 — an old checkout, not a
+            // forgotten bump. The latest publish is of a DIFFERENT version,
+            // so comparing local sources against it would warn spuriously;
+            // the check must be skipped outright (no fetch), not just muted.
+            const order = makeOrder([["a"]], {}, { a: "@example/a" }, { a: "1.0.0" });
+            (mockDetect as any).mockReturnValue(order);
+            (mockCreateContract as any).mockImplementation(async () =>
+                makeRegistryMock(
+                    { "@example/a": semverToKey("1.2.0") },
+                    { "@example/a": [{ key: semverToKey("1.2.0"), metadataUri: "bafy-a-2" }] },
+                ),
+            );
+            mockCrateSources();
+            const ipfsFetch = vi.fn(async () => ({
+                json: async () => ({ source_hash: `0x${"ab".repeat(32)}` }),
+            }));
+
+            const events: DeployEvent[] = [];
+            const summary = await deployContracts(
+                deployOpts({ ipfs: { fetch: ipfsFetch }, onEvent: (event) => events.push(event) }),
+            );
+
+            expect(ipfsFetch).not.toHaveBeenCalled();
+            expect(events.some((event) => event.type === "check-source-drift")).toBe(false);
+            expect(summary.contracts[0]).toMatchObject({
+                crate: "a",
+                version: "1.0.0",
                 status: "up-to-date",
             });
         });
