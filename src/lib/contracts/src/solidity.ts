@@ -163,13 +163,20 @@ function collectSolidityFiles(dir: string, out: string[] = []): string[] {
 interface SolidityContractDefinition {
     contractName: string;
     cdmPackage: string | null;
+    version: string | null;
     description: string | null;
     authors: string[];
     homepage: string | null;
     repository: string | null;
 }
 
-const CDM_NATSPEC_RE = /@custom:cdm\s+(@[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+)/;
+/**
+ * `@custom:cdm @org/name[:X.Y.Z]` — the CDM package name, optionally suffixed
+ * with the publish version (same colon convention as `cdm i @org/name:1.2.1`;
+ * package names can never contain `:`). The version is captured loosely here —
+ * semver validation stays centralized in the deploy pipeline.
+ */
+const CDM_NATSPEC_RE = /@custom:cdm\s+(@[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+)(?::(\S+))?/;
 
 function blankBlockComments(source: string): string {
     return source.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));
@@ -242,8 +249,10 @@ function firstNatSpecValue(tags: Map<string, string[]>, names: string[]): string
 function parsePrecedingNatSpec(source: string, declarationIndex: number) {
     const comment = precedingNatSpecComment(source, declarationIndex);
     const tags = parseNatSpecTags(comment);
+    const cdmTag = comment?.match(CDM_NATSPEC_RE);
     return {
-        cdmPackage: comment?.match(CDM_NATSPEC_RE)?.[1] ?? null,
+        cdmPackage: cdmTag?.[1] ?? null,
+        version: cdmTag?.[2] ?? null,
         description: firstNatSpecValue(tags, ["custom:description", "notice", "dev"]),
         authors: [...(tags.get("author") ?? []), ...(tags.get("custom:author") ?? [])].filter(
             (author) => author.trim().length > 0,
@@ -496,6 +505,7 @@ export function detectSolidityBuildTargets(rootDir: string): SolidityBuildTarget
                     name: definition.cdmPackage ?? definition.contractName,
                     displayName: definition.cdmPackage ?? definition.contractName,
                     toolchain,
+                    version: definition.version ?? undefined,
                     cdmPackage: definition.cdmPackage,
                     description: definition.description ?? meta.description,
                     authors: definition.authors.length > 0 ? definition.authors : meta.authors,
@@ -725,9 +735,13 @@ function collectJsonFiles(
 }
 
 function isHardhatArtifact(artifact: SolidityArtifactJson): boolean {
+    // "hh-sol-artifact-" is upstream hardhat's format — what
+    // @parity/hardhat-polkadot emits in EVM mode (`polkadot: { target: "evm" }`
+    // or no polkadot flag). "hh-resolc-artifact-" is its resolc/PolkaVM mode.
     return (
         typeof artifact._format === "string" &&
-        artifact._format.startsWith("hh-resolc-artifact-") &&
+        (artifact._format.startsWith("hh-sol-artifact-") ||
+            artifact._format.startsWith("hh-resolc-artifact-")) &&
         typeof artifact.contractName === "string" &&
         typeof artifact.sourceName === "string" &&
         artifact.sourceName.endsWith(".sol") &&
@@ -845,9 +859,13 @@ export async function buildSolidityToolchain(
     artifacts: SolidityBuildArtifact[];
     missing: SolidityBuildTarget[];
 }> {
+    // Solidity contracts target pallet-revive's EVM backend: plain upstream
+    // builds producing EVM bytecode (no resolc). The chain distinguishes EVM
+    // initcode from PolkaVM blobs by magic bytes at upload, so the deploy
+    // path is shared.
     const command =
         toolchain === "foundry"
-            ? { cmd: "forge", args: ["build", "--resolc"] }
+            ? { cmd: "forge", args: ["build"] }
             : { cmd: "npx", args: ["hardhat", "compile"] };
 
     const result = options.skipBuild
@@ -963,6 +981,39 @@ if (import.meta.vitest) {
                 "@example/counter-a",
                 "@example/counter-b",
             ]);
+        });
+
+        test("parses the version suffix from @custom:cdm @org/name:X.Y.Z", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts"), { recursive: true });
+            writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
+            writeFileSync(
+                join(root, "contracts", "Counters.sol"),
+                `
+                /// @custom:cdm @example/counter-a:1.2.3
+                contract CounterA {}
+
+                /**
+                 * @custom:cdm @example/counter-b:4.5.6
+                 */
+                contract CounterB {}
+
+                /// @custom:cdm @example/counter-c
+                contract CounterC {}
+                `,
+            );
+
+            const targets = detectSolidityBuildTargets(root);
+            const byName = new Map(targets.map((target) => [target.contractName, target]));
+
+            // The suffix never leaks into the package name.
+            expect(byName.get("CounterA")?.cdmPackage).toBe("@example/counter-a");
+            expect(byName.get("CounterA")?.version).toBe("1.2.3");
+            expect(byName.get("CounterB")?.cdmPackage).toBe("@example/counter-b");
+            expect(byName.get("CounterB")?.version).toBe("4.5.6");
+            // A tag without the suffix still detects — just with no version.
+            expect(byName.get("CounterC")?.cdmPackage).toBe("@example/counter-c");
+            expect(byName.get("CounterC")?.version).toBeUndefined();
         });
 
         test("uses contract NatSpec metadata before project package metadata", () => {
@@ -1135,8 +1186,9 @@ if (import.meta.vitest) {
             writeFileSync(join(root, "src", "Counter.sol"), "contract CounterA {}\n");
             writeFileSync(
                 join(root, "build-artifacts", "src", "Counter.sol", "CounterA.json"),
+                // Upstream hardhat format — what EVM-mode compiles emit.
                 JSON.stringify({
-                    _format: "hh-resolc-artifact-1",
+                    _format: "hh-sol-artifact-1",
                     contractName: "CounterA",
                     sourceName: "src/Counter.sol",
                     abi: [],

@@ -13,7 +13,9 @@ const config: HardhatUserConfig = {
     },
     networks: {
         hardhat: {
-            polkadot: true,
+            // target: "evm" keeps compilation on upstream solc (EVM bytecode
+            // for pallet-revive's EVM backend) while the node stays polkadot.
+            polkadot: { target: "evm" },
             nodeConfig: {
                 nodeBinaryPath: process.env.ANVIL_POLKADOT_BINARY ?? "./bin/anvil-polkadot",
             },

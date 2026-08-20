@@ -10,9 +10,10 @@ export interface ContractInfo {
     /** Human-readable display name when it differs from the stable internal name. */
     displayName?: string;
     /**
-     * Crate version from Cargo.toml `[package].version` — the source of truth
-     * for the semver a `cdm deploy` publishes. Absent for targets without a
-     * Cargo manifest (e.g. Solidity contracts).
+     * The semver a `cdm deploy` publishes. Rust crates source it from
+     * Cargo.toml `[package].version`, Solidity contracts from the `:X.Y.Z`
+     * suffix of the `@custom:cdm` NatSpec tag (`@org/name:1.2.3`). Absent
+     * when the target declares neither.
      */
     version?: string;
     /** Source toolchain that produced or will produce this contract artifact. */

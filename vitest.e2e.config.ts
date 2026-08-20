@@ -16,5 +16,14 @@ export default defineConfig({
         testTimeout: 60_000,
         hookTimeout: 300_000,
         fileParallelism: false,
+        server: {
+            deps: {
+                // Same as vitest.config.ts: resolve workspace package dists
+                // like node instead of letting vite inline and re-transform
+                // their code-split tsup chunks (which breaks root-entry
+                // exports like @parity/cdm-builder's `deployContracts`).
+                external: [/src\/lib\/(contracts|env|utils)\/dist\//],
+            },
+        },
     },
 });
