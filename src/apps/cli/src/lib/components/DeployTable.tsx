@@ -150,7 +150,8 @@ function ContractRow({
     // Up-to-date state — this Cargo.toml version is already published, so
     // the pipeline skipped the crate entirely (no build, deploy, or publish).
     // Mirrors the cached row's skip markers; the address is the name's stable
-    // address when the registry resolved it.
+    // address when the registry resolved it. A source-drift warning turns the
+    // marker yellow (the message itself renders below the table).
     if (state === "up-to-date") {
         return (
             <Box>
@@ -161,7 +162,11 @@ function ContractRow({
                 </Cell>
                 <Cell width={COL_VERSION}>{versionCell}</Cell>
                 <Cell width={COL_BUILD}>
-                    <Text dimColor>up-to-date</Text>
+                    {s?.sourceDriftWarning ? (
+                        <Text color="yellow">up-to-date!</Text>
+                    ) : (
+                        <Text dimColor>up-to-date</Text>
+                    )}
                 </Cell>
                 <Cell width={COL_PHASE}>
                     <Cached />
@@ -351,6 +356,14 @@ export function DeployTable({
     }
     const errors = [...errorGroups].map(([error, names]) => ({ error, names }));
 
+    // Advisory warnings (source drift on up-to-date rows) render below the
+    // table like errors, but in yellow and without failing anything.
+    const warnings: string[] = [];
+    for (const crate of rowCrates) {
+        const warning = statuses.get(crate)?.sourceDriftWarning;
+        if (warning) warnings.push(warning);
+    }
+
     return (
         <Box flexDirection="column" marginTop={1}>
             {rowCrates.map((crate) => (
@@ -364,6 +377,15 @@ export function DeployTable({
                     ipfsGatewayUrl={ipfsGatewayUrl}
                 />
             ))}
+            {warnings.length > 0 && (
+                <Box flexDirection="column" marginTop={1}>
+                    {warnings.map((warning) => (
+                        <Text key={warning} color="yellow">
+                            warning: {warning}
+                        </Text>
+                    ))}
+                </Box>
+            )}
             {logLines.length > 0 && <LogTail lines={logLines} height={logHeight} />}
             {errors.length > 0 && (
                 <Box flexDirection="column" marginTop={1}>

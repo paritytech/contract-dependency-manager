@@ -41,6 +41,8 @@ import {
 import { ContractDeployer, type AbiEntry, type AbiParam, type Metadata } from "./deployer";
 import { MetadataPublisher } from "./publisher";
 import { isPublishableKey, keyToSemver, PROXY_MAGIC, semverToKey } from "./proxy";
+import { computeSourceHash } from "./source-hash";
+import type { InstallIpfsGateway } from "./install";
 
 async function queryRegistryLatestKeys(
     contract: Contract<ContractDef>,
@@ -78,6 +80,78 @@ async function queryRegistryStableAddress(
         throw new Error(`Failed to resolve the stable address for "${pkg}" from the registry`);
     }
     return option.value as HexString;
+}
+
+/**
+ * The `source_hash` in the latest published version's metadata: latest
+ * version row → metadata URI → metadata JSON. Returns `undefined` when the
+ * name has no published rows or the metadata predates source hashes; query
+ * and fetch errors propagate (the caller treats them as "skip the check").
+ */
+async function queryLatestPublishedSourceHash(
+    contract: Contract<ContractDef>,
+    pkg: string,
+    ipfs: InstallIpfsGateway,
+): Promise<string | undefined> {
+    const countResult = await contract.getVersionCount.query(pkg);
+    if (!countResult.success || typeof countResult.value !== "number" || countResult.value === 0) {
+        return undefined;
+    }
+    const rowResult = await contract.getVersionAt.query(pkg, countResult.value - 1);
+    const row =
+        rowResult.success && rowResult.value && typeof rowResult.value === "object"
+            ? (rowResult.value as { isSome?: boolean; metadata_uri?: string })
+            : undefined;
+    if (!row?.isSome || typeof row.metadata_uri !== "string" || row.metadata_uri === "") {
+        return undefined;
+    }
+    const metadata = await (await ipfs.fetch(row.metadata_uri)).json();
+    const sourceHash =
+        metadata && typeof metadata === "object"
+            ? (metadata as { source_hash?: unknown }).source_hash
+            : undefined;
+    return typeof sourceHash === "string" ? sourceHash : undefined;
+}
+
+/**
+ * Best-effort source-drift probe for an `up-to-date` crate: recompute the
+ * local source hash and compare it with the latest published one.
+ *
+ * PRECONDITION: only call this when the crate's local version key EQUALS the
+ * registry's latest — then the latest row's metadata is the publish of this
+ * exact version and the comparison is meaningful. `up-to-date` also covers
+ * checkouts that are BEHIND the chain (local key < latest, e.g. deploying
+ * from an old branch), where the local sources are expected to differ from
+ * the latest publish; comparing there would warn spuriously.
+ *
+ * Returns the differing pair only on a genuine mismatch; every other outcome
+ * — no gateway supplied, unhashable local sources, metadata without a
+ * `source_hash` (older publishes), or any query/fetch failure — resolves to
+ * `undefined` so the up-to-date path stays exactly as silent and non-fatal
+ * as before.
+ */
+async function checkUpToDateSourceDrift(
+    rootDir: string,
+    contract: ContractInfo,
+    registryContract: Contract<ContractDef>,
+    ipfs: InstallIpfsGateway | undefined,
+): Promise<{ localHash: string; publishedHash: string } | undefined> {
+    if (!ipfs) return undefined;
+    try {
+        const localHash = computeSourceHash(rootDir, contract);
+        if (!localHash) return undefined;
+        const publishedHash = await queryLatestPublishedSourceHash(
+            registryContract,
+            contract.cdmPackage!,
+            ipfs,
+        );
+        if (!publishedHash || publishedHash === localHash) return undefined;
+        return { localHash, publishedHash };
+    } catch {
+        // Advisory only — an unreachable gateway or an older registry
+        // generation must never fail (or noise up) an otherwise no-op deploy.
+        return undefined;
+    }
 }
 
 /**
@@ -198,6 +272,13 @@ export interface DeployContractsOptions {
      * contracts and publishes registry entries.
      */
     metadataSigner?: PolkadotSigner;
+    /**
+     * Read-only IPFS gateway used to fetch the latest published metadata for
+     * the up-to-date source-drift check (`check-source-drift`). Optional —
+     * without it the check is skipped and up-to-date crates behave exactly
+     * as before.
+     */
+    ipfs?: InstallIpfsGateway;
 
     // Tuning (reserved for future use by internal tx layers)
     waitFor?: "best-block" | "finalized";
@@ -232,6 +313,27 @@ export type DeployEvent =
           version: string;
           latest: string;
           address?: HexString;
+      }
+    | {
+          /**
+           * An `up-to-date` crate whose locally recomputed source hash
+           * differs from the `source_hash` in its latest published metadata —
+           * the sources changed but the version wasn't bumped. Only emitted
+           * when the local version key EQUALS the registry's latest (the
+           * latest publish is of this exact version); a checkout that is
+           * merely BEHIND the chain never triggers it. Advisory only: emitted
+           * right after the crate's `check-up-to-date`, it changes no
+           * statuses and never fails the pipeline. Requires the `ipfs`
+           * option; older publishes without a `source_hash` (and any fetch
+           * failure) emit nothing.
+           */
+          type: "check-source-drift";
+          crate: string;
+          cdmPackage: string;
+          /** The local crate semver — guaranteed equal to the on-chain latest. */
+          version: string;
+          localHash: string;
+          publishedHash: string;
       }
     | {
           /**
@@ -1168,12 +1270,25 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     // Diagnostic only — the version is known published, so a
                     // failed address read must not fail an otherwise no-op run.
                 }
-                return { contract, resolved, latest, stableAddress };
+                // Drift is only checked when the local version IS the
+                // on-chain latest — a checkout BEHIND the chain (key <
+                // latest) is expected to differ from the latest publish's
+                // sources, so comparing would warn spuriously.
+                const drift =
+                    resolved.key === latest
+                        ? await checkUpToDateSourceDrift(
+                              opts.rootDir,
+                              contract,
+                              registryContract,
+                              opts.ipfs,
+                          )
+                        : undefined;
+                return { contract, resolved, latest, stableAddress, drift };
             }),
         );
         for (const check of upToDateChecks) {
             if (!check) continue;
-            const { contract, resolved, latest, stableAddress } = check;
+            const { contract, resolved, latest, stableAddress, drift } = check;
             upToDateCrates.add(contract.name);
             status.set(contract.name, {
                 status: "up-to-date",
@@ -1188,6 +1303,16 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 latest: formatVersionKey(latest),
                 address: stableAddress,
             });
+            if (drift) {
+                emit({
+                    type: "check-source-drift",
+                    crate: contract.name,
+                    cdmPackage: contract.cdmPackage!,
+                    version: resolved.version,
+                    localHash: drift.localHash,
+                    publishedHash: drift.publishedHash,
+                });
+            }
         }
 
         // ---- 4. per-layer build + deploy loop ----
@@ -1267,6 +1392,9 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                         });
                     }
                     const storageLayout = readStorageLayout(deployable.abiPath);
+                    // Source (not bytecode) digest — feeds the deploy-time
+                    // "sources changed without a version bump" warning.
+                    const sourceHash = computeSourceHash(opts.rootDir, contract);
                     const meta: Metadata = {
                         publish_block: 0,
                         published_at: publishedAt,
@@ -1277,6 +1405,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                         repository,
                         abi,
                         ...(storageLayout !== undefined ? { storage_layout: storageLayout } : {}),
+                        ...(sourceHash !== undefined ? { source_hash: sourceHash } : {}),
                     };
                     metadataList.push(meta);
                     cidMap[deployable.crate] = await computeBulletinStoreCid(
@@ -1605,6 +1734,7 @@ if (import.meta.vitest) {
     vi.mock("./solidity", () => ({
         buildSolidityToolchain: vi.fn(),
         detectSolidityBuildTargets: vi.fn(() => []),
+        collectLocalSoliditySources: vi.fn(() => []),
     }));
 
     vi.mock("fs", () => ({
@@ -1612,6 +1742,8 @@ if (import.meta.vitest) {
         mkdirSync: vi.fn(),
         readFileSync: vi.fn(() => Buffer.from("[]")),
         writeFileSync: vi.fn(),
+        readdirSync: vi.fn(() => []),
+        statSync: vi.fn(() => ({ isFile: () => true, isDirectory: () => false })),
     }));
 
     const { pvmContractBuildAsync: mockBuild } = await import("./builder");
@@ -1621,7 +1753,11 @@ if (import.meta.vitest) {
         detectSolidityBuildTargets: mockDetectSolidity,
     } = await import("./solidity");
     const { MetadataPublisher: mockMetadataPublisher } = await import("./publisher");
-    const { writeFileSync: mockWriteFileSync, readFileSync: mockReadFileSync } = await import("fs");
+    const {
+        writeFileSync: mockWriteFileSync,
+        readFileSync: mockReadFileSync,
+        readdirSync: mockReaddirSync,
+    } = await import("fs");
     const { createContractFromClient: mockCreateContract } = await import(
         "@parity/product-sdk-contracts"
     );
@@ -1635,9 +1771,13 @@ if (import.meta.vitest) {
     /**
      * Fake registry handle: `getLatestKey` answers from `latestKeys` (0n =
      * unregistered, the on-chain default), `getAddress` resolves each
-     * package's deterministic stable address.
+     * package's deterministic stable address, and `getVersionCount` /
+     * `getVersionAt` answer from `versionRows` (empty = no published rows).
      */
-    function makeRegistryMock(latestKeys: Record<string, bigint> = {}) {
+    function makeRegistryMock(
+        latestKeys: Record<string, bigint> = {},
+        versionRows: Record<string, Array<{ key: bigint; metadataUri: string }>> = {},
+    ) {
         return {
             getLatestKey: {
                 query: vi.fn(async (pkg: string) => ({
@@ -1650,6 +1790,28 @@ if (import.meta.vitest) {
                     success: true,
                     value: { isSome: true, value: stableAddressFor(pkg) },
                 })),
+            },
+            getVersionCount: {
+                query: vi.fn(async (pkg: string) => ({
+                    success: true,
+                    value: (versionRows[pkg] ?? []).length,
+                })),
+            },
+            getVersionAt: {
+                query: vi.fn(async (pkg: string, index: number) => {
+                    const row = (versionRows[pkg] ?? [])[index];
+                    return {
+                        success: true,
+                        value: row
+                            ? {
+                                  isSome: true,
+                                  version_key: row.key,
+                                  target: "0ximpl",
+                                  metadata_uri: row.metadataUri,
+                              }
+                            : { isSome: false, version_key: 0n, target: "0x", metadata_uri: "" },
+                    };
+                }),
             },
         };
     }
@@ -1700,6 +1862,7 @@ if (import.meta.vitest) {
         }));
         (mockCreateContract as any).mockImplementation(async () => makeRegistryMock());
         (mockReadFileSync as any).mockImplementation(() => Buffer.from("[]"));
+        (mockReaddirSync as any).mockImplementation(() => []);
     });
 
     function makePolkadotSigner(fill: number): PolkadotSigner {
@@ -2227,6 +2390,170 @@ if (import.meta.vitest) {
             expect(published[0][0]).toMatchObject({
                 abi: [{ type: "function", name: "ping", inputs: [] }],
                 storage_layout: { storage: [], types: {} },
+            });
+        });
+
+        /** Fake crate `a` at /fake/a: a Cargo.toml plus one src file. */
+        function mockCrateSources() {
+            (mockReaddirSync as any).mockImplementation((dir: unknown) =>
+                String(dir) === "/fake/a/src" ? ["main.rs"] : [],
+            );
+            (mockReadFileSync as any).mockImplementation((path: unknown) => {
+                const p = String(path);
+                if (p === "/fake/a/Cargo.toml") return Buffer.from('[package]\nname = "a"');
+                if (p === "/fake/a/src/main.rs") return Buffer.from("fn main() {}");
+                return Buffer.from("[]");
+            });
+        }
+
+        function deployOpts(overrides: Partial<DeployContractsOptions> = {}) {
+            return {
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                ...overrides,
+            };
+        }
+
+        test("publishes a source hash computed from the crate's manifest and sources", async () => {
+            const order = makeOrder([["a"]], {}, { a: "@example/a" });
+            (mockDetect as any).mockReturnValue(order);
+            mockCrateSources();
+            const { MetadataPublisher: MockedPublisher } = await import("./publisher");
+            const published: unknown[][] = [];
+            (MockedPublisher as any).mockImplementationOnce(() => ({
+                publishBatch: vi.fn(async (metadataList: unknown[]) => {
+                    published.push(metadataList);
+                    return { cids: metadataList.map(() => "fakeCid123"), txHash: "0xpublish" };
+                }),
+            }));
+
+            await deployContracts(deployOpts());
+
+            // Same digest the deploy-time drift check will recompute locally.
+            const expected = computeSourceHash("/fake", order.contractMap.get("a")!);
+            expect(expected).toMatch(/^0x[0-9a-f]{64}$/);
+            expect(published).toHaveLength(1);
+            expect(published[0][0]).toMatchObject({ source_hash: expected });
+        });
+
+        test("warns when an up-to-date crate's local sources differ from the published hash", async () => {
+            const order = makeOrder([["a"]], {}, { a: "@example/a" }, { a: "1.0.0" });
+            (mockDetect as any).mockReturnValue(order);
+            (mockCreateContract as any).mockImplementation(async () =>
+                makeRegistryMock(
+                    { "@example/a": semverToKey("1.0.0") },
+                    { "@example/a": [{ key: semverToKey("1.0.0"), metadataUri: "bafy-a-1" }] },
+                ),
+            );
+            mockCrateSources();
+            const publishedHash = `0x${"ab".repeat(32)}`;
+            const fetchedCids: string[] = [];
+
+            const events: DeployEvent[] = [];
+            const summary = await deployContracts(
+                deployOpts({
+                    ipfs: {
+                        fetch: async (cid: string) => {
+                            fetchedCids.push(cid);
+                            return { json: async () => ({ source_hash: publishedHash }) };
+                        },
+                    },
+                    onEvent: (event) => events.push(event),
+                }),
+            );
+
+            // The published hash comes from the LATEST version row's metadata.
+            expect(fetchedCids).toEqual(["bafy-a-1"]);
+            const types = events.map((event) => event.type);
+            expect(types.indexOf("check-source-drift")).toBe(types.indexOf("check-up-to-date") + 1);
+            expect(events.find((event) => event.type === "check-source-drift")).toEqual({
+                type: "check-source-drift",
+                crate: "a",
+                cdmPackage: "@example/a",
+                version: "1.0.0",
+                localHash: computeSourceHash("/fake", order.contractMap.get("a")!),
+                publishedHash,
+            });
+            // Advisory only: the crate still lands as up-to-date, untouched.
+            expect(mockBuild).not.toHaveBeenCalled();
+            expect(summary.contracts[0]).toMatchObject({ crate: "a", status: "up-to-date" });
+        });
+
+        test("source-drift check stays silent on match, missing hash, or fetch failure", async () => {
+            const order = makeOrder([["a"]], {}, { a: "@example/a" }, { a: "1.0.0" });
+            (mockDetect as any).mockReturnValue(order);
+            (mockCreateContract as any).mockImplementation(async () =>
+                makeRegistryMock(
+                    { "@example/a": semverToKey("1.0.0") },
+                    { "@example/a": [{ key: semverToKey("1.0.0"), metadataUri: "bafy-a-1" }] },
+                ),
+            );
+            mockCrateSources();
+            const localHash = computeSourceHash("/fake", order.contractMap.get("a")!)!;
+
+            const run = async (ipfs: DeployContractsOptions["ipfs"]) => {
+                const events: DeployEvent[] = [];
+                const summary = await deployContracts(
+                    deployOpts({ ipfs, onEvent: (event) => events.push(event) }),
+                );
+                return { events, summary };
+            };
+
+            // Hashes match → silent skip, exactly as today.
+            const matched = await run({
+                fetch: async () => ({ json: async () => ({ source_hash: localHash }) }),
+            });
+            expect(matched.events.some((event) => event.type === "check-source-drift")).toBe(false);
+
+            // Older publish without a source_hash → silent.
+            const absent = await run({ fetch: async () => ({ json: async () => ({}) }) });
+            expect(absent.events.some((event) => event.type === "check-source-drift")).toBe(false);
+
+            // Gateway failure → silent and never fatal.
+            const failed = await run({
+                fetch: async () => {
+                    throw new Error("gateway down");
+                },
+            });
+            expect(failed.events.some((event) => event.type === "check-source-drift")).toBe(false);
+            expect(failed.summary.contracts[0]).toMatchObject({
+                crate: "a",
+                status: "up-to-date",
+            });
+        });
+
+        test("skips the drift check entirely when the local version is behind the chain", async () => {
+            // Local 1.0.0 vs on-chain latest 1.2.0 — an old checkout, not a
+            // forgotten bump. The latest publish is of a DIFFERENT version,
+            // so comparing local sources against it would warn spuriously;
+            // the check must be skipped outright (no fetch), not just muted.
+            const order = makeOrder([["a"]], {}, { a: "@example/a" }, { a: "1.0.0" });
+            (mockDetect as any).mockReturnValue(order);
+            (mockCreateContract as any).mockImplementation(async () =>
+                makeRegistryMock(
+                    { "@example/a": semverToKey("1.2.0") },
+                    { "@example/a": [{ key: semverToKey("1.2.0"), metadataUri: "bafy-a-2" }] },
+                ),
+            );
+            mockCrateSources();
+            const ipfsFetch = vi.fn(async () => ({
+                json: async () => ({ source_hash: `0x${"ab".repeat(32)}` }),
+            }));
+
+            const events: DeployEvent[] = [];
+            const summary = await deployContracts(
+                deployOpts({ ipfs: { fetch: ipfsFetch }, onEvent: (event) => events.push(event) }),
+            );
+
+            expect(ipfsFetch).not.toHaveBeenCalled();
+            expect(events.some((event) => event.type === "check-source-drift")).toBe(false);
+            expect(summary.contracts[0]).toMatchObject({
+                crate: "a",
+                version: "1.0.0",
+                status: "up-to-date",
             });
         });
 

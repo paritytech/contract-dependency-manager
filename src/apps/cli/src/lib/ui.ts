@@ -1,5 +1,6 @@
 import React from "react";
 import { render } from "ink";
+import { connectIpfsGateway } from "@parity/cdm-env";
 import {
     buildContracts,
     deployContracts,
@@ -174,6 +175,11 @@ export async function runDeployWithUI(opts: DeployUIOptions): Promise<{
     try {
         summary = await deployContracts({
             ...opts,
+            // Lets the pipeline fetch published metadata for the up-to-date
+            // source-drift warning; without a gateway the check is skipped.
+            ipfs:
+                opts.ipfs ??
+                (opts.ipfsGatewayUrl ? connectIpfsGateway(opts.ipfsGatewayUrl) : undefined),
             onEvent: (e: DeployEvent) => adapter.handleDeployEvent(e),
         });
     } finally {

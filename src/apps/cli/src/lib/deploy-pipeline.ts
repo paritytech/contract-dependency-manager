@@ -39,6 +39,11 @@ export interface ContractStatus {
     address?: string;
     /** Crate semver from Cargo.toml: the version published (or already on-chain). */
     version?: string;
+    /**
+     * Advisory warning for `up-to-date` rows whose local source hash differs
+     * from the latest published one — sources changed, version didn't.
+     */
+    sourceDriftWarning?: string;
     cid?: string;
     deployTxHash?: string;
     deployBlockHash?: string;
@@ -220,6 +225,15 @@ export class PipelineStatusAdapter {
                 // success-like; the crate is skipped by every later phase.
                 // `address` is the name's stable address when it resolved.
                 this.update(e.crate, "up-to-date", { version: e.version, address: e.address });
+                return;
+            case "check-source-drift":
+                // Advisory only — the crate stays "up-to-date"; attach the
+                // edit-without-bump warning so the table can surface it.
+                this.update(e.crate, "up-to-date", {
+                    sourceDriftWarning:
+                        `${e.cdmPackage} ${e.version} is up-to-date on-chain but local ` +
+                        `sources differ — did you forget to bump the version?`,
+                });
                 return;
             case "check-needs-deploy":
                 // Address precomputed — no state change yet, deploy-register
