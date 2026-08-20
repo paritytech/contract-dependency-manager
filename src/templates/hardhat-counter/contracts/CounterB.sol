@@ -4,8 +4,7 @@ pragma solidity ^0.8.28;
 import "../.cdm/solidity/example/counter-a.sol";
 
 /// @notice Demonstrates a Solidity contract calling CounterA through a generated CDM import.
-/// @custom:cdm @example/counter-b
-/// @custom:cdm-version 0.1.0
+/// @custom:cdm @example/counter-b:0.1.0
 contract CounterB {
     uint256 public localCount;
 

@@ -113,12 +113,11 @@ For workspace-local packages, `cdm::import!` resolves the ABI through Cargo meta
 Solidity contracts use NatSpec for their own CDM package name and publish version:
 
 ```solidity
-/// @custom:cdm @yourorg/mycontract
-/// @custom:cdm-version 0.1.0
+/// @custom:cdm @yourorg/mycontract:0.1.0
 contract MyContract {}
 ```
 
-`@custom:cdm-version` plays the role Cargo.toml `[package].version` plays for Rust crates: a strict `X.Y.Z` semver that `cdm deploy` publishes, skipping versions the registry already has.
+The `:X.Y.Z` suffix (same colon convention as `cdm i @org/name:1.2.1`) plays the role Cargo.toml `[package].version` plays for Rust crates: a strict `X.Y.Z` semver that `cdm deploy` publishes, skipping versions the registry already has.
 
 To call an installed CDM contract from Solidity, import the generated interface:
 
@@ -242,7 +241,10 @@ cdm template foundry-counter
 ```
 
 `hardhat-counter` uses `@parity/hardhat-polkadot` and compiles with `pnpm build`.
-`foundry-counter` uses the Polkadot Foundry fork and compiles with `forge build --resolc`.
+`foundry-counter` uses the Polkadot Foundry fork and compiles with `forge build`.
+
+Both templates target pallet-revive's EVM backend: contracts compile to plain EVM
+bytecode with upstream solc — no resolc involved.
 
 These templates are compile-ready starter projects and can be built, deployed, published, registered, installed, and consumed through CDM.
 

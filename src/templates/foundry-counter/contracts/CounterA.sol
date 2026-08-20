@@ -2,8 +2,7 @@
 pragma solidity ^0.8.28;
 
 /// @notice Stores a counter that other contracts can increment through CDM.
-/// @custom:cdm @example/counter-a
-/// @custom:cdm-version 0.1.0
+/// @custom:cdm @example/counter-a:0.1.0
 contract CounterA {
     uint256 public count;
 

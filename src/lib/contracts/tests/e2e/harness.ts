@@ -28,7 +28,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import type { HexString } from "polkadot-api";
 import { submitAndWatch, type SubmittableTransaction } from "@parity/product-sdk-tx";
-import { GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "@parity/cdm-utils";
+import { ALICE_SS58, GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "@parity/cdm-utils";
 
 // Deploy via `bun run src/lib/scripts/deploy-registry.ts` rather than
 // invoking `ContractDeployer` programmatically: the deploy dry-run behaves
@@ -173,6 +173,70 @@ export async function deployBlob(api: any, signer: any, pvmPath: string): Promis
         throw new Error(`deployBlob(${pvmPath}): no Instantiated event`);
     }
     return instantiated[0].payload.contract as HexString;
+}
+
+/** Plain hex → bytes, matching product-sdk's own calldata handling. */
+export function hexBytes(hex: string): Uint8Array {
+    const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
+    const out = new Uint8Array(stripped.length / 2);
+    for (let i = 0; i < out.length; i++) {
+        out[i] = Number.parseInt(stripped.slice(i * 2, i * 2 + 2), 16);
+    }
+    return out;
+}
+
+/** Dry-run a raw contract call (versioned/meta wire formats have no ABI).
+ * Argument types mirror product-sdk's own `dryRunCall` exactly — a hex
+ * string `dest` and `Uint8Array` calldata — which is the combination PPN's
+ * runtime metadata encodes without an `Incompatible runtime entry` error. */
+export async function dryRunCall(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    api: any,
+    dest: string,
+    input: string,
+    origin: string = ALICE_SS58,
+): Promise<{ success: boolean; reverted: boolean; data: string }> {
+    const r = await api.apis.ReviveApi.call(
+        origin,
+        dest,
+        0n,
+        undefined,
+        undefined,
+        hexBytes(input),
+        { at: "best" },
+    );
+    if (!r.result.success) {
+        return { success: false, reverted: false, data: "0x" };
+    }
+    const flags = Number(r.result.value.flags);
+    const raw = r.result.value.data;
+    const data =
+        typeof raw === "string"
+            ? raw
+            : raw instanceof Uint8Array
+              ? `0x${Array.from(raw)
+                    .map((b: number) => b.toString(16).padStart(2, "0"))
+                    .join("")}`
+              : raw.asHex();
+    return { success: true, reverted: (flags & 1) === 1, data: String(data).toLowerCase() };
+}
+
+/** Submit a raw contract call as a transaction (fixed generous limits). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function rawCallTx(api: any, signer: any, dest: string, input: string): Promise<void> {
+    const tx = api.tx.Revive.call({
+        dest,
+        value: 0n,
+        weight_limit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
+        storage_deposit_limit: STORAGE_DEPOSIT_LIMIT,
+        data: hexBytes(input),
+    });
+    const result = await submitAndWatch(tx as unknown as SubmittableTransaction, signer, {
+        waitFor: "best-block",
+    });
+    if (!result.ok) {
+        throw new Error(`rawCallTx failed: ${JSON.stringify(result.error)}`);
+    }
 }
 
 export interface DeployedRegistry {

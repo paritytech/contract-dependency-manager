@@ -11,9 +11,9 @@ export interface ContractInfo {
     displayName?: string;
     /**
      * The semver a `cdm deploy` publishes. Rust crates source it from
-     * Cargo.toml `[package].version`, Solidity contracts from the
-     * `@custom:cdm-version` NatSpec tag. Absent when the target declares
-     * neither.
+     * Cargo.toml `[package].version`, Solidity contracts from the `:X.Y.Z`
+     * suffix of the `@custom:cdm` NatSpec tag (`@org/name:1.2.3`). Absent
+     * when the target declares neither.
      */
     version?: string;
     /** Source toolchain that produced or will produce this contract artifact. */

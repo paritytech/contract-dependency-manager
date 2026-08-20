@@ -175,6 +175,13 @@ jobs:
                   cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
             - name: Build registry contracts
               run: pnpm build:registry
+            # The Solidity e2e suite drives the real foundry pipeline (plain
+            # `forge build`; solc is auto-fetched on first build).
+            - name: Install foundry-polkadot
+              run: |
+                  curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash
+                  "$HOME/.foundry/bin/foundryup-polkadot"
+                  echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
             # The suite runs against a full local Polkadot product environment
             # (PPN: relay + Asset Hub + Bulletin + IPFS gateway), started from
             # prebuilt release binaries — nothing is compiled. preview-net-v1

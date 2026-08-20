@@ -83,14 +83,15 @@ async function queryRegistryStableAddress(
 /** Where a contract's toolchain declares its publish version, for error advice. */
 function versionSource(contract: ContractInfo): string {
     return contract.toolchain === "foundry" || contract.toolchain === "hardhat"
-        ? `a "/// @custom:cdm-version X.Y.Z" NatSpec tag next to the contract's @custom:cdm tag`
+        ? `the :X.Y.Z suffix of the contract's @custom:cdm NatSpec tag ` +
+              `("/// @custom:cdm @org/name:X.Y.Z")`
         : "the crate's Cargo.toml [package].version";
 }
 
 /**
  * A deployable contract's publish version — Rust crates declare it in
- * Cargo.toml `[package].version`, Solidity contracts in a
- * `@custom:cdm-version` NatSpec tag. Strict `X.Y.Z` only — anything else (or
+ * Cargo.toml `[package].version`, Solidity contracts as the `:X.Y.Z` suffix
+ * of the `@custom:cdm` NatSpec tag. Strict `X.Y.Z` only — anything else (or
  * a missing version) is a configuration error worth failing the whole deploy
  * for before any build starts.
  */
@@ -1136,8 +1137,8 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         // ---- 3. resolve crate versions + skip already-published versions ----
         //
         // Version source of truth is each crate's Cargo.toml [package].version
-        // (Rust) or the contract's @custom:cdm-version NatSpec tag (Solidity);
-        // an invalid or missing version is a configuration error that aborts
+        // (Rust) or the @custom:cdm tag's :X.Y.Z suffix (Solidity); an
+        // invalid or missing version is a configuration error that aborts
         // the deploy before anything is built or submitted. A crate whose
         // packed key is not strictly greater than the registry's latest for
         // its package is already published — it's marked "up-to-date" and
@@ -2291,7 +2292,7 @@ if (import.meta.vitest) {
                     origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                     registryAddress: getRegistryAddress("paseo") as HexString,
                 }),
-            ).rejects.toThrow(/@custom:cdm-version/);
+            ).rejects.toThrow(/@custom:cdm @org\/name:X\.Y\.Z/);
         });
     });
 }
