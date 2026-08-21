@@ -36,7 +36,9 @@ mod contract_registry {
     use contract_registry_core::MAX_PAGE_LIMIT;
     use contract_registry_core::naming::validate_contract_name;
     use contract_registry_core::slots::{ADMIN_SLOT, FROZEN_SLOT, IMPLEMENTATION_SLOT};
-    use contract_registry_core::versioning::{MAGIC, META_KEY, is_publishable_key, meta};
+    use contract_registry_core::versioning::{
+        CDM_INIT_SELECTOR, MAGIC, META_KEY, is_publishable_key, meta,
+    };
     use pvm_contract_sdk::{Address, CallFlags, HostApi, Lazy, Mapping, StorageVec};
 
     #[derive(pvm_contract_sdk::SolEvent)]
@@ -55,6 +57,16 @@ mod contract_registry {
         #[indexed]
         pub name: String,
         pub proxy: Address,
+    }
+
+    /// A publish delivered its initialization: `init_target` was
+    /// delegate-called against the name's proxy storage, exactly once.
+    #[derive(pvm_contract_sdk::SolEvent)]
+    pub struct Initialized {
+        #[indexed]
+        pub name: String,
+        pub version_key: u128,
+        pub init_target: Address,
     }
 
     #[derive(pvm_contract_sdk::SolEvent)]
@@ -240,6 +252,44 @@ mod contract_registry {
             target: Address,
             metadata_uri: String,
         ) -> Result<(), Error> {
+            self.publish_internal(contract_name, version_key, target, metadata_uri, None)
+        }
+
+        /// `publish` plus a one-shot initialization: once the version is
+        /// recorded and the proxy repointed, the proxy delegate-calls
+        /// `init_target` with `cdmInit(from, owner)` against its own storage
+        /// — `from` is the previously-latest key (0 on a first publish),
+        /// `owner` the name's owner. An initialization revert bubbles up and
+        /// rolls back the entire publish.
+        #[pvm_contract_sdk::method]
+        pub fn publish_with_init(
+            &mut self,
+            contract_name: String,
+            version_key: u128,
+            target: Address,
+            metadata_uri: String,
+            init_target: Address,
+        ) -> Result<(), Error> {
+            if init_target == Address::ZERO {
+                return Err(InvalidInitTarget.into());
+            }
+            self.publish_internal(
+                contract_name,
+                version_key,
+                target,
+                metadata_uri,
+                Some(init_target),
+            )
+        }
+
+        fn publish_internal(
+            &mut self,
+            contract_name: String,
+            version_key: u128,
+            target: Address,
+            metadata_uri: String,
+            init_target: Option<Address>,
+        ) -> Result<(), Error> {
             self.require_unfrozen()?;
             validate_contract_name(&contract_name)?;
             if !is_publishable_key(version_key) {
@@ -255,14 +305,15 @@ mod contract_registry {
                 return Err(Unauthorized.into());
             }
 
-            if let Some(latest) = self.latest_key(&contract_name, &info) {
-                if version_key <= latest {
-                    return Err(VersionNotMonotonic {
-                        attempted: version_key,
-                        latest,
-                    }
-                    .into());
+            // The latest key BEFORE this publish — the `from` an
+            // initialization receives (0 on a first publish).
+            let previous_latest = self.latest_key(&contract_name, &info).unwrap_or(0);
+            if previous_latest != 0 && version_key <= previous_latest {
+                return Err(VersionNotMonotonic {
+                    attempted: version_key,
+                    latest: previous_latest,
                 }
+                .into());
             }
 
             if info.proxy == Address::ZERO {
@@ -294,11 +345,21 @@ mod contract_registry {
                 .insert(&index, &metadata_uri);
 
             Published {
-                name: contract_name,
+                name: contract_name.clone(),
                 version_key,
                 target,
             }
             .emit(self.host());
+
+            if let Some(init_target) = init_target {
+                self.call_proxy_init(&info.proxy, &init_target, previous_latest, &info.owner);
+                Initialized {
+                    name: contract_name,
+                    version_key,
+                    init_target,
+                }
+                .emit(self.host());
+            }
             Ok(())
         }
 
@@ -531,6 +592,32 @@ mod contract_registry {
             self.call_proxy(proxy, &calldata);
         }
 
+        /// Deliver an initialization into the name's proxy storage:
+        /// `callCode(init_target, [cdmInit selector][from word][owner word])`
+        /// over the meta wire format, canonical ABI `bytes` framing (offset
+        /// 0x40, length, payload zero-padded to a word boundary).
+        fn call_proxy_init(
+            &mut self,
+            proxy: &Address,
+            init_target: &Address,
+            from: u128,
+            owner: &Address,
+        ) {
+            let mut inner = Vec::with_capacity(4 + 64);
+            inner.extend_from_slice(&CDM_INIT_SELECTOR);
+            inner.extend_from_slice(&word_u128(from));
+            inner.extend_from_slice(&word_address(owner));
+            let padded_len = inner.len().div_ceil(32) * 32;
+
+            let mut calldata = meta_header(meta::CALL_CODE);
+            calldata.extend_from_slice(&word_address(init_target));
+            calldata.extend_from_slice(&word_usize(0x40));
+            calldata.extend_from_slice(&word_usize(inner.len()));
+            calldata.extend_from_slice(&inner);
+            calldata.resize(calldata.len() + padded_len - inner.len(), 0);
+            self.call_proxy(proxy, &calldata);
+        }
+
         fn set_contract_frozen(
             &mut self,
             contract_name: String,
@@ -651,6 +738,12 @@ mod contract_registry {
         word
     }
 
+    fn word_usize(value: usize) -> [u8; 32] {
+        let mut word = [0u8; 32];
+        word[24..].copy_from_slice(&(value as u64).to_be_bytes());
+        word
+    }
+
     fn word_address(address: &Address) -> [u8; 32] {
         let mut word = [0u8; 32];
         word[12..].copy_from_slice(&address.0);
@@ -671,11 +764,13 @@ mod tests {
     use super::types::{
         ContractEntry, ContractFrozen, ContractNameEmpty, ContractNameInvalid, ContractNameTooLong,
         ContractPage, ImportContract, ImportContractExists, ImportContractVersion,
-        ImportVersionsEmpty, InvalidVersionKey, NoProxy, OptionalAddress, OptionalString,
-        OptionalVersionEntry, ProxyCodeHashUnset, Unauthorized, UnauthorizedAdmin,
+        ImportVersionsEmpty, InvalidInitTarget, InvalidVersionKey, NoProxy, OptionalAddress,
+        OptionalString, OptionalVersionEntry, ProxyCodeHashUnset, Unauthorized, UnauthorizedAdmin,
         VersionNotMonotonic,
     };
-    use contract_registry_core::versioning::{MAGIC, META_KEY, meta, pack_version};
+    use contract_registry_core::versioning::{
+        CDM_INIT_SELECTOR, MAGIC, META_KEY, meta, pack_version,
+    };
     use pvm_contract_sdk::{
         Address, MockHost, MockHostBuilder, OutSink, Outcome, SolEncode, const_selector, keccak256,
     };
@@ -833,6 +928,22 @@ mod tests {
         for arg in args {
             data.extend_from_slice(&arg[..]);
         }
+        data
+    }
+
+    /// The exact callCode calldata a publish-with-initialization must send:
+    /// `[MAGIC][0][callCode][init word][offset 0x40][len 68]` followed by
+    /// `[cdmInit selector][from word][owner word]` zero-padded to 96 bytes.
+    fn init_calldata(init_target: [u8; 20], from: u128, owner: [u8; 20]) -> Vec<u8> {
+        let mut offset = [0u8; 32];
+        offset[31] = 0x40;
+        let mut len = [0u8; 32];
+        len[31] = 68;
+        let mut data = meta_calldata(meta::CALL_CODE, &[&word_addr(init_target), &offset, &len]);
+        data.extend_from_slice(&CDM_INIT_SELECTOR);
+        data.extend_from_slice(&word_u128(from));
+        data.extend_from_slice(&word_addr(owner));
+        data.extend_from_slice(&[0u8; 28]);
         data
     }
 
@@ -1034,6 +1145,138 @@ mod tests {
         }
 
         assert_eq!(contract.get_contract_count(), 0);
+    }
+
+    // ─── publishWithInit ─────────────────────────────────────────────────────
+
+    /// A stand-in initialization contract address.
+    const INIT_1: [u8; 20] = [0x1B; 20];
+
+    #[test]
+    fn publish_with_init_first_publish_sends_from_zero_and_owner() {
+        let (mut contract, mock) = deployed(ALICE);
+
+        assert_eq!(
+            contract.publish_with_init(
+                NAME.into(),
+                V1_0_0,
+                Address(ADDR_1),
+                URI_1.into(),
+                Address(INIT_1),
+            ),
+            Ok(())
+        );
+
+        // Version registration first, then the initialization — exact bytes.
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![
+                (
+                    PROXY,
+                    meta_calldata(meta::PUBLISH, &[&word_u128(V1_0_0), &word_addr(ADDR_1)]),
+                ),
+                // First publish: from = 0, owner = the TOFU owner (ALICE).
+                (PROXY, init_calldata(INIT_1, 0, ALICE)),
+            ]
+        );
+
+        // Registry state is the same as a plain publish.
+        assert_eq!(contract.get_version_count(NAME.into()), 1);
+        assert_eq!(contract.get_latest_key(NAME.into()), V1_0_0);
+
+        // ProxyCreated, Published, then Initialized.
+        let name_topic = keccak256(NAME.as_bytes());
+        let events = mock.events();
+        assert_eq!(events.len(), 3);
+        assert_eq!(
+            events[2],
+            (
+                vec![topic0("Initialized(string,uint128,address)"), name_topic,],
+                [word_u128(V1_0_0), word_addr(INIT_1)].concat(),
+            )
+        );
+    }
+
+    #[test]
+    fn publish_with_init_upgrade_sends_previous_latest_as_from() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+        mock.take_recorded_calls();
+
+        assert_eq!(
+            contract.publish_with_init(
+                NAME.into(),
+                V2_0_0,
+                Address(ADDR_2),
+                URI_2.into(),
+                Address(INIT_1),
+            ),
+            Ok(())
+        );
+
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![
+                (
+                    PROXY,
+                    meta_calldata(meta::PUBLISH, &[&word_u128(V2_0_0), &word_addr(ADDR_2)]),
+                ),
+                // Upgrade: from = the latest key BEFORE this publish.
+                (PROXY, init_calldata(INIT_1, V1_0_0, ALICE)),
+            ]
+        );
+        assert_eq!(contract.get_latest_key(NAME.into()), V2_0_0);
+    }
+
+    #[test]
+    fn publish_with_init_rejects_zero_init_target() {
+        let (mut contract, _mock) = deployed(ALICE);
+        assert_eq!(
+            contract.publish_with_init(
+                NAME.into(),
+                V1_0_0,
+                Address(ADDR_1),
+                URI_1.into(),
+                Address::ZERO,
+            ),
+            Err(InvalidInitTarget.into())
+        );
+        assert_eq!(contract.get_contract_count(), 0);
+    }
+
+    #[test]
+    fn publish_with_init_enforces_publish_rules() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_1_0, ADDR_1, URI_1);
+
+        // Same monotonic gate as plain publish.
+        assert_eq!(
+            contract.publish_with_init(
+                NAME.into(),
+                V1_0_0,
+                Address(ADDR_2),
+                URI_2.into(),
+                Address(INIT_1),
+            ),
+            Err(VersionNotMonotonic {
+                attempted: V1_0_0,
+                latest: V1_1_0,
+            }
+            .into())
+        );
+
+        // Same ownership gate.
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(
+            as_bob.publish_with_init(
+                NAME.into(),
+                V2_0_0,
+                Address(ADDR_2),
+                URI_2.into(),
+                Address(INIT_1),
+            ),
+            Err(Unauthorized.into())
+        );
     }
 
     // ─── setMinSupported ─────────────────────────────────────────────────────
@@ -1718,6 +1961,18 @@ mod tests {
             (
                 "publish(string,uint128,address,string)",
                 encode(&(name.clone(), V1_0_0, Address(ADDR_1), String::from(URI_1))),
+            ),
+            (
+                // V2_0_0: runs after the publish case above, so the key must
+                // stay monotonic for the call to dispatch cleanly.
+                "publishWithInit(string,uint128,address,string,address)",
+                encode(&(
+                    name.clone(),
+                    V2_0_0,
+                    Address(ADDR_2),
+                    String::from(URI_2),
+                    Address(INIT_1),
+                )),
             ),
             (
                 "setMinSupported(string,uint128)",

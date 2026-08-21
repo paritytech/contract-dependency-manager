@@ -258,6 +258,20 @@ mod contract_proxy {
                     self.set_min_supported(key)?;
                     self.respond(&[])
                 }
+                meta::CALL_CODE => {
+                    // Admin-gated delegatecall against this proxy's storage —
+                    // the initializations primitive. Deliberately NOT behind
+                    // `require_unfrozen`: the meta plane stays live while
+                    // frozen, so freeze → publish-with-initialization →
+                    // unfreeze works.
+                    self.require_admin()?;
+                    let target = address_arg(args, 0)?;
+                    if target == Address::ZERO {
+                        return Err(InvalidImplementation.into());
+                    }
+                    let data = bytes_arg(args, 1)?;
+                    self.delegate(&target, data)
+                }
                 meta::FROZEN => self.respond(&word_bool(self.frozen.get())),
                 meta::FREEZE => {
                     self.require_admin()?;
@@ -386,6 +400,26 @@ mod contract_proxy {
         Ok(Address(bytes))
     }
 
+    /// Decode a dynamic `bytes` argument: the word at `index` is the offset
+    /// (from the start of `args`) of a `[len word][len bytes]` payload.
+    fn bytes_arg(args: &[u8], index: usize) -> Result<&[u8], Error> {
+        let offset = usize_word(word_at(args, index)?)?;
+        let len_word = args.get(offset..offset + 32).ok_or(MalformedCall)?;
+        let len = usize_word(len_word)?;
+        args.get(offset + 32..offset + 32 + len)
+            .ok_or_else(|| MalformedCall.into())
+    }
+
+    /// A 32-byte ABI word holding a value small enough to index calldata.
+    fn usize_word(word: &[u8]) -> Result<usize, MalformedCall> {
+        if word[..28] != [0u8; 28] {
+            return Err(MalformedCall);
+        }
+        let mut bytes = [0u8; 4];
+        bytes.copy_from_slice(&word[28..]);
+        Ok(u32::from_be_bytes(bytes) as usize)
+    }
+
     fn word_u128(value: u128) -> [u8; 32] {
         let mut word = [0u8; 32];
         word[16..].copy_from_slice(&value.to_be_bytes());
@@ -461,6 +495,21 @@ mod tests {
     fn publish_args(key: u128, implementation: [u8; 20]) -> Vec<u8> {
         let mut args = word_u128(key).to_vec();
         args.extend_from_slice(&word_addr(implementation));
+        args
+    }
+
+    /// ABI args of `callCode(address,bytes)`: target word, offset word
+    /// (0x40), length word, payload zero-padded to a 32-byte boundary.
+    fn call_code_args(target: [u8; 20], data: &[u8]) -> Vec<u8> {
+        let mut args = word_addr(target).to_vec();
+        let mut offset = [0u8; 32];
+        offset[31] = 0x40;
+        args.extend_from_slice(&offset);
+        let mut len = [0u8; 32];
+        len[24..].copy_from_slice(&(data.len() as u64).to_be_bytes());
+        args.extend_from_slice(&len);
+        args.extend_from_slice(data);
+        args.extend_from_slice(&vec![0u8; data.len().div_ceil(32) * 32 - data.len()]);
         args
     }
 
@@ -950,6 +999,124 @@ mod tests {
             let (result, _mock) = run(STRANGER, calldata, Some(&state));
             assert!(matches!(result, Err(Error::UnauthorizedAdmin(_))));
         }
+    }
+
+    // ─── callCode (the initializations primitive) ────────────────────────
+
+    /// A stand-in initialization contract address.
+    const INIT_1: [u8; 20] = [0x44; 20];
+
+    #[test]
+    fn call_code_delegates_and_bubbles_return() {
+        let state = published(&[(V1_0_0, IMPL_1)]);
+        let inner: Vec<u8> = [0xa7, 0x12, 0xb6, 0xf5]
+            .into_iter()
+            .chain([0x01; 64])
+            .collect();
+        let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &inner));
+
+        let (_proxy, mock) = proxy_call(REGISTRY, calldata, Some(&state));
+        mock.mock_call(INIT_1, Ok(vec![0x99; 32]));
+        let mut proxy = ContractProxy::with_host(mock.clone());
+        assert!(proxy.fallback().is_ok());
+
+        // The target sees EXACTLY the inner payload — no ABI framing.
+        assert_eq!(mock.take_recorded_calls(), vec![(INIT_1, inner)]);
+        assert_eq!(
+            mock.take_return_value(),
+            Some(ReturnValue {
+                flags: ReturnFlags::empty(),
+                data: vec![0x99; 32],
+            })
+        );
+    }
+
+    #[test]
+    fn call_code_bubbles_callee_revert() {
+        let state = published(&[(V1_0_0, IMPL_1)]);
+        let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &[0x01, 0x02]));
+        let (_proxy, mock) = proxy_call(REGISTRY, calldata, Some(&state));
+        mock.mock_call(INIT_1, Err(()));
+        let mut proxy = ContractProxy::with_host(mock.clone());
+
+        let rv = mock.expect_revert(|| {
+            let _ = proxy.fallback();
+        });
+        assert_eq!(rv.flags, ReturnFlags::REVERT);
+    }
+
+    #[test]
+    fn call_code_requires_admin() {
+        let state = published(&[(V1_0_0, IMPL_1)]);
+        let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &[0x01]));
+        let (result, _mock) = run(STRANGER, calldata, Some(&state));
+        assert!(matches!(result, Err(Error::UnauthorizedAdmin(_))));
+    }
+
+    #[test]
+    fn call_code_works_while_frozen() {
+        // The primary use case: freeze delegation, publish + initialize,
+        // unfreeze. callCode is a meta op, so the freeze must not block it.
+        let state = published(&[(V1_0_0, IMPL_1)]);
+        let (result, state) = run(REGISTRY, meta_calldata(meta::FREEZE, &[]), Some(&state));
+        assert_eq!(result, Ok(()));
+
+        let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &[0x0a, 0x0b]));
+        let (_proxy, mock) = proxy_call(REGISTRY, calldata, Some(&state));
+        mock.mock_call(INIT_1, Ok(vec![]));
+        let mut proxy = ContractProxy::with_host(mock.clone());
+        assert!(proxy.fallback().is_ok());
+        assert_eq!(mock.take_recorded_calls(), vec![(INIT_1, vec![0x0a, 0x0b])]);
+    }
+
+    #[test]
+    fn call_code_works_before_first_publish() {
+        // A first publish delivers its initialization before any plain call
+        // could succeed — callCode must not depend on a latest implementation.
+        let (_proxy, mock) = proxy_call(REGISTRY, vec![], None);
+        let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &[0x01]));
+        let (_proxy, mock) = proxy_call(REGISTRY, calldata, Some(&mock));
+        mock.mock_call(INIT_1, Ok(vec![]));
+        let mut proxy = ContractProxy::with_host(mock.clone());
+        assert!(proxy.fallback().is_ok());
+        assert_eq!(mock.take_recorded_calls(), vec![(INIT_1, vec![0x01])]);
+    }
+
+    #[test]
+    fn call_code_rejects_zero_target_and_malformed_args() {
+        let state = published(&[(V1_0_0, IMPL_1)]);
+
+        let calldata = meta_calldata(meta::CALL_CODE, &call_code_args([0u8; 20], &[0x01]));
+        let (result, _mock) = run(REGISTRY, calldata, Some(&state));
+        assert!(matches!(result, Err(Error::InvalidImplementation(_))));
+
+        // Offset word pointing past the end of the args.
+        let mut args = word_addr(INIT_1).to_vec();
+        let mut offset = [0u8; 32];
+        offset[31] = 0xFF;
+        args.extend_from_slice(&offset);
+        let (result, _mock) = run(
+            REGISTRY,
+            meta_calldata(meta::CALL_CODE, &args),
+            Some(&state),
+        );
+        assert!(matches!(result, Err(Error::MalformedCall(_))));
+
+        // Length word longer than the actual payload.
+        let mut args = word_addr(INIT_1).to_vec();
+        let mut offset = [0u8; 32];
+        offset[31] = 0x40;
+        args.extend_from_slice(&offset);
+        let mut len = [0u8; 32];
+        len[31] = 64;
+        args.extend_from_slice(&len);
+        args.extend_from_slice(&[0u8; 32]);
+        let (result, _mock) = run(
+            REGISTRY,
+            meta_calldata(meta::CALL_CODE, &args),
+            Some(&state),
+        );
+        assert!(matches!(result, Err(Error::MalformedCall(_))));
     }
 
     // ─── Malformed input ─────────────────────────────────────────────────

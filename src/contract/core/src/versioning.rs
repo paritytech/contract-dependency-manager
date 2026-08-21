@@ -101,13 +101,28 @@ const fn meta_selector(signature: &[u8]) -> [u8; 4] {
     [hash[0], hash[1], hash[2], hash[3]]
 }
 
-/// Meta-call selectors. Queries are open; `publish`, `setMinSupported`, and
-/// `setAdmin` require the caller to be the proxy's admin (the registry).
+/// The conventional entry point of an initialization contract:
+/// `cdmInit(uint128,address)` = `0xa712b6f5`. The registry composes
+/// `[selector][word from][word owner]` itself and delivers it into the
+/// name's proxy storage through the `callCode` meta op, so this selector is
+/// byte-locked across the registry, the proxy tooling, and every
+/// initialization contract ever compiled.
+pub const CDM_INIT_SELECTOR: [u8; 4] = meta_selector(b"cdmInit(uint128,address)");
+
+/// Meta-call selectors. Queries are open; `publish`, `setMinSupported`,
+/// `setAdmin`, and `callCode` require the caller to be the proxy's admin
+/// (the registry).
 pub mod meta {
     use super::meta_selector;
 
     /// `publish(uint128,address)` = `0xc3853395` (admin).
     pub const PUBLISH: [u8; 4] = meta_selector(b"publish(uint128,address)");
+    /// `callCode(address,bytes)` = `0xd74c1f04` (admin) — delegate-call an
+    /// arbitrary address against the proxy's storage, bubbling return and
+    /// revert verbatim. The initializations primitive: live even while the
+    /// proxy is frozen, so the freeze → publish-with-initialization →
+    /// unfreeze window works.
+    pub const CALL_CODE: [u8; 4] = meta_selector(b"callCode(address,bytes)");
     /// `setMinSupported(uint128)` = `0xe84411e5` (admin).
     pub const SET_MIN_SUPPORTED: [u8; 4] = meta_selector(b"setMinSupported(uint128)");
     /// `setAdmin(address)` = `0x704b6c02` (admin).
@@ -144,8 +159,17 @@ mod tests {
     }
 
     #[test]
+    fn cdm_init_selector_is_pinned() {
+        // Mirrored in TS (src/lib/contracts/src/proxy.ts) and composed by the
+        // registry into every publish-with-initialization; changing it breaks
+        // every initialization contract already compiled.
+        assert_eq!(hex4(CDM_INIT_SELECTOR), "a712b6f5");
+    }
+
+    #[test]
     fn meta_selectors_are_pinned() {
         assert_eq!(hex4(meta::PUBLISH), "c3853395");
+        assert_eq!(hex4(meta::CALL_CODE), "d74c1f04");
         assert_eq!(hex4(meta::SET_MIN_SUPPORTED), "e84411e5");
         assert_eq!(hex4(meta::SET_ADMIN), "704b6c02");
         assert_eq!(hex4(meta::FREEZE), "62a5af3b");
