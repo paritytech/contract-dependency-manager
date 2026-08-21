@@ -14,12 +14,23 @@
 //    dependency's stable address;
 //  - the NatSpec version gates deploys end to end: redeploys skip as
 //    up-to-date, a tag bump republished behind the same proxy keeps storage,
-//    and `[MAGIC][key]` versioned calls pin the older version over it.
+//    and `[MAGIC][key]` versioned calls pin the older version over it;
+//  - initializations: the template's `initializations/0.1.0.sol` (inheriting
+//    CounterA) runs once inside the first publish and sets the owner, and a
+//    reverting initialization rolls the whole publish back.
 //
 // Requires a running PPN and `forge` (foundry-polkadot fork) on PATH.
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+    cpSync,
+    mkdirSync,
+    mkdtempSync,
+    readdirSync,
+    readFileSync,
+    rmSync,
+    writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +42,7 @@ import {
     CONTRACTS_REGISTRY_ABI,
     deployContracts,
     encodeVersionedCall,
+    eoaH160FromPublicKey,
     generateSolidityLocalBuildImport,
     packVersionKey,
     type DeployEvent,
@@ -69,6 +81,7 @@ function selector(signature: string): `0x${string}` {
 
 const INCREMENT = selector("increment()");
 const COUNT = selector("count()");
+const OWNER = selector("owner()");
 const INCREMENT_A = selector("incrementA()");
 const READ_A = selector("readA()");
 
@@ -192,6 +205,12 @@ describe("deploying the foundry template", () => {
         expect(detected.get(NAME_B)?.dependsOnCrates).toEqual([NAME_A]);
         expect(detect.layers).toEqual([[NAME_A], [NAME_B]]);
 
+        // The template ships initializations/0.1.0.sol for CounterA — the
+        // pipeline announces it for exactly this publish; CounterB has none.
+        const initEvents = events.filter((event) => event.type === "initialization");
+        expect(initEvents).toHaveLength(1);
+        expect(initEvents[0]).toMatchObject({ crate: NAME_A, version: "0.1.0" });
+
         const contracts = byCrate(summary);
         expect(contracts.get(NAME_A)).toMatchObject({ status: "done", version: "0.1.0" });
         expect(contracts.get(NAME_B)).toMatchObject({ status: "done", version: "0.1.0" });
@@ -210,13 +229,24 @@ describe("deploying the foundry template", () => {
 
     test("the built artifacts are EVM bytecode, not PolkaVM blobs", () => {
         const outDir = join(projectDir, "target", "cdm", "foundry");
+        // CounterA, CounterB, and CounterA's 0.1.0 initialization.
         const artifacts = readdirSync(outDir);
-        expect(artifacts.length).toBe(2);
+        expect(artifacts.length).toBe(3);
         for (const artifact of artifacts) {
             const bytes = readFileSync(join(outDir, artifact));
             expect(bytes.length).toBeGreaterThan(0);
             expect([...bytes.subarray(0, 4)]).not.toEqual(PVM_MAGIC);
         }
+    });
+
+    test("the initialization ran once inside the publish: owner is set", async () => {
+        // initializations/0.1.0.sol (contract Init_0_1_0 is CounterA) wrote
+        // the publisher into CounterA's owner slot — through the proxy's
+        // storage, delivered by the registry's callCode meta op.
+        const alice = eoaH160FromPublicKey(signer.publicKey);
+        const owner = await dryRunCall(api, proxyA, OWNER);
+        expect(owner.reverted).toBe(false);
+        expect(owner.data).toBe(`0x${alice.toLowerCase().replace(/^0x/, "").padStart(64, "0")}`);
     });
 
     test("a plain call through the PolkaVM proxy executes the EVM implementation", async () => {
@@ -283,4 +313,40 @@ describe("the NatSpec version gate", () => {
         await rawCallTx(api, signer, proxyA, encodeVersionedCall(KEY_0_1_0, INCREMENT));
         expect(await countOf(proxyA)).toBe(3n);
     });
+});
+
+describe("a reverting initialization", () => {
+    test("rolls back the entire publish", async () => {
+        // Address 0.3.0 with an initialization that always reverts, then bump
+        // CounterA's tag to 0.3.0: the version registration and both deploys
+        // share one batch_all, so nothing lands.
+        mkdirSync(join(projectDir, "contracts", "initializations"), { recursive: true });
+        writeFileSync(
+            join(projectDir, "contracts", "initializations", "0.3.0.sol"),
+            `// SPDX-License-Identifier: Apache-2.0
+pragma solidity ^0.8.28;
+
+import "../CounterA.sol";
+
+contract Init_0_3_0 is CounterA {
+    error InitializationFailed();
+
+    function cdmInit(uint128, address) external pure {
+        revert InitializationFailed();
+    }
+}
+`,
+        );
+        rewrite(join(projectDir, "contracts", "CounterA.sol"), [
+            [`${NAME_A}:0.2.0`, `${NAME_A}:0.3.0`],
+        ]);
+
+        const { summary } = await deploy();
+        const contracts = byCrate(summary);
+        expect(contracts.get(NAME_A)?.status).toBe("error");
+
+        // The registry never saw 0.3.0 and the storage is untouched.
+        expect(await latestKey(NAME_A)).toBe(KEY_0_2_0);
+        expect(await countOf(proxyA)).toBe(3n);
+    }, 240_000);
 });

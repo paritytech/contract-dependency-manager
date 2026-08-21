@@ -7,3 +7,7 @@ solc_version = "0.8.28"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
+
+# CDM's initialization layout guard reads each artifact's storage layout to
+# verify an initialization matches the contract it initializes.
+extra_output = ["storageLayout"]
