@@ -21,7 +21,7 @@ import {
 } from "./shared";
 
 const COL_CONTRACT = 24;
-const COL_VERSION = 9;
+const COL_VERSION = 14;
 const COL_BUILD = 20;
 const COL_PHASE = 5;
 const COL_ADDR = 14;
@@ -111,10 +111,12 @@ function ContractRow({
     }
 
     // Version column — the crate's Cargo.toml semver (the version being
-    // published, or already on-chain for up-to-date rows).
+    // published, or already on-chain for up-to-date rows). A publish that
+    // carries an initialization gets a subtle "+init" marker.
     const versionCell = s?.version ? (
-        <Text dimColor wrap="truncate">
-            {s.version}
+        <Text wrap="truncate">
+            <Text dimColor>{s.version}</Text>
+            {s.hasInitialization ? <Text color="cyan">+init</Text> : null}
         </Text>
     ) : (
         <Idle />

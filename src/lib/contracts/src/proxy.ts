@@ -29,10 +29,25 @@ export const VERSIONED_HEADER_LEN = 4 + 16;
 /** `[MAGIC][META_KEY][meta selector]` — bytes before meta ABI args. */
 export const META_HEADER_LEN = VERSIONED_HEADER_LEN + 4;
 
+/**
+ * `keccak256("cdmInit(uint128,address)")[..4]` — the conventional entry point
+ * of an initialization contract. The registry composes
+ * `[selector][from word][owner word]` itself and delivers it into the name's
+ * proxy storage via the `callCode` meta op, so these bytes are locked against
+ * `CDM_INIT_SELECTOR` in `contract_registry_core::versioning`.
+ */
+export const CDM_INIT_SELECTOR = "0xa712b6f5" as const;
+
+/** Signature behind {@link CDM_INIT_SELECTOR}, for derivation tests and docs. */
+export const CDM_INIT_SIGNATURE = "cdmInit(uint128,address)";
+
 /** Meta-call selectors (`keccak256(signature)[..4]`). */
 export const PROXY_META = {
     /** admin (the registry) only */
     publish: "0xc3853395",
+    /** admin (the registry) only — delegatecall against the proxy's storage,
+     *  live even while frozen; the initializations primitive. */
+    callCode: "0xd74c1f04",
     /** admin (the registry) only */
     setMinSupported: "0xe84411e5",
     /** admin (the registry) only */
@@ -51,6 +66,7 @@ export const PROXY_META = {
 /** Signatures behind each meta selector, for derivation tests and docs. */
 export const PROXY_META_SIGNATURES: Record<keyof typeof PROXY_META, string> = {
     publish: "publish(uint128,address)",
+    callCode: "callCode(address,bytes)",
     setMinSupported: "setMinSupported(uint128)",
     setAdmin: "setAdmin(address)",
     freeze: "freeze()",
@@ -255,6 +271,41 @@ export function encodeProxyPublish(key: bigint, implementation: string): Hex {
     return encodeMetaCall(PROXY_META.publish, wordU128(key), wordAddress(implementation));
 }
 
+/**
+ * Registry-only: delegatecall `target` with `data` against the proxy's
+ * storage, bubbling return/revert verbatim. Canonical ABI `bytes` framing:
+ * target word, offset word (0x40), length word, payload zero-padded to a
+ * 32-byte boundary. Live even while the proxy is frozen.
+ */
+export function encodeProxyCallCode(target: string, data: Hex | Uint8Array): Hex {
+    const payload = typeof data === "string" ? hexToBytes(data, "callCode data") : data;
+    const padded = new Uint8Array(Math.ceil(payload.length / 32) * 32);
+    padded.set(payload);
+    return encodeMetaCall(
+        PROXY_META.callCode,
+        wordAddress(target),
+        wordU128(0x40n),
+        wordU128(BigInt(payload.length)),
+        padded,
+    );
+}
+
+/**
+ * `cdmInit(from, owner)` calldata — what the registry delivers through
+ * `callCode` when a publish carries an initialization. `from` is the
+ * previously-latest version key (0 on a first publish), `owner` the name's
+ * registry owner.
+ */
+export function encodeCdmInit(from: bigint, owner: string): Hex {
+    return bytesToHex(
+        concatBytes(
+            hexToBytes(CDM_INIT_SELECTOR, "cdmInit selector"),
+            wordU128(from),
+            wordAddress(owner),
+        ),
+    );
+}
+
 /** Registry-only: ratchet the min-supported floor. */
 export function encodeProxySetMinSupported(key: bigint): Hex {
     return encodeMetaCall(PROXY_META.setMinSupported, wordU128(key));
@@ -341,6 +392,10 @@ if (import.meta.vitest) {
             }
         });
 
+        it("cdmInit selector derives from its signature (pinned in Rust core)", () => {
+            expect(keccakSelector(CDM_INIT_SIGNATURE)).toBe(CDM_INIT_SELECTOR);
+        });
+
         it("slots derive as keccak256(label) - 1 (pinned in Rust core)", () => {
             const slot = (label: string) => {
                 const hash = keccak_256(new TextEncoder().encode(label));
@@ -420,6 +475,33 @@ if (import.meta.vitest) {
                     "00000000000000010000000000000000" + // key word
                     "000000000000000000000000" +
                     "1111111111111111111111111111111111111111", // impl word
+            );
+        });
+
+        it("meta callCode + cdmInit match the registry's Rust-side encoding", () => {
+            // The exact bytes `contract-registry` sends on a publish-with-
+            // initialization, locked by `publish_with_init_first_publish_
+            // sends_from_zero_and_owner` in src/contract/src/main.rs.
+            const init = "0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b";
+            const owner = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+            const inner = encodeCdmInit(packVersionKey(1, 0, 0), owner);
+            expect(inner).toBe(
+                "0xa712b6f5" + // cdmInit(uint128,address)
+                    "00000000000000000000000000000000" +
+                    "00000000000000010000000000000000" + // from = 1.0.0
+                    "000000000000000000000000" +
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // owner word
+            );
+            expect(encodeProxyCallCode(init, inner)).toBe(
+                "0xa2264d53" +
+                    "00000000000000000000000000000000" + // meta key 0
+                    "d74c1f04" + // callCode(address,bytes)
+                    "000000000000000000000000" +
+                    "1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b" + // target word
+                    "0000000000000000000000000000000000000000000000000000000000000040" + // offset
+                    "0000000000000000000000000000000000000000000000000000000000000044" + // len 68
+                    inner.slice(2) +
+                    "00000000000000000000000000000000000000000000000000000000", // pad to 96
             );
         });
 

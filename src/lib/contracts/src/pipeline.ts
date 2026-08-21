@@ -12,6 +12,7 @@ import { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
 
 import {
     type ContractInfo,
+    type ContractInitialization,
     type ContractToolchain,
     type DeploymentOrderLayered,
     buildDependencyGraph,
@@ -20,6 +21,7 @@ import {
     readReadmeContent,
     toposortLayers,
 } from "./detection";
+import { compareStorageLayouts, matchInitialization } from "./initializations";
 import { pvmContractBuildAsync, type BuildProgressCallback } from "./builder";
 import { computeBulletinStoreCid } from "./cid";
 import {
@@ -30,6 +32,7 @@ import {
 import {
     buildSolidityToolchain,
     detectSolidityBuildTargets,
+    findSolidityInitializationArtifact,
     type SolidityBuildTarget,
 } from "./solidity";
 import {
@@ -38,7 +41,13 @@ import {
     type SolidityAbiEntry,
     solidityImportPathForLibrary,
 } from "./solidity-imports";
-import { ContractDeployer, type AbiEntry, type AbiParam, type Metadata } from "./deployer";
+import {
+    ContractDeployer,
+    type AbiEntry,
+    type AbiParam,
+    type InitDeployRequest,
+    type Metadata,
+} from "./deployer";
 import { MetadataPublisher } from "./publisher";
 import { isPublishableKey, keyToSemver, PROXY_MAGIC, semverToKey } from "./proxy";
 
@@ -270,6 +279,18 @@ export type DeployEvent =
               | "done";
           description: string;
           layer?: number;
+      }
+    | {
+          /**
+           * The crate's publish carries an initialization: the file at
+           * `source` is addressed to exactly the version being published, so
+           * it will be deployed alongside the implementation and run once,
+           * atomically, inside the publish. Fires before the layer builds.
+           */
+          type: "initialization";
+          crate: string;
+          version: string;
+          source: string;
       }
     | {
           type: "sign-request";
@@ -991,6 +1012,81 @@ function findProxyMagicCollisions(abi: AbiEntry[], magic: string = PROXY_MAGIC):
         });
 }
 
+/**
+ * Resolve an initialization's built artifacts and run the storage-layout
+ * safety net. Rust initializations come out of the crate build as their own
+ * `[[bin]]` artifacts; Solidity ones are selected from the toolchain output
+ * by contract name + source path.
+ *
+ * The guard REFUSES to deploy on a layout mismatch — an initialization that
+ * doesn't share the contract's layout would corrupt the proxy's storage. When
+ * neither side carries layout data, verification is impossible: warn loudly
+ * and proceed rather than silently skipping the check.
+ */
+function resolveInitializationArtifact(
+    rootDir: string,
+    deployable: DeployableContract,
+    init: ContractInitialization,
+    version: string,
+    emit: BuildEmitter,
+): { pvmPath: string } {
+    const toolchain = deployable.contract.toolchain ?? "rust";
+    let pvmPath: string;
+    let layoutPath: string;
+    if (toolchain === "rust") {
+        if (!init.binName) {
+            throw new Error(`Initialization ${init.sourcePath} has no [[bin]] target name`);
+        }
+        pvmPath = resolve(rootDir, `target/release/${init.binName}.polkavm`);
+        layoutPath = resolve(rootDir, `target/release/${init.binName}.abi.json`);
+        if (!existsSync(pvmPath)) {
+            throw new Error(
+                `Initialization bin "${init.binName}" for ${deployable.cdmPackage} was not ` +
+                    `built at ${pvmPath}`,
+            );
+        }
+    } else {
+        const artifact = findSolidityInitializationArtifact(
+            rootDir,
+            toolchain,
+            init,
+            `${deployable.crate}-init-${version}`,
+        );
+        pvmPath = artifact.bytecodePath;
+        layoutPath = artifact.artifactPath;
+    }
+
+    const comparison = compareStorageLayouts(
+        readStorageLayout(deployable.abiPath),
+        readStorageLayout(layoutPath),
+    );
+    if (comparison.status === "mismatch") {
+        const advice =
+            toolchain === "rust"
+                ? "a Rust initialization must share the contract's storage struct — declare " +
+                  "the struct once in a shared module used by both (see the shared-counter " +
+                  "template's storage.rs)"
+                : "a Solidity initialization must inherit the contract it initializes " +
+                  "(`contract Init_X_Y_Z is YourContract`)";
+        throw new Error(
+            `Refusing to deploy ${deployable.cdmPackage} ${version}: the storage layout of ` +
+                `initialization ${relative(rootDir, init.sourcePath)} does not match the ` +
+                `implementation's. ${advice}.\n  ${comparison.problems.join("\n  ")}`,
+        );
+    }
+    if (comparison.status === "unverifiable") {
+        emit({
+            type: "log",
+            source: "initializations",
+            line:
+                `warning: cannot verify the storage layout of ` +
+                `${relative(rootDir, init.sourcePath)} against ${deployable.cdmPackage} ` +
+                `(${comparison.reason}) — proceeding WITHOUT layout verification`,
+        });
+    }
+    return { pvmPath };
+}
+
 function writeSolidityImportForDeployable(
     rootDir: string,
     deployable: DeployableContract,
@@ -1200,6 +1296,49 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
             });
         }
 
+        // ---- 3b. initializations: match version-addressed files ----
+        //
+        // A publish runs `initializations/<version>` exactly when it exists
+        // for the version being published. Files for versions at or below the
+        // on-chain latest are inert by design; files addressed HIGHER than
+        // the publishing version are probably a typo or a forgotten version
+        // bump, so they earn a warning.
+        const initByCrate = new Map<string, ContractInitialization>();
+        for (const contract of versionedContracts) {
+            const declared = contract.initializations ?? [];
+            if (declared.length === 0 || upToDateCrates.has(contract.name)) continue;
+            const resolved = versionByCrate.get(contract.name)!;
+            const { match, orphans } = matchInitialization(
+                declared.map((init) => ({
+                    version: init.version,
+                    key: semverToKey(init.version),
+                    path: init.sourcePath,
+                })),
+                resolved.key,
+            );
+            for (const orphan of orphans) {
+                emit({
+                    type: "log",
+                    source: "initializations",
+                    line:
+                        `warning: ${contract.cdmPackage} has an initialization addressed to ` +
+                        `${orphan.version} (${relative(opts.rootDir, orphan.path)}), higher ` +
+                        `than the version being published (${resolved.version}) — it will ` +
+                        `never run unless that version is published. Forgot a version bump?`,
+                });
+            }
+            if (match) {
+                const init = declared.find((entry) => entry.version === match.version)!;
+                initByCrate.set(contract.name, init);
+                emit({
+                    type: "initialization",
+                    crate: contract.name,
+                    version: resolved.version,
+                    source: init.sourcePath,
+                });
+            }
+        }
+
         // ---- 4. per-layer build + deploy loop ----
         const failedCrates = new Set<string>();
         const addresses: Record<string, HexString> = {};
@@ -1299,6 +1438,28 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 const versionKeys = resolvedVersions.map((resolved) => resolved.key);
                 const metadataUris = deployables.map((contract) => cidMap[contract.crate]);
 
+                // Initialization artifacts (built with the layer above) plus
+                // the storage-layout guard. `#init`-suffixed salt packages
+                // keep initialization addresses clear of implementation ones.
+                const inits: (InitDeployRequest | undefined)[] = deployables.map(
+                    (deployable, i) => {
+                        const init = initByCrate.get(deployable.crate);
+                        if (!init) return undefined;
+                        const artifact = resolveInitializationArtifact(
+                            opts.rootDir,
+                            deployable,
+                            init,
+                            resolvedVersions[i].version,
+                            emit as BuildEmitter,
+                        );
+                        return {
+                            pvmPath: artifact.pvmPath,
+                            saltPackage: `${deployable.cdmPackage}#init`,
+                            saltVersion: resolvedVersions[i].version,
+                        };
+                    },
+                );
+
                 // Plan BEFORE submission: a single dry-run per contract yields
                 // the CREATE2 addresses (emitted as `check-needs-deploy`), the
                 // real budget, per-contract weights, and the final chunk layout
@@ -1318,6 +1479,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     deployablePackages,
                     saltVersions,
                     opts.registryAddress,
+                    inits,
                 );
                 for (let i = 0; i < deployables.length; i++) {
                     emit({
@@ -1403,7 +1565,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                                 durationMs: Date.now() - deployT0,
                             });
                         },
-                        { plan, saltVersions, saltScope: opts.registryAddress },
+                        { plan, saltVersions, saltScope: opts.registryAddress, inits },
                     ),
                     publisher.publishBatch(metadataList).then((r) => {
                         // Verify CIDs match precomputation — any drift
@@ -1672,6 +1834,7 @@ if (import.meta.vitest) {
         cdm: Record<string, string> = {},
         versions: Record<string, string> = {},
         toolchains: Record<string, ContractToolchain> = {},
+        inits: Record<string, ContractInitialization[]> = {},
     ): DeploymentOrderLayered {
         const contractMap = new Map<string, CI>();
         for (const layer of layers) {
@@ -1688,6 +1851,7 @@ if (import.meta.vitest) {
                     readmePath: null,
                     path: `/fake/${crate}`,
                     dependsOnCrates: deps[crate] ?? [],
+                    ...(inits[crate] ? { initializations: inits[crate] } : {}),
                 });
             }
         }
@@ -2240,6 +2404,288 @@ if (import.meta.vitest) {
                 abi: [{ type: "function", name: "ping", inputs: [] }],
                 storage_layout: { storage: [], types: {} },
             });
+        });
+
+        test("wires a matching initialization into the plan and batch", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder(
+                    [["a"]],
+                    {},
+                    { a: "@example/a" },
+                    { a: "0.1.0" },
+                    { a: "rust" },
+                    {
+                        a: [
+                            {
+                                version: "0.1.0",
+                                sourcePath: "/fake/a/initializations/0.1.0.rs",
+                                binName: "a-init-0-1-0",
+                            },
+                        ],
+                    },
+                ),
+            );
+            const { ContractDeployer: MockedDeployer } = await import("./deployer");
+            const planCalls: unknown[][] = [];
+            const batchOpts: unknown[] = [];
+            (MockedDeployer as any).mockImplementationOnce(() => ({
+                planDeploy: vi.fn(async (...args: unknown[]) => {
+                    planCalls.push(args);
+                    const pvmPaths = args[0] as string[];
+                    return {
+                        prepared: pvmPaths.map((_path, index) => ({
+                            address: `0x${String(index + 1).padStart(40, "0")}`,
+                            gasLimit: { ref_time: 1n, proof_size: 1n },
+                            extrinsicWeight: { ref_time: 1n, proof_size: 1n },
+                            storageDeposit: 0n,
+                        })),
+                        budget: { ref_time: 10n, proof_size: 10n },
+                        chunks: [pvmPaths.map((_path, index) => index)],
+                    };
+                }),
+                deployAndRegisterBatch: vi.fn(async (...args: unknown[]) => {
+                    batchOpts.push(args[6]);
+                    const pvmPaths = args[0] as string[];
+                    const onChunk = args[5] as (chunk: {
+                        addresses: string[];
+                        txHash: string;
+                        blockHash: string;
+                    }) => void;
+                    const addresses = pvmPaths.map(
+                        (_path, index) => `0x${String(index + 1).padStart(40, "0")}`,
+                    );
+                    onChunk({ addresses, txHash: "0xdeploy", blockHash: "0xblock" });
+                    return { addresses };
+                }),
+            }));
+
+            const events: DeployEvent[] = [];
+            const summary = await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                onEvent: (event) => events.push(event),
+            });
+
+            // The initialization event names the crate, version, and source.
+            expect(events.find((event) => event.type === "initialization")).toEqual({
+                type: "initialization",
+                crate: "a",
+                version: "0.1.0",
+                source: "/fake/a/initializations/0.1.0.rs",
+            });
+
+            // The plan and the batch both carry the initialization deploy,
+            // salted as <package>#init at the publish version.
+            const expectedInits = [
+                {
+                    pvmPath: "/fake/target/release/a-init-0-1-0.polkavm",
+                    saltPackage: "@example/a#init",
+                    saltVersion: "0.1.0",
+                },
+            ];
+            expect(planCalls[0][4]).toEqual(expectedInits);
+            expect(batchOpts[0]).toMatchObject({ inits: expectedInits });
+
+            // The mocked artifacts carry no storage layout — verification is
+            // impossible, which must warn loudly instead of silently passing.
+            const warning = events.find(
+                (event) =>
+                    event.type === "log" && event.line.includes("WITHOUT layout verification"),
+            );
+            expect(warning).toBeDefined();
+            expect(summary.contracts[0]).toMatchObject({ status: "done", version: "0.1.0" });
+        });
+
+        test("warns about initializations addressed above the publishing version", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder(
+                    [["a"]],
+                    {},
+                    { a: "@example/a" },
+                    { a: "0.1.0" },
+                    { a: "rust" },
+                    {
+                        a: [
+                            {
+                                version: "0.9.0",
+                                sourcePath: "/fake/a/initializations/0.9.0.rs",
+                                binName: "a-init-0-9-0",
+                            },
+                        ],
+                    },
+                ),
+            );
+
+            const events: DeployEvent[] = [];
+            await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                onEvent: (event) => events.push(event),
+            });
+
+            expect(events.some((event) => event.type === "initialization")).toBe(false);
+            const warning = events.find(
+                (event) => event.type === "log" && event.line.includes("0.9.0"),
+            );
+            expect(warning).toBeDefined();
+            expect((warning as { line: string }).line).toContain("higher");
+        });
+
+        test("refuses to deploy when the initialization's storage layout drifts", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder(
+                    [["a"]],
+                    {},
+                    { a: "@example/a" },
+                    { a: "0.1.0" },
+                    { a: "rust" },
+                    {
+                        a: [
+                            {
+                                version: "0.1.0",
+                                sourcePath: "/fake/a/initializations/0.1.0.rs",
+                                binName: "a-init-0-1-0",
+                            },
+                        ],
+                    },
+                ),
+            );
+            (mockReadFileSync as any).mockImplementation((path: unknown) => {
+                const p = String(path);
+                if (p.endsWith("a-init-0-1-0.abi.json")) {
+                    return Buffer.from(
+                        JSON.stringify({
+                            abi: [],
+                            storageLayout: {
+                                storage: [{ label: "count", slot: "0", offset: 0, type: "uint64" }],
+                            },
+                        }),
+                    );
+                }
+                if (p.endsWith(".abi.json")) {
+                    return Buffer.from(
+                        JSON.stringify({
+                            abi: [],
+                            storageLayout: {
+                                storage: [{ label: "count", slot: "0", offset: 0, type: "uint32" }],
+                            },
+                        }),
+                    );
+                }
+                return Buffer.from("[]");
+            });
+
+            const events: DeployEvent[] = [];
+            const summary = await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                onEvent: (event) => events.push(event),
+            });
+
+            const errorEvent = events.find((event) => event.type === "deploy-register-error");
+            expect(errorEvent).toMatchObject({ crates: ["a"] });
+            expect((errorEvent as { error: string }).error).toMatch(/storage layout/);
+            expect((errorEvent as { error: string }).error).toMatch(/shared module/);
+            expect(summary.contracts[0]).toMatchObject({ status: "error" });
+        });
+
+        test("matching initializations pass the layout guard when layouts agree", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder(
+                    [["a"]],
+                    {},
+                    { a: "@example/a" },
+                    { a: "0.1.0" },
+                    { a: "rust" },
+                    {
+                        a: [
+                            {
+                                version: "0.1.0",
+                                sourcePath: "/fake/a/initializations/0.1.0.rs",
+                                binName: "a-init-0-1-0",
+                            },
+                        ],
+                    },
+                ),
+            );
+            (mockReadFileSync as any).mockImplementation((path: unknown) =>
+                String(path).endsWith(".abi.json")
+                    ? Buffer.from(
+                          JSON.stringify({
+                              abi: [],
+                              storageLayout: {
+                                  storage: [
+                                      { label: "s.count", slot: "0", offset: 0, type: "uint32" },
+                                  ],
+                              },
+                          }),
+                      )
+                    : Buffer.from("[]"),
+            );
+
+            const events: DeployEvent[] = [];
+            const summary = await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                onEvent: (event) => events.push(event),
+            });
+
+            expect(summary.contracts[0]).toMatchObject({ status: "done" });
+            expect(
+                events.some(
+                    (event) =>
+                        event.type === "log" && event.line.includes("WITHOUT layout verification"),
+                ),
+            ).toBe(false);
+        });
+
+        test("ignores initializations for up-to-date crates", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder(
+                    [["a"]],
+                    {},
+                    { a: "@example/a" },
+                    { a: "0.1.0" },
+                    { a: "rust" },
+                    {
+                        a: [
+                            {
+                                version: "0.1.0",
+                                sourcePath: "/fake/a/initializations/0.1.0.rs",
+                                binName: "a-init-0-1-0",
+                            },
+                        ],
+                    },
+                ),
+            );
+            (mockCreateContract as any).mockImplementation(async () =>
+                makeRegistryMock({ "@example/a": semverToKey("0.1.0") }),
+            );
+
+            const events: DeployEvent[] = [];
+            await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                onEvent: (event) => events.push(event),
+            });
+
+            expect(events.some((event) => event.type === "initialization")).toBe(false);
+            expect(mockBuild).not.toHaveBeenCalled();
         });
 
         test("aborts before building when a crate version is not exact semver", async () => {

@@ -1,8 +1,25 @@
 import { execSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join, resolve } from "path";
+import { listInitializationFiles } from "./initializations";
 
 export type ContractToolchain = "rust" | "foundry" | "hardhat";
+
+/**
+ * One version-addressed initialization of a contract — the file at
+ * `initializations/<version>.rs|.sol` next to the contract source. Runs
+ * exactly once, when exactly that version is published.
+ */
+export interface ContractInitialization {
+    /** Canonical `X.Y.Z` the initialization is addressed to. */
+    version: string;
+    /** Absolute path to the initialization source file. */
+    sourcePath: string;
+    /** Rust: the `[[bin]]` target that compiles this initialization. */
+    binName?: string;
+    /** Solidity: the initialization contract declared in the file. */
+    contractName?: string;
+}
 
 export interface ContractInfo {
     /** Crate name (e.g., "reputation") */
@@ -34,6 +51,12 @@ export interface ContractInfo {
     path: string;
     /** Crate names this contract depends on */
     dependsOnCrates: string[];
+    /**
+     * Version-addressed initializations found under `initializations/` next
+     * to the contract source. The one matching a publish's version is built
+     * and delivered atomically with that publish; the rest are inert.
+     */
+    initializations?: ContractInitialization[];
 }
 
 export interface DeploymentOrder {
@@ -65,6 +88,7 @@ interface CargoMetadata {
 interface CargoTarget {
     name: string;
     kind: string[];
+    src_path: string;
 }
 
 interface CargoPackage {
@@ -145,6 +169,40 @@ function extractCdmPackage(pkg: CargoPackage): string | null {
     return typeof packageName === "string" ? packageName : null;
 }
 
+/**
+ * A Rust contract's initializations: version-addressed `.rs` files under the
+ * crate's `initializations/` directory, each backed by a `[[bin]]` target so
+ * `cargo pvm-contract build` compiles it to its own `.polkavm` + `.abi.json`.
+ * A version file without a bin target can never build — fail early with the
+ * exact manifest lines to add.
+ */
+function extractRustInitializations(
+    pkg: CargoPackage,
+    manifestDir: string,
+): ContractInitialization[] {
+    const files = listInitializationFiles(manifestDir, ".rs");
+    if (files.length === 0) return [];
+
+    const binBySource = new Map<string, string>();
+    for (const target of pkg.targets) {
+        if (target.kind.includes("bin")) {
+            binBySource.set(resolve(target.src_path), target.name);
+        }
+    }
+
+    return files.map((file) => {
+        const binName = binBySource.get(resolve(file.path));
+        if (!binName) {
+            const suggested = `${pkg.name.replace(/_/g, "-")}-init-${file.version.replace(/\./g, "-")}`;
+            throw new Error(
+                `Initialization ${file.path} has no [[bin]] target in ${pkg.name}'s Cargo.toml. ` +
+                    `Add:\n\n[[bin]]\nname = "${suggested}"\npath = "initializations/${file.version}.rs"`,
+            );
+        }
+        return { version: file.version, sourcePath: file.path, binName };
+    });
+}
+
 function extractCdmDependencies(pkg: CargoPackage): string[] {
     const meta = pkg.metadata;
     if (!meta || typeof meta !== "object") return [];
@@ -202,6 +260,7 @@ export function detectContracts(rootDir: string): ContractInfo[] {
 
         const manifestDir = resolve(pkg.manifest_path, "..");
         const configuredReadme = pkg.readme ? resolve(manifestDir, pkg.readme) : null;
+        const initializations = extractRustInitializations(pkg, manifestDir);
 
         return {
             name: pkg.name,
@@ -218,6 +277,7 @@ export function detectContracts(rootDir: string): ContractInfo[] {
                 findReadmeWithFallback(manifestDir, rootDir),
             path: manifestDir,
             dependsOnCrates: deps,
+            ...(initializations.length > 0 ? { initializations } : {}),
         };
     });
 }
@@ -508,6 +568,74 @@ if (import.meta.vitest) {
             writeFileSync(join(root, "README.md"), "workspace docs");
 
             expect(findReadmeWithFallback(contractDir, root)).toBe(join(root, "README.md"));
+        });
+    });
+
+    describe("rust initializations", () => {
+        function makeInitProject(files: string[]): string {
+            const root = makeProject();
+            mkdirSync(join(root, "initializations"), { recursive: true });
+            for (const name of files) {
+                writeFileSync(join(root, "initializations", name), "// init\n");
+            }
+            return root;
+        }
+
+        function pkgWithBins(root: string, bins: Array<[string, string]>): CargoPackage {
+            return {
+                name: "counter",
+                targets: [
+                    { name: "counter", kind: ["bin"], src_path: join(root, "lib.rs") },
+                    { name: "counter", kind: ["lib"], src_path: join(root, "lib.rs") },
+                    ...bins.map(([name, path]) => ({
+                        name,
+                        kind: ["bin"],
+                        src_path: join(root, path),
+                    })),
+                ],
+            } as unknown as CargoPackage;
+        }
+
+        test("maps version files to their [[bin]] targets", () => {
+            const root = makeInitProject(["0.1.0.rs", "0.2.0.rs"]);
+            const pkg = pkgWithBins(root, [
+                ["counter-init-0-1-0", "initializations/0.1.0.rs"],
+                ["counter-init-0-2-0", "initializations/0.2.0.rs"],
+            ]);
+
+            expect(extractRustInitializations(pkg, root)).toEqual([
+                {
+                    version: "0.1.0",
+                    sourcePath: join(root, "initializations", "0.1.0.rs"),
+                    binName: "counter-init-0-1-0",
+                },
+                {
+                    version: "0.2.0",
+                    sourcePath: join(root, "initializations", "0.2.0.rs"),
+                    binName: "counter-init-0-2-0",
+                },
+            ]);
+        });
+
+        test("errors with the missing [[bin]] lines when a file has no target", () => {
+            const root = makeInitProject(["0.1.0.rs"]);
+            const pkg = pkgWithBins(root, []);
+
+            expect(() => extractRustInitializations(pkg, root)).toThrow(
+                /\[\[bin\]\]\nname = "counter-init-0-1-0"\npath = "initializations\/0\.1\.0\.rs"/,
+            );
+        });
+
+        test("errors on malformed version filenames", () => {
+            const root = makeInitProject(["latest.rs"]);
+            const pkg = pkgWithBins(root, []);
+            expect(() => extractRustInitializations(pkg, root)).toThrow(/version-addressed/);
+        });
+
+        test("returns nothing when the directory is absent", () => {
+            const root = makeProject();
+            const pkg = pkgWithBins(root, []);
+            expect(extractRustInitializations(pkg, root)).toEqual([]);
         });
     });
 

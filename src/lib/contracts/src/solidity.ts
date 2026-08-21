@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { basename, dirname, join, relative, resolve } from "path";
 import type { AbiEntry } from "./deployer";
 import { findNamedMarkdown, findReadme } from "./detection";
-import type { ContractInfo, ContractToolchain } from "./detection";
+import type { ContractInfo, ContractInitialization, ContractToolchain } from "./detection";
+import { INITIALIZATIONS_DIR, listInitializationFiles } from "./initializations";
 import { solidityLibraryFromImportPath } from "./solidity-imports";
 
 export type SolidityToolchain = Extract<ContractToolchain, "foundry" | "hardhat">;
@@ -30,6 +31,13 @@ const SOLIDITY_SKIP_DIRS = new Set([
     "typechain",
     "typechain-types",
 ]);
+
+/**
+ * Source scanning additionally skips `initializations/`: initialization
+ * contracts are never regular deploy targets — they get built by the
+ * toolchain like any other source and wired in by the deploy pipeline.
+ */
+const SOLIDITY_SOURCE_SKIP_DIRS = new Set([...SOLIDITY_SKIP_DIRS, INITIALIZATIONS_DIR]);
 
 export interface SolidityBuildTarget extends ContractInfo {
     toolchain: SolidityToolchain;
@@ -149,7 +157,7 @@ function collectSolidityFiles(dir: string, out: string[] = []): string[] {
 
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (entry.isDirectory()) {
-            if (!SOLIDITY_SKIP_DIRS.has(entry.name)) {
+            if (!SOLIDITY_SOURCE_SKIP_DIRS.has(entry.name)) {
                 collectSolidityFiles(join(dir, entry.name), out);
             }
         } else if (entry.isFile() && entry.name.endsWith(".sol")) {
@@ -444,6 +452,87 @@ function attachSolidityDependencies(
     });
 }
 
+/** `contract X is A, B(...) {` declarations with their inheritance lists. */
+function extractInheritingContracts(source: string): Array<{ name: string; bases: string[] }> {
+    const scanSource = blankComments(source);
+    const out: Array<{ name: string; bases: string[] }> = [];
+    const re = /(^|\n)\s*contract\s+([A-Za-z_][A-Za-z0-9_]*)\s+is\s+([^{]+)\{/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(scanSource))) {
+        const bases = match[3]
+            .split(",")
+            .map((base) => base.trim().replace(/\(.*$/, "").trim())
+            .filter((base) => base.length > 0);
+        out.push({ name: match[2], bases });
+    }
+    return out;
+}
+
+/**
+ * Attach each target's initializations: version-addressed `.sol` files under
+ * `<source dir>/initializations/`, matched to their target by INHERITANCE —
+ * an initialization contract must `is` the contract it initializes, which is
+ * also what guarantees it shares the storage layout. A file whose contracts
+ * inherit no target in the same directory is a configuration error.
+ */
+function attachSolidityInitializations(targets: SolidityBuildTarget[]): SolidityBuildTarget[] {
+    const targetsByDir = new Map<string, SolidityBuildTarget[]>();
+    for (const target of targets) {
+        const dir = dirname(target.sourcePath);
+        targetsByDir.set(dir, [...(targetsByDir.get(dir) ?? []), target]);
+    }
+
+    const initsByTarget = new Map<SolidityBuildTarget, ContractInitialization[]>();
+    for (const [dir, dirTargets] of targetsByDir) {
+        const names = new Set(dirTargets.map((target) => target.contractName));
+        for (const file of listInitializationFiles(dir, ".sol")) {
+            const source = readFileSync(file.path, "utf-8");
+            const declared = extractInheritingContracts(source).filter((contract) =>
+                contract.bases.some((base) => names.has(base)),
+            );
+            if (declared.length === 0) {
+                throw new Error(
+                    `Initialization ${file.path} declares no contract inheriting a ` +
+                        `CDM contract from ${dir} — declare ` +
+                        `"contract Init_${file.version.replace(/\./g, "_")} is <Contract> { ... }" ` +
+                        `so it shares the contract's storage layout.`,
+                );
+            }
+            for (const contract of declared) {
+                const inherited = contract.bases.filter((base) => names.has(base));
+                if (inherited.length > 1) {
+                    throw new Error(
+                        `Initialization contract ${contract.name} in ${file.path} inherits ` +
+                            `multiple CDM contracts (${inherited.join(", ")}) — ` +
+                            `an initialization belongs to exactly one contract.`,
+                    );
+                }
+                for (const target of dirTargets) {
+                    if (!inherited.includes(target.contractName)) continue;
+                    const existing = initsByTarget.get(target) ?? [];
+                    if (existing.some((init) => init.version === file.version)) {
+                        throw new Error(
+                            `Duplicate initialization for ${target.contractName} version ` +
+                                `${file.version} in ${file.path}.`,
+                        );
+                    }
+                    existing.push({
+                        version: file.version,
+                        sourcePath: file.path,
+                        contractName: contract.name,
+                    });
+                    initsByTarget.set(target, existing);
+                }
+            }
+        }
+    }
+
+    return targets.map((target) => {
+        const initializations = initsByTarget.get(target);
+        return initializations ? { ...target, initializations } : target;
+    });
+}
+
 function readFoundrySourceDirs(rootDir: string): string[] {
     const config = readFoundryConfig(rootDir);
     const dirs = new Set(["contracts", "src"]);
@@ -523,7 +612,9 @@ export function detectSolidityBuildTargets(rootDir: string): SolidityBuildTarget
         }
     }
 
-    return attachSolidityDependencies(rootDir, dedupeTargets(targets));
+    return attachSolidityInitializations(
+        attachSolidityDependencies(rootDir, dedupeTargets(targets)),
+    );
 }
 
 function dedupeTargets(targets: SolidityBuildTarget[]): SolidityBuildTarget[] {
@@ -672,14 +763,17 @@ function artifactSourceName(artifact: SolidityArtifactJson): string | null {
     return null;
 }
 
-function targetSourceName(rootDir: string, target: SolidityBuildTarget): string {
+function targetSourceName(
+    rootDir: string,
+    target: Pick<SolidityBuildTarget, "sourcePath">,
+): string {
     return normalizePathForMatch(relative(rootDir, target.sourcePath));
 }
 
 function artifactMatchesTarget(
     rootDir: string,
     artifact: ScannedSolidityArtifact,
-    target: SolidityBuildTarget,
+    target: Pick<SolidityBuildTarget, "contractName" | "sourcePath">,
 ): boolean {
     if (artifact.contractName !== target.contractName) return false;
     if (!artifact.sourceName) return true;
@@ -896,6 +990,58 @@ export async function buildSolidityToolchain(
     }
 
     return { result, artifacts, missing };
+}
+
+/** A deployable initialization artifact selected from the toolchain's output. */
+export interface SolidityInitializationArtifact {
+    /** Normalized raw-bytecode blob (same shape the deployer consumes). */
+    bytecodePath: string;
+    /** The toolchain artifact JSON — carries the ABI and storage layout. */
+    artifactPath: string;
+    bytecodeSize: number;
+}
+
+/**
+ * Select the toolchain artifact for one initialization contract. Foundry and
+ * hardhat compile everything in-project, so the initialization is already
+ * built by the time its contract's build succeeds — this just picks the right
+ * artifact (by the initialization's contract name + source path) and writes
+ * the normalized bytecode blob under `normalizedName`.
+ */
+export function findSolidityInitializationArtifact(
+    rootDir: string,
+    toolchain: SolidityToolchain,
+    init: { contractName?: string; sourcePath: string },
+    normalizedName: string,
+): SolidityInitializationArtifact {
+    if (!init.contractName) {
+        throw new Error(`Initialization ${init.sourcePath} has no contract name`);
+    }
+    const matches = scanArtifacts(rootDir, toolchain).filter((artifact) =>
+        artifactMatchesTarget(rootDir, artifact, {
+            contractName: init.contractName!,
+            sourcePath: init.sourcePath,
+        }),
+    );
+    if (matches.length === 0) {
+        throw new Error(
+            `No ${toolchain} artifact found for initialization ` +
+                `${targetSourceName(rootDir, init)}:${init.contractName} — did the build run?`,
+        );
+    }
+    if (matches.length > 1) {
+        throw new Error(
+            `Multiple ${toolchain} artifacts matched initialization ` +
+                `${targetSourceName(rootDir, init)}:${init.contractName}`,
+        );
+    }
+    const found = matches[0];
+    const normalized = writeNormalizedBytecode(rootDir, toolchain, normalizedName, found.bytecode);
+    return {
+        bytecodePath: normalized.path,
+        artifactPath: found.artifactPath,
+        bytecodeSize: normalized.size,
+    };
 }
 
 export function hasBuildableSolidityProject(rootDir: string): boolean {
@@ -1279,6 +1425,118 @@ if (import.meta.vitest) {
             expect([...readFileSync(byPackage.get("@example/b-counter")!.bytecodePath)]).toEqual([
                 11,
             ]);
+        });
+
+        test("detects initializations by inheritance without treating them as targets", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts", "initializations"), { recursive: true });
+            writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
+            writeFileSync(
+                join(root, "contracts", "Counters.sol"),
+                `
+                /// @custom:cdm @example/counter-a:0.2.0
+                contract CounterA {}
+                /// @custom:cdm @example/counter-b:0.1.0
+                contract CounterB {}
+                `,
+            );
+            writeFileSync(
+                join(root, "contracts", "initializations", "0.2.0.sol"),
+                `
+                import "../Counters.sol";
+                contract Init_0_2_0 is CounterA {
+                    function cdmInit(uint128 from, address owner) external {}
+                }
+                `,
+            );
+
+            const targets = detectSolidityBuildTargets(root);
+            const byName = new Map(targets.map((target) => [target.contractName, target]));
+
+            // The initialization contract is never a deploy target.
+            expect(targets.map((target) => target.contractName).sort()).toEqual([
+                "CounterA",
+                "CounterB",
+            ]);
+            // Inheritance routes the file to CounterA only.
+            expect(byName.get("CounterA")?.initializations).toEqual([
+                {
+                    version: "0.2.0",
+                    sourcePath: join(root, "contracts", "initializations", "0.2.0.sol"),
+                    contractName: "Init_0_2_0",
+                },
+            ]);
+            expect(byName.get("CounterB")?.initializations).toBeUndefined();
+        });
+
+        test("errors when an initialization inherits no local contract", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts", "initializations"), { recursive: true });
+            writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
+            writeFileSync(
+                join(root, "contracts", "Counter.sol"),
+                "/// @custom:cdm @example/counter\ncontract Counter {}\n",
+            );
+            writeFileSync(
+                join(root, "contracts", "initializations", "0.1.0.sol"),
+                "contract Standalone { function cdmInit(uint128, address) external {} }\n",
+            );
+
+            expect(() => detectSolidityBuildTargets(root)).toThrow(/inheriting/);
+        });
+
+        test("selects the initialization artifact by contract name and source path", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts", "initializations"), { recursive: true });
+            mkdirSync(join(root, "artifacts", "contracts", "initializations", "0.1.0.sol"), {
+                recursive: true,
+            });
+            writeFileSync(join(root, "hardhat.config.ts"), "export default {};\n");
+            writeFileSync(
+                join(root, "contracts", "initializations", "0.1.0.sol"),
+                "contract Init_0_1_0 is Counter {}\n",
+            );
+            writeFileSync(
+                join(
+                    root,
+                    "artifacts",
+                    "contracts",
+                    "initializations",
+                    "0.1.0.sol",
+                    "Init_0_1_0.json",
+                ),
+                JSON.stringify({
+                    _format: "hh-sol-artifact-1",
+                    contractName: "Init_0_1_0",
+                    sourceName: "contracts/initializations/0.1.0.sol",
+                    abi: [],
+                    bytecode: "0x0ab1",
+                }),
+            );
+
+            const artifact = findSolidityInitializationArtifact(
+                root,
+                "hardhat",
+                {
+                    contractName: "Init_0_1_0",
+                    sourcePath: join(root, "contracts", "initializations", "0.1.0.sol"),
+                },
+                "counter-init-0.1.0",
+            );
+            expect([...readFileSync(artifact.bytecodePath)]).toEqual([0x0a, 0xb1]);
+            expect(artifact.artifactPath.endsWith("Init_0_1_0.json")).toBe(true);
+
+            expect(() =>
+                findSolidityInitializationArtifact(
+                    root,
+                    "hardhat",
+                    {
+                        contractName: "Init_9_9_9",
+                        sourcePath: join(root, "contracts", "initializations", "9.9.9.sol"),
+                    },
+                    "counter-init-9.9.9",
+                ),
+            ).toThrow(/No hardhat artifact/);
         });
 
         test("extracts deployable bytecode from foundry and hardhat artifacts", () => {
