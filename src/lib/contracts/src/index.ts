@@ -22,6 +22,7 @@ export {
     type LayoutComparison,
     compareStorageLayouts,
     listInitializationFiles,
+    listVersionAddressedFiles,
     matchInitialization,
 } from "./initializations";
 

@@ -137,7 +137,9 @@ The generated file contains an interface plus a small library with `ADDRESS`, `r
 
 Constructors never run behind a per-name proxy — an implementation's `deploy` entry point writes into its own throwaway storage, not the proxy's. Initializations are the real thing: custom logic that runs **exactly once, atomically, in the same transaction that publishes a version**, directly against the name's proxy storage. One concept covers both first-publish setup (owner, config) and upgrade-time storage transformation.
 
-Initializations are version-addressed files in an `initializations/` directory next to the contract source. `initializations/1.3.0.rs` (or `.sol`) runs when version 1.3.0 is published — and only then:
+An initialization is addressed by **(contract, version)**. Rust: `<crate>/initializations/<version>.rs` — the crate names the contract. Solidity: `initializations/<Contract>/<version>.sol` — the directory names the contract. One rule, two idiomatic projections — the same way the publish version already comes from Cargo.toml for Rust and the `@custom:cdm` colon suffix for Solidity. (The Solidity per-contract directory is mandatory even in single-contract projects; a flat form would only plant a rename trap the day a second contract appears.)
+
+The file addressed to a version runs when exactly that version is published — and only then:
 
 - Publishing a version with no matching file is a plain publish.
 - A file for an already-published version is inert forever; deleting it is optional hygiene, never a correctness requirement. Nothing stale can re-run.
@@ -191,11 +193,11 @@ name = "counter-init-0-1-0"
 path = "initializations/0.1.0.rs"
 ```
 
-In Solidity, the initialization contract simply inherits the contract it initializes — identical storage layout plus access to internal helpers for free:
+In Solidity, the directory routes the file to its contract, and the initialization contract must inherit that contract (validated at detection) — identical storage layout plus access to internal helpers for free:
 
 ```solidity
-// initializations/0.1.0.sol
-import "../Counter.sol";
+// initializations/Counter/0.1.0.sol
+import "../../Counter.sol";
 
 contract Init_0_1_0 is Counter {
     function cdmInit(uint128 from, address owner_) external {
@@ -208,7 +210,7 @@ At deploy time CDM compares the initialization artifact's storage layout against
 
 For upgrades that reshape storage incompatibly, pair an initialization with the freeze window: `freezeContract` halts all delegation (the meta plane stays live), the publish-with-initialization lands atomically, `unfreezeContract` resumes traffic on the new version — the SQL-migrations analogy, but on one shared storage.
 
-The shared-counter and foundry-counter templates each ship a working `initializations/0.1.0` example.
+The shared-counter template ships a working `initializations/0.1.0.rs`, the foundry-counter template a working `initializations/CounterA/0.1.0.sol`.
 
 ## Using Contracts From A Triangle App
 

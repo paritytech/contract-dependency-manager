@@ -35,12 +35,30 @@ export interface InitializationFile {
  * with a strict `X.Y.Z` basename. Files with other extensions (readmes, etc.)
  * are ignored; a file with the language's extension but a malformed or
  * duplicate version is a configuration error worth failing the whole run for.
+ *
+ * This is the Rust projection of the one addressing rule — an initialization
+ * is addressed by (contract, version), and for Rust the crate names the
+ * contract, so the version files sit directly under the crate's
+ * `initializations/`. Solidity's projection nests a per-contract directory
+ * instead (see `solidity.ts`), scanned with
+ * {@link listVersionAddressedFiles} directly.
  */
 export function listInitializationFiles(
     contractDir: string,
     extension: ".rs" | ".sol",
 ): InitializationFile[] {
-    const dir = join(contractDir, INITIALIZATIONS_DIR);
+    return listVersionAddressedFiles(join(contractDir, INITIALIZATIONS_DIR), extension);
+}
+
+/**
+ * Scan one directory (non-recursively) for strict `X.Y.Z{ext}` version files.
+ * The per-contract scope: for Rust this is `<crate>/initializations/`, for
+ * Solidity `initializations/<ContractName>/`.
+ */
+export function listVersionAddressedFiles(
+    dir: string,
+    extension: ".rs" | ".sol",
+): InitializationFile[] {
     if (!existsSync(dir)) return [];
 
     const files: InitializationFile[] = [];

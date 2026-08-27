@@ -15,9 +15,9 @@
 //  - the NatSpec version gates deploys end to end: redeploys skip as
 //    up-to-date, a tag bump republished behind the same proxy keeps storage,
 //    and `[MAGIC][key]` versioned calls pin the older version over it;
-//  - initializations: the template's `initializations/0.1.0.sol` (inheriting
-//    CounterA) runs once inside the first publish and sets the owner, and a
-//    reverting initialization rolls the whole publish back.
+//  - initializations: the template's `initializations/CounterA/0.1.0.sol`
+//    runs once inside the first publish and sets the owner, and a reverting
+//    initialization rolls the whole publish back.
 //
 // Requires a running PPN and `forge` (foundry-polkadot fork) on PATH.
 
@@ -205,7 +205,7 @@ describe("deploying the foundry template", () => {
         expect(detected.get(NAME_B)?.dependsOnCrates).toEqual([NAME_A]);
         expect(detect.layers).toEqual([[NAME_A], [NAME_B]]);
 
-        // The template ships initializations/0.1.0.sol for CounterA — the
+        // The template ships initializations/CounterA/0.1.0.sol — the
         // pipeline announces it for exactly this publish; CounterB has none.
         const initEvents = events.filter((event) => event.type === "initialization");
         expect(initEvents).toHaveLength(1);
@@ -240,7 +240,7 @@ describe("deploying the foundry template", () => {
     });
 
     test("the initialization ran once inside the publish: owner is set", async () => {
-        // initializations/0.1.0.sol (contract Init_0_1_0 is CounterA) wrote
+        // initializations/CounterA/0.1.0.sol (Init_0_1_0 is CounterA) wrote
         // the publisher into CounterA's owner slot — through the proxy's
         // storage, delivered by the registry's callCode meta op.
         const alice = eoaH160FromPublicKey(signer.publicKey);
@@ -320,13 +320,15 @@ describe("a reverting initialization", () => {
         // Address 0.3.0 with an initialization that always reverts, then bump
         // CounterA's tag to 0.3.0: the version registration and both deploys
         // share one batch_all, so nothing lands.
-        mkdirSync(join(projectDir, "contracts", "initializations"), { recursive: true });
+        mkdirSync(join(projectDir, "contracts", "initializations", "CounterA"), {
+            recursive: true,
+        });
         writeFileSync(
-            join(projectDir, "contracts", "initializations", "0.3.0.sol"),
+            join(projectDir, "contracts", "initializations", "CounterA", "0.3.0.sol"),
             `// SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.28;
 
-import "../CounterA.sol";
+import "../../CounterA.sol";
 
 contract Init_0_3_0 is CounterA {
     error InitializationFailed();

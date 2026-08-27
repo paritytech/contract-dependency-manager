@@ -4,7 +4,7 @@ import { basename, dirname, join, relative, resolve } from "path";
 import type { AbiEntry } from "./deployer";
 import { findNamedMarkdown, findReadme } from "./detection";
 import type { ContractInfo, ContractInitialization, ContractToolchain } from "./detection";
-import { INITIALIZATIONS_DIR, listInitializationFiles } from "./initializations";
+import { INITIALIZATIONS_DIR, listVersionAddressedFiles } from "./initializations";
 import { solidityLibraryFromImportPath } from "./solidity-imports";
 
 export type SolidityToolchain = Extract<ContractToolchain, "foundry" | "hardhat">;
@@ -469,11 +469,14 @@ function extractInheritingContracts(source: string): Array<{ name: string; bases
 }
 
 /**
- * Attach each target's initializations: version-addressed `.sol` files under
- * `<source dir>/initializations/`, matched to their target by INHERITANCE —
- * an initialization contract must `is` the contract it initializes, which is
- * also what guarantees it shares the storage layout. A file whose contracts
- * inherit no target in the same directory is a configuration error.
+ * Attach each target's initializations. An initialization is addressed by
+ * (contract, version); the Solidity projection is
+ * `initializations/<ContractName>/<version>.sol` — the DIRECTORY names the
+ * contract (the router), and the file's initialization contract must inherit
+ * it (validation — inheriting is also what guarantees the shared storage
+ * layout). The per-contract subdirectory is mandatory even for
+ * single-contract projects: a flat form would plant a rename trap the day a
+ * second contract appears.
  */
 function attachSolidityInitializations(targets: SolidityBuildTarget[]): SolidityBuildTarget[] {
     const targetsByDir = new Map<string, SolidityBuildTarget[]>();
@@ -484,45 +487,66 @@ function attachSolidityInitializations(targets: SolidityBuildTarget[]): Solidity
 
     const initsByTarget = new Map<SolidityBuildTarget, ContractInitialization[]>();
     for (const [dir, dirTargets] of targetsByDir) {
-        const names = new Set(dirTargets.map((target) => target.contractName));
-        for (const file of listInitializationFiles(dir, ".sol")) {
-            const source = readFileSync(file.path, "utf-8");
-            const declared = extractInheritingContracts(source).filter((contract) =>
-                contract.bases.some((base) => names.has(base)),
-            );
-            if (declared.length === 0) {
+        const initializationsDir = join(dir, INITIALIZATIONS_DIR);
+        if (!existsSync(initializationsDir)) continue;
+        const byName = new Map(dirTargets.map((target) => [target.contractName, target]));
+
+        for (const entry of readdirSync(initializationsDir, { withFileTypes: true }).sort((a, b) =>
+            a.name.localeCompare(b.name),
+        )) {
+            // A version file sitting flat in initializations/ predates the
+            // per-contract layout — teach the convention instead of guessing.
+            if (entry.isFile() && entry.name.endsWith(".sol")) {
                 throw new Error(
-                    `Initialization ${file.path} declares no contract inheriting a ` +
-                        `CDM contract from ${dir} — declare ` +
-                        `"contract Init_${file.version.replace(/\./g, "_")} is <Contract> { ... }" ` +
-                        `so it shares the contract's storage layout.`,
+                    `Initialization ${join(initializationsDir, entry.name)} sits directly in ` +
+                        `${INITIALIZATIONS_DIR}/ — Solidity initializations are addressed by ` +
+                        `(contract, version): move it to ` +
+                        `${INITIALIZATIONS_DIR}/<ContractName>/${entry.name}, where ` +
+                        `<ContractName> is the contract it initializes.`,
                 );
             }
-            for (const contract of declared) {
-                const inherited = contract.bases.filter((base) => names.has(base));
-                if (inherited.length > 1) {
+            if (!entry.isDirectory()) continue;
+
+            const target = byName.get(entry.name);
+            if (!target) {
+                throw new Error(
+                    `${join(initializationsDir, entry.name)} does not name a CDM contract — ` +
+                        `initialization directories must match a contract declared in ${dir}` +
+                        (byName.size > 0 ? ` (${[...byName.keys()].join(", ")})` : "") +
+                        `.`,
+                );
+            }
+
+            const contractDir = join(initializationsDir, entry.name);
+            const initializations: ContractInitialization[] = [];
+            for (const file of listVersionAddressedFiles(contractDir, ".sol")) {
+                const source = readFileSync(file.path, "utf-8");
+                const inheritors = extractInheritingContracts(source).filter((contract) =>
+                    contract.bases.includes(target.contractName),
+                );
+                if (inheritors.length === 0) {
                     throw new Error(
-                        `Initialization contract ${contract.name} in ${file.path} inherits ` +
-                            `multiple CDM contracts (${inherited.join(", ")}) — ` +
-                            `an initialization belongs to exactly one contract.`,
+                        `${file.path} must contain a contract inheriting ` +
+                            `${target.contractName} — inheriting the contract it initializes ` +
+                            `is what gives an initialization the same storage layout.`,
                     );
                 }
-                for (const target of dirTargets) {
-                    if (!inherited.includes(target.contractName)) continue;
-                    const existing = initsByTarget.get(target) ?? [];
-                    if (existing.some((init) => init.version === file.version)) {
-                        throw new Error(
-                            `Duplicate initialization for ${target.contractName} version ` +
-                                `${file.version} in ${file.path}.`,
-                        );
-                    }
-                    existing.push({
-                        version: file.version,
-                        sourcePath: file.path,
-                        contractName: contract.name,
-                    });
-                    initsByTarget.set(target, existing);
+                if (inheritors.length > 1) {
+                    throw new Error(
+                        `${file.path} declares multiple contracts inheriting ` +
+                            `${target.contractName} (${inheritors
+                                .map((contract) => contract.name)
+                                .join(", ")}) — an initialization file declares exactly one.`,
+                    );
                 }
+                initializations.push({
+                    version: file.version,
+                    sourcePath: file.path,
+                    contractName: inheritors[0].name,
+                });
+            }
+            if (initializations.length > 0) {
+                initsByTarget.set(target, initializations);
             }
         }
     }
@@ -1427,9 +1451,11 @@ if (import.meta.vitest) {
             ]);
         });
 
-        test("detects initializations by inheritance without treating them as targets", () => {
+        test("routes initializations by directory name without treating them as targets", () => {
             const root = makeProject();
-            mkdirSync(join(root, "contracts", "initializations"), { recursive: true });
+            mkdirSync(join(root, "contracts", "initializations", "CounterA"), {
+                recursive: true,
+            });
             writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
             writeFileSync(
                 join(root, "contracts", "Counters.sol"),
@@ -1441,9 +1467,9 @@ if (import.meta.vitest) {
                 `,
             );
             writeFileSync(
-                join(root, "contracts", "initializations", "0.2.0.sol"),
+                join(root, "contracts", "initializations", "CounterA", "0.2.0.sol"),
                 `
-                import "../Counters.sol";
+                import "../../Counters.sol";
                 contract Init_0_2_0 is CounterA {
                     function cdmInit(uint128 from, address owner) external {}
                 }
@@ -1458,18 +1484,38 @@ if (import.meta.vitest) {
                 "CounterA",
                 "CounterB",
             ]);
-            // Inheritance routes the file to CounterA only.
+            // The directory name routes the file to CounterA only.
             expect(byName.get("CounterA")?.initializations).toEqual([
                 {
                     version: "0.2.0",
-                    sourcePath: join(root, "contracts", "initializations", "0.2.0.sol"),
+                    sourcePath: join(root, "contracts", "initializations", "CounterA", "0.2.0.sol"),
                     contractName: "Init_0_2_0",
                 },
             ]);
             expect(byName.get("CounterB")?.initializations).toBeUndefined();
         });
 
-        test("errors when an initialization inherits no local contract", () => {
+        test("errors when the initialization does not inherit its directory's contract", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts", "initializations", "Counter"), {
+                recursive: true,
+            });
+            writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
+            writeFileSync(
+                join(root, "contracts", "Counter.sol"),
+                "/// @custom:cdm @example/counter\ncontract Counter {}\n",
+            );
+            writeFileSync(
+                join(root, "contracts", "initializations", "Counter", "0.1.0.sol"),
+                "contract Standalone { function cdmInit(uint128, address) external {} }\n",
+            );
+
+            expect(() => detectSolidityBuildTargets(root)).toThrow(
+                /0\.1\.0\.sol must contain a contract inheriting Counter/,
+            );
+        });
+
+        test("errors on a version file sitting flat in initializations/", () => {
             const root = makeProject();
             mkdirSync(join(root, "contracts", "initializations"), { recursive: true });
             writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
@@ -1479,36 +1525,51 @@ if (import.meta.vitest) {
             );
             writeFileSync(
                 join(root, "contracts", "initializations", "0.1.0.sol"),
-                "contract Standalone { function cdmInit(uint128, address) external {} }\n",
+                'import "../Counter.sol";\ncontract Init_0_1_0 is Counter {}\n',
             );
 
-            expect(() => detectSolidityBuildTargets(root)).toThrow(/inheriting/);
+            // The flat form is never accepted — the error teaches the
+            // per-contract layout instead of guessing a route.
+            expect(() => detectSolidityBuildTargets(root)).toThrow(
+                /move it to initializations\/<ContractName>\/0\.1\.0\.sol/,
+            );
+        });
+
+        test("errors when an initialization directory names no CDM contract", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "contracts", "initializations", "CountrA"), {
+                recursive: true,
+            });
+            writeFileSync(join(root, "foundry.toml"), 'src = "contracts"\n');
+            writeFileSync(
+                join(root, "contracts", "Counter.sol"),
+                "/// @custom:cdm @example/counter\ncontract Counter {}\n",
+            );
+            writeFileSync(
+                join(root, "contracts", "initializations", "CountrA", "0.1.0.sol"),
+                'import "../../Counter.sol";\ncontract Init_0_1_0 is Counter {}\n',
+            );
+
+            expect(() => detectSolidityBuildTargets(root)).toThrow(
+                /CountrA does not name a CDM contract.*\(Counter\)/,
+            );
         });
 
         test("selects the initialization artifact by contract name and source path", () => {
             const root = makeProject();
-            mkdirSync(join(root, "contracts", "initializations"), { recursive: true });
-            mkdirSync(join(root, "artifacts", "contracts", "initializations", "0.1.0.sol"), {
+            const initDir = join("contracts", "initializations", "Counter");
+            mkdirSync(join(root, initDir), { recursive: true });
+            mkdirSync(join(root, "artifacts", initDir, "0.1.0.sol"), {
                 recursive: true,
             });
             writeFileSync(join(root, "hardhat.config.ts"), "export default {};\n");
+            writeFileSync(join(root, initDir, "0.1.0.sol"), "contract Init_0_1_0 is Counter {}\n");
             writeFileSync(
-                join(root, "contracts", "initializations", "0.1.0.sol"),
-                "contract Init_0_1_0 is Counter {}\n",
-            );
-            writeFileSync(
-                join(
-                    root,
-                    "artifacts",
-                    "contracts",
-                    "initializations",
-                    "0.1.0.sol",
-                    "Init_0_1_0.json",
-                ),
+                join(root, "artifacts", initDir, "0.1.0.sol", "Init_0_1_0.json"),
                 JSON.stringify({
                     _format: "hh-sol-artifact-1",
                     contractName: "Init_0_1_0",
-                    sourceName: "contracts/initializations/0.1.0.sol",
+                    sourceName: "contracts/initializations/Counter/0.1.0.sol",
                     abi: [],
                     bytecode: "0x0ab1",
                 }),
@@ -1519,7 +1580,7 @@ if (import.meta.vitest) {
                 "hardhat",
                 {
                     contractName: "Init_0_1_0",
-                    sourcePath: join(root, "contracts", "initializations", "0.1.0.sol"),
+                    sourcePath: join(root, initDir, "0.1.0.sol"),
                 },
                 "counter-init-0.1.0",
             );
@@ -1532,7 +1593,7 @@ if (import.meta.vitest) {
                     "hardhat",
                     {
                         contractName: "Init_9_9_9",
-                        sourcePath: join(root, "contracts", "initializations", "9.9.9.sol"),
+                        sourcePath: join(root, initDir, "9.9.9.sol"),
                     },
                     "counter-init-9.9.9",
                 ),
