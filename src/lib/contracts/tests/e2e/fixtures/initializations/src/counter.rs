@@ -4,12 +4,16 @@
 
 #![cfg_attr(not(feature = "abi-gen"), no_main, no_std)]
 
-mod storage;
-
 #[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
 mod counter_fix {
-    use super::storage::FixtureStorage;
-    use pvm_contract_sdk::Address;
+    use pvm_contract_sdk::{Address, Lazy};
+
+    #[pvm_contract_sdk::storage]
+    pub struct FixtureStorage {
+        pub count: Lazy<u32>,
+        pub owner: Lazy<Address>,
+        pub last_init_from: Lazy<u128>,
+    }
 
     pub struct CounterFix {
         #[slot(0)]
@@ -17,9 +21,6 @@ mod counter_fix {
     }
 
     impl CounterFix {
-        #[pvm_contract_sdk::constructor]
-        pub fn new(&mut self) {}
-
         #[pvm_contract_sdk::method]
         pub fn increment(&mut self) {
             let current = self.s.count.get();

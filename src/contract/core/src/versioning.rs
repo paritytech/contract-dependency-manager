@@ -102,12 +102,12 @@ const fn meta_selector(signature: &[u8]) -> [u8; 4] {
 }
 
 /// The conventional entry point of an initialization contract:
-/// `cdmInit(uint128,address)` = `0xa712b6f5`. The registry composes
+/// `initialize(uint128,address)` = `0x3a67c2f8`. The registry composes
 /// `[selector][word from][word owner]` itself and delivers it into the
 /// name's proxy storage through the `callCode` meta op, so this selector is
 /// byte-locked across the registry, the proxy tooling, and every
 /// initialization contract ever compiled.
-pub const CDM_INIT_SELECTOR: [u8; 4] = meta_selector(b"cdmInit(uint128,address)");
+pub const INITIALIZE_SELECTOR: [u8; 4] = meta_selector(b"initialize(uint128,address)");
 
 /// Meta-call selectors. Queries are open; `publish`, `setMinSupported`,
 /// `setAdmin`, and `callCode` require the caller to be the proxy's admin
@@ -159,11 +159,11 @@ mod tests {
     }
 
     #[test]
-    fn cdm_init_selector_is_pinned() {
+    fn initialize_selector_is_pinned() {
         // Mirrored in TS (src/lib/contracts/src/proxy.ts) and composed by the
         // registry into every publish-with-initialization; changing it breaks
         // every initialization contract already compiled.
-        assert_eq!(hex4(CDM_INIT_SELECTOR), "a712b6f5");
+        assert_eq!(hex4(INITIALIZE_SELECTOR), "3a67c2f8");
     }
 
     #[test]

@@ -22,7 +22,11 @@ import {
     toposortLayers,
 } from "./detection";
 import { compareStorageLayouts, matchInitialization } from "./initializations";
-import { pvmContractBuildAsync, type BuildProgressCallback } from "./builder";
+import {
+    buildRustInitialization,
+    pvmContractBuildAsync,
+    type BuildProgressCallback,
+} from "./builder";
 import { computeBulletinStoreCid } from "./cid";
 import {
     type CdmBuildManifestContract,
@@ -1013,38 +1017,36 @@ function findProxyMagicCollisions(abi: AbiEntry[], magic: string = PROXY_MAGIC):
 }
 
 /**
- * Resolve an initialization's built artifacts and run the storage-layout
- * safety net. Rust initializations come out of the crate build as their own
- * `[[bin]]` artifacts; Solidity ones are selected from the toolchain output
- * by contract name + source path.
+ * Build/select an initialization's artifacts and run the storage-layout
+ * safety net. Rust initializations compile through a generated shim crate
+ * (no manifest entries required of the user); Solidity ones are selected
+ * from the toolchain output by contract name + source path.
  *
  * The guard REFUSES to deploy on a layout mismatch — an initialization that
  * doesn't share the contract's layout would corrupt the proxy's storage. When
- * neither side carries layout data, verification is impossible: warn loudly
- * and proceed rather than silently skipping the check.
+ * layout data is missing, verification is impossible: warn loudly and proceed
+ * rather than silently skipping the check.
  */
-function resolveInitializationArtifact(
+async function resolveInitializationArtifact(
     rootDir: string,
     deployable: DeployableContract,
     init: ContractInitialization,
     version: string,
+    registryAddress: HexString,
     emit: BuildEmitter,
-): { pvmPath: string } {
+): Promise<{ pvmPath: string }> {
     const toolchain = deployable.contract.toolchain ?? "rust";
     let pvmPath: string;
     let layoutPath: string;
     if (toolchain === "rust") {
-        if (!init.binName) {
-            throw new Error(`Initialization ${init.sourcePath} has no [[bin]] target name`);
-        }
-        pvmPath = resolve(rootDir, `target/release/${init.binName}.polkavm`);
-        layoutPath = resolve(rootDir, `target/release/${init.binName}.abi.json`);
-        if (!existsSync(pvmPath)) {
-            throw new Error(
-                `Initialization bin "${init.binName}" for ${deployable.cdmPackage} was not ` +
-                    `built at ${pvmPath}`,
-            );
-        }
+        const built = await buildRustInitialization(
+            rootDir,
+            deployable.crate,
+            init,
+            registryAddress,
+        );
+        pvmPath = built.pvmPath;
+        layoutPath = built.abiPath;
     } else {
         const artifact = findSolidityInitializationArtifact(
             rootDir,
@@ -1063,15 +1065,12 @@ function resolveInitializationArtifact(
     if (comparison.status === "mismatch") {
         const advice =
             toolchain === "rust"
-                ? "a Rust initialization must share the contract's storage struct — declare " +
-                  "the struct once in a shared module used by both (see the shared-counter " +
-                  "template's storage.rs)"
-                : "a Solidity initialization must inherit the contract it initializes " +
-                  "(`contract Init_X_Y_Z is YourContract`)";
+                ? "update the initialization's embedded storage struct to match the contract's"
+                : "the initialization must inherit the contract it initializes";
         throw new Error(
             `Refusing to deploy ${deployable.cdmPackage} ${version}: the storage layout of ` +
                 `initialization ${relative(rootDir, init.sourcePath)} does not match the ` +
-                `implementation's. ${advice}.\n  ${comparison.problems.join("\n  ")}`,
+                `implementation's — ${advice}.\n  ${comparison.problems.join("\n  ")}`,
         );
     }
     if (comparison.status === "unverifiable") {
@@ -1321,10 +1320,9 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     type: "log",
                     source: "initializations",
                     line:
-                        `warning: ${contract.cdmPackage} has an initialization addressed to ` +
-                        `${orphan.version} (${relative(opts.rootDir, orphan.path)}), higher ` +
-                        `than the version being published (${resolved.version}) — it will ` +
-                        `never run unless that version is published. Forgot a version bump?`,
+                        `warning: ${relative(opts.rootDir, orphan.path)} is addressed above ` +
+                        `the version being published (${resolved.version}) — forgot a ` +
+                        `version bump?`,
                 });
             }
             if (match) {
@@ -1438,27 +1436,32 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 const versionKeys = resolvedVersions.map((resolved) => resolved.key);
                 const metadataUris = deployables.map((contract) => cidMap[contract.crate]);
 
-                // Initialization artifacts (built with the layer above) plus
-                // the storage-layout guard. `#init`-suffixed salt packages
-                // keep initialization addresses clear of implementation ones.
-                const inits: (InitDeployRequest | undefined)[] = deployables.map(
-                    (deployable, i) => {
-                        const init = initByCrate.get(deployable.crate);
-                        if (!init) return undefined;
-                        const artifact = resolveInitializationArtifact(
-                            opts.rootDir,
-                            deployable,
-                            init,
-                            resolvedVersions[i].version,
-                            emit as BuildEmitter,
-                        );
-                        return {
-                            pvmPath: artifact.pvmPath,
-                            saltPackage: `${deployable.cdmPackage}#init`,
-                            saltVersion: resolvedVersions[i].version,
-                        };
-                    },
-                );
+                // Initialization artifacts (Rust builds through its shim
+                // crate here) plus the storage-layout guard. `#init`-suffixed
+                // salt packages keep initialization addresses clear of
+                // implementation ones.
+                const inits: (InitDeployRequest | undefined)[] = [];
+                for (let i = 0; i < deployables.length; i++) {
+                    const deployable = deployables[i];
+                    const init = initByCrate.get(deployable.crate);
+                    if (!init) {
+                        inits.push(undefined);
+                        continue;
+                    }
+                    const artifact = await resolveInitializationArtifact(
+                        opts.rootDir,
+                        deployable,
+                        init,
+                        resolvedVersions[i].version,
+                        opts.registryAddress,
+                        emit as BuildEmitter,
+                    );
+                    inits.push({
+                        pvmPath: artifact.pvmPath,
+                        saltPackage: `${deployable.cdmPackage}#init`,
+                        saltVersion: resolvedVersions[i].version,
+                    });
+                }
 
                 // Plan BEFORE submission: a single dry-run per contract yields
                 // the CREATE2 addresses (emitted as `check-needs-deploy`), the
@@ -1701,6 +1704,12 @@ if (import.meta.vitest) {
                     stderr: "",
                     durationMs: 100,
                 }) as const,
+        ),
+        buildRustInitialization: vi.fn(
+            async (_root: string, crateName: string, init: { version: string }) => ({
+                pvmPath: `/fake/init-build/${crateName}-init.polkavm`,
+                abiPath: `/fake/init-build/${crateName}-init.abi.json`,
+            }),
         ),
     }));
 
@@ -2419,7 +2428,6 @@ if (import.meta.vitest) {
                             {
                                 version: "0.1.0",
                                 sourcePath: "/fake/a/initializations/0.1.0.rs",
-                                binName: "a-init-0-1-0",
                             },
                         ],
                     },
@@ -2481,7 +2489,7 @@ if (import.meta.vitest) {
             // salted as <package>#init at the publish version.
             const expectedInits = [
                 {
-                    pvmPath: "/fake/target/release/a-init-0-1-0.polkavm",
+                    pvmPath: "/fake/init-build/a-init.polkavm",
                     saltPackage: "@example/a#init",
                     saltVersion: "0.1.0",
                 },
@@ -2512,7 +2520,6 @@ if (import.meta.vitest) {
                             {
                                 version: "0.9.0",
                                 sourcePath: "/fake/a/initializations/0.9.0.rs",
-                                binName: "a-init-0-9-0",
                             },
                         ],
                     },
@@ -2534,7 +2541,7 @@ if (import.meta.vitest) {
                 (event) => event.type === "log" && event.line.includes("0.9.0"),
             );
             expect(warning).toBeDefined();
-            expect((warning as { line: string }).line).toContain("higher");
+            expect((warning as { line: string }).line).toContain("version bump");
         });
 
         test("refuses to deploy when the initialization's storage layout drifts", async () => {
@@ -2550,7 +2557,6 @@ if (import.meta.vitest) {
                             {
                                 version: "0.1.0",
                                 sourcePath: "/fake/a/initializations/0.1.0.rs",
-                                binName: "a-init-0-1-0",
                             },
                         ],
                     },
@@ -2558,7 +2564,7 @@ if (import.meta.vitest) {
             );
             (mockReadFileSync as any).mockImplementation((path: unknown) => {
                 const p = String(path);
-                if (p.endsWith("a-init-0-1-0.abi.json")) {
+                if (p.endsWith("a-init.abi.json")) {
                     return Buffer.from(
                         JSON.stringify({
                             abi: [],
@@ -2594,61 +2600,8 @@ if (import.meta.vitest) {
             const errorEvent = events.find((event) => event.type === "deploy-register-error");
             expect(errorEvent).toMatchObject({ crates: ["a"] });
             expect((errorEvent as { error: string }).error).toMatch(/storage layout/);
-            expect((errorEvent as { error: string }).error).toMatch(/shared module/);
+            expect((errorEvent as { error: string }).error).toMatch(/embedded storage struct/);
             expect(summary.contracts[0]).toMatchObject({ status: "error" });
-        });
-
-        test("matching initializations pass the layout guard when layouts agree", async () => {
-            (mockDetect as any).mockReturnValue(
-                makeOrder(
-                    [["a"]],
-                    {},
-                    { a: "@example/a" },
-                    { a: "0.1.0" },
-                    { a: "rust" },
-                    {
-                        a: [
-                            {
-                                version: "0.1.0",
-                                sourcePath: "/fake/a/initializations/0.1.0.rs",
-                                binName: "a-init-0-1-0",
-                            },
-                        ],
-                    },
-                ),
-            );
-            (mockReadFileSync as any).mockImplementation((path: unknown) =>
-                String(path).endsWith(".abi.json")
-                    ? Buffer.from(
-                          JSON.stringify({
-                              abi: [],
-                              storageLayout: {
-                                  storage: [
-                                      { label: "s.count", slot: "0", offset: 0, type: "uint32" },
-                                  ],
-                              },
-                          }),
-                      )
-                    : Buffer.from("[]"),
-            );
-
-            const events: DeployEvent[] = [];
-            const summary = await deployContracts({
-                rootDir: "/fake",
-                client: makeFakeClient(),
-                signer: makePolkadotSigner(1),
-                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
-                registryAddress: getRegistryAddress("paseo") as HexString,
-                onEvent: (event) => events.push(event),
-            });
-
-            expect(summary.contracts[0]).toMatchObject({ status: "done" });
-            expect(
-                events.some(
-                    (event) =>
-                        event.type === "log" && event.line.includes("WITHOUT layout verification"),
-                ),
-            ).toBe(false);
         });
 
         test("ignores initializations for up-to-date crates", async () => {
@@ -2664,7 +2617,6 @@ if (import.meta.vitest) {
                             {
                                 version: "0.1.0",
                                 sourcePath: "/fake/a/initializations/0.1.0.rs",
-                                binName: "a-init-0-1-0",
                             },
                         ],
                     },

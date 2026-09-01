@@ -62,40 +62,24 @@ export function listVersionAddressedFiles(
     if (!existsSync(dir)) return [];
 
     const files: InitializationFile[] = [];
-    const byVersion = new Map<string, string>();
     for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
         a.name.localeCompare(b.name),
     )) {
         if (!entry.isFile() || !entry.name.endsWith(extension)) continue;
         const raw = basename(entry.name, extension);
-        let key: bigint;
+        // Canonical spellings only, so a version can never appear twice.
+        let key: bigint | undefined;
         try {
             key = semverToKey(raw);
-        } catch {
+        } catch {}
+        if (key === undefined || raw !== keyToSemver(key)) {
             throw new Error(
                 `Malformed initialization filename "${entry.name}" in ${dir} — ` +
                     `initializations are version-addressed: name the file exactly ` +
                     `"X.Y.Z${extension}" for the version it initializes.`,
             );
         }
-        const version = keyToSemver(key);
-        if (raw !== version) {
-            throw new Error(
-                `Malformed initialization filename "${entry.name}" in ${dir} — ` +
-                    `use the canonical "${version}${extension}".`,
-            );
-        }
-        // Canonical-only spellings make same-version duplicates impossible
-        // within one directory, but keep the guard for defense in depth.
-        const previous = byVersion.get(version);
-        if (previous) {
-            throw new Error(
-                `Duplicate initialization for version ${version} in ${dir}: ` +
-                    `${previous} and ${entry.name}.`,
-            );
-        }
-        byVersion.set(version, entry.name);
-        files.push({ version, key, path: join(dir, entry.name) });
+        files.push({ version: raw, key, path: join(dir, entry.name) });
     }
     return files;
 }
@@ -241,19 +225,13 @@ if (import.meta.vitest) {
             expect(files[0].path.endsWith("initializations/0.1.0.rs")).toBe(true);
         });
 
-        it("errors on malformed filenames", () => {
-            const dir = makeContractDir(["1.2.rs"]);
-            expect(() => listInitializationFiles(dir, ".rs")).toThrow(/version-addressed/);
-        });
-
-        it("errors on non-canonical version spellings", () => {
-            const dir = makeContractDir(["01.2.3.sol"]);
-            expect(() => listInitializationFiles(dir, ".sol")).toThrow(/canonical "1\.2\.3\.sol"/);
-        });
-
-        it("rejects the v-prefix spelling", () => {
-            const dir = makeContractDir(["v1.2.3.rs"]);
-            expect(() => listInitializationFiles(dir, ".rs")).toThrow(/canonical "1\.2\.3\.rs"/);
+        it("errors on malformed or non-canonical filenames", () => {
+            for (const name of ["1.2.rs", "01.2.3.rs", "v1.2.3.rs"]) {
+                const dir = makeContractDir([name]);
+                expect(() => listInitializationFiles(dir, ".rs")).toThrow(/version-addressed/);
+                rmSync(dir, { recursive: true, force: true });
+                tmpRoot = null;
+            }
         });
     });
 

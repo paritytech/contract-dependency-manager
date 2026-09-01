@@ -13,12 +13,6 @@ path = "lib.rs"
 name = "counter"
 path = "lib.rs"
 
-# One [[bin]] per initialization: `initializations/X.Y.Z.rs` runs exactly once
-# when version X.Y.Z is published (see the CDM "Initializations" docs).
-[[bin]]
-name = "counter-init-0-1-0"
-path = "initializations/0.1.0.rs"
-
 [features]
 abi-gen = ["pvm-contract-sdk/abi-gen"]
 

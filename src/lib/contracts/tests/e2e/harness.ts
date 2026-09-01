@@ -57,10 +57,13 @@ export const COUNTER_ABI_JSON = resolve(
     ROOT_DIR,
     "src/templates/shared-counter/target/release/counter.abi.json",
 );
-/** The template counter's 0.1.0 initialization blob (`initializations/0.1.0.rs`). */
+/** The template counter's 0.1.0 initialization blob — built manifest-free
+ * through the shim path (`buildRustInitialization`), so the e2e suite proves
+ * the exact flow users get. */
+const TEMPLATE_DIR = resolve(ROOT_DIR, "src/templates/shared-counter");
 export const COUNTER_INIT_PVM = resolve(
-    ROOT_DIR,
-    "src/templates/shared-counter/target/release/counter-init-0-1-0.polkavm",
+    TEMPLATE_DIR,
+    "target/cdm/init-build/counter-init-0-1-0/target/release/counter-init-0-1-0.polkavm",
 );
 
 /** The initializations fixture crate (tests/e2e/fixtures/initializations):
@@ -173,19 +176,24 @@ async function ensureRegistryBuilt(): Promise<void> {
     }
 }
 
-/** Build the shared-counter template blobs if missing (`pnpm build:template`). */
+/** Build the shared-counter template blobs if missing (`pnpm build:template`),
+ * plus its 0.1.0 initialization through the manifest-free shim path. */
 export async function ensureTemplateBuilt(): Promise<void> {
-    if (existsSync(COUNTER_PVM) && existsSync(COUNTER_ABI_JSON) && existsSync(COUNTER_INIT_PVM)) {
-        return;
-    }
-    await execFileAsync("pnpm", ["build:template"], {
-        cwd: ROOT_DIR,
-        maxBuffer: 16 * 1024 * 1024,
-    });
-    for (const pvm of [COUNTER_PVM, COUNTER_INIT_PVM]) {
-        if (!existsSync(pvm)) {
-            throw new Error(`Counter .polkavm not produced at ${pvm} after pnpm build:template`);
+    if (!existsSync(COUNTER_PVM) || !existsSync(COUNTER_ABI_JSON)) {
+        await execFileAsync("pnpm", ["build:template"], {
+            cwd: ROOT_DIR,
+            maxBuffer: 16 * 1024 * 1024,
+        });
+        if (!existsSync(COUNTER_PVM)) {
+            throw new Error(`Counter .polkavm not produced at ${COUNTER_PVM}`);
         }
+    }
+    if (!existsSync(COUNTER_INIT_PVM)) {
+        const { buildRustInitialization } = await import("@parity/cdm-builder");
+        await buildRustInitialization(TEMPLATE_DIR, "counter", {
+            version: "0.1.0",
+            sourcePath: resolve(TEMPLATE_DIR, "contracts/counter/initializations/0.1.0.rs"),
+        });
     }
 }
 

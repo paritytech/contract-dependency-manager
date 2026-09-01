@@ -1471,7 +1471,7 @@ if (import.meta.vitest) {
                 `
                 import "../../Counters.sol";
                 contract Init_0_2_0 is CounterA {
-                    function cdmInit(uint128 from, address owner) external {}
+                    function initialize(uint128 from, address owner) external {}
                 }
                 `,
             );
@@ -1507,7 +1507,7 @@ if (import.meta.vitest) {
             );
             writeFileSync(
                 join(root, "contracts", "initializations", "Counter", "0.1.0.sol"),
-                "contract Standalone { function cdmInit(uint128, address) external {} }\n",
+                "contract Standalone { function initialize(uint128, address) external {} }\n",
             );
 
             expect(() => detectSolidityBuildTargets(root)).toThrow(

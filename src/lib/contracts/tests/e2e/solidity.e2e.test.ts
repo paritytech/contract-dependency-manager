@@ -333,7 +333,7 @@ import "../../CounterA.sol";
 contract Init_0_3_0 is CounterA {
     error InitializationFailed();
 
-    function cdmInit(uint128, address) external pure {
+    function initialize(uint128, address) external pure {
         revert InitializationFailed();
     }
 }

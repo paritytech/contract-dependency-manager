@@ -3,14 +3,10 @@
 
 #![cfg_attr(not(feature = "abi-gen"), no_main, no_std)]
 
-mod storage;
-
 #[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
 mod init_revert {
-    use super::storage::FixtureStorage;
     use pvm_contract_sdk::{Address, SolError};
 
-    /// `InitializationFailed()` — the selector the e2e suite asserts on.
     #[derive(Debug, PartialEq, Eq, SolError)]
     pub struct InitializationFailed;
 
@@ -19,18 +15,12 @@ mod init_revert {
         InitializationFailed(InitializationFailed),
     }
 
-    pub struct InitRevert {
-        #[slot(0)]
-        s: FixtureStorage,
-    }
+    pub struct InitRevert;
 
     impl InitRevert {
-        #[pvm_contract_sdk::constructor]
-        pub fn new(&mut self) {}
-
         #[pvm_contract_sdk::method]
-        pub fn cdm_init(&mut self, from: u128, owner: Address) -> Result<(), Error> {
-            let _ = (from, owner, &self.s);
+        pub fn initialize(&mut self, from: u128, owner: Address) -> Result<(), Error> {
+            let _ = (from, owner);
             Err(InitializationFailed.into())
         }
     }

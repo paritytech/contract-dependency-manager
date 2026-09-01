@@ -37,7 +37,7 @@ mod contract_registry {
     use contract_registry_core::naming::validate_contract_name;
     use contract_registry_core::slots::{ADMIN_SLOT, FROZEN_SLOT, IMPLEMENTATION_SLOT};
     use contract_registry_core::versioning::{
-        CDM_INIT_SELECTOR, MAGIC, META_KEY, is_publishable_key, meta,
+        INITIALIZE_SELECTOR, MAGIC, META_KEY, is_publishable_key, meta,
     };
     use pvm_contract_sdk::{Address, CallFlags, HostApi, Lazy, Mapping, StorageVec};
 
@@ -257,7 +257,7 @@ mod contract_registry {
 
         /// `publish` plus a one-shot initialization: once the version is
         /// recorded and the proxy repointed, the proxy delegate-calls
-        /// `init_target` with `cdmInit(from, owner)` against its own storage
+        /// `init_target` with `initialize(from, owner)` against its own storage
         /// — `from` is the previously-latest key (0 on a first publish),
         /// `owner` the name's owner. An initialization revert bubbles up and
         /// rolls back the entire publish.
@@ -593,7 +593,7 @@ mod contract_registry {
         }
 
         /// Deliver an initialization into the name's proxy storage:
-        /// `callCode(init_target, [cdmInit selector][from word][owner word])`
+        /// `callCode(init_target, [initialize selector][from word][owner word])`
         /// over the meta wire format, canonical ABI `bytes` framing (offset
         /// 0x40, length, payload zero-padded to a word boundary).
         fn call_proxy_init(
@@ -604,7 +604,7 @@ mod contract_registry {
             owner: &Address,
         ) {
             let mut inner = Vec::with_capacity(4 + 64);
-            inner.extend_from_slice(&CDM_INIT_SELECTOR);
+            inner.extend_from_slice(&INITIALIZE_SELECTOR);
             inner.extend_from_slice(&word_u128(from));
             inner.extend_from_slice(&word_address(owner));
             let padded_len = inner.len().div_ceil(32) * 32;
@@ -769,7 +769,7 @@ mod tests {
         VersionNotMonotonic,
     };
     use contract_registry_core::versioning::{
-        CDM_INIT_SELECTOR, MAGIC, META_KEY, meta, pack_version,
+        INITIALIZE_SELECTOR, MAGIC, META_KEY, meta, pack_version,
     };
     use pvm_contract_sdk::{
         Address, MockHost, MockHostBuilder, OutSink, Outcome, SolEncode, const_selector, keccak256,
@@ -933,14 +933,14 @@ mod tests {
 
     /// The exact callCode calldata a publish-with-initialization must send:
     /// `[MAGIC][0][callCode][init word][offset 0x40][len 68]` followed by
-    /// `[cdmInit selector][from word][owner word]` zero-padded to 96 bytes.
+    /// `[initialize selector][from word][owner word]` zero-padded to 96 bytes.
     fn init_calldata(init_target: [u8; 20], from: u128, owner: [u8; 20]) -> Vec<u8> {
         let mut offset = [0u8; 32];
         offset[31] = 0x40;
         let mut len = [0u8; 32];
         len[31] = 68;
         let mut data = meta_calldata(meta::CALL_CODE, &[&word_addr(init_target), &offset, &len]);
-        data.extend_from_slice(&CDM_INIT_SELECTOR);
+        data.extend_from_slice(&INITIALIZE_SELECTOR);
         data.extend_from_slice(&word_u128(from));
         data.extend_from_slice(&word_addr(owner));
         data.extend_from_slice(&[0u8; 28]);

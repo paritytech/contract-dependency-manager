@@ -15,8 +15,6 @@ export interface ContractInitialization {
     version: string;
     /** Absolute path to the initialization source file. */
     sourcePath: string;
-    /** Rust: the `[[bin]]` target that compiles this initialization. */
-    binName?: string;
     /** Solidity: the initialization contract declared in the file. */
     contractName?: string;
 }
@@ -88,13 +86,13 @@ interface CargoMetadata {
 interface CargoTarget {
     name: string;
     kind: string[];
-    src_path: string;
 }
 
-interface CargoPackage {
+export interface CargoPackage {
     name: string;
     id: string;
     version: string;
+    edition: string;
     description: string | null;
     authors: string[];
     homepage: string | null;
@@ -103,13 +101,26 @@ interface CargoPackage {
     manifest_path: string;
     dependencies: CargoDependency[];
     targets: CargoTarget[];
+    features: Record<string, string[]>;
     metadata: Record<string, unknown> | null;
 }
 
-interface CargoDependency {
+/** One resolved dependency row from `cargo metadata` — enough to reproduce
+ * the dep in a generated manifest (git/registry/path shapes). */
+export interface CargoDependency {
     name: string;
+    /** null = normal; "dev" / "build" otherwise. */
     kind: string | null;
+    /** Local path dependency (absolute). */
     path: string | null;
+    /** null (path dep), "git+url?branch=..." or "registry+...". */
+    source?: string | null;
+    /** Semver requirement, e.g. "^0.35". */
+    req?: string;
+    features?: string[];
+    uses_default_features?: boolean;
+    optional?: boolean;
+    rename?: string | null;
 }
 
 interface ResolveNode {
@@ -121,7 +132,7 @@ interface ResolveNode {
  * Get workspace metadata from Cargo's resolver.
  * This is 100% reliable - it uses Cargo's own dependency resolution.
  */
-function getCargoMetadata(rootDir: string): CargoMetadata {
+export function getCargoMetadata(rootDir: string): CargoMetadata {
     const manifestPath = resolve(rootDir, "Cargo.toml");
     const output = execSync(
         `cargo metadata --format-version 1 --manifest-path "${manifestPath}" --no-deps`,
@@ -171,36 +182,15 @@ function extractCdmPackage(pkg: CargoPackage): string | null {
 
 /**
  * A Rust contract's initializations: version-addressed `.rs` files under the
- * crate's `initializations/` directory, each backed by a `[[bin]]` target so
- * `cargo pvm-contract build` compiles it to its own `.polkavm` + `.abi.json`.
- * A version file without a bin target can never build — fail early with the
- * exact manifest lines to add.
+ * crate's `initializations/` directory. Nothing else — no manifest entries;
+ * the deploy pipeline builds each matching file through a generated shim
+ * crate (`buildRustInitialization` in builder.ts).
  */
-function extractRustInitializations(
-    pkg: CargoPackage,
-    manifestDir: string,
-): ContractInitialization[] {
-    const files = listInitializationFiles(manifestDir, ".rs");
-    if (files.length === 0) return [];
-
-    const binBySource = new Map<string, string>();
-    for (const target of pkg.targets) {
-        if (target.kind.includes("bin")) {
-            binBySource.set(resolve(target.src_path), target.name);
-        }
-    }
-
-    return files.map((file) => {
-        const binName = binBySource.get(resolve(file.path));
-        if (!binName) {
-            const suggested = `${pkg.name.replace(/_/g, "-")}-init-${file.version.replace(/\./g, "-")}`;
-            throw new Error(
-                `Initialization ${file.path} has no [[bin]] target in ${pkg.name}'s Cargo.toml. ` +
-                    `Add:\n\n[[bin]]\nname = "${suggested}"\npath = "initializations/${file.version}.rs"`,
-            );
-        }
-        return { version: file.version, sourcePath: file.path, binName };
-    });
+function extractRustInitializations(manifestDir: string): ContractInitialization[] {
+    return listInitializationFiles(manifestDir, ".rs").map((file) => ({
+        version: file.version,
+        sourcePath: file.path,
+    }));
 }
 
 function extractCdmDependencies(pkg: CargoPackage): string[] {
@@ -260,7 +250,7 @@ export function detectContracts(rootDir: string): ContractInfo[] {
 
         const manifestDir = resolve(pkg.manifest_path, "..");
         const configuredReadme = pkg.readme ? resolve(manifestDir, pkg.readme) : null;
-        const initializations = extractRustInitializations(pkg, manifestDir);
+        const initializations = extractRustInitializations(manifestDir);
 
         return {
             name: pkg.name,
@@ -572,70 +562,18 @@ if (import.meta.vitest) {
     });
 
     describe("rust initializations", () => {
-        function makeInitProject(files: string[]): string {
+        test("lists version-addressed files; malformed names error", () => {
             const root = makeProject();
             mkdirSync(join(root, "initializations"), { recursive: true });
-            for (const name of files) {
-                writeFileSync(join(root, "initializations", name), "// init\n");
-            }
-            return root;
-        }
+            writeFileSync(join(root, "initializations", "0.1.0.rs"), "// init\n");
 
-        function pkgWithBins(root: string, bins: Array<[string, string]>): CargoPackage {
-            return {
-                name: "counter",
-                targets: [
-                    { name: "counter", kind: ["bin"], src_path: join(root, "lib.rs") },
-                    { name: "counter", kind: ["lib"], src_path: join(root, "lib.rs") },
-                    ...bins.map(([name, path]) => ({
-                        name,
-                        kind: ["bin"],
-                        src_path: join(root, path),
-                    })),
-                ],
-            } as unknown as CargoPackage;
-        }
-
-        test("maps version files to their [[bin]] targets", () => {
-            const root = makeInitProject(["0.1.0.rs", "0.2.0.rs"]);
-            const pkg = pkgWithBins(root, [
-                ["counter-init-0-1-0", "initializations/0.1.0.rs"],
-                ["counter-init-0-2-0", "initializations/0.2.0.rs"],
+            expect(extractRustInitializations(root)).toEqual([
+                { version: "0.1.0", sourcePath: join(root, "initializations", "0.1.0.rs") },
             ]);
+            expect(extractRustInitializations(makeProject())).toEqual([]);
 
-            expect(extractRustInitializations(pkg, root)).toEqual([
-                {
-                    version: "0.1.0",
-                    sourcePath: join(root, "initializations", "0.1.0.rs"),
-                    binName: "counter-init-0-1-0",
-                },
-                {
-                    version: "0.2.0",
-                    sourcePath: join(root, "initializations", "0.2.0.rs"),
-                    binName: "counter-init-0-2-0",
-                },
-            ]);
-        });
-
-        test("errors with the missing [[bin]] lines when a file has no target", () => {
-            const root = makeInitProject(["0.1.0.rs"]);
-            const pkg = pkgWithBins(root, []);
-
-            expect(() => extractRustInitializations(pkg, root)).toThrow(
-                /\[\[bin\]\]\nname = "counter-init-0-1-0"\npath = "initializations\/0\.1\.0\.rs"/,
-            );
-        });
-
-        test("errors on malformed version filenames", () => {
-            const root = makeInitProject(["latest.rs"]);
-            const pkg = pkgWithBins(root, []);
-            expect(() => extractRustInitializations(pkg, root)).toThrow(/version-addressed/);
-        });
-
-        test("returns nothing when the directory is absent", () => {
-            const root = makeProject();
-            const pkg = pkgWithBins(root, []);
-            expect(extractRustInitializations(pkg, root)).toEqual([]);
+            writeFileSync(join(root, "initializations", "latest.rs"), "// init\n");
+            expect(() => extractRustInitializations(root)).toThrow(/version-addressed/);
         });
     });
 

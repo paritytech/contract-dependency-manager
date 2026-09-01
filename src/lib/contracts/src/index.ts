@@ -69,6 +69,9 @@ export {
 export {
     type BuildResult,
     type BuildProgressCallback,
+    type RustInitializationBuild,
+    buildRustInitialization,
+    generateInitializationManifest,
     pvmContractBuild,
     pvmContractBuildAsync,
 } from "./builder";
@@ -130,8 +133,8 @@ export { computeCid } from "./cid";
 export { CONTRACTS_REGISTRY_ABI, CONTRACTS_REGISTRY_PROXY_ABI } from "./abi/registry";
 
 export {
-    CDM_INIT_SELECTOR,
-    CDM_INIT_SIGNATURE,
+    INITIALIZE_SELECTOR,
+    INITIALIZE_SIGNATURE,
     META_HEADER_LEN,
     META_KEY,
     PROXY_ERROR_SIGNATURES,
@@ -143,7 +146,7 @@ export {
     decodeAddressWord,
     decodeU128Word,
     decodeVersionPair,
-    encodeCdmInit,
+    encodeInitialize,
     encodeProxyAdmin,
     encodeProxyCallCode,
     encodeProxyImplOf,

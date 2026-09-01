@@ -30,16 +30,16 @@ export const VERSIONED_HEADER_LEN = 4 + 16;
 export const META_HEADER_LEN = VERSIONED_HEADER_LEN + 4;
 
 /**
- * `keccak256("cdmInit(uint128,address)")[..4]` — the conventional entry point
+ * `keccak256("initialize(uint128,address)")[..4]` — the conventional entry point
  * of an initialization contract. The registry composes
  * `[selector][from word][owner word]` itself and delivers it into the name's
  * proxy storage via the `callCode` meta op, so these bytes are locked against
- * `CDM_INIT_SELECTOR` in `contract_registry_core::versioning`.
+ * `INITIALIZE_SELECTOR` in `contract_registry_core::versioning`.
  */
-export const CDM_INIT_SELECTOR = "0xa712b6f5" as const;
+export const INITIALIZE_SELECTOR = "0x3a67c2f8" as const;
 
-/** Signature behind {@link CDM_INIT_SELECTOR}, for derivation tests and docs. */
-export const CDM_INIT_SIGNATURE = "cdmInit(uint128,address)";
+/** Signature behind {@link INITIALIZE_SELECTOR}, for derivation tests and docs. */
+export const INITIALIZE_SIGNATURE = "initialize(uint128,address)";
 
 /** Meta-call selectors (`keccak256(signature)[..4]`). */
 export const PROXY_META = {
@@ -291,15 +291,15 @@ export function encodeProxyCallCode(target: string, data: Hex | Uint8Array): Hex
 }
 
 /**
- * `cdmInit(from, owner)` calldata — what the registry delivers through
+ * `initialize(from, owner)` calldata — what the registry delivers through
  * `callCode` when a publish carries an initialization. `from` is the
  * previously-latest version key (0 on a first publish), `owner` the name's
  * registry owner.
  */
-export function encodeCdmInit(from: bigint, owner: string): Hex {
+export function encodeInitialize(from: bigint, owner: string): Hex {
     return bytesToHex(
         concatBytes(
-            hexToBytes(CDM_INIT_SELECTOR, "cdmInit selector"),
+            hexToBytes(INITIALIZE_SELECTOR, "initialize selector"),
             wordU128(from),
             wordAddress(owner),
         ),
@@ -392,8 +392,8 @@ if (import.meta.vitest) {
             }
         });
 
-        it("cdmInit selector derives from its signature (pinned in Rust core)", () => {
-            expect(keccakSelector(CDM_INIT_SIGNATURE)).toBe(CDM_INIT_SELECTOR);
+        it("initialize selector derives from its signature (pinned in Rust core)", () => {
+            expect(keccakSelector(INITIALIZE_SIGNATURE)).toBe(INITIALIZE_SELECTOR);
         });
 
         it("slots derive as keccak256(label) - 1 (pinned in Rust core)", () => {
@@ -478,15 +478,15 @@ if (import.meta.vitest) {
             );
         });
 
-        it("meta callCode + cdmInit match the registry's Rust-side encoding", () => {
+        it("meta callCode + initialize match the registry's Rust-side encoding", () => {
             // The exact bytes `contract-registry` sends on a publish-with-
             // initialization, locked by `publish_with_init_first_publish_
             // sends_from_zero_and_owner` in src/contract/src/main.rs.
             const init = "0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b";
             const owner = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-            const inner = encodeCdmInit(packVersionKey(1, 0, 0), owner);
+            const inner = encodeInitialize(packVersionKey(1, 0, 0), owner);
             expect(inner).toBe(
-                "0xa712b6f5" + // cdmInit(uint128,address)
+                "0x3a67c2f8" + // initialize(uint128,address)
                     "00000000000000000000000000000000" +
                     "00000000000000010000000000000000" + // from = 1.0.0
                     "000000000000000000000000" +

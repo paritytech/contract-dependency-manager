@@ -1009,7 +1009,7 @@ mod tests {
     #[test]
     fn call_code_delegates_and_bubbles_return() {
         let state = published(&[(V1_0_0, IMPL_1)]);
-        let inner: Vec<u8> = [0xa7, 0x12, 0xb6, 0xf5]
+        let inner: Vec<u8> = [0x3a, 0x67, 0xc2, 0xf8]
             .into_iter()
             .chain([0x01; 64])
             .collect();

@@ -137,7 +137,7 @@ The generated file contains an interface plus a small library with `ADDRESS`, `r
 
 Constructors never run behind a per-name proxy — an implementation's `deploy` entry point writes into its own throwaway storage, not the proxy's. Initializations are the real thing: custom logic that runs **exactly once, atomically, in the same transaction that publishes a version**, directly against the name's proxy storage. One concept covers both first-publish setup (owner, config) and upgrade-time storage transformation.
 
-An initialization is addressed by **(contract, version)**. Rust: `<crate>/initializations/<version>.rs` — the crate names the contract. Solidity: `initializations/<Contract>/<version>.sol` — the directory names the contract. One rule, two idiomatic projections — the same way the publish version already comes from Cargo.toml for Rust and the `@custom:cdm` colon suffix for Solidity. (The Solidity per-contract directory is mandatory even in single-contract projects; a flat form would only plant a rename trap the day a second contract appears.)
+An initialization is addressed by **(contract, version)**. Rust: `<crate>/initializations/<version>.rs` — the crate names the contract. Solidity: `initializations/<Contract>/<version>.sol` — the directory names the contract. Create the file, write `initialize`, done — no manifest entries, no imports; `cdm deploy` builds it on its own.
 
 The file addressed to a version runs when exactly that version is published — and only then:
 
@@ -146,26 +146,21 @@ The file addressed to a version runs when exactly that version is published — 
 - Only the **published** version's initialization runs. Publishing 1.2 → 1.4 (skipping 1.3) never fires `1.3.0.rs`; 1.4's initialization sees `from = 1.2`'s key and must handle the whole distance itself.
 - A file addressed to a version *higher* than the one being published earns a deploy-time warning — it usually means a forgotten version bump.
 
-Each initialization exposes one conventional entry point, `cdmInit(uint128 from, address owner)`: `from` is the previously-latest version key (0 on a first publish), `owner` the name's registry owner. The registry delivers the call through the proxy's admin-only `callCode` meta operation, so initialization code is structurally unreachable by anyone else — no access-control boilerplate needed inside `cdmInit`. If the initialization reverts, the entire publish rolls back.
+Each initialization exposes one conventional entry point, `initialize(uint128 from, address owner)`: `from` is the previously-latest version key (0 on a first publish), `owner` the name's registry owner. The registry delivers the call through the proxy's admin-only `callCode` meta operation, so initialization code is structurally unreachable by anyone else — no access-control boilerplate needed. If the initialization reverts, the entire publish rolls back.
 
-In Rust, an initialization is its own `[[bin]]` target sharing the contract's storage struct through a common module (the SDK's nested-storage API), so its layout can never drift:
+Initialization files are fully self-contained — a Rust initialization embeds its own copy of the storage layout it operates on:
 
 ```rust
-// storage.rs — the single source of truth for the contract's layout
-#[pvm_contract_sdk::storage]
-pub struct CounterStorage {
-    pub count: Lazy<u32>,
-    pub owner: Lazy<Address>,
-}
-
 // initializations/0.1.0.rs
-#[path = "../storage.rs"]
-mod storage;
-
 #[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
 mod counter_init_0_1_0 {
-    use super::storage::CounterStorage;
-    use pvm_contract_sdk::Address;
+    use pvm_contract_sdk::{Address, Lazy};
+
+    #[pvm_contract_sdk::storage]
+    pub struct CounterStorage {
+        pub count: Lazy<u32>,
+        pub owner: Lazy<Address>,
+    }
 
     pub struct CounterInit {
         #[slot(0)]
@@ -173,11 +168,8 @@ mod counter_init_0_1_0 {
     }
 
     impl CounterInit {
-        #[pvm_contract_sdk::constructor]
-        pub fn new(&mut self) {}
-
         #[pvm_contract_sdk::method]
-        pub fn cdm_init(&mut self, from: u128, owner: Address) {
+        pub fn initialize(&mut self, from: u128, owner: Address) {
             let _ = from;
             self.s.owner.set(&owner);
         }
@@ -185,28 +177,20 @@ mod counter_init_0_1_0 {
 }
 ```
 
-with the matching `[[bin]]` entry in the contract's `Cargo.toml`:
-
-```toml
-[[bin]]
-name = "counter-init-0-1-0"
-path = "initializations/0.1.0.rs"
-```
-
-In Solidity, the directory routes the file to its contract, and the initialization contract must inherit that contract (validated at detection) — identical storage layout plus access to internal helpers for free:
+Sharing nothing with the living contract is the point: once published, an initialization is frozen text — the contract can evolve freely without ever breaking an old initialization's compile — while the deploy-time layout guard keeps the *current* initialization honest against the *current* implementation. In Solidity the same self-containment falls out of inheritance:
 
 ```solidity
 // initializations/Counter/0.1.0.sol
 import "../../Counter.sol";
 
 contract Init_0_1_0 is Counter {
-    function cdmInit(uint128 from, address owner_) external {
+    function initialize(uint128 from, address owner_) external {
         owner = owner_;
     }
 }
 ```
 
-At deploy time CDM compares the initialization artifact's storage layout against the implementation's and **refuses to deploy on a mismatch** — an initialization with a drifted layout would corrupt the proxy's storage. If neither artifact carries layout data the check is impossible; the deploy proceeds with a loud warning (Foundry projects need `extra_output = ["storageLayout"]`, Hardhat projects the equivalent `outputSelection`; the templates ship with both).
+At deploy time CDM compares the initialization artifact's storage layout against the implementation's and **refuses to deploy on a mismatch** — a drifted layout would corrupt the proxy's storage. If layout data is missing the check is impossible and the deploy proceeds with a loud warning. Rust contracts emit a layout when their storage lives in a `#[storage]` struct anchored with `#[slot(0)]` (as the templates do); Foundry needs `extra_output = ["storageLayout"]`, Hardhat the equivalent `outputSelection` — the templates ship with all three.
 
 For upgrades that reshape storage incompatibly, pair an initialization with the freeze window: `freezeContract` halts all delegation (the meta plane stays live), the publish-with-initialization lands atomically, `unfreezeContract` resumes traffic on the new version — the SQL-migrations analogy, but on one shared storage.
 

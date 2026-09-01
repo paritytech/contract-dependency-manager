@@ -25,7 +25,7 @@ import { ALICE_SS58 } from "@parity/cdm-utils";
 import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder/abi";
 import { eoaH160FromPublicKey } from "@parity/cdm-builder";
 import {
-    encodeCdmInit,
+    encodeInitialize,
     encodeProxyCallCode,
     encodeVersionedCall,
     packVersionKey,
@@ -146,7 +146,7 @@ afterAll(async () => {
 });
 
 describe("first publish with initialization", () => {
-    test("publishWithInit records the version and runs cdmInit(0, owner)", async () => {
+    test("publishWithInit records the version and runs initialize(0, owner)", async () => {
         const r = await registry.publishWithInit.tx(NAME, KEY_1_0_0, implA, URI, initSetOwner);
         expect(r.ok).toBe(true);
 
@@ -166,8 +166,8 @@ describe("first publish with initialization", () => {
     });
 
     test("the initialization contract holds none of the state", async () => {
-        // Structural point: cdmInit wrote through delegatecall, so the state
-        // lives in the proxy; the initialization contract only knows cdmInit.
+        // Structural point: initialize wrote through delegatecall, so the state
+        // lives in the proxy; the initialization contract only knows initialize.
         const ownerAtProxy = await dryRunCall(api, proxyAddress, GET_OWNER);
         expect(BigInt(ownerAtProxy.data)).not.toBe(0n);
         const direct = await dryRunCall(api, initSetOwner, GET_OWNER);
@@ -214,7 +214,7 @@ describe("upgrade publish with a transforming initialization", () => {
 });
 
 describe("initialization revert rolls back the publish", () => {
-    test("a reverting cdmInit fails the whole publishWithInit", async () => {
+    test("a reverting initialize fails the whole publishWithInit", async () => {
         const before = await versionCount(NAME);
         const r = await registry.publishWithInit.tx(NAME, KEY_1_3_0, implB, URI, initRevert);
         expect(r.ok).toBe(false);
@@ -260,11 +260,11 @@ describe("freeze window", () => {
 
 describe("structural authorization", () => {
     test("callCode at the proxy is registry-only", async () => {
-        const calldata = encodeProxyCallCode(initTransform, encodeCdmInit(0n, alice));
+        const calldata = encodeProxyCallCode(initTransform, encodeInitialize(0n, alice));
         const r = await dryRunCall(api, proxyAddress, calldata);
         expect(r.success).toBe(true);
         expect(r.reverted).toBe(true);
-        // count is untouched — nobody but the registry reaches cdmInit.
+        // count is untouched — nobody but the registry reaches initialize.
         expect(await read(GET_COUNT)).toBe(8n);
     });
 
