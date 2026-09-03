@@ -9,8 +9,7 @@ const config: HardhatUserConfig = {
                 enabled: true,
                 runs: 200,
             },
-            // CDM's initialization layout guard reads each artifact's storage
-            // layout to verify an initialization matches its contract.
+            // storageLayout is required by CDM's initialization layout guard.
             outputSelection: {
                 "*": { "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "storageLayout"] },
             },

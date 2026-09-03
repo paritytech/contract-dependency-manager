@@ -1,14 +1,9 @@
-//! Initialization for `@example/counter` version 0.1.0: runs exactly once,
-//! inside the name's per-name proxy storage, in the same transaction that
-//! publishes 0.1.0. No Cargo.toml entry needed — `cdm deploy` builds this
-//! file on its own.
+//! Initialization for `@example/counter` version 0.1.0: runs exactly once, in
+//! the name's proxy storage, inside the transaction that publishes 0.1.0. No
+//! Cargo.toml entry needed — `cdm deploy` builds this file on its own.
 //!
-//! The fields below are this file's own copy of the layout it operates on
-//! (auto-numbered exactly like the contract's). Initializations share nothing
-//! with the living contract: once 0.1.0 is published this file is frozen text
-//! that can never break a future build, and the deploy-time layout guard
-//! keeps the CURRENT initialization honest against the CURRENT
-//! implementation.
+//! The struct is this file's own copy of the contract's storage layout; the
+//! deploy-time layout guard checks it against the implementation.
 
 #![cfg_attr(not(feature = "abi-gen"), no_main, no_std)]
 
@@ -25,8 +20,7 @@ mod counter_init_0_1_0 {
         /// publish); `owner` is the name's registry owner.
         #[pvm_contract_sdk::method]
         pub fn initialize(&mut self, _from: u128, _owner: Address) {
-            // Demonstrates the shape — a real initialization would set
-            // genuine starting state or transform what's already there.
+            // Demonstrative — set genuine starting state or transform existing state here.
             self.count.set(&0);
         }
     }

@@ -285,12 +285,7 @@ export type DeployEvent =
           layer?: number;
       }
     | {
-          /**
-           * The crate's publish carries an initialization: the file at
-           * `source` is addressed to exactly the version being published, so
-           * it will be deployed alongside the implementation and run once,
-           * atomically, inside the publish. Fires before the layer builds.
-           */
+          /** The publish carries the initialization at `source`. Fires before the layer builds. */
           type: "initialization";
           crate: string;
           version: string;
@@ -1017,15 +1012,10 @@ function findProxyMagicCollisions(abi: AbiEntry[], magic: string = PROXY_MAGIC):
 }
 
 /**
- * Build/select an initialization's artifacts and run the storage-layout
- * safety net. Rust initializations compile through a generated shim crate
- * (no manifest entries required of the user); Solidity ones are selected
- * from the toolchain output by contract name + source path.
- *
- * The guard REFUSES to deploy on a layout mismatch — an initialization that
- * doesn't share the contract's layout would corrupt the proxy's storage. When
- * layout data is missing, verification is impossible: warn loudly and proceed
- * rather than silently skipping the check.
+ * Build (Rust, via the shim crate) or select (Solidity) an initialization's
+ * artifact, then run the storage-layout guard: a mismatch refuses the deploy
+ * (a drifted layout would corrupt the proxy's storage); missing layout data
+ * warns and proceeds.
  */
 async function resolveInitializationArtifact(
     rootDir: string,
@@ -1074,9 +1064,6 @@ async function resolveInitializationArtifact(
         );
     }
     if (comparison.status === "unverifiable") {
-        // Rust artifacts always carry layouts on current toolchains; this
-        // path is reachable for Solidity projects without storage-layout
-        // output configured (or stale toolchains).
         emit({
             type: "log",
             source: "initializations",
@@ -1299,12 +1286,6 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         }
 
         // ---- 3b. initializations: match version-addressed files ----
-        //
-        // A publish runs `initializations/<version>` exactly when it exists
-        // for the version being published. Files for versions at or below the
-        // on-chain latest are inert by design; files addressed HIGHER than
-        // the publishing version are probably a typo or a forgotten version
-        // bump, so they earn a warning.
         const initByCrate = new Map<string, ContractInitialization>();
         for (const contract of versionedContracts) {
             const declared = contract.initializations ?? [];
@@ -1439,10 +1420,8 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 const versionKeys = resolvedVersions.map((resolved) => resolved.key);
                 const metadataUris = deployables.map((contract) => cidMap[contract.crate]);
 
-                // Initialization artifacts (Rust builds through its shim
-                // crate here) plus the storage-layout guard. `#init`-suffixed
-                // salt packages keep initialization addresses clear of
-                // implementation ones.
+                // `#init`-suffixed salt packages keep initialization addresses
+                // clear of implementation ones.
                 const inits: (InitDeployRequest | undefined)[] = [];
                 for (let i = 0; i < deployables.length; i++) {
                     const deployable = deployables[i];

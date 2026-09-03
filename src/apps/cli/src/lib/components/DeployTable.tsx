@@ -111,8 +111,7 @@ function ContractRow({
     }
 
     // Version column — the crate's Cargo.toml semver (the version being
-    // published, or already on-chain for up-to-date rows). A publish that
-    // carries an initialization gets a subtle "+init" marker.
+    // published, or already on-chain for up-to-date rows).
     const versionCell = s?.version ? (
         <Text wrap="truncate">
             <Text dimColor>{s.version}</Text>

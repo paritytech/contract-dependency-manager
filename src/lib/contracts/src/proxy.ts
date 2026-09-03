@@ -30,11 +30,8 @@ export const VERSIONED_HEADER_LEN = 4 + 16;
 export const META_HEADER_LEN = VERSIONED_HEADER_LEN + 4;
 
 /**
- * `keccak256("initialize(uint128,address)")[..4]` — the conventional entry point
- * of an initialization contract. The registry composes
- * `[selector][from word][owner word]` itself and delivers it into the name's
- * proxy storage via the `callCode` meta op, so these bytes are locked against
- * `INITIALIZE_SELECTOR` in `contract_registry_core::versioning`.
+ * `keccak256("initialize(uint128,address)")[..4]` — the entry point of every
+ * initialization contract; pinned against `contract_registry_core::versioning`.
  */
 export const INITIALIZE_SELECTOR = "0x3a67c2f8" as const;
 

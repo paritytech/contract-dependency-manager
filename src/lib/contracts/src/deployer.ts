@@ -125,15 +125,6 @@ export const INSTANTIATE_WITH_CODE_STATIC_WEIGHT: WeightLike = {
     proof_size: 1_000_000n,
 };
 
-/**
- * Output of {@link ContractDeployer.planDeploy}. Exposes everything the
- * pipeline needs to emit a `deploy-plan` diagnostic event BEFORE submission,
- * and everything `deployBatch` / `deployAndRegisterBatch` need to skip
- * re-running the dry-run when the plan is passed back in.
- *
- * `prepared[i].tx` is the fully-formed (unsigned) `Revive.instantiate_with_code`
- * call with the gas / storage limits already applied.
- */
 /** One prepared instantiate (dry-run done, unsigned tx built). */
 export interface PreparedDeploy {
     tx: ReturnType<CdmDeployAssetHubApi["tx"]["Revive"]["instantiate_with_code"]>;
@@ -161,15 +152,23 @@ export interface InitDeployRequest {
     saltVersion?: DeploySaltVersion;
 }
 
+/**
+ * Output of {@link ContractDeployer.planDeploy}. Exposes everything the
+ * pipeline needs to emit a `deploy-plan` diagnostic event BEFORE submission,
+ * and everything `deployBatch` / `deployAndRegisterBatch` need to skip
+ * re-running the dry-run when the plan is passed back in.
+ *
+ * `prepared[i].tx` is the fully-formed (unsigned) `Revive.instantiate_with_code`
+ * call with the gas / storage limits already applied.
+ */
 export interface DeployPlan {
     budget: WeightLike;
     prepared: Array<
         PreparedDeploy & {
             /**
-             * The version's initialization contract, deployed in the same
-             * chunk as the implementation so publish-with-initialization
-             * stays atomic. Its weight is folded into the chunker's per-item
-             * weight, keeping (implementation, initialization) pairs intact.
+             * The version's initialization contract. Its weight is folded into
+             * the chunker's per-item weight so it lands in the same chunk as
+             * the implementation.
              */
             init?: PreparedDeploy;
         }
@@ -800,11 +799,7 @@ export class ContractDeployer {
             plan?: DeployPlan;
             saltVersions?: DeploySaltVersion[];
             saltScope?: string;
-            /**
-             * Per-contract initialization deploys (aligned with `pvmPaths`).
-             * A contract with an entry deploys its initialization in the same
-             * chunk and registers via `publishWithInit` instead of `publish`.
-             */
+            /** Per-contract initialization deploys (aligned with `pvmPaths`); entries register via `publishWithInit`. */
             inits?: (InitDeployRequest | undefined)[];
         },
     ): Promise<{ addresses: string[]; chunkCount: number }> {
@@ -839,9 +834,7 @@ export class ContractDeployer {
         const { prepared, chunks } = plan;
 
         // 2. Build the register BatchableCalls via product-sdk `.prepare(...)`
-        //    using the precomputed CREATE2 addresses + CIDs. A contract with a
-        //    planned initialization registers via `publishWithInit`, handing
-        //    the registry the initialization contract's address.
+        //    using the precomputed CREATE2 addresses + CIDs.
         const prepareOpts = {
             gasLimit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
             storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
@@ -881,8 +874,7 @@ export class ContractDeployer {
 
         // 3. Submit each chunk sequentially as an atomic batch_all of
         //    (chunk's deploys) + (chunk's initialization deploys) + (chunk's
-        //    registers) — a publish-with-initialization and its two deploys
-        //    land or roll back together.
+        //    registers).
         for (let ci = 0; ci < chunks.length; ci++) {
             const idxs = chunks[ci];
             const label = `[AssetHub deploy+register chunk ${ci + 1}/${chunks.length}]`;

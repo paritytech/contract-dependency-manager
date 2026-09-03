@@ -185,11 +185,9 @@ function tomlDependency(dep: CargoDependency): string {
 }
 
 /**
- * The generated manifest of an initialization's shim crate: a detached
- * one-bin package pointing straight at the `initializations/<version>.rs`
- * file, with edition and (normal) dependencies copied from the contract
- * crate so the file compiles against exactly what the contract compiles
- * against. This is what makes initializations manifest-free for users.
+ * Manifest of an initialization's shim crate: a detached one-bin package
+ * pointing at `initializations/<version>.rs`, with edition and normal
+ * dependencies copied from the contract crate.
  */
 export function generateInitializationManifest(
     pkg: CargoPackage,
@@ -228,8 +226,7 @@ export interface RustInitializationBuild {
 
 /**
  * Build `initializations/<version>.rs` for `crateName` through a generated
- * shim crate under `target/cdm/init-build/` — the user creates the file and
- * nothing else. Returns the built `.polkavm` + `.abi.json` paths.
+ * shim crate under `target/cdm/init-build/`.
  */
 export async function buildRustInitialization(
     rootDir: string,

@@ -9,7 +9,7 @@ The base counter contract that owns shared on-chain state. Other contracts inter
 
 ## Initializations
 
-`initializations/0.1.0.rs` runs exactly once, when version 0.1.0 is published — here it just zeroes the counter to demonstrate the shape. A file named `X.Y.Z.rs` runs when exactly that version is published and is inert forever after — and it needs nothing beyond the file itself: `cdm deploy` builds it on its own. Each initialization embeds its own copy of the storage layout it operates on, which CDM verifies against the contract at deploy time.
+`initializations/X.Y.Z.rs` runs exactly once, when version X.Y.Z is published; `cdm deploy` builds it on its own. Each file declares its own copy of the contract's storage layout, which CDM verifies at deploy time. The shipped `0.1.0.rs` just zeroes the counter to demonstrate the shape.
 
 ## CDM Package
 

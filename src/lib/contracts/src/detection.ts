@@ -5,11 +5,7 @@ import { listInitializationFiles } from "./initializations";
 
 export type ContractToolchain = "rust" | "foundry" | "hardhat";
 
-/**
- * One version-addressed initialization of a contract — the file at
- * `initializations/<version>.rs|.sol` next to the contract source. Runs
- * exactly once, when exactly that version is published.
- */
+/** One initialization: `initializations/<version>.rs|.sol`, run once when that version is published. */
 export interface ContractInitialization {
     /** Canonical `X.Y.Z` the initialization is addressed to. */
     version: string;
@@ -49,11 +45,7 @@ export interface ContractInfo {
     path: string;
     /** Crate names this contract depends on */
     dependsOnCrates: string[];
-    /**
-     * Version-addressed initializations found under `initializations/` next
-     * to the contract source. The one matching a publish's version is built
-     * and delivered atomically with that publish; the rest are inert.
-     */
+    /** Version-addressed initializations found under `initializations/` next to the source. */
     initializations?: ContractInitialization[];
 }
 
@@ -180,12 +172,7 @@ function extractCdmPackage(pkg: CargoPackage): string | null {
     return typeof packageName === "string" ? packageName : null;
 }
 
-/**
- * A Rust contract's initializations: version-addressed `.rs` files under the
- * crate's `initializations/` directory. Nothing else — no manifest entries;
- * the deploy pipeline builds each matching file through a generated shim
- * crate (`buildRustInitialization` in builder.ts).
- */
+/** Version-addressed `.rs` files under the crate's `initializations/`. */
 function extractRustInitializations(manifestDir: string): ContractInitialization[] {
     return listInitializationFiles(manifestDir, ".rs").map((file) => ({
         version: file.version,

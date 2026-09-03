@@ -3,18 +3,9 @@ import { basename, join } from "path";
 import { keyToSemver, semverToKey } from "./proxy";
 
 /**
- * Initializations: version-addressed contracts that run exactly once, inside
- * the name's per-name proxy storage, in the same transaction that publishes
- * their version.
- *
- * A contract project declares them under an `initializations/` directory next
- * to the contract source — `initializations/1.3.0.rs` (or `.sol`) runs when
- * version 1.3.0 is published. Publishing a version with no matching file is a
- * plain publish; a file for an already-published version is inert forever.
- * This module owns the shared plumbing: strict version-addressed filename
- * parsing, matching a publish against the file set, and the storage-layout
- * guard that refuses to deploy an initialization whose layout drifted from
- * the contract it initializes.
+ * Initializations: version-addressed contracts (`initializations/1.3.0.rs|.sol`)
+ * that run exactly once, in the proxy's storage, inside the publish of their
+ * version. Filename parsing, publish matching, and the storage-layout guard.
  */
 
 /** Directory name that holds a contract's initializations. */
@@ -31,16 +22,9 @@ export interface InitializationFile {
 }
 
 /**
- * List a contract's initialization files: every `<dir>/initializations/*.{ext}`
- * with a strict `X.Y.Z` basename. Files with other extensions (readmes, etc.)
- * are ignored; a file with the language's extension but a malformed or
- * duplicate version is a configuration error worth failing the whole run for.
- *
- * This is the Rust projection of the one addressing rule — an initialization
- * is addressed by (contract, version), and for Rust the crate names the
- * contract, so the version files sit directly under the crate's
- * `initializations/`. Solidity's projection nests a per-contract directory
- * instead (see `solidity.ts`), scanned with
+ * A contract's initialization files: `<dir>/initializations/X.Y.Z{ext}`. Other
+ * extensions are ignored; a malformed version with the right extension throws.
+ * Solidity nests a per-contract directory instead and scans it with
  * {@link listVersionAddressedFiles} directly.
  */
 export function listInitializationFiles(
@@ -88,12 +72,7 @@ export function listVersionAddressedFiles(
 export interface InitializationMatch {
     /** The file addressed to exactly the version being published, if any. */
     match?: InitializationFile;
-    /**
-     * Files addressed to versions HIGHER than the one being published —
-     * likely a typo or a forgotten version bump, worth a warning. Files for
-     * versions at or below the published one are inert by design and are not
-     * reported.
-     */
+    /** Files addressed above the published version (likely a forgotten bump); lower ones are inert. */
     orphans: InitializationFile[];
 }
 
@@ -137,13 +116,9 @@ function describeEntry(entry: StorageLayoutEntry): string {
 }
 
 /**
- * Compare the implementation's storage layout against its initialization's.
- * Placement is what matters — `slot`, `offset`, and `type` must agree row by
- * row; labels are decode-side names only (a Rust wrapper field may differ),
- * so they appear in problems but never fail the comparison alone.
- *
- * Both layouts absent (or malformed) → `unverifiable`; the caller must warn
- * loudly rather than proceed silently.
+ * Compare the implementation's storage layout against its initialization's:
+ * `slot`, `offset`, and `type` must agree row by row. Labels are decode-side
+ * names only, so they appear in problems but never fail the comparison alone.
  */
 export function compareStorageLayouts(implLayout: unknown, initLayout: unknown): LayoutComparison {
     const impl = layoutEntries(implLayout);

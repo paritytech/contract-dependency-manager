@@ -305,8 +305,7 @@ mod contract_registry {
                 return Err(Unauthorized.into());
             }
 
-            // The latest key BEFORE this publish — the `from` an
-            // initialization receives (0 on a first publish).
+            // Also the `from` an initialization receives (0 on a first publish).
             let previous_latest = self.latest_key(&contract_name, &info).unwrap_or(0);
             if previous_latest != 0 && version_key <= previous_latest {
                 return Err(VersionNotMonotonic {

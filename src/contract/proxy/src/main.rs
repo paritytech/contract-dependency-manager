@@ -259,11 +259,8 @@ mod contract_proxy {
                     self.respond(&[])
                 }
                 meta::CALL_CODE => {
-                    // Admin-gated delegatecall against this proxy's storage —
-                    // the initializations primitive. Deliberately NOT behind
-                    // `require_unfrozen`: the meta plane stays live while
-                    // frozen, so freeze → publish-with-initialization →
-                    // unfreeze works.
+                    // Not behind `require_unfrozen`: the freeze →
+                    // publish-with-initialization → unfreeze window needs it.
                     self.require_admin()?;
                     let target = address_arg(args, 0)?;
                     if target == Address::ZERO {
@@ -1055,8 +1052,6 @@ mod tests {
 
     #[test]
     fn call_code_works_while_frozen() {
-        // The primary use case: freeze delegation, publish + initialize,
-        // unfreeze. callCode is a meta op, so the freeze must not block it.
         let state = published(&[(V1_0_0, IMPL_1)]);
         let (result, state) = run(REGISTRY, meta_calldata(meta::FREEZE, &[]), Some(&state));
         assert_eq!(result, Ok(()));
@@ -1071,8 +1066,7 @@ mod tests {
 
     #[test]
     fn call_code_works_before_first_publish() {
-        // A first publish delivers its initialization before any plain call
-        // could succeed — callCode must not depend on a latest implementation.
+        // callCode must not depend on a latest implementation existing.
         let (_proxy, mock) = proxy_call(REGISTRY, vec![], None);
         let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &[0x01]));
         let (_proxy, mock) = proxy_call(REGISTRY, calldata, Some(&mock));

@@ -32,11 +32,7 @@ const SOLIDITY_SKIP_DIRS = new Set([
     "typechain-types",
 ]);
 
-/**
- * Source scanning additionally skips `initializations/`: initialization
- * contracts are never regular deploy targets — they get built by the
- * toolchain like any other source and wired in by the deploy pipeline.
- */
+/** Source scanning also skips `initializations/` — those are never deploy targets. */
 const SOLIDITY_SOURCE_SKIP_DIRS = new Set([...SOLIDITY_SKIP_DIRS, INITIALIZATIONS_DIR]);
 
 export interface SolidityBuildTarget extends ContractInfo {
@@ -469,14 +465,10 @@ function extractInheritingContracts(source: string): Array<{ name: string; bases
 }
 
 /**
- * Attach each target's initializations. An initialization is addressed by
- * (contract, version); the Solidity projection is
- * `initializations/<ContractName>/<version>.sol` — the DIRECTORY names the
- * contract (the router), and the file's initialization contract must inherit
- * it (validation — inheriting is also what guarantees the shared storage
- * layout). The per-contract subdirectory is mandatory even for
- * single-contract projects: a flat form would plant a rename trap the day a
- * second contract appears.
+ * Attach each target's initializations from
+ * `initializations/<ContractName>/<version>.sol`: the directory names the
+ * contract, and the file must declare exactly one contract inheriting it
+ * (inheritance is what guarantees the shared storage layout).
  */
 function attachSolidityInitializations(targets: SolidityBuildTarget[]): SolidityBuildTarget[] {
     const targetsByDir = new Map<string, SolidityBuildTarget[]>();
@@ -494,15 +486,12 @@ function attachSolidityInitializations(targets: SolidityBuildTarget[]): Solidity
         for (const entry of readdirSync(initializationsDir, { withFileTypes: true }).sort((a, b) =>
             a.name.localeCompare(b.name),
         )) {
-            // A version file sitting flat in initializations/ predates the
-            // per-contract layout — teach the convention instead of guessing.
             if (entry.isFile() && entry.name.endsWith(".sol")) {
                 throw new Error(
                     `Initialization ${join(initializationsDir, entry.name)} sits directly in ` +
-                        `${INITIALIZATIONS_DIR}/ — Solidity initializations are addressed by ` +
-                        `(contract, version): move it to ` +
-                        `${INITIALIZATIONS_DIR}/<ContractName>/${entry.name}, where ` +
-                        `<ContractName> is the contract it initializes.`,
+                        `${INITIALIZATIONS_DIR}/ — move it to ` +
+                        `${INITIALIZATIONS_DIR}/<ContractName>/${entry.name} ` +
+                        `(the contract it initializes).`,
                 );
             }
             if (!entry.isDirectory()) continue;
@@ -1022,15 +1011,12 @@ export interface SolidityInitializationArtifact {
     bytecodePath: string;
     /** The toolchain artifact JSON — carries the ABI and storage layout. */
     artifactPath: string;
-    bytecodeSize: number;
 }
 
 /**
- * Select the toolchain artifact for one initialization contract. Foundry and
- * hardhat compile everything in-project, so the initialization is already
- * built by the time its contract's build succeeds — this just picks the right
- * artifact (by the initialization's contract name + source path) and writes
- * the normalized bytecode blob under `normalizedName`.
+ * Select the already-built toolchain artifact for one initialization contract
+ * (by contract name + source path) and write its normalized bytecode blob
+ * under `normalizedName`.
  */
 export function findSolidityInitializationArtifact(
     rootDir: string,
@@ -1061,11 +1047,7 @@ export function findSolidityInitializationArtifact(
     }
     const found = matches[0];
     const normalized = writeNormalizedBytecode(rootDir, toolchain, normalizedName, found.bytecode);
-    return {
-        bytecodePath: normalized.path,
-        artifactPath: found.artifactPath,
-        bytecodeSize: normalized.size,
-    };
+    return { bytecodePath: normalized.path, artifactPath: found.artifactPath };
 }
 
 export function hasBuildableSolidityProject(rootDir: string): boolean {
@@ -1528,8 +1510,6 @@ if (import.meta.vitest) {
                 'import "../Counter.sol";\ncontract Init_0_1_0 is Counter {}\n',
             );
 
-            // The flat form is never accepted — the error teaches the
-            // per-contract layout instead of guessing a route.
             expect(() => detectSolidityBuildTargets(root)).toThrow(
                 /move it to initializations\/<ContractName>\/0\.1\.0\.sol/,
             );

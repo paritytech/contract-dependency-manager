@@ -101,12 +101,9 @@ const fn meta_selector(signature: &[u8]) -> [u8; 4] {
     [hash[0], hash[1], hash[2], hash[3]]
 }
 
-/// The conventional entry point of an initialization contract:
-/// `initialize(uint128,address)` = `0x3a67c2f8`. The registry composes
-/// `[selector][word from][word owner]` itself and delivers it into the
-/// name's proxy storage through the `callCode` meta op, so this selector is
-/// byte-locked across the registry, the proxy tooling, and every
-/// initialization contract ever compiled.
+/// `initialize(uint128,address)` = `0x3a67c2f8` — the entry point the registry
+/// calls on every initialization contract via `callCode`; byte-locked across
+/// the registry, the TS tooling, and every initialization ever compiled.
 pub const INITIALIZE_SELECTOR: [u8; 4] = meta_selector(b"initialize(uint128,address)");
 
 /// Meta-call selectors. Queries are open; `publish`, `setMinSupported`,
@@ -117,11 +114,8 @@ pub mod meta {
 
     /// `publish(uint128,address)` = `0xc3853395` (admin).
     pub const PUBLISH: [u8; 4] = meta_selector(b"publish(uint128,address)");
-    /// `callCode(address,bytes)` = `0xd74c1f04` (admin) — delegate-call an
-    /// arbitrary address against the proxy's storage, bubbling return and
-    /// revert verbatim. The initializations primitive: live even while the
-    /// proxy is frozen, so the freeze → publish-with-initialization →
-    /// unfreeze window works.
+    /// `callCode(address,bytes)` = `0xd74c1f04` (admin) — delegate-call against
+    /// the proxy's storage, bubbling return/revert verbatim. Live while frozen.
     pub const CALL_CODE: [u8; 4] = meta_selector(b"callCode(address,bytes)");
     /// `setMinSupported(uint128)` = `0xe84411e5` (admin).
     pub const SET_MIN_SUPPORTED: [u8; 4] = meta_selector(b"setMinSupported(uint128)");
@@ -160,9 +154,6 @@ mod tests {
 
     #[test]
     fn initialize_selector_is_pinned() {
-        // Mirrored in TS (src/lib/contracts/src/proxy.ts) and composed by the
-        // registry into every publish-with-initialization; changing it breaks
-        // every initialization contract already compiled.
         assert_eq!(hex4(INITIALIZE_SELECTOR), "3a67c2f8");
     }
 

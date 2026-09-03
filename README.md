@@ -142,7 +142,7 @@ An initialization is addressed by **(contract, version)**. Rust: `<crate>/initia
 The file addressed to a version runs when exactly that version is published — and only then:
 
 - Publishing a version with no matching file is a plain publish.
-- A file for an already-published version is inert forever; deleting it is optional hygiene, never a correctness requirement. Nothing stale can re-run.
+- A file for an already-published version is inert forever; deleting it is optional.
 - Only the **published** version's initialization runs. Publishing 1.2 → 1.4 (skipping 1.3) never fires `1.3.0.rs`; 1.4's initialization sees `from = 1.2`'s key and must handle the whole distance itself.
 - A file addressed to a version *higher* than the one being published earns a deploy-time warning — it usually means a forgotten version bump.
 
@@ -163,15 +163,13 @@ mod counter_init_0_1_0 {
     impl CounterInit {
         #[pvm_contract_sdk::method]
         pub fn initialize(&mut self, _from: u128, _owner: Address) {
-            // Demonstrative — a real initialization would set genuine
-            // starting state or transform what's already there.
-            self.count.set(&0);
+            self.count.set(&0); // demonstrative
         }
     }
 }
 ```
 
-Sharing nothing with the living contract is the point: once published, an initialization is frozen text — the contract can evolve freely without ever breaking an old initialization's compile — while the deploy-time layout guard keeps the *current* initialization honest against the *current* implementation. In Solidity the same self-containment falls out of inheritance:
+A published initialization is frozen text, so the contract can evolve without breaking old initializations' builds. In Solidity the same self-containment falls out of inheritance:
 
 ```solidity
 // initializations/Counter/0.1.0.sol
@@ -179,14 +177,14 @@ import "../../Counter.sol";
 
 contract Init_0_1_0 is Counter {
     function initialize(uint128, address) external {
-        count = 0; // demonstrative — set genuine starting state here
+        count = 0; // demonstrative
     }
 }
 ```
 
-At deploy time CDM compares the initialization artifact's storage layout against the implementation's and **refuses to deploy on a mismatch** — a drifted layout would corrupt the proxy's storage. Rust artifacts always carry layouts on current toolchains (universal since cargo-pvm-contract#155); Foundry needs `extra_output = ["storageLayout"]`, Hardhat the equivalent `outputSelection` — the templates ship with both. If layout data is missing the check is impossible and the deploy proceeds with a loud warning.
+At deploy time CDM compares the initialization artifact's storage layout against the implementation's and **refuses to deploy on a mismatch** — a drifted layout would corrupt the proxy's storage. Rust artifacts always carry layouts; Foundry needs `extra_output = ["storageLayout"]`, Hardhat the equivalent `outputSelection` — the templates ship with both. If layout data is missing the check is impossible and the deploy proceeds with a loud warning.
 
-For upgrades that reshape storage incompatibly, pair an initialization with the freeze window: `freezeContract` halts all delegation (the meta plane stays live), the publish-with-initialization lands atomically, `unfreezeContract` resumes traffic on the new version — the SQL-migrations analogy, but on one shared storage.
+For upgrades that reshape storage incompatibly, pair an initialization with the freeze window: `freezeContract` halts all delegation (the meta plane stays live), the publish-with-initialization lands atomically, `unfreezeContract` resumes traffic on the new version.
 
 The shared-counter template ships a working `initializations/0.1.0.rs`, the foundry-counter template a working `initializations/CounterA/0.1.0.sol`.
 

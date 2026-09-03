@@ -39,11 +39,7 @@ export interface ContractStatus {
     address?: string;
     /** Crate semver from Cargo.toml: the version published (or already on-chain). */
     version?: string;
-    /**
-     * This publish carries an initialization: `initializations/<version>` is
-     * addressed to exactly the version being published and runs once,
-     * atomically, inside the publish.
-     */
+    /** The publish carries an initialization (VERSION column shows "+init"). */
     hasInitialization?: boolean;
     cid?: string;
     deployTxHash?: string;
@@ -232,8 +228,6 @@ export class PipelineStatusAdapter {
                 // will follow.
                 return;
             case "initialization": {
-                // The publish carries a version-addressed initialization —
-                // surface it on the row (the VERSION column shows "+init").
                 const existing = this.statuses.get(e.crate);
                 this.update(e.crate, existing?.state ?? "waiting", {
                     hasInitialization: true,
