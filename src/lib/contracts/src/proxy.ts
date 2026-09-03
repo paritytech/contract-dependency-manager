@@ -1,57 +1,38 @@
 import { keccak_256 } from "@noble/hashes/sha3.js";
 
 /**
- * TypeScript mirror of the CDM per-name proxy wire format defined in
- * `contract_registry_core::versioning` (src/contract/core/src/versioning.rs)
- * and served by `contract-proxy` (src/contract/proxy).
+ * Mirror of the per-name proxy wire format in
+ * `contract_registry_core::versioning` (src/contract/core/src/versioning.rs):
  *
- * A per-name proxy owns a contract name's stable address and storage; semver
- * versions are implementation contracts behind it. Its raw calldata splits
- * into three subspaces:
+ *   - plain calldata             → latest implementation;
+ *   - [MAGIC][key BE][inner]     → that exact version;
+ *   - [MAGIC][0][selector][args] → CDM meta queries / registry-only admin ops.
  *
- *   - plain calldata            → delegate to the latest implementation;
- *   - [MAGIC][key BE][inner]    → delegate to that exact version;
- *   - [MAGIC][0][selector][args]→ CDM meta queries / registry-only admin ops.
- *
- * Every constant here is pinned against the Rust side by the in-source tests
- * below — a drift in either direction is a wire-format break.
+ * Every constant is pinned against the Rust side by the in-source tests.
  */
 
-/** `keccak256("cdm.proxy.call.v1")[..4]` — first 4 bytes of any CDM call. */
+/** `keccak256("cdm.proxy.call.v1")[..4]`. */
 export const PROXY_MAGIC = "0xa2264d53" as const;
 
 /** Version key 0 (`0.0.0`) is the meta namespace; never publishable. */
 export const META_KEY = 0n;
 
-/** `[MAGIC][u128 key]` — bytes before a versioned call's inner calldata. */
+/** `[MAGIC][u128 key]`. */
 export const VERSIONED_HEADER_LEN = 4 + 16;
 
-/** `[MAGIC][META_KEY][meta selector]` — bytes before meta ABI args. */
+/** `[MAGIC][META_KEY][meta selector]`. */
 export const META_HEADER_LEN = VERSIONED_HEADER_LEN + 4;
 
-/**
- * `keccak256("initialize(uint128,address)")[..4]` — the entry point of every
- * initialization contract; pinned against `contract_registry_core::versioning`.
- */
+/** `keccak256("initialize(uint128,address)")[..4]`. */
 export const INITIALIZE_SELECTOR = "0x3a67c2f8" as const;
 
-/** Signature behind {@link INITIALIZE_SELECTOR}, for derivation tests and docs. */
-export const INITIALIZE_SIGNATURE = "initialize(uint128,address)";
-
-/** Meta-call selectors (`keccak256(signature)[..4]`). */
+/** Meta-call selectors (`keccak256(signature)[..4]`); admin ops are registry-only. */
 export const PROXY_META = {
-    /** admin (the registry) only */
     publish: "0xc3853395",
-    /** admin (the registry) only — delegatecall against the proxy's storage,
-     *  live even while frozen; the initializations primitive. */
     callCode: "0xd74c1f04",
-    /** admin (the registry) only */
     setMinSupported: "0xe84411e5",
-    /** admin (the registry) only */
     setAdmin: "0x704b6c02",
-    /** admin (the registry) only */
     freeze: "0x62a5af3b",
-    /** admin (the registry) only */
     unfreeze: "0x6a28f000",
     frozen: "0x054f7d9c",
     implOf: "0xdf379e50",
@@ -60,43 +41,7 @@ export const PROXY_META = {
     admin: "0xf851a440",
 } as const;
 
-/** Signatures behind each meta selector, for derivation tests and docs. */
-export const PROXY_META_SIGNATURES: Record<keyof typeof PROXY_META, string> = {
-    publish: "publish(uint128,address)",
-    callCode: "callCode(address,bytes)",
-    setMinSupported: "setMinSupported(uint128)",
-    setAdmin: "setAdmin(address)",
-    freeze: "freeze()",
-    unfreeze: "unfreeze()",
-    frozen: "frozen()",
-    implOf: "implOf(uint128)",
-    latest: "latest()",
-    minSupported: "minSupported()",
-    admin: "admin()",
-};
-
-/** Revert signatures the proxy can raise, keyed by selector hex. */
-export const PROXY_ERROR_SIGNATURES = [
-    "UnknownVersion()",
-    "UnsupportedVersion(uint128,uint128)",
-    "UnauthorizedAdmin()",
-    "VersionNotMonotonic(uint128,uint128)",
-    "InvalidVersionKey()",
-    "InvalidImplementation()",
-    "MalformedCall()",
-    "UnknownMetaSelector()",
-    "MinNotMonotonic(uint128,uint128)",
-    "MinAboveLatest(uint128,uint128)",
-    "NoVersions()",
-    "ContractFrozen()",
-] as const;
-
-/**
- * Proxy-owned storage slots (`keccak256(label) - 1`, EIP-1967 scheme),
- * mirrored from `contract_registry_core::slots`. The implementation and
- * admin slots are the EIP-1967 standard ones, so explorers see the proxy's
- * latest implementation without knowing about CDM.
- */
+/** Proxy-owned slots (`keccak256(label) - 1`), mirrored from `contract_registry_core::slots`. */
 export const PROXY_SLOTS = {
     implementation: "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
     admin: "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103",
@@ -239,11 +184,7 @@ function wordToAddress(word: Uint8Array): Hex {
 
 const MAGIC_BYTES = hexToBytes(PROXY_MAGIC, "magic");
 
-/**
- * `[MAGIC][key][inner]` — route `inner` to the exact published version. An
- * unprefixed call routes to the latest version; that's just the plain ABI
- * calldata, no builder needed.
- */
+/** `[MAGIC][key][inner]` — route `inner` to the exact published version. */
 export function encodeVersionedCall(key: bigint, inner: Hex | Uint8Array): Hex {
     if (!isPublishableKey(key)) {
         throw new Error(`Not a publishable version key: ${key}`);
@@ -270,9 +211,8 @@ export function encodeProxyPublish(key: bigint, implementation: string): Hex {
 
 /**
  * Registry-only: delegatecall `target` with `data` against the proxy's
- * storage, bubbling return/revert verbatim. Canonical ABI `bytes` framing:
- * target word, offset word (0x40), length word, payload zero-padded to a
- * 32-byte boundary. Live even while the proxy is frozen.
+ * storage. Canonical ABI `bytes` framing: target word, offset word (0x40),
+ * length word, payload zero-padded to 32 bytes.
  */
 export function encodeProxyCallCode(target: string, data: Hex | Uint8Array): Hex {
     const payload = typeof data === "string" ? hexToBytes(data, "callCode data") : data;
@@ -288,10 +228,8 @@ export function encodeProxyCallCode(target: string, data: Hex | Uint8Array): Hex
 }
 
 /**
- * `initialize(from, owner)` calldata — what the registry delivers through
- * `callCode` when a publish carries an initialization. `from` is the
- * previously-latest version key (0 on a first publish), `owner` the name's
- * registry owner.
+ * `initialize(from, owner)` calldata: `from` is the previously-latest key (0
+ * on a first publish), `owner` the name's registry owner.
  */
 export function encodeInitialize(from: bigint, owner: string): Hex {
     return bytesToHex(
@@ -313,12 +251,12 @@ export function encodeProxySetAdmin(admin: string): Hex {
     return encodeMetaCall(PROXY_META.setAdmin, wordAddress(admin));
 }
 
-/** Registry-only: halt all delegation (the migration pause switch). */
+/** Registry-only: halt all delegation. */
 export function encodeProxyFreeze(): Hex {
     return encodeMetaCall(PROXY_META.freeze);
 }
 
-/** Registry-only: resume delegation. */
+/** Registry-only. */
 export function encodeProxyUnfreeze(): Hex {
     return encodeMetaCall(PROXY_META.unfreeze);
 }
@@ -382,15 +320,26 @@ if (import.meta.vitest) {
         });
 
         it("meta selectors derive from their signatures (pinned in Rust core)", () => {
+            const signatures: Record<keyof typeof PROXY_META, string> = {
+                publish: "publish(uint128,address)",
+                callCode: "callCode(address,bytes)",
+                setMinSupported: "setMinSupported(uint128)",
+                setAdmin: "setAdmin(address)",
+                freeze: "freeze()",
+                unfreeze: "unfreeze()",
+                frozen: "frozen()",
+                implOf: "implOf(uint128)",
+                latest: "latest()",
+                minSupported: "minSupported()",
+                admin: "admin()",
+            };
             for (const [name, selector] of Object.entries(PROXY_META)) {
-                expect(keccakSelector(PROXY_META_SIGNATURES[name as keyof typeof PROXY_META])).toBe(
-                    selector,
-                );
+                expect(keccakSelector(signatures[name as keyof typeof PROXY_META])).toBe(selector);
             }
         });
 
         it("initialize selector derives from its signature (pinned in Rust core)", () => {
-            expect(keccakSelector(INITIALIZE_SIGNATURE)).toBe(INITIALIZE_SELECTOR);
+            expect(keccakSelector("initialize(uint128,address)")).toBe(INITIALIZE_SELECTOR);
         });
 
         it("slots derive as keccak256(label) - 1 (pinned in Rust core)", () => {
@@ -460,8 +409,8 @@ if (import.meta.vitest) {
         });
 
         it("meta publish matches the registry's Rust-side encoding", () => {
-            // The exact bytes `contract-registry` sends its proxies, locked by
-            // `first_publish_registers_name_and_creates_proxy` in main.rs.
+            // Locked by `first_publish_registers_name_and_creates_proxy` in
+            // src/contract/src/main.rs.
             const key = packVersionKey(1, 0, 0);
             const impl = "0x1111111111111111111111111111111111111111";
             expect(encodeProxyPublish(key, impl)).toBe(
@@ -476,9 +425,8 @@ if (import.meta.vitest) {
         });
 
         it("meta callCode + initialize match the registry's Rust-side encoding", () => {
-            // The exact bytes `contract-registry` sends on a publish-with-
-            // initialization, locked by `publish_with_init_first_publish_
-            // sends_from_zero_and_owner` in src/contract/src/main.rs.
+            // Locked by `publish_with_init_first_publish_sends_from_zero_and_owner`
+            // in src/contract/src/main.rs.
             const init = "0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b";
             const owner = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
             const inner = encodeInitialize(packVersionKey(1, 0, 0), owner);
@@ -517,7 +465,6 @@ if (import.meta.vitest) {
         });
 
         it("error selectors derive from their signatures", () => {
-            // Spot-check the two consumers hit most; the derive rule covers all.
             expect(keccakSelector("UnknownVersion()")).toBe("0x8da6a6a4");
             expect(keccakSelector("UnsupportedVersion(uint128,uint128)")).toBe("0x4f95b5db");
         });

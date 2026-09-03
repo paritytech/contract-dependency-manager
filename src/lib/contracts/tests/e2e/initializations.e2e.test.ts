@@ -1,22 +1,7 @@
-// End-to-end initializations validation against a local PPN.
-//
-// Initializations are version-addressed contracts that run exactly once,
-// atomically, inside the publish of their version — delivered by the
-// registry through the per-name proxy's admin-only `callCode` meta op,
-// directly against the proxy's storage. This suite proves the full Rust
-// matrix at the registry level:
-//
-//  - a first publish WITH an initialization sets state (owner, from = 0);
-//  - a publish with no initialization behaves exactly as today;
-//  - an upgrade publish's initialization transforms existing storage and
-//    sees `from` = the previously-latest key;
-//  - an initialization revert rolls back the ENTIRE publish;
-//  - the freeze → publish-with-initialization → unfreeze window works, and
-//    `callCode` at the proxy is registry-only.
-//
-// It also publishes the shared-counter template's real 0.1.0 initialization
-// blob (compile + layout proof) and runs a sentinel variant of it through
-// the same manifest-free shim path on-chain.
+// Initializations e2e against a local PPN: first-publish and upgrade
+// initializations over one proxy storage, revert rollback, the freeze window,
+// registry-only `callCode`, and the shared-counter template's 0.1.0 blob
+// through the shim build path.
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";

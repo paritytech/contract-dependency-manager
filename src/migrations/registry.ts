@@ -76,13 +76,7 @@ function errorText(err: unknown): string {
     return parts.join(" ");
 }
 
-/**
- * What probing a versioned-registry selector on an unsupported registry looks
- * like: a typed `UnknownSelector()` revert on newer dispatchers, or
- * zero/garbage return data (viem `AbiDecoding*` failures) on the oldest ones.
- * Anything else (transport failures, timeouts) is a real error and must
- * propagate.
- */
+/** An unknown-selector revert or a decode failure; transport errors must propagate. */
 function isUnversionedSurfaceError(err: unknown): boolean {
     const msg = errorText(err);
     return (
@@ -94,12 +88,7 @@ function isUnversionedSurfaceError(err: unknown): boolean {
     );
 }
 
-/**
- * Fails fast unless the registry speaks the versioned surface —
- * `getVersionAt`, `getProxy`, `getProxyCodeHash`. Probed with the cheapest
- * versioned-only view; a registry without it rejects the unknown selector,
- * surfacing as a failed query or a decode error.
- */
+/** Fails unless the registry answers `getProxyCodeHash`, the cheapest versioned-only view. */
 async function requireVersionedRegistry(
     registry: RegistryContract,
     registryAddress: HexString,
@@ -113,8 +102,7 @@ async function requireVersionedRegistry(
     }
     if (!supported) {
         throw new Error(
-            `Registry at ${registryAddress} does not expose the versioned registry surface ` +
-                `(getVersionAt/getProxy) and is not supported by this tooling`,
+            `Registry at ${registryAddress} does not expose the versioned surface (getProxyCodeHash)`,
         );
     }
 }
@@ -297,11 +285,7 @@ export async function readRegistrySnapshot(path: string): Promise<RegistryMigrat
 /** 20 zero bytes — never a valid per-name proxy. */
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as HexString;
 
-/**
- * Snapshot entries carry keys and proxies verbatim; only the bigints revive.
- * Every name must bring its live per-name proxy — the registry has no
- * proxy-less records.
- */
+/** Snapshot entry → import payload; every name must carry its per-name proxy. */
 export function contractToImport(contract: MigratedContract): ImportContract {
     if (!contract.proxy || contract.proxy === ZERO_ADDRESS) {
         throw new Error(`Snapshot entry for ${contract.contract_name} has no per-name proxy`);
@@ -318,7 +302,6 @@ export function contractToImport(contract: MigratedContract): ImportContract {
     };
 }
 
-/** Snapshot → `adminImportContracts` payload entries. */
 export function snapshotToImportContracts(snapshot: RegistryMigrationSnapshot): ImportContract[] {
     return snapshot.contracts.map(contractToImport);
 }

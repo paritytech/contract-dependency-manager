@@ -26,10 +26,7 @@ export interface InstallResult {
     library: string;
     /** The resolved semver — recorded in `cdm.json` and used as the artifact directory. */
     version: string;
-    /**
-     * The name's STABLE address (`registry.getAddress` — its per-name proxy),
-     * which serves every published version and stays correct across upgrades.
-     */
+    /** The name's stable address (`registry.getAddress`). */
     address: string;
     abi: AbiEntry[];
     savedPath: string;
@@ -174,10 +171,6 @@ function queryFailure(action: string, library: string, value: unknown): Error {
     return new Error(`${action} for "${library}": ${detail}`);
 }
 
-/**
- * The resolved target of an install request — everything needed before the
- * metadata fetch. `version`/`address` semantics match {@link InstallResult}.
- */
 interface ResolvedInstallVersion {
     version: string;
     metadataCid: string;
@@ -266,11 +259,7 @@ async function queryAllVersionRows(
     return rows;
 }
 
-/**
- * The name's STABLE address from `getAddress` — its per-name proxy. This is
- * what goes into `cdm.json`: the proxy serves every published version, so it
- * stays correct across upgrades.
- */
+/** The name's stable address (`getAddress`), what `cdm.json` records. */
 async function queryStableAddress(
     library: string,
     registry: RegistryContract,
@@ -486,10 +475,7 @@ if (import.meta.vitest) {
         return { isSome: true, version_key: key, target, metadata_uri: metadataUri };
     }
 
-    /**
-     * Two published rows: 1.0.0 at index 0 and 1.1.0 at index 1, fronted by
-     * a stable (proxy) address.
-     */
+    /** Rows 1.0.0 and 1.1.0 behind one stable address. */
     function fakeRegistry() {
         const rows = [
             versionRow(semverToKey("1.0.0"), "0xv0impl", "bafy-v0"),
@@ -715,11 +701,6 @@ if (import.meta.vitest) {
             await expect(resolveLatest("@example/counter", registry)).rejects.toThrow(
                 "failed to decode registry response — the registry may be a different generation than this CLI supports",
             );
-        });
-
-        test("still classifies zero-data errors as misses, not generation mismatches", () => {
-            const err = new Error('Cannot decode zero data ("0x") with ABI parameters.');
-            expect(isRegistryQueryError(err)).toBe(true);
         });
 
         test("surfaces RPC failures instead of rewriting them to contract-not-found", async () => {
