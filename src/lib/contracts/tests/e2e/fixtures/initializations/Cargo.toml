@@ -1,6 +1,6 @@
 # E2E fixture crate for the initializations suite: one implementation
-# contract plus three initialization contracts, all sharing storage.rs so
-# every blob agrees on the layout it reads and writes.
+# contract plus three self-contained initialization contracts, each declaring
+# its own copy of the (auto-numbered) layout it reads and writes.
 [workspace]
 
 [package]

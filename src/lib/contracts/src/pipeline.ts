@@ -1074,6 +1074,9 @@ async function resolveInitializationArtifact(
         );
     }
     if (comparison.status === "unverifiable") {
+        // Rust artifacts always carry layouts on current toolchains; this
+        // path is reachable for Solidity projects without storage-layout
+        // output configured (or stale toolchains).
         emit({
             type: "log",
             source: "initializations",

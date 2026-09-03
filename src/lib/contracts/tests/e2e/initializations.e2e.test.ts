@@ -145,6 +145,22 @@ afterAll(async () => {
     chainClient?.destroy();
 });
 
+describe("built artifacts", () => {
+    test("freshly built Rust artifacts carry storage layouts (toolchain regression guard)", async () => {
+        const { readFileSync } = await import("node:fs");
+        const layout = (pvmPath: string) =>
+            JSON.parse(readFileSync(pvmPath.replace(/\.polkavm$/, ".abi.json"), "utf8"))
+                .storageLayout;
+        // Bare auto-numbered storage emits layouts since cargo-pvm-contract#155
+        // — if these go missing, the deploy-time guard has silently degraded.
+        const impl = layout(COUNTER_PVM);
+        const init = layout(COUNTER_INIT_PVM);
+        expect(impl?.storage?.length).toBeGreaterThan(0);
+        expect(init?.storage).toEqual(impl.storage);
+        expect(layout(FIXTURE_COUNTER_PVM)?.storage?.length).toBeGreaterThan(0);
+    });
+});
+
 describe("first publish with initialization", () => {
     test("publishWithInit records the version and runs initialize(0, owner)", async () => {
         const r = await registry.publishWithInit.tx(NAME, KEY_1_0_0, implA, URI, initSetOwner);

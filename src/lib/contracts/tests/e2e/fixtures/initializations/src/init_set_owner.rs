@@ -1,5 +1,5 @@
 //! First-publish initialization: record the owner and the `from` key.
-//! Self-contained — it embeds its own copy of the layout it operates on.
+//! Self-contained — it declares its own copy of the layout it operates on.
 
 #![cfg_attr(not(feature = "abi-gen"), no_main, no_std)]
 
@@ -7,23 +7,18 @@
 mod init_set_owner {
     use pvm_contract_sdk::{Address, Lazy};
 
-    #[pvm_contract_sdk::storage]
-    pub struct FixtureStorage {
-        pub count: Lazy<u32>,
-        pub owner: Lazy<Address>,
-        pub last_init_from: Lazy<u128>,
-    }
-
     pub struct InitSetOwner {
-        #[slot(0)]
-        s: FixtureStorage,
+        count: Lazy<u32>,
+        owner: Lazy<Address>,
+        last_init_from: Lazy<u128>,
     }
 
     impl InitSetOwner {
         #[pvm_contract_sdk::method]
         pub fn initialize(&mut self, from: u128, owner: Address) {
-            self.s.owner.set(&owner);
-            self.s.last_init_from.set(&from);
+            let _ = &self.count;
+            self.owner.set(&owner);
+            self.last_init_from.set(&from);
         }
     }
 }

@@ -148,7 +148,7 @@ The file addressed to a version runs when exactly that version is published — 
 
 Each initialization exposes one conventional entry point, `initialize(uint128 from, address owner)`: `from` is the previously-latest version key (0 on a first publish), `owner` the name's registry owner. The registry delivers the call through the proxy's admin-only `callCode` meta operation, so initialization code is structurally unreachable by anyone else — no access-control boilerplate needed. If the initialization reverts, the entire publish rolls back.
 
-Initialization files are fully self-contained — a Rust initialization embeds its own copy of the storage layout it operates on:
+Initialization files are fully self-contained — a Rust initialization declares its own copy of the contract's (auto-numbered) storage fields:
 
 ```rust
 // initializations/0.1.0.rs
@@ -156,22 +156,16 @@ Initialization files are fully self-contained — a Rust initialization embeds i
 mod counter_init_0_1_0 {
     use pvm_contract_sdk::{Address, Lazy};
 
-    #[pvm_contract_sdk::storage]
-    pub struct CounterStorage {
-        pub count: Lazy<u32>,
-        pub owner: Lazy<Address>,
-    }
-
     pub struct CounterInit {
-        #[slot(0)]
-        s: CounterStorage,
+        count: Lazy<u32>,
+        owner: Lazy<Address>,
     }
 
     impl CounterInit {
         #[pvm_contract_sdk::method]
         pub fn initialize(&mut self, from: u128, owner: Address) {
-            let _ = from;
-            self.s.owner.set(&owner);
+            let _ = (from, &self.count);
+            self.owner.set(&owner);
         }
     }
 }
@@ -190,7 +184,7 @@ contract Init_0_1_0 is Counter {
 }
 ```
 
-At deploy time CDM compares the initialization artifact's storage layout against the implementation's and **refuses to deploy on a mismatch** — a drifted layout would corrupt the proxy's storage. If layout data is missing the check is impossible and the deploy proceeds with a loud warning. Rust contracts emit a layout when their storage lives in a `#[storage]` struct anchored with `#[slot(0)]` (as the templates do); Foundry needs `extra_output = ["storageLayout"]`, Hardhat the equivalent `outputSelection` — the templates ship with all three.
+At deploy time CDM compares the initialization artifact's storage layout against the implementation's and **refuses to deploy on a mismatch** — a drifted layout would corrupt the proxy's storage. Rust artifacts always carry layouts on current toolchains (universal since cargo-pvm-contract#155); Foundry needs `extra_output = ["storageLayout"]`, Hardhat the equivalent `outputSelection` — the templates ship with both. If layout data is missing the check is impossible and the deploy proceeds with a loud warning.
 
 For upgrades that reshape storage incompatibly, pair an initialization with the freeze window: `freezeContract` halts all delegation (the meta plane stays live), the publish-with-initialization lands atomically, `unfreezeContract` resumes traffic on the new version — the SQL-migrations analogy, but on one shared storage.
 

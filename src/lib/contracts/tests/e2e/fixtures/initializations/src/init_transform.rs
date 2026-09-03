@@ -7,25 +7,19 @@
 mod init_transform {
     use pvm_contract_sdk::{Address, Lazy};
 
-    #[pvm_contract_sdk::storage]
-    pub struct FixtureStorage {
-        pub count: Lazy<u32>,
-        pub owner: Lazy<Address>,
-        pub last_init_from: Lazy<u128>,
-    }
-
     pub struct InitTransform {
-        #[slot(0)]
-        s: FixtureStorage,
+        count: Lazy<u32>,
+        owner: Lazy<Address>,
+        last_init_from: Lazy<u128>,
     }
 
     impl InitTransform {
         #[pvm_contract_sdk::method]
         pub fn initialize(&mut self, from: u128, owner: Address) {
-            let _ = owner;
-            let current = self.s.count.get();
-            self.s.count.set(&(current * 2));
-            self.s.last_init_from.set(&from);
+            let _ = (owner, &self.owner);
+            let current = self.count.get();
+            self.count.set(&(current * 2));
+            self.last_init_from.set(&from);
         }
     }
 }
