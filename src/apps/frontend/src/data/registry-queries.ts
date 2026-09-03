@@ -20,11 +20,7 @@ export function registryQueryError(action: string, value: unknown): Error {
     return new Error(`${action}: ${stringifyBigInt(value)}`);
 }
 
-/**
- * Coerce a decoded uint128 version key to bigint. product-sdk delivers
- * uint128 values as bigint; tolerate number/string decodes without ever
- * routing the key through Number.
- */
+/** Decoded uint128 → bigint without routing the key through Number. */
 function toVersionKey(value: unknown): bigint {
     if (typeof value === "bigint") return value;
     if (typeof value === "number" || typeof value === "string") return BigInt(value);
@@ -83,12 +79,7 @@ export async function queryContractByName(
     };
 }
 
-/**
- * Decode a `getContracts` entry: `(name, version_key, address, metadata_uri,
- * owner)`. `address` is the name's stable address (per-name proxy for
- * new-era names, the latest standalone contract for legacy ones); the
- * trailing `owner` is not surfaced.
- */
+/** `(name, version_key, address, metadata_uri, owner)`; `address` is the per-name proxy. */
 function parseContractEntry(value: unknown): Package | null {
     let name: unknown;
     let versionKey: unknown;
@@ -155,11 +146,10 @@ export async function queryContractsPage(
 }
 
 export interface PackageVersionInfo {
-    /** Semver string derived from the packed key (e.g. "1.2.3"). */
     version: string;
     /** Packed semver key: `(major<<64)|(minor<<32)|patch`. */
     key: bigint;
-    /** The version's implementation contract (or legacy standalone address). */
+    /** The version's implementation contract. */
     target: string;
     metadataUri: string;
 }
@@ -200,12 +190,7 @@ function parseVersionEntry(value: unknown): PackageVersionInfo | null {
     };
 }
 
-/**
- * Query every published version of a contract: version count first, then
- * `getVersionAt` for each index in parallel. Works for both eras (legacy
- * keys derive on-chain as `0.0.(index+1)`). Returned in ascending version
- * order (index 0..count-1).
- */
+/** Every published version, ascending (`getVersionAt` per index). */
 export async function queryContractVersions(
     registry: RegistryContract,
     name: string,
@@ -258,8 +243,6 @@ export function parseMetadata(metadata: any): Partial<Package> {
 
     const abi: AbiEntry[] | undefined = Array.isArray(metadata.abi) ? metadata.abi : undefined;
 
-    // Newer metadata may also carry `storage_layout`; like any field not
-    // listed below it is intentionally ignored (not rendered).
     return {
         description: metadata.description || undefined,
         readme: metadata.readme || undefined,

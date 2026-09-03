@@ -13,12 +13,7 @@ import type { Contract, ContractDef } from "@parity/product-sdk-contracts";
 import { keccakCodeHash, predictCreate3Address } from "./create3";
 import { isPublishableKey } from "./proxy";
 
-/**
- * Version identifier used to make CREATE2 salts unique across publishes of
- * the same CDM package. Semver strings (`"1.2.3"`) are the canonical form;
- * numbers/bigints are the legacy registry version indexes older deployments
- * salted with.
- */
+/** Salt component keeping CREATE2 addresses unique per publish; semver strings canonical. */
 export type DeploySaltVersion = string | number | bigint;
 
 /**
@@ -26,13 +21,9 @@ export type DeploySaltVersion = string | number | bigint;
  * version this deployment will publish (semver string preferred), and
  * optionally the registry address the deployment is being published into.
  *
- * With no version this preserves the original package-only salt, which keeps
- * existing callers such as the universal ContractRegistry deployment stable.
- * CDM package deployments should pass the crate's semver version so each
- * publish derives a fresh address even if the deployer and bytecode repeat.
- * Passing `registryAddress` additionally scopes versions to a specific
- * registry generation, so a fresh registry can republish a package's versions
- * on a chain that already has older CDM deployments.
+ * With no version this is the package-only salt the registry deployment
+ * uses. `registryAddress` scopes versions to one registry generation, so a
+ * fresh registry can republish a package's versions on the same chain.
  */
 export function computeDeploySalt(
     cdmPackage: string,
@@ -141,11 +132,7 @@ export interface PreparedDeploy {
     address: string;
 }
 
-/**
- * An initialization contract to deploy alongside its implementation. The
- * salt package must be unique per (CDM package, version) — the pipeline uses
- * `<package>#init` with the publish semver as the salt version.
- */
+/** An initialization deployed alongside its implementation; salted as `<package>#init` @ version. */
 export interface InitDeployRequest {
     pvmPath: string;
     saltPackage: string;
@@ -165,11 +152,7 @@ export interface DeployPlan {
     budget: WeightLike;
     prepared: Array<
         PreparedDeploy & {
-            /**
-             * The version's initialization contract. Its weight is folded into
-             * the chunker's per-item weight so it lands in the same chunk as
-             * the implementation.
-             */
+            /** The version's initialization; chunked together with the implementation. */
             init?: PreparedDeploy;
         }
     >;
@@ -237,13 +220,7 @@ export interface Metadata {
     homepage: string;
     repository: string;
     abi: AbiEntry[];
-    /**
-     * The `storageLayout` object from the crate's generated `.abi.json`
-     * artifact — groundwork for storage-layout compatibility checks between
-     * versions. Optional: pre-layout metadata (and toolchains that emit no
-     * layout) omit it entirely, keeping old payloads parseable and their
-     * CIDs unchanged.
-     */
+    /** The artifact's `storageLayout`; omitted (not null) when the toolchain emits none. */
     storage_layout?: unknown;
 }
 
@@ -742,17 +719,12 @@ export class ContractDeployer {
      * before the extrinsic lands, so the register calls can be built ahead of
      * time even though the deploys haven't executed yet.
      *
-     * Registration is `registry.publish(name, versionKey, address, metadataUri)`
-     * — a first publish makes the registry instantiate the name's per-name
-     * proxy, so the deployed contract is the version's IMPLEMENTATION and the
-     * name's stable address is the proxy the registry creates (resolve it via
-     * `registry.getAddress(name)` after the batch lands).
+     * Registration is `registry.publish(name, versionKey, address, metadataUri)`;
+     * the deployed contract is the version's implementation and the name's
+     * stable address is the proxy the registry creates (`getAddress(name)`).
      *
-     * Metadata is assumed to be address-independent (CDM metadata depends only
-     * on the compiled artifact: ABI + readme + package info), so the caller is
-     * expected to have published metadata to Bulletin first and pass the
-     * resulting CIDs in `metadataUris`. That ordering constraint stays in the
-     * caller (deploy-pipeline) for this migration step.
+     * `metadataUris` are CIDs the caller computed from address-independent
+     * metadata; the Bulletin publish itself may run concurrently.
      *
      * IMPORTANT — cross-chunk non-atomicity: if a layer is too heavy to fit
      * in one extrinsic we split it. A failed later chunk won't roll back
@@ -799,7 +771,7 @@ export class ContractDeployer {
             plan?: DeployPlan;
             saltVersions?: DeploySaltVersion[];
             saltScope?: string;
-            /** Per-contract initialization deploys (aligned with `pvmPaths`); entries register via `publishWithInit`. */
+            /** Aligned with `pvmPaths`; entries register via `publishWithInit`. */
             inits?: (InitDeployRequest | undefined)[];
         },
     ): Promise<{ addresses: string[]; chunkCount: number }> {
@@ -970,10 +942,7 @@ if (import.meta.vitest) {
             expect(computeDeploySalt("@cdm/example", "1.0.0")).toBe(v100);
         });
 
-        test("accepts legacy numeric version indexes with String(version) material", () => {
-            // Numeric and bigint versions salt identically (both stringify to
-            // "1"), matching pre-semver deployments so their addresses stay
-            // reproducible.
+        test("numeric and bigint versions salt identically", () => {
             const version1 = computeDeploySalt("@cdm/example", 1);
             expect(computeDeploySalt("@cdm/example", 1n)).toBe(version1);
             expect(version1).not.toBe(computeDeploySalt("@cdm/example", 0));

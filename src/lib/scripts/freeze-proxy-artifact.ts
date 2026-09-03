@@ -1,19 +1,12 @@
 #!/usr/bin/env bun
 /**
- * Rebuild and re-freeze the per-name contract proxy artifact
- * (src/contract/proxy/artifacts/): builds `contract-proxy` with the mainline
- * cargo-pvm-contract, copies the blob next to a regenerated manifest.json,
- * and prints the new code hash.
- *
- * The frozen blob's code hash feeds every per-name proxy CREATE2 address the
- * registry derives from then on — re-freezing is a DELIBERATE act, not part
- * of any routine build. After regenerating, update CONTRACT_PROXY_CODE_HASH
- * in src/lib/contracts/src/proxy-artifacts.ts to match and run
- * `setProxyCodeHash` on live registries (existing per-name proxies keep
- * their old code and addresses).
+ * Rebuild and re-freeze src/contract/proxy/artifacts/ (blob + manifest.json).
+ * The blob's code hash is part of every future per-name proxy address, so
+ * this is a deliberate act: afterwards update CONTRACT_PROXY_CODE_HASH in
+ * src/lib/contracts/src/proxy-artifacts.ts and run `setProxyCodeHash` on live
+ * registries.
  *
  * Run: bun run src/lib/scripts/freeze-proxy-artifact.ts
- * Output: src/contract/proxy/artifacts/{contract-proxy.polkavm,manifest.json}
  */
 import { spawnSync } from "child_process";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "fs";

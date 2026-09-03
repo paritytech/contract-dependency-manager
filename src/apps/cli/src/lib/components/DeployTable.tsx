@@ -110,8 +110,6 @@ function ContractRow({
         );
     }
 
-    // Version column — the crate's Cargo.toml semver (the version being
-    // published, or already on-chain for up-to-date rows).
     const versionCell = s?.version ? (
         <Text wrap="truncate">
             <Text dimColor>{s.version}</Text>
@@ -148,10 +146,6 @@ function ContractRow({
         );
     }
 
-    // Up-to-date state — this Cargo.toml version is already published, so
-    // the pipeline skipped the crate entirely (no build, deploy, or publish).
-    // Mirrors the cached row's skip markers; the address is the name's stable
-    // address when the registry resolved it.
     if (state === "up-to-date") {
         return (
             <Box>

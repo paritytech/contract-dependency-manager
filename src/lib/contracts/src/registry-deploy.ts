@@ -26,45 +26,24 @@ import { loadContractProxyArtifact } from "./proxy-artifacts";
 import { hexToBytes } from "./solidity";
 
 /**
- * ContractRegistry deployment via the CREATE3 factory.
+ * ContractRegistry deployment via the CREATE3 factory:
  *
- * Three blobs are involved:
- *
- * 1. The CREATE3 FACTORY (frozen artifact) — deployed once per network with
- *    plain CREATE2 from the operator's EOA, using the committed factory blob,
- *    the committed child code hash as its single constructor argument, and
- *    the fixed `CREATE3_FACTORY_PACKAGE` salt. Same EOA => same factory
- *    address on every network.
- * 2. The registry IMPLEMENTATION — plain CREATE2 with the
- *    `CONTRACTS_REGISTRY_IMPL_PACKAGE` salt. Its address doesn't matter;
- *    upgrades go through the registry's `setCode(address)` (called via the
- *    proxy by the admin — the proxy's deployer), never a proxy redeploy.
- * 3. The EIP-1967 PROXY — deployed THROUGH the factory
- *    (`upload_code` + `factory.deploy(salt, proxyCodeHash, implAddress)`).
- *    The resulting address is the stable registry address every consumer
- *    uses, and it is a pure function of `(factory, salt)`: unlike plain
- *    CREATE2 under pallet-revive (which commits to both the code and the
- *    constructor input), a CREATE3 address survives proxy bytecode changes
- *    and doesn't depend on the implementation address baked into the
- *    constructor data.
- * 4. The PER-NAME proxy (frozen artifact, never instantiated here) — its
- *    blob is uploaded and its code hash handed to the registry via
- *    `setProxyCodeHash`, so the registry can CREATE2 one proxy per contract
- *    name at first publish.
- *
- * Implementation upgrades go through {@link upgradeRegistryImplementation}:
- * a NEW implementation blob at a fresh CREATE2 salt + `setCode` through the
- * proxy — the registry address never moves.
+ * 1. CREATE3 factory (frozen artifact) — plain CREATE2 from the operator's
+ *    EOA with the committed child code hash as constructor arg and the
+ *    `CREATE3_FACTORY_PACKAGE` salt.
+ * 2. Registry implementation — plain CREATE2 (`CONTRACTS_REGISTRY_IMPL_PACKAGE`);
+ *    its address is irrelevant, upgrades go through `setCode`.
+ * 3. EIP-1967 proxy — through the factory, so the registry address is a pure
+ *    function of `(factory, salt)` and survives proxy bytecode or constructor
+ *    changes.
+ * 4. Per-name proxy blob (frozen artifact) — uploaded and handed to the
+ *    registry via `setProxyCodeHash`; never instantiated here.
  */
 
 /**
- * ABI-encode the proxy's constructor arguments `(address implementation,
- * address admin)` — two 32-byte left-padded words.
- *
- * `admin` must be an explicit argument (not derived from the deploy caller):
- * through the CREATE3 factory, the proxy constructor's on-chain caller is
- * the single-use child deployer, and pinning admin to it would lock the
- * registry's admin surface to a dead contract.
+ * `(address implementation, address admin)` as two left-padded words. `admin`
+ * is explicit because the constructor's on-chain caller is the single-use
+ * CREATE3 child.
  */
 export function encodeProxyConstructorArgs(implementation: string, admin: string): Uint8Array {
     const out = new Uint8Array(64);
@@ -155,13 +134,9 @@ export interface DeployRegistryOptions {
         factoryAddress: string,
     ) => Contract<ContractDef> | Promise<Contract<ContractDef>>;
     /**
-     * Build a product-sdk registry handle (implementation ABI at the proxy
-     * address, `CONTRACTS_REGISTRY_ABI`) with the admin signer attached —
-     * used to run `setProxyCodeHash`/`getProxyCodeHash` once the proxy is
-     * live. Optional for backward compatibility: when omitted, the per-name
-     * proxy code hash setup is skipped and first publishes will fail with
-     * `ProxyCodeHashUnset()` until {@link upgradeRegistryImplementation}
-     * (or a re-run with this callback) sets it.
+     * Registry handle (`CONTRACTS_REGISTRY_ABI` at the proxy address) with the
+     * admin signer, for `setProxyCodeHash`. When omitted, first publishes fail
+     * with `ProxyCodeHashUnset()` until a later run sets it.
      */
     registryContract?: (
         registryAddress: string,
@@ -176,11 +151,7 @@ function queryErrorDetail(value: unknown): string {
     return decodedErrorSignature(value) ?? stringifyBigInt(value);
 }
 
-/**
- * Normalize a decoded `bytes32` return into lowercase 0x-hex. Codec paths
- * differ in how they surface fixed byte arrays (hex string, raw bytes, or a
- * Binary-like wrapper with `asHex()`).
- */
+/** Decoded `bytes32` (hex string, bytes, or `asHex()` wrapper) → lowercase hex. */
 function hashHex(value: unknown): string | undefined {
     if (typeof value === "string") return value.toLowerCase();
     if (value instanceof Uint8Array) {
@@ -194,13 +165,7 @@ function hashHex(value: unknown): string | undefined {
     return undefined;
 }
 
-/**
- * Upload the frozen per-name proxy blob and point the registry's
- * `proxyCodeHash` at it, verifying with `getProxyCodeHash()`. Idempotent:
- * the upload is skipped when the code already exists on-chain, and
- * `setProxyCodeHash` is skipped when the registry already returns the
- * frozen hash.
- */
+/** Upload the frozen per-name proxy blob and set `proxyCodeHash`; idempotent. */
 async function ensureProxyCodeHash(
     deployer: ContractDeployer,
     registry: Contract<ContractDef>,
@@ -242,14 +207,10 @@ async function ensureProxyCodeHash(
 }
 
 /**
- * Deploy the ContractRegistry behind its proxy, bootstrapping the CREATE3
- * factory first when the network doesn't have it yet, then (when
- * `registryContract` is provided) uploading the frozen per-name proxy blob
- * and setting the registry's `proxyCodeHash`. Every step is idempotent
- * (skipped when its output already exists on-chain), so a partially-failed
- * earlier run can simply be re-run.
- *
- * Returns all three addresses; `proxyAddress` is the registry address.
+ * Deploy the registry behind its proxy (factory first if missing), then set
+ * `proxyCodeHash` when `registryContract` is provided. Every step is
+ * idempotent, so a partial run can be re-run. `proxyAddress` is the registry
+ * address.
  */
 export async function deployRegistryWithProxy(
     deployer: ContractDeployer,
@@ -274,17 +235,14 @@ export async function deployRegistryWithProxy(
         return ensureProxyCodeHash(deployer, registry, opts.rootDir, log);
     };
 
-    // The registry address depends only on (factory, salt) — if a contract
-    // already lives there, the deployment already happened; only the
-    // (idempotent) per-name proxy code hash setup may still be pending.
+    // Code at the CREATE3 address means the deployment already happened.
     if ((await deployer.getOnChainCode(plan.registryAddress)) !== null) {
         log(`Registry already deployed at ${plan.registryAddress}`);
         return { ...done, proxyCodeHash: await finishProxyCodeHash() };
     }
 
-    // (i) Ensure the CREATE3 factory: upload the frozen child blob (the
-    // factory instantiates it by code hash), then CREATE2 the frozen factory
-    // blob with the committed child code hash as constructor arg.
+    // (i) CREATE3 factory: upload the child blob, then CREATE2 the factory
+    // with the child code hash as constructor arg.
     if ((await deployer.getOnChainCode(plan.factoryAddress)) === null) {
         const factoryArtifact = loadCreate3FactoryArtifact(opts.rootDir);
         const childArtifact = loadCreate3ChildArtifact(opts.rootDir);
@@ -292,8 +250,6 @@ export async function deployRegistryWithProxy(
 
         await deployer.uploadCode(childArtifact.bytes);
 
-        // Cross-check the offline CREATE2 prediction against the node's own
-        // derivation before submitting anything.
         const dryRun = await deployer.dryRunDeploy(
             factoryArtifact.bytes,
             CREATE3_FACTORY_PACKAGE,
@@ -319,8 +275,7 @@ export async function deployRegistryWithProxy(
         log(`CREATE3 factory already deployed at ${plan.factoryAddress}`);
     }
 
-    // (ii) Registry implementation — plain CREATE2, exactly as before the
-    // CREATE3 flow. Skipped when its address is already a contract.
+    // (ii) Registry implementation — plain CREATE2.
     if ((await deployer.getOnChainCode(plan.implAddress)) === null) {
         const { address } = await deployer.deploy(
             opts.implPvmPath,
@@ -333,8 +288,7 @@ export async function deployRegistryWithProxy(
         }
     }
 
-    // (iii) The proxy, THROUGH the factory: upload its code, then
-    // factory.deploy(salt, codeHash, abi-encoded impl address).
+    // (iii) The proxy, through the factory.
     const proxyCode = new Uint8Array(readFileSync(opts.proxyPvmPath));
     const { codeHash: registryProxyCodeHash } = await deployer.uploadCode(proxyCode);
     const factory = await opts.factoryContract(plan.factoryAddress);
@@ -346,17 +300,11 @@ export async function deployRegistryWithProxy(
         plan.constructorData,
     );
 
-    // (iv) With the registry live, upload the frozen per-name proxy blob and
-    // hand the registry its code hash for first-publish CREATE2s.
+    // (iv) Per-name proxy code hash.
     return { ...done, proxyCodeHash: await finishProxyCodeHash() };
 }
 
-/**
- * Bump the numeric suffix of a salt package string:
- * `"@cdm/registry-impl.1"` → `"@cdm/registry-impl.2"`. Used to find a fresh
- * CREATE2 salt for a new registry implementation build when earlier
- * suffixes are already consumed on the target chain.
- */
+/** `"@cdm/registry-impl.1"` → `"@cdm/registry-impl.2"`. */
 export function bumpPackageSuffix(pkg: string): string {
     const match = /^(.*\.)(\d+)$/.exec(pkg);
     if (!match) {
@@ -381,12 +329,7 @@ function predictImplAddress(
     );
 }
 
-/**
- * First salt package, starting from `CONTRACTS_REGISTRY_IMPL_PACKAGE` and
- * bumping the numeric suffix, whose predicted CREATE2 address for this
- * implementation blob holds no code on-chain (stale consumed salts from
- * earlier builds are skipped).
- */
+/** First suffix bump of `CONTRACTS_REGISTRY_IMPL_PACKAGE` whose predicted address holds no code. */
 async function resolveFreeImplPackage(
     deployer: ContractDeployer,
     implCode: Uint8Array,
@@ -414,34 +357,19 @@ export interface UpgradeRegistryOptions {
     implPvmPath: string;
     /** Address of the live registry proxy being upgraded. */
     registryAddress: string;
-    /**
-     * Build a product-sdk registry handle (implementation ABI at the proxy
-     * address) with the admin signer attached — `setCode` and
-     * `setProxyCodeHash` are admin-only.
-     */
+    /** Registry handle with the admin signer (`setCode`/`setProxyCodeHash` are admin-only). */
     registryContract: (
         registryAddress: string,
     ) => Contract<ContractDef> | Promise<Contract<ContractDef>>;
-    /**
-     * CREATE2 salt package for the new implementation blob. When omitted,
-     * probes from `CONTRACTS_REGISTRY_IMPL_PACKAGE`, bumping the numeric
-     * suffix until a salt whose predicted address holds no code.
-     */
+    /** Salt package for the new blob; default: first free suffix bump of `CONTRACTS_REGISTRY_IMPL_PACKAGE`. */
     implPackage?: string;
     log?: (message: string) => void;
 }
 
 /**
- * Upgrade a live registry in place: deploy the new implementation blob at a
- * fresh CREATE2 salt, repoint the proxy with `setCode` (verified via
- * `getCode()`), then ensure the frozen per-name proxy blob is uploaded and
- * `proxyCodeHash` set. The registry address never moves and no state is
- * migrated — the v2 storage layout reads v1 records as-is.
- *
- * Idempotent: when the live implementation already matches the blob the
- * deploy and `setCode` are skipped (`upgraded: false`), and the proxy code
- * hash setup skips itself when already correct — so a re-run after any
- * partial failure just finishes the remaining steps.
+ * Upgrade a live registry in place: new implementation at a fresh CREATE2
+ * salt, `setCode`, then `proxyCodeHash`. Idempotent — a matching live
+ * implementation skips the deploy and `setCode` (`upgraded: false`).
  */
 export async function upgradeRegistryImplementation(
     deployer: ContractDeployer,
@@ -457,9 +385,6 @@ export async function upgradeRegistryImplementation(
     const registry = await opts.registryContract(opts.registryAddress);
     const implCode = new Uint8Array(readFileSync(opts.implPvmPath));
 
-    // Already upgraded? Compare the live implementation's on-chain bytes
-    // against the blob — a re-run after success then only repairs the
-    // per-name proxy code hash.
     const live = await registry.getCode.query();
     if (!live.success) {
         throw new Error(`getCode() failed: ${queryErrorDetail(live.value)}`);
@@ -472,15 +397,13 @@ export async function upgradeRegistryImplementation(
         return { implAddress: liveAddress, proxyCodeHash, upgraded: false };
     }
 
-    // Resolve the salt: explicit package, or first free suffix bump.
     let implPackage: string;
     let implAddress: string;
     let alreadyDeployed = false;
     if (opts.implPackage !== undefined) {
         implPackage = opts.implPackage;
         implAddress = predictImplAddress(deployer, implCode, implPackage);
-        // Revive CREATE2 commits to the code bytes, so code at the predicted
-        // address is this exact blob from an earlier run — reuse it.
+        // CREATE2 commits to the code, so code at this address is this blob.
         alreadyDeployed = (await deployer.getOnChainCode(implAddress)) !== null;
     } else {
         ({ implPackage, address: implAddress } = await resolveFreeImplPackage(
@@ -502,7 +425,6 @@ export async function upgradeRegistryImplementation(
         log(`New implementation deployed at ${implAddress} (salt "${implPackage}")`);
     }
 
-    // Repoint the proxy and verify the switch took.
     const setResult = await registry.setCode.tx(implAddress);
     if (!setResult.ok) {
         throw new Error(`setCode failed: ${describeContractError(setResult.error)}`, {
@@ -570,9 +492,7 @@ if (import.meta.vitest) {
     });
 
     describe("predictRegistryDeploy", () => {
-        // Offline prediction needs nothing but the signer's public key — a
-        // fixed one keeps the whole derivation deterministic. The committed
-        // child blob doubles as a stand-in implementation blob.
+        // The committed child blob doubles as a stand-in implementation blob.
         const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
         const fakeDeployer = {
             signer: { publicKey: new Uint8Array(32).fill(0x11) },
@@ -586,17 +506,13 @@ if (import.meta.vitest) {
             const a = predictRegistryDeploy(fakeDeployer, repoRoot, implPvmPath);
             const b = predictRegistryDeploy(fakeDeployer, repoRoot, implPvmPath);
             expect(a).toEqual(b);
-            // The registry address is CREATE3: a pure function of the
-            // factory address and the registry salt — nothing else.
             expect(a.registryAddress).toBe(
                 predictCreate3Address(
                     a.factoryAddress,
                     hexToBytes(computeDeploySalt(CONTRACTS_REGISTRY_PACKAGE)),
                 ),
             );
-            // Constructor args: word 0 = implementation, word 1 = admin
-            // (the deployer EOA — never the CREATE3 child, see
-            // encodeProxyConstructorArgs).
+            // word 0 = implementation, word 1 = admin (the deployer EOA).
             expect(a.constructorData.length).toBe(64);
             expect(Array.from(a.constructorData.slice(12, 32))).toEqual(
                 Array.from(hexToBytes(a.implAddress)),

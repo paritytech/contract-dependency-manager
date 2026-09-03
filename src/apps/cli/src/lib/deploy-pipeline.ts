@@ -20,7 +20,7 @@ export type ContractState =
     | "built"
     | "checking"
     | "cached"
-    /** Terminal, success-like: the crate's Cargo.toml version is already published. */
+    /** Terminal: the declared version is already published. */
     | "up-to-date"
     | "deploying"
     | "registering"
@@ -31,15 +31,11 @@ export interface ContractStatus {
     crateName: string;
     state: ContractState;
     error?: string;
-    /**
-     * The name's address — the per-version implementation while the deploy
-     * batch is in flight, replaced by the STABLE per-name address once the
-     * `stable-addresses` event (or the summary) resolves it.
-     */
+    /** Implementation address while the batch is in flight; the stable address once resolved. */
     address?: string;
-    /** Crate semver from Cargo.toml: the version published (or already on-chain). */
+    /** The version published (or already on-chain). */
     version?: string;
-    /** The publish carries an initialization (VERSION column shows "+init"). */
+    /** VERSION column shows "+init". */
     hasInitialization?: boolean;
     cid?: string;
     deployTxHash?: string;
@@ -141,9 +137,7 @@ export class PipelineStatusAdapter {
                 this.contracts = e.contracts;
                 this.layers = e.layers;
                 this.crates = e.layers.flat();
-                // Publish versions come from Cargo.toml [package].version —
-                // seed them for CDM crates so the VERSION column renders
-                // before any deploy event lands.
+                // Seed versions so the VERSION column renders before deploy events.
                 const versions = new Map<string, string>();
                 for (const c of e.contracts) {
                     if (c.cdmPackage) this.cdmPackageMap.set(c.name, c.cdmPackage);
@@ -218,9 +212,6 @@ export class PipelineStatusAdapter {
                 this.update(e.crate, "cached", { address: e.address });
                 return;
             case "check-up-to-date":
-                // Already published at this Cargo.toml version — terminal,
-                // success-like; the crate is skipped by every later phase.
-                // `address` is the name's stable address when it resolved.
                 this.update(e.crate, "up-to-date", { version: e.version, address: e.address });
                 return;
             case "check-needs-deploy":
@@ -296,9 +287,6 @@ export class PipelineStatusAdapter {
                 return;
             }
             case "stable-addresses":
-                // Replaces each crate's implementation address with the
-                // STABLE per-name address consumers call (resolved via
-                // `registry.getAddress` after the layer's batch confirms).
                 for (const crate of Object.keys(e.addresses)) {
                     const address = e.addresses[crate];
                     if (!address) continue;
@@ -328,8 +316,7 @@ export class PipelineStatusAdapter {
                 }
                 return;
             case "pipeline-done":
-                // Backfill the authoritative summary values — stable address
-                // and published semver — in case a mid-flight event was missed.
+                // Backfill from the summary in case a mid-flight event was missed.
                 for (const contract of e.summary.contracts) {
                     const existing = this.statuses.get(contract.crate);
                     if (!existing || (!contract.address && !contract.version)) continue;

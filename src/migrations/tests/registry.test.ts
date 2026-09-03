@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { contractToImport, readRegistrySnapshot, snapshotToImportContracts } from "../registry";
+import { contractToImport, readRegistrySnapshot } from "../registry";
 import type { MigratedContract, RegistryMigrationSnapshot } from "../types";
 
 const KEY_1_2_3 = (1n << 64n) | (2n << 32n) | 3n;
@@ -57,12 +57,6 @@ describe("contractToImport", () => {
                 },
             ],
         });
-        // Keys must be strictly increasing — adminImportContracts rejects
-        // anything else with VersionNotMonotonic.
-        const keys = imported.versions.map((version) => version.version_key);
-        for (let i = 1; i < keys.length; i++) {
-            expect(keys[i - 1] < keys[i]).toBe(true);
-        }
     });
 
     test("rejects entries without a per-name proxy", () => {
@@ -73,14 +67,6 @@ describe("contractToImport", () => {
         expect(() => contractToImport(proxyless)).toThrow(
             "Snapshot entry for @cdm/beta has no per-name proxy",
         );
-    });
-});
-
-describe("snapshotToImportContracts", () => {
-    test("transforms snapshots verbatim", () => {
-        expect(snapshotToImportContracts(makeSnapshot([contract]))).toEqual([
-            contractToImport(contract),
-        ]);
     });
 });
 

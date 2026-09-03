@@ -29,8 +29,7 @@ import { runDeployWithUI, spinner } from "../lib/ui";
 
 const deploy = new Command("deploy")
     .description(
-        "Deploy and register contracts (publish versions come from each crate's " +
-            "Cargo.toml [package].version; already-published versions are skipped)",
+        "Deploy and register contracts at their declared versions; already-published versions are skipped",
     )
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
     .option("--bulletin-url <url>", "WebSocket URL for Bulletin chain")

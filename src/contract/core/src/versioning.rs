@@ -65,8 +65,7 @@ pub enum CallRoute {
     Malformed,
 }
 
-/// Classify raw calldata. Pure, alloc-free; the proxy's fallback delegates
-/// routing decisions here so the format is unit-testable off-host.
+/// Classify raw calldata.
 pub const fn route_calldata(input: &[u8]) -> CallRoute {
     if input.len() < 4
         || input[0] != MAGIC[0]
@@ -101,9 +100,8 @@ const fn meta_selector(signature: &[u8]) -> [u8; 4] {
     [hash[0], hash[1], hash[2], hash[3]]
 }
 
-/// `initialize(uint128,address)` = `0x3a67c2f8` — the entry point the registry
-/// calls on every initialization contract via `callCode`; byte-locked across
-/// the registry, the TS tooling, and every initialization ever compiled.
+/// `initialize(uint128,address)` = `0x3a67c2f8`, the entry point `callCode`
+/// delivers to every initialization contract.
 pub const INITIALIZE_SELECTOR: [u8; 4] = meta_selector(b"initialize(uint128,address)");
 
 /// Meta-call selectors. Queries are open; `publish`, `setMinSupported`,
@@ -114,8 +112,7 @@ pub mod meta {
 
     /// `publish(uint128,address)` = `0xc3853395` (admin).
     pub const PUBLISH: [u8; 4] = meta_selector(b"publish(uint128,address)");
-    /// `callCode(address,bytes)` = `0xd74c1f04` (admin) — delegate-call against
-    /// the proxy's storage, bubbling return/revert verbatim. Live while frozen.
+    /// `callCode(address,bytes)` = `0xd74c1f04` (admin; live while frozen).
     pub const CALL_CODE: [u8; 4] = meta_selector(b"callCode(address,bytes)");
     /// `setMinSupported(uint128)` = `0xe84411e5` (admin).
     pub const SET_MIN_SUPPORTED: [u8; 4] = meta_selector(b"setMinSupported(uint128)");
@@ -147,8 +144,8 @@ mod tests {
 
     #[test]
     fn magic_is_pinned() {
-        // Mirrored in TS (src/lib/contracts/src/proxy.ts) and, once consumer
-        // pinning lands, in pvm-cdm-macros. Changing it strands every proxy.
+        // Mirrored in src/lib/contracts/src/proxy.ts; changing it strands
+        // every proxy.
         assert_eq!(hex4(MAGIC), "a2264d53");
     }
 

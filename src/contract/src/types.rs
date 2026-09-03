@@ -20,14 +20,11 @@ pub struct ContractEntry {
     pub owner: Address,
 }
 
-// The old SDK encoded every multi-value return as ONE tuple output; the new
-// SDK flattens bare Rust tuples into N outputs, which changes the wire bytes
-// for dynamic returns (an extra leading offset word). The structs below
-// reproduce the old single-tuple format exactly, so one ABI decodes every
-// registry generation ever deployed. Do not replace them with bare tuples.
+// Multi-value returns must stay single-tuple outputs: bare Rust tuples
+// flatten to N outputs and change the wire bytes of dynamic returns, and
+// every deployed registry and released CLI decodes the tuple layout.
 
-/// `Option<Address>` in the registry's historical wire format:
-/// a single `(bool isSome, address value)` tuple output.
+/// `Option<Address>` as a single `(bool isSome, address value)` tuple.
 #[derive(Debug, PartialEq, Eq, SolType)]
 pub struct OptionalAddress {
     pub is_some: bool,
@@ -43,8 +40,7 @@ impl From<Option<Address>> for OptionalAddress {
     }
 }
 
-/// `Option<String>` in the registry's historical wire format:
-/// a single `(bool isSome, string value)` tuple output.
+/// `Option<String>` as a single `(bool isSome, string value)` tuple.
 #[derive(Debug, PartialEq, Eq, SolType)]
 pub struct OptionalString {
     pub is_some: bool,
@@ -60,8 +56,8 @@ impl From<Option<String>> for OptionalString {
     }
 }
 
-/// `getContracts` page in the historical wire format: a single
-/// `(uint32 total, ContractEntry[] entries)` tuple output.
+/// `getContracts` page as a single `(uint32 total, ContractEntry[] entries)`
+/// tuple.
 #[derive(Debug, PartialEq, Eq, SolType)]
 pub struct ContractPage {
     pub total: u32,
@@ -86,9 +82,8 @@ pub struct ImportContractVersion {
     pub metadata_uri: String,
 }
 
-/// A full contract history in an `adminImportContracts` payload. `proxy` is
-/// the name's already-deployed per-name proxy — import records state for
-/// disaster recovery, it never instantiates.
+/// A full contract history in an `adminImportContracts` payload; `proxy` is
+/// the name's live per-name proxy.
 #[derive(Debug, PartialEq, Eq, SolType)]
 pub struct ImportContract {
     pub contract_name: String,
@@ -105,9 +100,7 @@ pub struct VersionRecord {
     pub target: Address,
 }
 
-/// Owner, published version count, and per-name proxy for a registered name.
-/// `version_count == 0` means the name is unregistered; every registered
-/// name has a proxy.
+/// `version_count == 0` means unregistered; every registered name has a proxy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, SolType, SolStorage)]
 pub struct NamedContractInfo {
     pub owner: Address,

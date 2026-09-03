@@ -43,8 +43,8 @@ mod contract_registry {
 
     #[derive(pvm_contract_sdk::SolEvent)]
     pub struct Published {
-        /// Indexed (so only its keccak hash lands in the topic): `emit` is
-        /// not generated for events with dynamic non-indexed fields.
+        /// Indexed (topic = keccak of the name): the SDK generates no `emit`
+        /// for dynamic non-indexed fields.
         #[indexed]
         pub name: String,
         pub version_key: u128,
@@ -59,8 +59,7 @@ mod contract_registry {
         pub proxy: Address,
     }
 
-    /// A publish delivered its initialization: `init_target` was
-    /// delegate-called against the name's proxy storage, exactly once.
+    /// `init_target` was delegate-called against the name's proxy storage.
     #[derive(pvm_contract_sdk::SolEvent)]
     pub struct Initialized {
         #[indexed]
@@ -76,8 +75,7 @@ mod contract_registry {
         pub version_key: u128,
     }
 
-    /// The owner froze or unfroze the name's proxy (all delegation halts
-    /// while frozen — the pause switch for storage migrations).
+    /// The owner froze or unfroze the name's proxy.
     #[derive(pvm_contract_sdk::SolEvent)]
     pub struct ContractFrozenSet {
         #[indexed]
@@ -113,10 +111,9 @@ mod contract_registry {
         versions: Mapping<String, Mapping<u32, VersionRecord>>,
         /// name → version index → metadata URI (Bulletin/IPFS).
         metadata_uri_of: Mapping<String, Mapping<u32, String>>,
-        /// Mirror of each proxy's min-supported floor, for cheap reads.
+        /// Mirror of each proxy's min-supported floor.
         min_supported_of: Mapping<String, u128>,
-        /// Code hash of the per-name proxy blob (pre-uploaded per chain);
-        /// consumed by CREATE2 at first publish. Admin-settable.
+        /// Code hash of the (pre-uploaded) per-name proxy blob.
         proxy_code_hash: Lazy<[u8; 32]>,
         /// Fixed-slot admin state, shared with the registry proxy.
         #[slot(raw = IMPLEMENTATION_SLOT)]
@@ -163,9 +160,8 @@ mod contract_registry {
         #[pvm_contract_sdk::method]
         pub fn set_code(&mut self, new_implementation: Address) -> Result<(), Error> {
             self.require_admin()?;
-            // A codeless target would brick the registry address forever.
-            // On-chain only: MockHost has no way to seed code sizes, so the
-            // guard is exercised by the e2e suite instead of unit tests.
+            // A codeless target would brick the registry. MockHost cannot
+            // seed code sizes; the e2e suite covers this guard.
             #[cfg(target_arch = "riscv64")]
             if self.host().code_size(&new_implementation.0) == 0 {
                 return Err(BadImplementation.into());
@@ -184,9 +180,8 @@ mod contract_registry {
             self.implementation.get()
         }
 
-        /// Code hash of the per-name proxy blob used for future first
-        /// publishes. Existing proxies are unaffected — their code is fixed
-        /// at instantiation forever.
+        /// Per-name proxy blob for future first publishes; existing proxies
+        /// keep their code.
         #[pvm_contract_sdk::method]
         pub fn set_proxy_code_hash(&mut self, code_hash: [u8; 32]) -> Result<(), Error> {
             self.require_admin()?;
@@ -222,9 +217,9 @@ mod contract_registry {
             self.frozen.get()
         }
 
-        /// Import existing registry data into a fresh registry deployment.
-        /// Records state only — never instantiates proxies: pass the name's
-        /// live proxy address, or zero for a legacy (v1-era) history.
+        /// Import registry data into a fresh deployment. Records state only
+        /// — never instantiates proxies; every entry must carry the name's
+        /// live proxy.
         #[pvm_contract_sdk::method]
         pub fn admin_import_contracts(
             &mut self,
@@ -239,11 +234,10 @@ mod contract_registry {
 
         // ─── Publishing ──────────────────────────────────────────────────
 
-        /// Publish `version_key` of `contract_name`. The caller may publish
-        /// if the name is unregistered (registering it, becoming its owner)
-        /// or if they already own it. The first publish instantiates the
-        /// name's proxy; every publish must use a strictly greater key than
-        /// the last (legacy versions count as `0.0.(index + 1)`).
+        /// Publish `version_key` of `contract_name`. An unregistered name is
+        /// claimed by its first publisher; afterwards only the owner may
+        /// publish. The first publish instantiates the name's proxy; keys
+        /// must strictly increase.
         #[pvm_contract_sdk::method]
         pub fn publish(
             &mut self,
@@ -255,12 +249,10 @@ mod contract_registry {
             self.publish_internal(contract_name, version_key, target, metadata_uri, None)
         }
 
-        /// `publish` plus a one-shot initialization: once the version is
-        /// recorded and the proxy repointed, the proxy delegate-calls
-        /// `init_target` with `initialize(from, owner)` against its own storage
-        /// — `from` is the previously-latest key (0 on a first publish),
-        /// `owner` the name's owner. An initialization revert bubbles up and
-        /// rolls back the entire publish.
+        /// `publish`, then the proxy delegate-calls `init_target` with
+        /// `initialize(from, owner)` — `from` is the previously-latest key (0
+        /// on a first publish). An initialization revert rolls back the
+        /// whole publish.
         #[pvm_contract_sdk::method]
         pub fn publish_with_init(
             &mut self,
@@ -305,7 +297,6 @@ mod contract_registry {
                 return Err(Unauthorized.into());
             }
 
-            // Also the `from` an initialization receives (0 on a first publish).
             let previous_latest = self.latest_key(&contract_name, &info).unwrap_or(0);
             if previous_latest != 0 && version_key <= previous_latest {
                 return Err(VersionNotMonotonic {
@@ -362,10 +353,8 @@ mod contract_registry {
             Ok(())
         }
 
-        /// Raise the name's minimum supported version: versioned calls below
-        /// the floor revert `UnsupportedVersion` at the proxy. Owner-only,
-        /// monotonic, capped at the latest published key (enforced by the
-        /// proxy, whose errors bubble unchanged).
+        /// Raise the name's min-supported floor. Owner-only; monotonic and
+        /// capped at the latest key by the proxy, whose errors bubble.
         #[pvm_contract_sdk::method]
         pub fn set_min_supported(
             &mut self,
@@ -391,10 +380,9 @@ mod contract_registry {
             Ok(())
         }
 
-        /// Freeze the name's proxy: every plain and versioned call reverts
-        /// `ContractFrozen()` until `unfreezeContract`. Owner-only. The meta
-        /// plane and registry operations (including publish) stay live, so
-        /// the migration flow is freeze → publish → unfreeze → ratchet.
+        /// Freeze the name's proxy: plain and versioned calls revert
+        /// `ContractFrozen()` until `unfreezeContract`; publish still works.
+        /// Owner-only.
         #[pvm_contract_sdk::method]
         pub fn freeze_contract(&mut self, contract_name: String) -> Result<(), Error> {
             self.set_contract_frozen(contract_name, true)
@@ -407,10 +395,8 @@ mod contract_registry {
 
         // ─── Queries ─────────────────────────────────────────────────────
 
-        /// The name's stable address — its per-name proxy — as an
-        /// option-shaped `(bool isSome, address value)` tuple. This is the
-        /// hot path used by `cdm::import!` runtime lookups — its 64-byte
-        /// wire format is frozen.
+        /// The name's stable address (its proxy) as `(bool isSome, address)`.
+        /// `cdm::import!` hardcodes this 64-byte layout.
         #[pvm_contract_sdk::method]
         pub fn get_address(&self, contract_name: String) -> OptionalAddress {
             let info = self.info.get(&contract_name);
@@ -425,8 +411,7 @@ mod contract_registry {
                 .into()
         }
 
-        /// The name's per-name proxy, option-shaped. Alias of `getAddress`,
-        /// kept for tooling that asks the explicit question.
+        /// Alias of `getAddress`.
         #[pvm_contract_sdk::method]
         pub fn get_proxy(&self, contract_name: String) -> OptionalAddress {
             self.get_address(contract_name)
@@ -552,10 +537,8 @@ mod contract_registry {
             })
         }
 
-        /// CREATE2-instantiate the name's proxy: `salt = keccak256(name)`,
-        /// empty constructor input, so the address is a pure function of
-        /// (registry, name, proxy blob) and predictable offline. The proxy's
-        /// constructor pins its admin to the caller — this registry.
+        /// CREATE2 with `salt = keccak256(name)` and empty input: the address
+        /// is a pure function of (registry, name, proxy blob).
         fn instantiate_proxy(&mut self, contract_name: &String) -> Result<Address, Error> {
             let code_hash = self.proxy_code_hash.get();
             if code_hash == [0u8; 32] {
@@ -582,8 +565,7 @@ mod contract_registry {
             Ok(Address(address))
         }
 
-        /// Register a version with the name's proxy over the CDM meta wire
-        /// format (`[MAGIC][key=0][publish][key word][impl word]`).
+        /// `[MAGIC][key=0][publish][key word][impl word]`.
         fn call_proxy_publish(&mut self, proxy: &Address, version_key: u128, target: &Address) {
             let mut calldata = meta_header(meta::PUBLISH);
             calldata.extend_from_slice(&word_u128(version_key));
@@ -591,10 +573,8 @@ mod contract_registry {
             self.call_proxy(proxy, &calldata);
         }
 
-        /// Deliver an initialization into the name's proxy storage:
         /// `callCode(init_target, [initialize selector][from word][owner word])`
-        /// over the meta wire format, canonical ABI `bytes` framing (offset
-        /// 0x40, length, payload zero-padded to a word boundary).
+        /// with canonical ABI `bytes` framing (offset 0x40, length, zero-padded).
         fn call_proxy_init(
             &mut self,
             proxy: &Address,
@@ -640,8 +620,7 @@ mod contract_registry {
             Ok(())
         }
 
-        /// Call the proxy, bubbling its revert (e.g. `VersionNotMonotonic`,
-        /// `MinAboveLatest`) unchanged so publishers see the precise error.
+        /// Call the proxy, bubbling its revert unchanged.
         fn call_proxy(&mut self, proxy: &Address, calldata: &[u8]) {
             let host = self.host();
             let result = host.call_evm(
@@ -750,13 +729,8 @@ mod contract_registry {
     }
 }
 
-/// Host-side unit tests for the ContractRegistry implementation.
-///
-/// Method-level tests call the typed methods directly on a `MockHost`-backed
-/// contract; dispatch-level tests drive `route()` with ABI calldata to lock
-/// the wire format — in particular the exact `getAddress(string)` layout the
-/// `cdm::import!` macro (`pvm-cdm-macros`) hardcodes against, and the CDM
-/// meta calldata the registry sends to per-name proxies.
+/// Method-level tests call typed methods on a `MockHost`; dispatch-level
+/// tests drive `route()` with ABI calldata to lock the wire format.
 #[cfg(test)]
 mod tests {
     use super::contract_registry::{self, ContractRegistry};
@@ -802,9 +776,8 @@ mod tests {
         ContractRegistry::with_host(mock.clone())
     }
 
-    /// Deploy: construct against a fresh host and run the constructor, so the
-    /// deployer becomes admin. The instantiate mock is staged so first
-    /// publishes can create proxies, and the proxy code hash is configured.
+    /// Constructed by `caller` (the admin), instantiate mock staged, proxy
+    /// code hash set.
     fn deployed(caller: [u8; 20]) -> (ContractRegistry, MockHost) {
         let mock = host_with_caller(caller);
         mock.mock_instantiate(PROXY, vec![]);
@@ -814,9 +787,7 @@ mod tests {
         (contract, mock)
     }
 
-    /// "Next transaction from another account": `MockHost` fixes the caller at
-    /// build time, so rebuild the host with the new caller and carry the full
-    /// storage across.
+    /// Same storage, different caller (MockHost fixes the caller at build).
     fn fork_with_caller(mock: &MockHost, caller: [u8; 20]) -> (ContractRegistry, MockHost) {
         let next = host_with_caller(caller);
         next.mock_instantiate(PROXY, vec![]);
@@ -1043,8 +1014,7 @@ mod tests {
         );
 
         // Only the version registration went to the proxy — no second
-        // instantiation (a second ProxyCreated event would also fail the
-        // event assertions in `publish_emits_events_per_version`).
+        // instantiation.
         assert_eq!(
             mock.take_recorded_calls(),
             vec![(
@@ -1133,8 +1103,7 @@ mod tests {
             Err(ContractNameTooLong.into())
         );
 
-        // Exhaustive name-grammar coverage lives in contract-registry-core; one
-        // case per rejection shape is enough here.
+        // Name grammar is covered in contract-registry-core.
         for name in ["cdm/registry", "@cdm"] {
             assert_eq!(
                 contract.publish(name.into(), V1_0_0, Address(ADDR_1), URI_1.into()),
@@ -1823,12 +1792,10 @@ mod tests {
 
     // ─── Dispatch-level ABI lock ─────────────────────────────────────────────
     //
-    // `cdm::import!` (src/lib/cdm/rust-macros/pvm-cdm-macros/src/lib.rs) bakes
-    // the `getAddress(string)` selector into consumer contracts and assumes the
-    // return is exactly 64 bytes: word0 = bool at byte 31, word1 = address at
-    // bytes 44..64. These tests pin that wire contract.
+    // `pvm-cdm-macros` bakes the `getAddress(string)` selector into consumer
+    // contracts and reads exactly 64 bytes back: bool at byte 31, address at
+    // bytes 44..64.
 
-    /// Output buffer for `route()`; generous so dynamic returns always fit.
     const OUT_LEN: usize = 4096;
 
     fn encode<T: SolEncode>(value: &T) -> Vec<u8> {
@@ -1837,9 +1804,7 @@ mod tests {
         buf
     }
 
-    /// Full `getAddress(string)` calldata with exactly the layout `cdm_lookup`
-    /// emits: selector, 32-byte offset (0x20), 32-byte length, name bytes padded
-    /// to a 32-byte boundary.
+    /// `getAddress(string)` calldata exactly as `cdm_lookup` emits it.
     fn cdm_lookup_calldata(name: &str) -> Vec<u8> {
         let name_len = name.len();
         let padded_len = name_len.div_ceil(32) * 32;
@@ -1851,7 +1816,6 @@ mod tests {
         calldata
     }
 
-    /// Route full calldata (selector-prefixed) and return the encoded result.
     fn route_calldata(contract: &mut ContractRegistry, calldata: &[u8]) -> Vec<u8> {
         let mut selector = [0u8; 4];
         selector.copy_from_slice(&calldata[..4]);
@@ -1891,12 +1855,9 @@ mod tests {
         assert_eq!(data, [0u8; 64], "isSome byte 31 must be 0, address zeroed");
     }
 
-    // The pre-proxy registry (old SDK line) encoded every multi-value return
-    // as ONE tuple output, which for dynamic returns carries a leading offset
-    // word. Every deployed registry and released CLI speaks that format, so
-    // these tests freeze it byte-for-byte. Do not "simplify" the return
-    // structs back to bare Rust tuples — that flattens the outputs and
-    // silently changes these bytes.
+    // Multi-value returns are ONE tuple output (a leading offset word for
+    // dynamic returns). Every deployed registry and released CLI decodes this
+    // layout; bare Rust tuples would flatten it.
     #[test]
     fn get_metadata_uri_wire_format_matches_legacy_tuple_encoding() {
         let (mut contract, _mock) = deployed(ALICE);
@@ -1951,8 +1912,6 @@ mod tests {
 
     #[test]
     fn every_abi_selector_dispatches() {
-        // Locks the camelCase ABI renames: each canonical signature must route to
-        // a method (`Outcome::Return`), never fall through as `Unhandled`.
         let (mut contract, _mock) = deployed(ADMIN);
         let name = String::from(NAME);
 
@@ -1962,8 +1921,7 @@ mod tests {
                 encode(&(name.clone(), V1_0_0, Address(ADDR_1), String::from(URI_1))),
             ),
             (
-                // V2_0_0: runs after the publish case above, so the key must
-                // stay monotonic for the call to dispatch cleanly.
+                // V2_0_0: must stay monotonic after the publish case above.
                 "publishWithInit(string,uint128,address,string,address)",
                 encode(&(
                     name.clone(),

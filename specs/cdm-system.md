@@ -3,7 +3,7 @@
 **Status**
 
 - **Rust / PVM**: implemented end-to-end (build · deploy · publish metadata · register · install · consume).
-- **Foundry / Hardhat**: first-pass build + deploy pipeline implemented. Solidity bytecode/ABI is normalized before deploy; `/// @custom:cdm @org/name` supplies the registry package name.
+- **Foundry / Hardhat**: build + deploy pipeline implemented against pallet-revive's EVM backend (plain solc output, no resolc). `/// @custom:cdm @org/name:X.Y.Z` supplies the registry package name and publish version.
 - **TypeScript SDK**: migrating from `@parity/cdm-codegen` to `@parity/product-sdk-contracts` (targets `pallet-revive` directly, not Ink). Old SDK to be deprecated once parity is reached.
 
 ## System map
@@ -16,14 +16,14 @@ A CDM package name is a globally unique identifier resolved by an on-chain regis
 
 ![Toolchain matrix](./assets/cdm-toolchain-matrix.svg)
 
-All three toolchains produce PolkaVM bytecode (Solidity via `resolc`, Rust via `cargo pvm-contract build`). Each toolchain adapter is allowed to know its own build output shape. The adapter output is normalized into a CDM build record containing the package name, bytecode path, ABI/artifact path, source path, toolchain, and display metadata. Deploy consumes those records uniformly; it should not branch on Rust vs Foundry vs Hardhat once build output has been normalized.
+Rust produces PolkaVM bytecode (`cargo pvm-contract build`); Foundry and Hardhat produce EVM bytecode for pallet-revive's EVM backend. Each toolchain adapter is allowed to know its own build output shape. The adapter output is normalized into a CDM build record containing the package name, bytecode path, ABI/artifact path, source path, toolchain, and display metadata. Deploy consumes those records uniformly; it should not branch on Rust vs Foundry vs Hardhat once build output has been normalized.
 
 Current Solidity conventions:
 
-- **`cdmPackage` source** — NatSpec immediately before the concrete contract declaration: `/// @custom:cdm @org/name`.
+- **`cdmPackage` + version source** — NatSpec immediately before the concrete contract declaration: `/// @custom:cdm @org/name:X.Y.Z`.
 - **Artifact lookup** — Foundry uses `forge config --json` for `out`; Hardhat uses configured `paths.artifacts` when statically readable, then validates artifacts by shape. Artifacts are matched to detected contracts by source file + Solidity contract name, not by contract name alone.
 - **Metadata source** — first pass uses project-level `package.json`, root README, and git remote. More precise per-contract metadata conventions are still open.
-- **Deploy + register** — all package-bearing contracts publish metadata to Bulletin and call `Registry.publish_latest(...)` in the same deploy/register flow.
+- **Deploy + register** — all package-bearing contracts publish metadata to Bulletin and call `Registry.publish(...)` in the same deploy/register flow.
 
 ## Publish pipeline
 
@@ -44,7 +44,7 @@ proxySalt  = keccak256(cdmPackage)                     # derived on-chain by the
 proxyAddr  = create2_address(registry, proxySalt, keccak256(proxyBlob))
 ```
 
-Implementation addresses are per-version throwaways; the proxy address is the name's permanent address, a pure function of `(registry, name, frozen proxy blob)` — predictable offline, identical on every chain that runs the same registry address and proxy-blob generation. The registry itself is the special CREATE3 case, deployed under the package-only salt `blake2b-256("@cdm/registry.2")`.
+Implementation addresses are per-version throwaways; the proxy address is the name's permanent address, a pure function of `(registry, name, frozen proxy blob)`. The registry itself is deployed via CREATE3 under the package-only salt `blake2b-256("@cdm/registry.2")`.
 
 The metadata blob composition is in the right panel of the publish-pipeline diagram. Two non-obvious fields: `publish_block` is set to Asset Hub's head at submit time; `published_at` is the deployer's wall clock at submit time.
 
@@ -52,16 +52,16 @@ The metadata blob composition is in the right panel of the publish-pipeline diag
 
 ![ContractRegistry — state machine, storage, queries](./assets/cdm-registry.svg)
 
-The registry is a `pallet-revive` contract on Asset Hub, CREATE2-deployed under `@cdm/registry.2`. It is split into an EIP-1967 proxy (the stable registry address, supporting admin `setCode` upgrades and `freeze`) and a delegate-called implementation contract that holds the logic. Registry addresses are environment-scoped and resolved through `@parity/cdm-env` (`getRegistryAddress(name)`, defaulting to Paseo); custom environments can still pass `--registry-address`. `cdm.json.registry` records the registry used for the installed snapshot.
+The registry is a `pallet-revive` contract on Asset Hub, CREATE3-deployed under `@cdm/registry.2`. It is split into an EIP-1967 proxy (the stable registry address, supporting admin `setCode` upgrades and `freeze`) and a delegate-called implementation contract that holds the logic. Registry addresses are environment-scoped and resolved through `@parity/cdm-env` (`getRegistryAddress(name)`, defaulting to Paseo); custom environments can still pass `--registry-address`. `cdm.json.registry` records the registry used for the installed snapshot.
 
-Beyond its catalog role the registry is a **factory**: the first publish of a name CREATE2-instantiates that name's proxy (`contract-proxy`, a frozen blob whose code hash the registry stores), which permanently owns the name's address, storage, and balance. Versions are implementation contracts the proxy delegate-calls, so every version runs against the same state and the name's address never changes again. The proxy reserves no selectors — plain calls pass through to the latest implementation untouched; a `[magic][versionKey]` calldata prefix routes to an exact version; and a `[magic][0][selector]` meta plane serves CDM queries and the registry-only admin operations (`publish`, `setMinSupported`, `setAdmin`).
+Beyond its catalog role the registry is a **factory**: the first publish of a name CREATE2-instantiates that name's proxy (`contract-proxy`, a frozen blob whose code hash the registry stores), which permanently owns the name's address, storage, and balance. Versions are implementation contracts the proxy delegate-calls, so every version runs against the same state and the name's address never changes again. The proxy reserves no selectors — plain calls pass through to the latest implementation untouched; a `[magic][versionKey]` calldata prefix routes to an exact version; and a `[magic][0][selector]` meta plane serves CDM queries and the registry-only admin operations (`publish`, `callCode`, `setMinSupported`, `freeze`/`unfreeze`, `setAdmin`).
 
 Key invariants:
 
 - **First-write-wins ownership.** First publisher of a name becomes its owner. Subsequent calls revert unless `caller == info[name].owner`.
 - **Monotonic semver.** Versions are semver triples packed as `major<<64 | minor<<32 | patch` (u128). No overwrite, no delete, no yank: every publish must be strictly greater than the last, so the registry's version list is append-only sorted. Old versions remain queryable — and, behind the proxy, callable — indefinitely.
 - **Min-supported ratchet.** A name's owner can raise (never lower) a floor version; versioned calls below it revert `UnsupportedVersion` at the proxy. This is the explicit escape hatch for incompatible reshapes: stale pinned consumers get a precise error instead of silent corruption. Plain (latest) calls are unaffected.
-- **Initializations.** A publish may carry a one-shot initialization: `publishWithInit(name, key, target, cid, initTarget)` records the version as usual, then has the proxy delegate-call `initTarget` with `initialize(from, owner)` (`from` = the previously-latest key, 0 on a first publish) via the admin-only `callCode` meta op. The initialization runs against the proxy's storage exactly once; a revert rolls back the entire publish. `callCode` stays live while the proxy is frozen, so the freeze → publish+initialize → unfreeze window works. Initialization contracts are never registered versions, so their selectors are unreachable through the plain/versioned planes — `callCode` is the only path in, and it is registry-gated.
+- **Initializations.** `publishWithInit(name, key, target, cid, initTarget)` records the version, then the proxy delegate-calls `initTarget` with `initialize(from, owner)` (`from` = the previously-latest key, 0 on a first publish) via the admin-only `callCode` meta op. A revert rolls back the entire publish. `callCode` stays live while frozen. Initialization contracts are never registered versions; `callCode` is the only path in.
 - **Org prefixes are not reserved.** Anyone can claim `@polkadot/foo` if no one else has. Org-level access control (e.g., OpenGov-owned `@polkadot/*`) is an open design question.
 
 The Storage struct and query surface (`get_address`, `get_metadata_uri`, `get_owner`, `get_proxy`, `get_latest_key`, `get_min_supported`, `get_version_count`, `get_version_at`, `get_contract_count`, enumeration via `get_contract_name_at`) are in the right pane of the diagram.
@@ -77,7 +77,7 @@ The Storage struct and query surface (`get_address`, `get_metadata_uri`, `get_ow
 3. **Save artifacts** — write `{abi, metadata, info}.json` under project `.cdm/contracts/<pkg>/<semver>/` and update the `latest` symlink.
 4. **Post-install hooks** — TypeScript: `generateContractTypes` writes `.cdm/contracts.d.ts`. Rust: `cdm::import!()` reads the ABI embedded in `cdm.json` and can materialize the project-local ABI artifact needed by `abi_import!`.
 
-Finally `cdm.json.contracts[pkg]` is updated with `{ version: "1.2.3", address, abi, metadataCid }` — `address` is the name's stable address (`getAddress`), so it survives future publishes — and `cdm.json.registry` records the registry address used by install. The inlined ABI makes builds reproducible and browser-importable; the pinned version pins against future `latest` drift (today `cdm::import!` still calls latest at runtime; calldata-prefix pinning for Rust consumers lands when the upstream SDK grows a call preamble). Account data remains under user-level CDM state, but installed contract artifacts are project-local.
+Finally `cdm.json.contracts[pkg]` is updated with `{ version: "1.2.3", address, abi, metadataCid }` — `address` is the name's stable address (`getAddress`) — and `cdm.json.registry` records the registry address used by install. `cdm::import!` calls the latest version at runtime; Rust consumers cannot pin a version yet. Account data remains under user-level CDM state; installed contract artifacts are project-local.
 
 ## Consumption
 

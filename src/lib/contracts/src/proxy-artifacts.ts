@@ -4,41 +4,27 @@ import { fileURLToPath } from "url";
 import { keccakCodeHash } from "./create3";
 
 /**
- * Frozen artifact for the per-name CDM proxy (`contract-proxy`, see
- * src/contract/proxy/). The registry CREATE2-instantiates one proxy per
- * contract name from this blob at first publish — under pallet-revive,
- * `address = create2(registry, keccak(blob), keccak(name))` — so the blob
- * bytes are part of every FUTURE per-name address. Like the CREATE3
- * artifacts, the blob is committed and hash-pinned: rebuilding it moves every
- * address the registry would derive from then on (existing proxies keep
- * their code and address forever).
- *
- * Regenerate deliberately with `bun run src/lib/scripts/freeze-proxy-artifact.ts`.
+ * Frozen per-name proxy blob (`contract-proxy`). Every future per-name
+ * address is `create2(registry, keccak(blob), keccak(name))`, so rebuilding
+ * the blob moves every address the registry derives from then on. Regenerate
+ * only with `bun run src/lib/scripts/freeze-proxy-artifact.ts`.
  */
 
-/** Repo-relative directory holding the frozen per-name proxy artifact. */
 export const CONTRACT_PROXY_ARTIFACTS_DIR = "src/contract/proxy/artifacts";
 
-/**
- * keccak-256 of the committed `contract-proxy.polkavm` blob — the code hash
- * the registry's `setProxyCodeHash` is fed and every per-name CREATE2 address
- * commits to. Embedded as a constant so address predictions work without a
- * repo checkout; the in-source tests assert it agrees with
- * `artifacts/manifest.json` and with the blob bytes themselves.
- */
+/** keccak-256 of the committed blob; the tests pin it to the manifest and the bytes. */
 export const CONTRACT_PROXY_CODE_HASH =
     "0x9c918a8b6fb50007becfcf66fdbc2ceed18060b3a75f6721669601083a542e86";
 
-/** The frozen per-name proxy blob loaded from the repo, hash-verified. */
 export interface FrozenContractProxyArtifact {
     bytes: Uint8Array;
-    /** keccak-256 of `bytes` — the pallet-revive code hash, 0x-prefixed. */
+    /** keccak-256 of `bytes`, 0x-prefixed. */
     codeHash: `0x${string}`;
 }
 
 type ProxyManifestEntry = { codeHash?: unknown };
 
-/** Load + hash-verify the committed per-name proxy blob (`contract-proxy.polkavm`). */
+/** Load and hash-verify the committed per-name proxy blob. */
 export function loadContractProxyArtifact(rootDir: string): FrozenContractProxyArtifact {
     const fileName = "contract-proxy.polkavm";
     const dir = resolve(rootDir, CONTRACT_PROXY_ARTIFACTS_DIR);
@@ -46,8 +32,7 @@ export function loadContractProxyArtifact(rootDir: string): FrozenContractProxyA
     const blobPath = resolve(dir, fileName);
     if (!existsSync(manifestPath) || !existsSync(blobPath)) {
         throw new Error(
-            `Frozen per-name proxy artifact ${fileName} not found under ${dir}. ` +
-                "The committed artifacts ship with the contract-dependency-manager repo — " +
+            `Frozen per-name proxy artifact ${fileName} not found under ${dir} — ` +
                 "run the registry deploy from a repo checkout.",
         );
     }
@@ -65,9 +50,7 @@ export function loadContractProxyArtifact(rootDir: string): FrozenContractProxyA
     if (actual !== expected) {
         throw new Error(
             `Frozen per-name proxy artifact ${fileName} does not match its manifest hash ` +
-                `(manifest ${expected}, blob ${actual}). The frozen blob is part of every ` +
-                "future per-name proxy address and must never be rebuilt casually — " +
-                "restore the committed bytes.",
+                `(manifest ${expected}, blob ${actual}) — restore the committed bytes.`,
         );
     }
     return { bytes, codeHash: actual };
@@ -76,7 +59,6 @@ export function loadContractProxyArtifact(rootDir: string): FrozenContractProxyA
 if (import.meta.vitest) {
     const { describe, test, expect } = import.meta.vitest;
 
-    // src/lib/contracts/src -> repo root is 4 levels up.
     const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 
     describe("frozen contract-proxy artifact", () => {

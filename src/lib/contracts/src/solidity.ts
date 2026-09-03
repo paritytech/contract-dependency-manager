@@ -174,12 +174,7 @@ interface SolidityContractDefinition {
     repository: string | null;
 }
 
-/**
- * `@custom:cdm @org/name[:X.Y.Z]` — the CDM package name, optionally suffixed
- * with the publish version (same colon convention as `cdm i @org/name:1.2.1`;
- * package names can never contain `:`). The version is captured loosely here —
- * semver validation stays centralized in the deploy pipeline.
- */
+/** `@custom:cdm @org/name[:X.Y.Z]`; the version is validated by the deploy pipeline. */
 const CDM_NATSPEC_RE = /@custom:cdm\s+(@[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+)(?::(\S+))?/;
 
 function blankBlockComments(source: string): string {
@@ -465,10 +460,8 @@ function extractInheritingContracts(source: string): Array<{ name: string; bases
 }
 
 /**
- * Attach each target's initializations from
  * `initializations/<ContractName>/<version>.sol`: the directory names the
- * contract, and the file must declare exactly one contract inheriting it
- * (inheritance is what guarantees the shared storage layout).
+ * contract; the file must declare exactly one contract inheriting it.
  */
 function attachSolidityInitializations(targets: SolidityBuildTarget[]): SolidityBuildTarget[] {
     const targetsByDir = new Map<string, SolidityBuildTarget[]>();
@@ -515,9 +508,7 @@ function attachSolidityInitializations(targets: SolidityBuildTarget[]): Solidity
                 );
                 if (inheritors.length === 0) {
                     throw new Error(
-                        `${file.path} must contain a contract inheriting ` +
-                            `${target.contractName} — inheriting the contract it initializes ` +
-                            `is what gives an initialization the same storage layout.`,
+                        `${file.path} must contain a contract inheriting ${target.contractName}.`,
                     );
                 }
                 if (inheritors.length > 1) {
@@ -842,9 +833,8 @@ function collectJsonFiles(
 }
 
 function isHardhatArtifact(artifact: SolidityArtifactJson): boolean {
-    // "hh-sol-artifact-" is upstream hardhat's format — what
-    // @parity/hardhat-polkadot emits in EVM mode (`polkadot: { target: "evm" }`
-    // or no polkadot flag). "hh-resolc-artifact-" is its resolc/PolkaVM mode.
+    // "hh-sol-artifact-": upstream hardhat / EVM mode; "hh-resolc-artifact-":
+    // @parity/hardhat-polkadot resolc mode.
     return (
         typeof artifact._format === "string" &&
         (artifact._format.startsWith("hh-sol-artifact-") ||
@@ -966,10 +956,8 @@ export async function buildSolidityToolchain(
     artifacts: SolidityBuildArtifact[];
     missing: SolidityBuildTarget[];
 }> {
-    // Solidity contracts target pallet-revive's EVM backend: plain upstream
-    // builds producing EVM bytecode (no resolc). The chain distinguishes EVM
-    // initcode from PolkaVM blobs by magic bytes at upload, so the deploy
-    // path is shared.
+    // Plain upstream builds: pallet-revive's EVM backend runs EVM bytecode
+    // (no resolc), and the deploy path is shared with PolkaVM blobs.
     const command =
         toolchain === "foundry"
             ? { cmd: "forge", args: ["build"] }
@@ -1005,19 +993,14 @@ export async function buildSolidityToolchain(
     return { result, artifacts, missing };
 }
 
-/** A deployable initialization artifact selected from the toolchain's output. */
 export interface SolidityInitializationArtifact {
-    /** Normalized raw-bytecode blob (same shape the deployer consumes). */
+    /** Normalized raw-bytecode blob. */
     bytecodePath: string;
-    /** The toolchain artifact JSON — carries the ABI and storage layout. */
+    /** The toolchain artifact JSON (ABI + storage layout). */
     artifactPath: string;
 }
 
-/**
- * Select the already-built toolchain artifact for one initialization contract
- * (by contract name + source path) and write its normalized bytecode blob
- * under `normalizedName`.
- */
+/** Select the built artifact for one initialization contract and write its normalized bytecode. */
 export function findSolidityInitializationArtifact(
     rootDir: string,
     toolchain: SolidityToolchain,
@@ -1158,12 +1141,10 @@ if (import.meta.vitest) {
             const targets = detectSolidityBuildTargets(root);
             const byName = new Map(targets.map((target) => [target.contractName, target]));
 
-            // The suffix never leaks into the package name.
             expect(byName.get("CounterA")?.cdmPackage).toBe("@example/counter-a");
             expect(byName.get("CounterA")?.version).toBe("1.2.3");
             expect(byName.get("CounterB")?.cdmPackage).toBe("@example/counter-b");
             expect(byName.get("CounterB")?.version).toBe("4.5.6");
-            // A tag without the suffix still detects — just with no version.
             expect(byName.get("CounterC")?.cdmPackage).toBe("@example/counter-c");
             expect(byName.get("CounterC")?.version).toBeUndefined();
         });
@@ -1338,7 +1319,6 @@ if (import.meta.vitest) {
             writeFileSync(join(root, "src", "Counter.sol"), "contract CounterA {}\n");
             writeFileSync(
                 join(root, "build-artifacts", "src", "Counter.sol", "CounterA.json"),
-                // Upstream hardhat format — what EVM-mode compiles emit.
                 JSON.stringify({
                     _format: "hh-sol-artifact-1",
                     contractName: "CounterA",
@@ -1461,12 +1441,10 @@ if (import.meta.vitest) {
             const targets = detectSolidityBuildTargets(root);
             const byName = new Map(targets.map((target) => [target.contractName, target]));
 
-            // The initialization contract is never a deploy target.
             expect(targets.map((target) => target.contractName).sort()).toEqual([
                 "CounterA",
                 "CounterB",
             ]);
-            // The directory name routes the file to CounterA only.
             expect(byName.get("CounterA")?.initializations).toEqual([
                 {
                     version: "0.2.0",

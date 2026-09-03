@@ -1,30 +1,19 @@
 import type { AbiEntry, AbiParam } from "@parity/product-sdk-contracts";
 
 /**
- * ABIs for the ContractRegistry contract pair.
+ * Hand-mirrored ABIs of `src/contract` (implementation) and
+ * `src/contract/registry-proxy`, matching `target/release/*.abi.json` from
+ * `cargo pvm-contract build`; `tests/registry-abi-sync.test.ts` diffs them
+ * against the built artifacts when those exist.
  *
- * Source of truth: `src/contract` (implementation) and
- * `src/contract/registry-proxy` (EIP-1967 proxy) compiled to PolkaVM; these arrays mirror the Solidity-ABI
- * exports produced by `cargo pvm-contract build`
- * (`target/release/contract-registry.abi.json` and
- * `target/release/contract-registry-proxy.abi.json`). Keep them bit-for-bit
- * identical to the generated metadata — `tests/registry-abi-sync.test.ts`
- * compares them against the built artifacts when those exist.
+ * `CONTRACTS_REGISTRY_ABI` is used at the proxy address; the proxy's own ABI
+ * is only needed to deploy it (`constructor(address implementation, address
+ * admin)`).
  *
- * The proxy holds the stable registry address and delegate-forwards every
- * call to the implementation, so `CONTRACTS_REGISTRY_ABI` (the
- * implementation's ABI) is used AT THE PROXY ADDRESS. The proxy's own ABI is
- * only needed to deploy it (`constructor(address implementation)`).
- *
- * Multi-value returns use the HISTORICAL single-tuple wire encoding — each
- * such function has ONE unnamed tuple-typed output with named components —
- * matching every already-deployed registry so old CLIs keep decoding.
- *
- * Naming note: where the generated JSON names a tuple component `is_some`,
- * this file uses the historical `isSome` (product-sdk keys decoded objects by
- * component name and every consumer reads `isSome`/`value`). Names are
- * display/decode keys only — types, structure, and order are bit-exact with
- * the generated ABI.
+ * Multi-value returns are ONE unnamed tuple output with named components.
+ * Where the generated JSON says `is_some`, this file keeps `isSome` —
+ * product-sdk keys decoded objects by component name and every consumer
+ * reads `isSome`/`value`; types, structure, and order stay bit-exact.
  */
 
 /** Generated-ABI entry shape: `AbiEntry` plus the event-only fields. */
@@ -581,9 +570,5 @@ const REGISTRY_PROXY_ABI: RegistryAbiEntry[] = [
     { type: "error", name: "NonPayableValueReceived", inputs: [] },
 ];
 
-/**
- * ABI of the EIP-1967 proxy that fronts the registry. Deploy-time only: the
- * proxy exposes no methods of its own — call the registry through
- * `CONTRACTS_REGISTRY_ABI` at the proxy address.
- */
+/** Deploy-time only: the proxy exposes no methods of its own. */
 export const CONTRACTS_REGISTRY_PROXY_ABI: AbiEntry[] = REGISTRY_PROXY_ABI;

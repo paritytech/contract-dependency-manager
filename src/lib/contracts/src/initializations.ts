@@ -21,12 +21,7 @@ export interface InitializationFile {
     path: string;
 }
 
-/**
- * A contract's initialization files: `<dir>/initializations/X.Y.Z{ext}`. Other
- * extensions are ignored; a malformed version with the right extension throws.
- * Solidity nests a per-contract directory instead and scans it with
- * {@link listVersionAddressedFiles} directly.
- */
+/** `<contractDir>/initializations/X.Y.Z{ext}`. */
 export function listInitializationFiles(
     contractDir: string,
     extension: ".rs" | ".sol",
@@ -35,9 +30,8 @@ export function listInitializationFiles(
 }
 
 /**
- * Scan one directory (non-recursively) for strict `X.Y.Z{ext}` version files.
- * The per-contract scope: for Rust this is `<crate>/initializations/`, for
- * Solidity `initializations/<ContractName>/`.
+ * Strict `X.Y.Z{ext}` files directly in `dir`; other extensions are ignored,
+ * a malformed version with the right extension throws.
  */
 export function listVersionAddressedFiles(
     dir: string,
@@ -51,7 +45,7 @@ export function listVersionAddressedFiles(
     )) {
         if (!entry.isFile() || !entry.name.endsWith(extension)) continue;
         const raw = basename(entry.name, extension);
-        // Canonical spellings only, so a version can never appear twice.
+        // Canonical spelling only, so a version cannot appear twice.
         let key: bigint | undefined;
         try {
             key = semverToKey(raw);
@@ -59,8 +53,7 @@ export function listVersionAddressedFiles(
         if (key === undefined || raw !== keyToSemver(key)) {
             throw new Error(
                 `Malformed initialization filename "${entry.name}" in ${dir} — ` +
-                    `initializations are version-addressed: name the file exactly ` +
-                    `"X.Y.Z${extension}" for the version it initializes.`,
+                    `initializations are version-addressed: "X.Y.Z${extension}".`,
             );
         }
         files.push({ version: raw, key, path: join(dir, entry.name) });
@@ -115,11 +108,7 @@ function describeEntry(entry: StorageLayoutEntry): string {
     )}, ${String(entry.type)})`;
 }
 
-/**
- * Compare the implementation's storage layout against its initialization's:
- * `slot`, `offset`, and `type` must agree row by row. Labels are decode-side
- * names only, so they appear in problems but never fail the comparison alone.
- */
+/** `slot`, `offset`, and `type` must agree row by row; labels never fail the comparison. */
 export function compareStorageLayouts(implLayout: unknown, initLayout: unknown): LayoutComparison {
     const impl = layoutEntries(implLayout);
     const init = layoutEntries(initLayout);

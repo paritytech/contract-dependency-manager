@@ -1,16 +1,6 @@
-// End-to-end per-name proxy validation against a local PPN (product-preview-net).
-//
-// This is the suite that proves the versioned-proxy model does what it
-// promises: one stable address per name, multiple implementation versions
-// live simultaneously behind it, all sharing one storage. It publishes the
-// shared-counter template blob twice (two distinct implementation addresses,
-// same code), then interleaves plain calls (latest), versioned calls (exact
-// version via the `[MAGIC][key]` calldata prefix), CDM meta queries, and the
-// min-supported ratchet — asserting throughout that every route reads and
-// writes the SAME counter.
-//
-// Wire-format helpers come from `@parity/cdm-builder`'s proxy.ts, so this
-// suite also locks TS-side encoding against the deployed Rust end to end.
+// Per-name proxy e2e against a local PPN: the shared-counter blob is
+// published twice as two versions of one name, then plain, versioned, and
+// meta calls must all read and write the same counter.
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import { readFileSync } from "node:fs";
@@ -175,8 +165,6 @@ beforeAll(async () => {
         { defaultSigner: signer, defaultOrigin: ALICE_SS58 },
     );
 
-    // Two instances of the counter blob: distinct implementation addresses,
-    // identical code — versions 1.0.0 and 1.1.0 of the same contract.
     implA = await deployBlob(api, signer, COUNTER_PVM);
     implB = await deployBlob(api, signer, COUNTER_PVM);
 }, 300_000);
@@ -228,8 +216,6 @@ describe("multiple versions over one storage", () => {
     });
 
     test("plain call now routes to the new implementation — same state", async () => {
-        // The counter written through implA continues through implB: the
-        // storage belongs to the proxy, not to either implementation.
         const r = await counter.increment.tx();
         expect(r.ok).toBe(true);
 
@@ -240,7 +226,6 @@ describe("multiple versions over one storage", () => {
     test("a versioned call executes the OLD implementation on the same state", async () => {
         await rawCallTx(proxyAddress, encodeVersionedCall(KEY_1_0_0, INCREMENT));
 
-        // Written via 1.0.0 (implA), read via latest (implB): one counter.
         const count = await counter.getCount.query();
         expect(Number(count.value)).toBe(3);
     });
@@ -273,7 +258,6 @@ describe("meta plane", () => {
         const implOf = await dryRunCall(proxyAddress, encodeProxyImplOf(KEY_1_0_0));
         expect(implOf.data).toBe(`0x${addressWord(implA)}`);
 
-        // The registry (proxy address) is the admin — it instantiated it.
         const admin = await dryRunCall(proxyAddress, encodeProxyAdmin());
         expect(admin.data).toBe(`0x${addressWord(registryAddress)}`);
 
@@ -282,8 +266,6 @@ describe("meta plane", () => {
     });
 
     test("meta admin ops from a non-registry caller revert", async () => {
-        // Alice calls publish straight at the proxy (not through the
-        // registry) — the proxy's admin is the registry, so this must revert.
         const r = await dryRunCall(
             proxyAddress,
             encodeProxyPublish(packVersionKey(2, 0, 0), implA),

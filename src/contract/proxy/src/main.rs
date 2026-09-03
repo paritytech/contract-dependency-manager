@@ -1,20 +1,16 @@
-//! Per-name CDM proxy.
+//! Per-name CDM proxy: one instance per published name, owning the name's
+//! stable address, storage, and balance. Versions are implementation
+//! contracts it delegate-calls against that single storage. It declares no
+//! methods; the only reserved calldata is the `MAGIC`-prefixed CDM wire
+//! format (`contract_registry_core::versioning`):
 //!
-//! One instance of this contract is deployed by the registry for every
-//! published name. It owns the name's stable address, its storage, and its
-//! balance; semver versions are implementation contracts it delegate-calls,
-//! so every version runs against this single storage. The proxy declares no
-//! methods — the contract's own ABI passes through untouched — and reserves
-//! exactly one calldata pattern, the `MAGIC`-prefixed CDM wire format
-//! (`contract_registry_core::versioning`):
-//!
-//! - plain calldata → delegate to the latest implementation;
-//! - `[MAGIC][version key]…` → delegate to that exact version;
+//! - plain calldata → the latest implementation;
+//! - `[MAGIC][version key]…` → that exact version;
 //! - `[MAGIC][0][meta selector]…` → CDM queries and registry-only admin ops.
 //!
-//! The registry instantiates the proxy with no constructor input (keeping the
-//! CREATE2 address a pure function of registry, name, and this blob) and
-//! becomes its admin as the instantiation caller.
+//! Instantiated by the registry with no constructor input (the CREATE2
+//! address must be a pure function of registry, name, and blob); the
+//! instantiation caller becomes admin.
 
 #![cfg_attr(all(not(feature = "abi-gen"), not(test)), no_main, no_std)]
 
@@ -35,9 +31,8 @@ mod contract_proxy {
     };
     use pvm_contract_sdk::{Address, CallFlags, HostApi, Lazy, Mapping, SolError};
 
-    /// EIP-1967 standard event, emitted on every publish (the latest
-    /// implementation is this proxy's EIP-1967 implementation), so
-    /// proxy-aware tooling sees upgrades without knowing about CDM.
+    /// EIP-1967 `Upgraded`, emitted on every publish: the latest
+    /// implementation is this proxy's EIP-1967 implementation.
     #[derive(pvm_contract_sdk::SolEvent)]
     pub struct Upgraded {
         #[indexed]
@@ -74,8 +69,8 @@ mod contract_proxy {
     #[derive(Debug, PartialEq, Eq, SolError)]
     pub struct InvalidImplementation;
 
-    /// Magic-prefixed calldata too short for any CDM form, or meta args that
-    /// don't decode.
+    /// Magic-prefixed calldata too short for any CDM form, or undecodable
+    /// meta args.
     #[derive(Debug, PartialEq, Eq, SolError)]
     pub struct MalformedCall;
 
@@ -97,13 +92,12 @@ mod contract_proxy {
         pub latest: u128,
     }
 
-    /// Call arrived before the first publish (only possible inside the
-    /// registry's first-publish transaction).
+    /// Call arrived before the first publish.
     #[derive(Debug, PartialEq, Eq, SolError)]
     pub struct NoVersions;
 
-    /// The owner has frozen the contract: no calls are delegated until
-    /// `unfreeze`. The meta plane keeps answering.
+    /// Frozen: nothing is delegated until `unfreeze`; the meta plane still
+    /// answers.
     #[derive(Debug, PartialEq, Eq, SolError)]
     pub struct ContractFrozen;
 
@@ -125,33 +119,28 @@ mod contract_proxy {
 
     pub struct ContractProxy {
         /// No ordinary fields: slots 0.. belong to the implementations'
-        /// storage, reached through `delegate_call`. Everything the proxy
-        /// owns lives at fixed pseudo-random slots.
+        /// storage. Everything the proxy owns lives at fixed slots.
         #[slot(raw = IMPLEMENTATION_SLOT)]
         latest_impl: Lazy<Address>,
         #[slot(raw = ADMIN_SLOT)]
         admin: Lazy<Address>,
-        /// Floor version key; versioned calls below it revert
-        /// `UnsupportedVersion`. Zero = no floor.
+        /// Floor version key; zero = no floor.
         #[slot(raw = MIN_SUPPORTED_SLOT)]
         min_supported: Lazy<u128>,
-        /// Latest published key, for the monotonic publish check and the
-        /// `latest()` meta query. Zero before the first publish.
+        /// Latest published key; zero before the first publish.
         #[slot(raw = LATEST_KEY_SLOT)]
         latest_key: Lazy<u128>,
-        /// Owner-controlled freeze: while set, nothing is delegated —
-        /// the pause switch for storage migrations.
+        /// While set, nothing is delegated.
         #[slot(raw = PROXY_FROZEN_SLOT)]
         frozen: Lazy<bool>,
-        /// Version key → implementation, the routing table.
+        /// Version key → implementation.
         #[slot(raw = IMPL_OF_SLOT)]
         impl_of: Mapping<u128, Address>,
     }
 
     impl ContractProxy {
-        /// No arguments: the CREATE2 address must be a pure function of
-        /// (registry, name, blob), and the registry — the instantiation
-        /// caller — is exactly the admin we want.
+        /// No arguments: the CREATE2 address must not depend on constructor
+        /// input; the instantiation caller (the registry) becomes admin.
         #[pvm_contract_sdk::constructor]
         pub fn new(&mut self) {
             let mut caller = [0u8; 20];
@@ -159,8 +148,7 @@ mod contract_proxy {
             self.admin.set(&Address(caller));
         }
 
-        /// The proxy declares no methods, so every call lands here. Payable:
-        /// implementations may take value, which accrues to this address.
+        /// Every call lands here. Payable: value accrues to this address.
         #[pvm_contract_sdk::fallback]
         #[pvm_contract_sdk::payable]
         pub fn fallback(&mut self) -> Result<(), Error> {
@@ -219,8 +207,7 @@ mod contract_proxy {
             }
             host.return_value(&output);
 
-            // `return_value` diverges on-chain; on host targets (unit tests)
-            // it records the payload and control returns here.
+            // `return_value` diverges on-chain; the host `MockHost` returns.
             #[cfg(not(target_arch = "riscv64"))]
             Ok(())
         }
@@ -259,8 +246,8 @@ mod contract_proxy {
                     self.respond(&[])
                 }
                 meta::CALL_CODE => {
-                    // Not behind `require_unfrozen`: the freeze →
-                    // publish-with-initialization → unfreeze window needs it.
+                    // Live while frozen: the freeze → publish+init → unfreeze
+                    // window depends on it.
                     self.require_admin()?;
                     let target = address_arg(args, 0)?;
                     if target == Address::ZERO {
@@ -361,7 +348,6 @@ mod contract_proxy {
             Ok(())
         }
 
-        /// Return ABI-encoded meta output; mirrors `delegate`'s divergence.
         fn respond(&self, data: &[u8]) -> Result<(), Error> {
             self.host().return_value(data);
             #[cfg(not(target_arch = "riscv64"))]
@@ -436,9 +422,8 @@ mod contract_proxy {
     }
 }
 
-/// Host-side unit tests. Everything goes through `fallback()` with staged
-/// calldata — exactly how calls arrive on-chain — so these lock the wire
-/// format as well as the behavior.
+/// Everything goes through `fallback()` with staged calldata, so these lock
+/// the wire format as well as the behavior.
 #[cfg(test)]
 mod tests {
     use super::contract_proxy::{ContractProxy, Error};
@@ -512,9 +497,8 @@ mod tests {
 
     // ─── Host plumbing ───────────────────────────────────────────────────
 
-    /// A proxy freshly constructed by `caller`, with `calldata` staged for
-    /// `fallback()` and `storage` carried over from a previous host (the
-    /// MockHost caller/calldata are fixed at build time).
+    /// A proxy with `calldata` staged for `fallback()` and `storage` carried
+    /// over from a previous host (MockHost caller/calldata are fixed at build).
     fn proxy_call(
         caller: [u8; 20],
         calldata: Vec<u8>,
@@ -536,8 +520,6 @@ mod tests {
         (proxy, mock)
     }
 
-    /// Run one fallback invocation against carried-over storage and return
-    /// the resulting host for further chaining.
     fn run(
         caller: [u8; 20],
         calldata: Vec<u8>,
@@ -548,8 +530,7 @@ mod tests {
         (result, mock)
     }
 
-    /// A proxy with versions published (as the registry would immediately
-    /// after instantiation). Returns the host carrying the state.
+    /// A proxy with `versions` published by the registry.
     fn published(versions: &[(u128, [u8; 20])]) -> MockHost {
         let (_proxy, mut mock) = proxy_call(REGISTRY, vec![], None);
         for (key, implementation) in versions {
@@ -628,8 +609,6 @@ mod tests {
 
     #[test]
     fn empty_calldata_routes_to_latest() {
-        // Bare transfers / receive-style calls pass through to the latest
-        // implementation's own no-selector handling.
         let state = published(&[(V1_0_0, IMPL_1)]);
         let (_proxy, mock) = proxy_call(STRANGER, vec![], Some(&state));
         mock.mock_call(IMPL_1, Ok(vec![]));
@@ -781,9 +760,8 @@ mod tests {
     fn publish_rejects_invalid_keys_and_zero_impl() {
         let (_proxy, mock) = proxy_call(REGISTRY, vec![], None);
 
-        // Key zero is the reserved meta namespace... and also unreachable by
-        // construction (key 0 routes as a meta call), so a high-bits key is
-        // the observable invalid-key case.
+        // Key 0 routes as a meta call, so a high-bits key is the reachable
+        // invalid key.
         let bad_key = 1u128 << 96;
         let (result, _m) = run(
             REGISTRY,
@@ -1066,7 +1044,6 @@ mod tests {
 
     #[test]
     fn call_code_works_before_first_publish() {
-        // callCode must not depend on a latest implementation existing.
         let state = published(&[]);
         let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &[0x01]));
         let (mut proxy, mock) = proxy_call(REGISTRY, calldata, Some(&state));

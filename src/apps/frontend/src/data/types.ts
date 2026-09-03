@@ -31,7 +31,7 @@ export interface Package {
     versions?: { version: string; date: string }[];
     abi?: AbiEntry[];
     address?: string;
-    /** Per-name proxy (the name's stable address); unset for legacy names. */
+    /** Per-name proxy (the name's stable address). */
     proxyAddress?: string;
     /** Lowest still-supported semver version; unset when no floor is set. */
     minSupportedVersion?: string;

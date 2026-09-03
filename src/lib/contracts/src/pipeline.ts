@@ -73,11 +73,7 @@ async function queryRegistryLatestKeys(
     return new Map(entries);
 }
 
-/**
- * The name's STABLE address from `registry.getAddress` — its per-name proxy.
- * This is the address consumers call and the one baked into generated
- * imports; the per-version implementation address is a registry detail.
- */
+/** The name's stable address (`registry.getAddress`) — its per-name proxy. */
 async function queryRegistryStableAddress(
     contract: Contract<ContractDef>,
     pkg: string,
@@ -101,13 +97,7 @@ function versionSource(contract: ContractInfo): string {
         : "the crate's Cargo.toml [package].version";
 }
 
-/**
- * A deployable contract's publish version — Rust crates declare it in
- * Cargo.toml `[package].version`, Solidity contracts as the `:X.Y.Z` suffix
- * of the `@custom:cdm` NatSpec tag. Strict `X.Y.Z` only — anything else (or
- * a missing version) is a configuration error worth failing the whole deploy
- * for before any build starts.
- */
+/** The contract's declared publish version; strict `X.Y.Z` or the deploy aborts. */
 function resolveContractVersion(contract: ContractInfo): { version: string; key: bigint } {
     const raw = contract.version;
     if (raw === undefined || raw === "") {
@@ -240,14 +230,9 @@ export type DeployEvent =
     | { type: "check-needs-deploy"; crate: string; address: HexString }
     | {
           /**
-           * The crate's Cargo.toml version key is ≤ the registry's latest for
-           * its CDM package, so the contract is already published — it is
-           * skipped entirely (no build, no deploy, no metadata publish) and
-           * lands in the summary with status `"up-to-date"`.
-           *
-           * `version` is the local crate semver, `latest` the on-chain latest
-           * semver, and `address` the name's stable address
-           * (`registry.getAddress`) when it resolved.
+           * The declared version is ≤ the registry's latest: the contract is
+           * skipped entirely. `address` is the name's stable address when it
+           * resolved.
            */
           type: "check-up-to-date";
           crate: string;
@@ -324,10 +309,8 @@ export type DeployEvent =
     | { type: "deploy-register-start"; crates: string[] }
     | {
           /**
-           * One per landed chunk. `addresses` are the chunk's on-chain
-           * instantiations — the per-version IMPLEMENTATION contracts. The
-           * name-level address consumers should call arrives afterwards in
-           * `stable-addresses` (and in the summary).
+           * One per landed chunk. `addresses` are the per-version
+           * implementations; the stable addresses follow in `stable-addresses`.
            */
           type: "deploy-register-done";
           addresses: Record<string, HexString>;
@@ -336,13 +319,7 @@ export type DeployEvent =
           durationMs: number;
       }
     | {
-          /**
-           * Fired once per layer after its whole deploy+register batch
-           * confirms, mapping each crate to its STABLE address from
-           * `registry.getAddress` — the per-name proxy created by the
-           * registry on first publish. This is the address baked into
-           * generated imports and reported in the summary.
-           */
+          /** Once per layer after its batch confirms: crate → stable address (`registry.getAddress`). */
           type: "stable-addresses";
           addresses: Record<string, HexString>;
       }
@@ -361,12 +338,9 @@ export interface DeploySummary {
     contracts: Array<{
         crate: string;
         cdmPackage?: string;
-        /**
-         * The name's STABLE address (`registry.getAddress`) — the per-name
-         * proxy for v2 names — not the per-version implementation.
-         */
+        /** The name's stable address (`registry.getAddress`), not the implementation. */
         address?: HexString;
-        /** Crate semver: the version published, or already on-chain for `"up-to-date"`. */
+        /** The version published, or already on-chain for `"up-to-date"`. */
         version?: string;
         cid?: string;
         status: "done" | "cached" | "up-to-date" | "error";
@@ -963,11 +937,7 @@ function readAbiEntries(path: string | undefined): AbiEntry[] {
     return [];
 }
 
-/**
- * The `storageLayout` object from the same generated `.abi.json` artifact
- * `readAbiEntries` parses. Optional in the published metadata — toolchains
- * without layout output (and pre-layout artifacts) simply omit it.
- */
+/** The artifact's `storageLayout`, if the toolchain emitted one. */
 function readStorageLayout(path: string | undefined): unknown {
     if (!path || !existsSync(path)) return undefined;
     try {
@@ -976,7 +946,7 @@ function readStorageLayout(path: string | undefined): unknown {
             return (parsed as { storageLayout?: unknown }).storageLayout;
         }
     } catch {
-        // ignore — metadata publishes without a layout
+        // unreadable artifact: publish without a layout
     }
     return undefined;
 }
@@ -992,11 +962,9 @@ function abiFunctionSignature(entry: AbiEntry): string {
 }
 
 /**
- * ABI function signatures whose 4-byte selector equals `magic` (`PROXY_MAGIC`
- * in production; injectable only because no signature colliding with the real
- * magic is known to test with). Calldata starting with those bytes is claimed
- * by the per-name proxy's versioned/meta plane, so a colliding method is
- * unreachable through the proxy's plain (latest-version) call path.
+ * Function signatures whose selector equals `magic`: the proxy claims that
+ * prefix, so such a method is unreachable through plain calls. `magic` is
+ * injectable because no known signature collides with the real one.
  */
 function findProxyMagicCollisions(abi: AbiEntry[], magic: string = PROXY_MAGIC): string[] {
     return abi
@@ -1012,10 +980,8 @@ function findProxyMagicCollisions(abi: AbiEntry[], magic: string = PROXY_MAGIC):
 }
 
 /**
- * Build (Rust, via the shim crate) or select (Solidity) an initialization's
- * artifact, then run the storage-layout guard: a mismatch refuses the deploy
- * (a drifted layout would corrupt the proxy's storage); missing layout data
- * warns and proceeds.
+ * Build (Rust) or select (Solidity) the initialization artifact, then run the
+ * storage-layout guard: mismatch refuses the deploy, missing data warns.
  */
 async function resolveInitializationArtifact(
     rootDir: string,
@@ -1132,18 +1098,13 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
 /**
  * Full pipeline: for each dependency layer, build then deploy/register.
  *
- *  1. Resolve each CDM-annotated crate's publish version from its Cargo.toml
- *     `[package].version` (strict `X.Y.Z`) and compare its packed version key
- *     against the registry's `getLatestKey`. Crates whose key is ≤ the
- *     on-chain latest are already published: they're marked `"up-to-date"`
- *     and skipped entirely, which makes `cdm deploy` idempotent. The semver
- *     is included in each CREATE2 salt so repeated publishes get fresh
- *     implementation addresses instead of colliding with previous versions.
+ *  1. Resolve each contract's declared version; keys ≤ the registry's
+ *     `getLatestKey` are `"up-to-date"` and skipped. The semver is part of
+ *     each CREATE2 salt so every publish gets a fresh implementation address.
  *  2. Publish metadata to Bulletin (1 tx per CDM crate) AND
  *  3. Deploy + `registry.publish(name, versionKey, address, metadataUri)` on
- *     AssetHub in one `Utility.batch_all`. A first publish makes the registry
- *     instantiate the name's per-name proxy — the name's permanent address —
- *     which is resolved via `getAddress` after the batch confirms.
+ *     AssetHub in one `Utility.batch_all`; the name's stable address is read
+ *     back via `getAddress` after the batch confirms.
  *
  *  2 and 3 run in parallel per layer — CIDs are precomputed locally from the
  *  metadata bytes (`computeCid`) so the on-chain registration extrinsic
@@ -1219,17 +1180,8 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
         };
         let { contractMap, cdmPackageMap } = buildContractIndexes(opts.rootDir, detected, build);
 
-        // ---- 3. resolve crate versions + skip already-published versions ----
-        //
-        // Version source of truth is each crate's Cargo.toml [package].version
-        // (Rust) or the @custom:cdm tag's :X.Y.Z suffix (Solidity); an
-        // invalid or missing version is a configuration error that aborts
-        // the deploy before anything is built or submitted. A crate whose
-        // packed key is not strictly greater than the registry's latest for
-        // its package is already published — it's marked "up-to-date" and
-        // excluded from every later phase, making `cdm deploy` idempotent.
-        // (`getLatestKey` returns 0 for unregistered names, so fresh names
-        // always deploy.)
+        // ---- 3. resolve versions + skip already-published ones ----
+        // `getLatestKey` returns 0 for unregistered names.
         const versionedContracts = contracts.filter((contract) => contract.cdmPackage);
         const versionByCrate = new Map<string, { version: string; key: bigint }>();
         for (const contract of versionedContracts) {
@@ -1260,8 +1212,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                         contract.cdmPackage!,
                     );
                 } catch {
-                    // Diagnostic only — the version is known published, so a
-                    // failed address read must not fail an otherwise no-op run.
+                    // diagnostic only; must not fail a no-op run
                 }
                 return { contract, resolved, latest, stableAddress };
             }),
@@ -1566,11 +1517,8 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     }),
                 ]);
 
-                // The batch instantiated per-version IMPLEMENTATIONS; the
-                // address consumers call is the name's stable address (the
-                // per-name proxy the registry created on first publish).
-                // Resolve it now that the publishes have landed and bake THAT
-                // into the generated Solidity imports and the summary.
+                // The batch instantiated implementations; consumers get the
+                // name's stable address.
                 const stableAddresses = await Promise.all(
                     deployables.map((deployable) =>
                         queryRegistryStableAddress(registryContract, deployable.cdmPackage),
@@ -1795,11 +1743,7 @@ if (import.meta.vitest) {
         return `0x${sum.toString(16).padStart(40, "a")}`;
     }
 
-    /**
-     * Fake registry handle: `getLatestKey` answers from `latestKeys` (0n =
-     * unregistered, the on-chain default), `getAddress` resolves each
-     * package's deterministic stable address.
-     */
+    /** `getLatestKey` answers from `latestKeys` (0n = unregistered). */
     function makeRegistryMock(latestKeys: Record<string, bigint> = {}) {
         return {
             getLatestKey: {
@@ -2102,14 +2046,11 @@ if (import.meta.vitest) {
                 ],
                 outputs: [],
             };
-            // transfer(address,uint256) → 0xa9059cbb, standing in for the magic
-            // to exercise the collision path.
+            // transfer(address,uint256) → 0xa9059cbb stands in for the magic.
             expect(findProxyMagicCollisions([transfer, sweep], "0xa9059cbb")).toEqual([
                 "transfer(address,uint256)",
             ]);
-            // Tuples expand to canonical component lists before hashing.
             expect(abiFunctionSignature(sweep)).toBe("sweep((address,uint256)[])");
-            // Nothing in an ordinary ABI collides with the real magic.
             expect(findProxyMagicCollisions([transfer, sweep])).toEqual([]);
         });
     });
@@ -2203,8 +2144,7 @@ if (import.meta.vitest) {
                 "publish-done",
             ]);
 
-            // Addresses come from planDeploy's prepared entries (one dry-run
-            // per contract — the mocked plan assigns 0x…01, 0x…02).
+            // The mocked plan assigns 0x…01, 0x…02.
             const checkEvents = events.filter((event) => event.type === "check-needs-deploy");
             expect(checkEvents).toEqual([
                 {
@@ -2479,8 +2419,7 @@ if (import.meta.vitest) {
             expect(planCalls[0][4]).toEqual(expectedInits);
             expect(batchOpts[0]).toMatchObject({ inits: expectedInits });
 
-            // The mocked artifacts carry no storage layout — verification is
-            // impossible, which must warn loudly instead of silently passing.
+            // The mocked artifacts carry no storage layout.
             const warning = events.find(
                 (event) =>
                     event.type === "log" && event.line.includes("WITHOUT layout verification"),
