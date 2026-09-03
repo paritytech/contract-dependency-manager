@@ -1067,11 +1067,10 @@ mod tests {
     #[test]
     fn call_code_works_before_first_publish() {
         // callCode must not depend on a latest implementation existing.
-        let (_proxy, mock) = proxy_call(REGISTRY, vec![], None);
+        let state = published(&[]);
         let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &[0x01]));
-        let (_proxy, mock) = proxy_call(REGISTRY, calldata, Some(&mock));
+        let (mut proxy, mock) = proxy_call(REGISTRY, calldata, Some(&state));
         mock.mock_call(INIT_1, Ok(vec![]));
-        let mut proxy = ContractProxy::with_host(mock.clone());
         assert!(proxy.fallback().is_ok());
         assert_eq!(mock.take_recorded_calls(), vec![(INIT_1, vec![0x01])]);
     }
