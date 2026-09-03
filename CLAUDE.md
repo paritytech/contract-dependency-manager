@@ -38,6 +38,7 @@ src/
       src/publisher.ts         #   Metadata publishing to Bulletin chain
       src/pipeline.ts          #   Deploy pipeline (build → plan → publish), registry queries
       src/install.ts           #   Install-time version resolution + registry queries
+      src/initializations.ts   #   Version-addressed initializations: file parsing, publish matching, layout guard
       src/proxy.ts             #   Per-name proxy wire format (versioned/meta calls, semver keys)
       src/abi/registry.ts      #   Hand-mirrored registry + registry-proxy ABIs
       src/builder.ts           #   Cargo build wrapper (cargo pvm-contract build)
@@ -147,6 +148,8 @@ Entry: `src/apps/cli/src/cli.ts` (Commander.js)
 **Shared imports**: CLI imports from `@parity/cdm-builder` (detection, deployer, publisher, pipeline, install, proxy, builder, cid, store, cdm-json), `@parity/cdm-env` (connection, signer, KNOWN_CHAINS, getChainPreset), `@parity/cdm-codegen`, and `@parity/cdm-utils` (all constants, stringifyBigInt). All constants (`ALICE_SS58`, `GAS_LIMIT`, `STORAGE_DEPOSIT_LIMIT`, `CONTRACTS_REGISTRY_CRATE`, `DEFAULT_NODE_URL`) live in `@parity/cdm-utils`.
 
 **Versioning**: a contract's version comes from its crate's `Cargo.toml` `package.version` (strict `X.Y.Z`); `cdm deploy` is idempotent — versions at or below the registry's latest are skipped as up-to-date. Install specs are `latest`, exact semver, or npm-style ranges (`^1.2`), resolved to one exact published version.
+
+**Initializations**: addressed by (contract, version) — Rust `<crate>/initializations/<version>.rs` (built manifest-free via a generated shim crate), Solidity `initializations/<Contract>/<version>.sol` (directory routes, inheritance validates). The matching file deploys with its version's publish and runs `initialize(uint128,address)` once, atomically, in proxy storage; a deploy-time storage-layout guard refuses mismatched initializations.
 
 **Install command**: `cdm install` writes the registry snapshot to flat `cdm.json` (semver version string + the name's stable address) and saves ABI/metadata artifacts to project-local `.cdm/contracts/<name>/<semver>/`. User account data still lives under `~/.cdm/accounts.json`. The install command implementation is split across subfiles: `index.ts`, `typescript.ts`, `rust.ts`.
 
