@@ -1,5 +1,6 @@
 export {
     type ContractInfo,
+    type ContractInitialization,
     type ContractToolchain,
     type DeploymentOrder,
     type DeploymentOrderLayered,
@@ -15,12 +16,25 @@ export {
 } from "./detection";
 
 export {
+    INITIALIZATIONS_DIR,
+    type InitializationFile,
+    type InitializationMatch,
+    type LayoutComparison,
+    compareStorageLayouts,
+    listInitializationFiles,
+    listVersionAddressedFiles,
+    matchInitialization,
+} from "./initializations";
+
+export {
     type BuildSolidityToolchainOptions,
     type SolidityBuildArtifact,
     type SolidityBuildTarget,
+    type SolidityInitializationArtifact,
     type SolidityToolchain,
     buildSolidityToolchain,
     detectSolidityBuildTargets,
+    findSolidityInitializationArtifact,
     extractFoundryBytecode,
     extractHardhatBytecode,
     hasBuildableSolidityProject,
@@ -55,6 +69,9 @@ export {
 export {
     type BuildResult,
     type BuildProgressCallback,
+    type RustInitializationBuild,
+    buildRustInitialization,
+    generateInitializationManifest,
     pvmContractBuild,
     pvmContractBuildAsync,
 } from "./builder";
@@ -66,6 +83,8 @@ export {
     type WeightLike,
     type DeployPlan,
     type DeploySaltVersion,
+    type InitDeployRequest,
+    type PreparedDeploy,
     ContractDeployer,
     computeDeploySalt,
     chunkByWeight,
@@ -114,6 +133,8 @@ export { computeCid } from "./cid";
 export { CONTRACTS_REGISTRY_ABI, CONTRACTS_REGISTRY_PROXY_ABI } from "./abi/registry";
 
 export {
+    INITIALIZE_SELECTOR,
+    INITIALIZE_SIGNATURE,
     META_HEADER_LEN,
     META_KEY,
     PROXY_ERROR_SIGNATURES,
@@ -125,7 +146,9 @@ export {
     decodeAddressWord,
     decodeU128Word,
     decodeVersionPair,
+    encodeInitialize,
     encodeProxyAdmin,
+    encodeProxyCallCode,
     encodeProxyImplOf,
     encodeProxyLatest,
     encodeProxyMinSupported,

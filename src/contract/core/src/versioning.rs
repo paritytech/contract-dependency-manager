@@ -101,13 +101,22 @@ const fn meta_selector(signature: &[u8]) -> [u8; 4] {
     [hash[0], hash[1], hash[2], hash[3]]
 }
 
-/// Meta-call selectors. Queries are open; `publish`, `setMinSupported`, and
-/// `setAdmin` require the caller to be the proxy's admin (the registry).
+/// `initialize(uint128,address)` = `0x3a67c2f8` — the entry point the registry
+/// calls on every initialization contract via `callCode`; byte-locked across
+/// the registry, the TS tooling, and every initialization ever compiled.
+pub const INITIALIZE_SELECTOR: [u8; 4] = meta_selector(b"initialize(uint128,address)");
+
+/// Meta-call selectors. Queries are open; `publish`, `setMinSupported`,
+/// `setAdmin`, and `callCode` require the caller to be the proxy's admin
+/// (the registry).
 pub mod meta {
     use super::meta_selector;
 
     /// `publish(uint128,address)` = `0xc3853395` (admin).
     pub const PUBLISH: [u8; 4] = meta_selector(b"publish(uint128,address)");
+    /// `callCode(address,bytes)` = `0xd74c1f04` (admin) — delegate-call against
+    /// the proxy's storage, bubbling return/revert verbatim. Live while frozen.
+    pub const CALL_CODE: [u8; 4] = meta_selector(b"callCode(address,bytes)");
     /// `setMinSupported(uint128)` = `0xe84411e5` (admin).
     pub const SET_MIN_SUPPORTED: [u8; 4] = meta_selector(b"setMinSupported(uint128)");
     /// `setAdmin(address)` = `0x704b6c02` (admin).
@@ -144,8 +153,14 @@ mod tests {
     }
 
     #[test]
+    fn initialize_selector_is_pinned() {
+        assert_eq!(hex4(INITIALIZE_SELECTOR), "3a67c2f8");
+    }
+
+    #[test]
     fn meta_selectors_are_pinned() {
         assert_eq!(hex4(meta::PUBLISH), "c3853395");
+        assert_eq!(hex4(meta::CALL_CODE), "d74c1f04");
         assert_eq!(hex4(meta::SET_MIN_SUPPORTED), "e84411e5");
         assert_eq!(hex4(meta::SET_ADMIN), "704b6c02");
         assert_eq!(hex4(meta::FREEZE), "62a5af3b");

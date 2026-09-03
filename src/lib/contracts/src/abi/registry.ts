@@ -147,6 +147,19 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
+        name: "publishWithInit",
+        inputs: [
+            { name: "contract_name", type: "string" },
+            { name: "version_key", type: "uint128" },
+            { name: "target", type: "address" },
+            { name: "metadata_uri", type: "string" },
+            { name: "init_target", type: "address" },
+        ],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
         name: "setMinSupported",
         inputs: [
             { name: "contract_name", type: "string" },
@@ -383,6 +396,11 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
         inputs: [],
     },
     {
+        type: "error",
+        name: "InvalidInitTarget",
+        inputs: [],
+    },
+    {
         type: "event",
         name: "Published",
         inputs: [
@@ -415,6 +433,28 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
             },
             {
                 name: "proxy",
+                type: "address",
+                indexed: false,
+            },
+        ],
+        anonymous: false,
+    },
+    {
+        type: "event",
+        name: "Initialized",
+        inputs: [
+            {
+                name: "name",
+                type: "string",
+                indexed: true,
+            },
+            {
+                name: "version_key",
+                type: "uint128",
+                indexed: false,
+            },
+            {
+                name: "init_target",
                 type: "address",
                 indexed: false,
             },

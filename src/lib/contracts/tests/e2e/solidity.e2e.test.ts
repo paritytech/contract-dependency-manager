@@ -14,12 +14,24 @@
 //    dependency's stable address;
 //  - the NatSpec version gates deploys end to end: redeploys skip as
 //    up-to-date, a tag bump republished behind the same proxy keeps storage,
-//    and `[MAGIC][key]` versioned calls pin the older version over it.
+//    and `[MAGIC][key]` versioned calls pin the older version over it;
+//  - initializations: the template's `initializations/CounterA/0.1.0.sol`
+//    (rewritten in the temp copy to set a sentinel count) runs once inside
+//    the first publish, and a reverting initialization rolls the whole
+//    publish back.
 //
 // Requires a running PPN and `forge` (foundry-polkadot fork) on PATH.
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+    cpSync,
+    mkdirSync,
+    mkdtempSync,
+    readdirSync,
+    readFileSync,
+    rmSync,
+    writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -169,6 +181,11 @@ beforeAll(async () => {
         ["../.cdm/solidity/example/counter-a.sol", `../${GENERATED_A.path}`],
         ["ExampleCounterA", LIB_A],
     ]);
+    // The template initialization is a demonstrative no-op (count = 0); give
+    // this copy an observable sentinel so "did it run" is provable on-chain.
+    rewrite(join(projectDir, "contracts", "initializations", "CounterA", "0.1.0.sol"), [
+        ["count = 0;", "count = 100;"],
+    ]);
 }, 300_000);
 
 afterAll(async () => {
@@ -192,6 +209,12 @@ describe("deploying the foundry template", () => {
         expect(detected.get(NAME_B)?.dependsOnCrates).toEqual([NAME_A]);
         expect(detect.layers).toEqual([[NAME_A], [NAME_B]]);
 
+        // The template ships initializations/CounterA/0.1.0.sol — the
+        // pipeline announces it for exactly this publish; CounterB has none.
+        const initEvents = events.filter((event) => event.type === "initialization");
+        expect(initEvents).toHaveLength(1);
+        expect(initEvents[0]).toMatchObject({ crate: NAME_A, version: "0.1.0" });
+
         const contracts = byCrate(summary);
         expect(contracts.get(NAME_A)).toMatchObject({ status: "done", version: "0.1.0" });
         expect(contracts.get(NAME_B)).toMatchObject({ status: "done", version: "0.1.0" });
@@ -210,8 +233,9 @@ describe("deploying the foundry template", () => {
 
     test("the built artifacts are EVM bytecode, not PolkaVM blobs", () => {
         const outDir = join(projectDir, "target", "cdm", "foundry");
+        // CounterA, CounterB, and CounterA's 0.1.0 initialization.
         const artifacts = readdirSync(outDir);
-        expect(artifacts.length).toBe(2);
+        expect(artifacts.length).toBe(3);
         for (const artifact of artifacts) {
             const bytes = readFileSync(join(outDir, artifact));
             expect(bytes.length).toBeGreaterThan(0);
@@ -219,23 +243,30 @@ describe("deploying the foundry template", () => {
         }
     });
 
+    test("the initialization ran once inside the publish: sentinel count is set", async () => {
+        // The rewritten initializations/CounterA/0.1.0.sol wrote the sentinel
+        // into CounterA's count slot — through the proxy's storage, delivered
+        // by the registry's callCode meta op.
+        expect(await countOf(proxyA)).toBe(100n);
+    });
+
     test("a plain call through the PolkaVM proxy executes the EVM implementation", async () => {
         // THE cross-VM assertion: proxyA is a PolkaVM contract delegate-
         // calling solc-built EVM bytecode over the proxy's own storage.
-        expect(await countOf(proxyA)).toBe(0n);
+        expect(await countOf(proxyA)).toBe(100n);
         await rawCallTx(api, signer, proxyA, INCREMENT);
-        expect(await countOf(proxyA)).toBe(1n);
+        expect(await countOf(proxyA)).toBe(101n);
     });
 
     test("an EVM contract calls its dependency through the dependency's proxy", async () => {
         // The layer-two build baked proxyA's stable address into CounterB's
         // generated import: EVM (B) → PolkaVM proxy (A) → EVM (A).
         await rawCallTx(api, signer, proxyB, INCREMENT_A);
-        expect(await countOf(proxyA)).toBe(2n);
+        expect(await countOf(proxyA)).toBe(102n);
 
         const readA = await dryRunCall(api, proxyB, READ_A);
         expect(readA.reverted).toBe(false);
-        expect(BigInt(readA.data)).toBe(2n);
+        expect(BigInt(readA.data)).toBe(102n);
     });
 });
 
@@ -271,16 +302,54 @@ describe("the NatSpec version gate", () => {
         // Same stable address, same storage: the counter written through
         // v0.1.0 reads back through v0.2.0.
         expect(lc(await stableAddress(NAME_A))).toBe(lc(proxyA));
-        expect(await countOf(proxyA)).toBe(2n);
+        expect(await countOf(proxyA)).toBe(102n);
     }, 240_000);
 
     test("versioned calls pin the previous EVM implementation over shared storage", async () => {
         const pinnedRead = await dryRunCall(api, proxyA, encodeVersionedCall(KEY_0_1_0, COUNT));
         expect(pinnedRead.reverted).toBe(false);
-        expect(BigInt(pinnedRead.data)).toBe(2n);
+        expect(BigInt(pinnedRead.data)).toBe(102n);
 
         // Write via pinned 0.1.0, read via latest 0.2.0: one counter.
         await rawCallTx(api, signer, proxyA, encodeVersionedCall(KEY_0_1_0, INCREMENT));
-        expect(await countOf(proxyA)).toBe(3n);
+        expect(await countOf(proxyA)).toBe(103n);
     });
+});
+
+describe("a reverting initialization", () => {
+    test("rolls back the entire publish", async () => {
+        // Address 0.3.0 with an initialization that always reverts, then bump
+        // CounterA's tag to 0.3.0: the version registration and both deploys
+        // share one batch_all, so nothing lands.
+        mkdirSync(join(projectDir, "contracts", "initializations", "CounterA"), {
+            recursive: true,
+        });
+        writeFileSync(
+            join(projectDir, "contracts", "initializations", "CounterA", "0.3.0.sol"),
+            `// SPDX-License-Identifier: Apache-2.0
+pragma solidity ^0.8.28;
+
+import "../../CounterA.sol";
+
+contract Init_0_3_0 is CounterA {
+    error InitializationFailed();
+
+    function initialize(uint128, address) external pure {
+        revert InitializationFailed();
+    }
+}
+`,
+        );
+        rewrite(join(projectDir, "contracts", "CounterA.sol"), [
+            [`${NAME_A}:0.2.0`, `${NAME_A}:0.3.0`],
+        ]);
+
+        const { summary } = await deploy();
+        const contracts = byCrate(summary);
+        expect(contracts.get(NAME_A)?.status).toBe("error");
+
+        // The registry never saw 0.3.0 and the storage is untouched.
+        expect(await latestKey(NAME_A)).toBe(KEY_0_2_0);
+        expect(await countOf(proxyA)).toBe(103n);
+    }, 240_000);
 });

@@ -63,8 +63,13 @@ jobs:
               run: pnpm install --frozen-lockfile
             # Template contracts build with build-std against the PolkaVM JSON
             # target (see .cargo/config.toml), which needs nightly + rust-src.
-            - uses: dtolnay/rust-toolchain@nightly
+            # TEMPORARY pin: current nightlies reject trie-db (E0277 from the
+            # never-type fallback change, rust-lang/rust#148922), which breaks
+            # compiling cargo-pvm-contract from source. Unpin to @nightly once
+            # upstream trie-db/rustc settles.
+            - uses: dtolnay/rust-toolchain@master
               with:
+                  toolchain: nightly-2026-04-26
                   components: rust-src
             # cargo-pvm-contract is a floating git pin (branch = "main"), so
             # resolve the current upstream revision up front and key every
@@ -138,8 +143,10 @@ jobs:
               run: pnpm install --frozen-lockfile
             # Registry contracts build with build-std against the PolkaVM JSON
             # target (see .cargo/config.toml), which needs nightly + rust-src.
-            - uses: dtolnay/rust-toolchain@nightly
+            # TEMPORARY pin — see the templates job (rust-lang/rust#148922).
+            - uses: dtolnay/rust-toolchain@master
               with:
+                  toolchain: nightly-2026-04-26
                   components: rust-src
             - name: Resolve cargo-pvm-contract revision
               id: pvm-rev

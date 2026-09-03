@@ -125,6 +125,33 @@ export const INSTANTIATE_WITH_CODE_STATIC_WEIGHT: WeightLike = {
     proof_size: 1_000_000n,
 };
 
+/** One prepared instantiate (dry-run done, unsigned tx built). */
+export interface PreparedDeploy {
+    tx: ReturnType<CdmDeployAssetHubApi["tx"]["Revive"]["instantiate_with_code"]>;
+    /** Execution-only weight limit passed to the extrinsic. */
+    gasLimit: WeightLike;
+    /**
+     * Full declared weight the dispatchable will assert at submission —
+     * `gasLimit + INSTANTIATE_WITH_CODE_STATIC_WEIGHT`. This is what
+     * block validation checks against `max_extrinsic` and what the
+     * chunker sums against the budget.
+     */
+    extrinsicWeight: WeightLike;
+    storageDeposit: bigint;
+    address: string;
+}
+
+/**
+ * An initialization contract to deploy alongside its implementation. The
+ * salt package must be unique per (CDM package, version) — the pipeline uses
+ * `<package>#init` with the publish semver as the salt version.
+ */
+export interface InitDeployRequest {
+    pvmPath: string;
+    saltPackage: string;
+    saltVersion?: DeploySaltVersion;
+}
+
 /**
  * Output of {@link ContractDeployer.planDeploy}. Exposes everything the
  * pipeline needs to emit a `deploy-plan` diagnostic event BEFORE submission,
@@ -136,20 +163,16 @@ export const INSTANTIATE_WITH_CODE_STATIC_WEIGHT: WeightLike = {
  */
 export interface DeployPlan {
     budget: WeightLike;
-    prepared: Array<{
-        tx: ReturnType<CdmDeployAssetHubApi["tx"]["Revive"]["instantiate_with_code"]>;
-        /** Execution-only weight limit passed to the extrinsic. */
-        gasLimit: WeightLike;
-        /**
-         * Full declared weight the dispatchable will assert at submission —
-         * `gasLimit + INSTANTIATE_WITH_CODE_STATIC_WEIGHT`. This is what
-         * block validation checks against `max_extrinsic` and what the
-         * chunker sums against the budget.
-         */
-        extrinsicWeight: WeightLike;
-        storageDeposit: bigint;
-        address: string;
-    }>;
+    prepared: Array<
+        PreparedDeploy & {
+            /**
+             * The version's initialization contract. Its weight is folded into
+             * the chunker's per-item weight so it lands in the same chunk as
+             * the implementation.
+             */
+            init?: PreparedDeploy;
+        }
+    >;
     /** Index groups into `prepared` — each inner array is one on-chain chunk. */
     chunks: number[][];
 }
@@ -558,15 +581,36 @@ export class ContractDeployer {
         cdmPackages?: (string | undefined)[],
         saltVersions?: (DeploySaltVersion | undefined)[],
         saltScope?: string,
+        inits?: (InitDeployRequest | undefined)[],
     ): Promise<DeployPlan> {
-        const prepared = await Promise.all(
-            pvmPaths.map((p, i) =>
-                this.dryRunDeploy(p, cdmPackages?.[i], saltVersions?.[i], saltScope),
-            ),
+        const prepared: DeployPlan["prepared"] = await Promise.all(
+            pvmPaths.map(async (p, i): Promise<DeployPlan["prepared"][number]> => {
+                const main = await this.dryRunDeploy(
+                    p,
+                    cdmPackages?.[i],
+                    saltVersions?.[i],
+                    saltScope,
+                );
+                const initRequest = inits?.[i];
+                if (!initRequest) return main;
+                const init = await this.dryRunDeploy(
+                    initRequest.pvmPath,
+                    initRequest.saltPackage,
+                    initRequest.saltVersion,
+                    saltScope,
+                );
+                return { ...main, init };
+            }),
         );
         const budget = await this.resolveChunkBudget();
+        // Chunk on the combined (implementation + initialization) weight so a
+        // pair never splits across chunks and each chunk stays within budget.
         const chunks = chunkByWeight(
-            prepared.map((p) => p.extrinsicWeight),
+            prepared.map((p) => ({
+                ref_time: p.extrinsicWeight.ref_time + (p.init?.extrinsicWeight.ref_time ?? 0n),
+                proof_size:
+                    p.extrinsicWeight.proof_size + (p.init?.extrinsicWeight.proof_size ?? 0n),
+            })),
             budget,
         );
         return { budget, prepared, chunks };
@@ -751,7 +795,13 @@ export class ContractDeployer {
             chunkIndex: number;
             totalChunks: number;
         }) => void,
-        opts?: { plan?: DeployPlan; saltVersions?: DeploySaltVersion[]; saltScope?: string },
+        opts?: {
+            plan?: DeployPlan;
+            saltVersions?: DeploySaltVersion[];
+            saltScope?: string;
+            /** Per-contract initialization deploys (aligned with `pvmPaths`); entries register via `publishWithInit`. */
+            inits?: (InitDeployRequest | undefined)[];
+        },
     ): Promise<{ addresses: string[]; chunkCount: number }> {
         if (pvmPaths.length === 0) return { addresses: [], chunkCount: 0 };
         if (
@@ -774,28 +824,41 @@ export class ContractDeployer {
         // 1. Dry-run + chunk (or reuse a caller-supplied plan).
         const plan =
             opts?.plan ??
-            (await this.planDeploy(pvmPaths, cdmPackages, opts?.saltVersions, opts?.saltScope));
+            (await this.planDeploy(
+                pvmPaths,
+                cdmPackages,
+                opts?.saltVersions,
+                opts?.saltScope,
+                opts?.inits,
+            ));
         const { prepared, chunks } = plan;
 
-        // 2. Build the `publish` BatchableCalls via product-sdk
-        //    `.prepare(...)` using the precomputed CREATE2 address + CID.
+        // 2. Build the register BatchableCalls via product-sdk `.prepare(...)`
+        //    using the precomputed CREATE2 addresses + CIDs.
         const prepareOpts = {
             gasLimit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
             storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
         };
         const preparedRegisterCalls = await Promise.all(
-            cdmPackages.map((pkg, i) =>
-                registry.publish.prepare(
-                    pkg,
-                    versionKeys[i],
-                    prepared[i].address,
-                    metadataUris[i],
-                    {
-                        origin: this.origin,
-                        ...prepareOpts,
-                    },
-                ),
-            ),
+            cdmPackages.map((pkg, i) => {
+                const init = prepared[i].init;
+                return init
+                    ? registry.publishWithInit.prepare(
+                          pkg,
+                          versionKeys[i],
+                          prepared[i].address,
+                          metadataUris[i],
+                          init.address,
+                          { origin: this.origin, ...prepareOpts },
+                      )
+                    : registry.publish.prepare(
+                          pkg,
+                          versionKeys[i],
+                          prepared[i].address,
+                          metadataUris[i],
+                          { origin: this.origin, ...prepareOpts },
+                      );
+            }),
         );
         const registerCalls = preparedRegisterCalls.map((r, i) => {
             if (!r.ok) {
@@ -810,12 +873,15 @@ export class ContractDeployer {
         const addresses: string[] = new Array(pvmPaths.length);
 
         // 3. Submit each chunk sequentially as an atomic batch_all of
-        //    (chunk's deploys) + (chunk's registers).
+        //    (chunk's deploys) + (chunk's initialization deploys) + (chunk's
+        //    registers).
         for (let ci = 0; ci < chunks.length; ci++) {
             const idxs = chunks[ci];
             const label = `[AssetHub deploy+register chunk ${ci + 1}/${chunks.length}]`;
+            const initIdxs = idxs.filter((i) => prepared[i].init);
             const chunkCalls = [
                 ...idxs.map((i) => prepared[i].tx),
+                ...initIdxs.map((i) => prepared[i].init!.tx),
                 ...idxs.map((i) => registerCalls[i]),
             ];
 
@@ -832,15 +898,17 @@ export class ContractDeployer {
 
             // Verify on-chain Instantiated events match our precomputed
             // addresses (sanity check — CREATE2 is deterministic, so any
-            // mismatch indicates a bug or chain version skew).
+            // mismatch indicates a bug or chain version skew). Events arrive
+            // in call order: implementations first, then initializations.
             const instantiated = this.api.event.Revive.Instantiated.filter(
                 result.value.events as Parameters<
                     typeof this.api.event.Revive.Instantiated.filter
                 >[0],
             );
-            if (instantiated.length !== idxs.length) {
+            const expectedEvents = idxs.length + initIdxs.length;
+            if (instantiated.length !== expectedEvents) {
                 throw new Error(
-                    `${label} Expected ${idxs.length} Instantiated events, got ${instantiated.length}`,
+                    `${label} Expected ${expectedEvents} Instantiated events, got ${instantiated.length}`,
                 );
             }
             const chunkAddrs = instantiated.map(
@@ -855,6 +923,15 @@ export class ContractDeployer {
                     );
                 }
                 addresses[idxs[j]] = chunkAddrs[j];
+            }
+            for (let j = 0; j < initIdxs.length; j++) {
+                const expected = prepared[initIdxs[j]].init!.address;
+                const actual = chunkAddrs[idxs.length + j];
+                if (actual.toLowerCase() !== expected.toLowerCase()) {
+                    throw new Error(
+                        `${label} Initialization address mismatch for ${cdmPackages[initIdxs[j]]}: precomputed ${expected}, on-chain ${actual}`,
+                    );
+                }
             }
 
             if (onChunk) {

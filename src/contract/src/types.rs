@@ -165,6 +165,10 @@ pub struct ProxyCodeHashUnset;
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct NoProxy;
 
+/// `publishWithInit` initialization target is the zero address.
+#[derive(Debug, PartialEq, Eq, SolError)]
+pub struct InvalidInitTarget;
+
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub enum Error {
     Unauthorized(Unauthorized),
@@ -181,6 +185,7 @@ pub enum Error {
     VersionNotMonotonic(VersionNotMonotonic),
     ProxyCodeHashUnset(ProxyCodeHashUnset),
     NoProxy(NoProxy),
+    InvalidInitTarget(InvalidInitTarget),
 }
 
 impl From<NameError> for Error {

@@ -1,7 +1,7 @@
 {
     "comment": "FROZEN per-name proxy artifact. The registry CREATE2-instantiates one proxy per contract name from this blob's code hash (salt = keccak256(name), empty constructor input, deployer = the registry proxy), so these exact bytes are part of every FUTURE per-name address. Never rebuild or replace casually — regenerate deliberately with src/lib/scripts/freeze-proxy-artifact.ts and see src/contract/proxy/src/main.rs.",
     "contract-proxy.polkavm": {
-        "codeHash": "0x525fcab6a2cdea6111b967df024b388b0cc79d8a90d753f097e5dda70b545249",
-        "bytes": 13741
+        "codeHash": "0x9c918a8b6fb50007becfcf66fdbc2ceed18060b3a75f6721669601083a542e86",
+        "bytes": 14936
     }
 }

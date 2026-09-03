@@ -39,6 +39,8 @@ export interface ContractStatus {
     address?: string;
     /** Crate semver from Cargo.toml: the version published (or already on-chain). */
     version?: string;
+    /** The publish carries an initialization (VERSION column shows "+init"). */
+    hasInitialization?: boolean;
     cid?: string;
     deployTxHash?: string;
     deployBlockHash?: string;
@@ -225,6 +227,14 @@ export class PipelineStatusAdapter {
                 // Address precomputed — no state change yet, deploy-register
                 // will follow.
                 return;
+            case "initialization": {
+                const existing = this.statuses.get(e.crate);
+                this.update(e.crate, existing?.state ?? "waiting", {
+                    hasInitialization: true,
+                    version: e.version,
+                });
+                return;
+            }
             case "deploy-plan":
                 // Diagnostic-only — no per-crate state change. The CLI's
                 // `runDeployWithUI` logs the event to stderr so the user can

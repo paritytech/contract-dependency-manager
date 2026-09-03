@@ -57,6 +57,51 @@ export const COUNTER_ABI_JSON = resolve(
     ROOT_DIR,
     "src/templates/shared-counter/target/release/counter.abi.json",
 );
+/** The template counter's 0.1.0 initialization blob, built through `buildRustInitialization`. */
+export const TEMPLATE_DIR = resolve(ROOT_DIR, "src/templates/shared-counter");
+export const COUNTER_INIT_PVM = resolve(
+    TEMPLATE_DIR,
+    "target/cdm/init-build/counter-init-0-1-0/target/release/counter-init-0-1-0.polkavm",
+);
+
+/** The initializations fixture crate (tests/e2e/fixtures/initializations):
+ * one implementation + three initialization blobs over one shared storage. */
+const INIT_FIXTURES_DIR = resolve(__dirname, "fixtures/initializations");
+const INIT_FIXTURES_RELEASE = resolve(INIT_FIXTURES_DIR, "target/release");
+export const FIXTURE_COUNTER_PVM = resolve(INIT_FIXTURES_RELEASE, "counter-fix.polkavm");
+export const FIXTURE_INIT_SET_OWNER_PVM = resolve(
+    INIT_FIXTURES_RELEASE,
+    "counter-fix-init-set-owner.polkavm",
+);
+export const FIXTURE_INIT_TRANSFORM_PVM = resolve(
+    INIT_FIXTURES_RELEASE,
+    "counter-fix-init-transform.polkavm",
+);
+export const FIXTURE_INIT_REVERT_PVM = resolve(
+    INIT_FIXTURES_RELEASE,
+    "counter-fix-init-revert.polkavm",
+);
+
+/** Build the initializations fixture blobs if missing. */
+export async function ensureInitFixturesBuilt(): Promise<void> {
+    const blobs = [
+        FIXTURE_COUNTER_PVM,
+        FIXTURE_INIT_SET_OWNER_PVM,
+        FIXTURE_INIT_TRANSFORM_PVM,
+        FIXTURE_INIT_REVERT_PVM,
+    ];
+    if (blobs.every((blob) => existsSync(blob))) return;
+    await execFileAsync(
+        "cargo",
+        ["pvm-contract", "build", "--manifest-path", resolve(INIT_FIXTURES_DIR, "Cargo.toml")],
+        { cwd: ROOT_DIR, maxBuffer: 16 * 1024 * 1024 },
+    );
+    for (const blob of blobs) {
+        if (!existsSync(blob)) {
+            throw new Error(`Fixture blob not produced at ${blob}`);
+        }
+    }
+}
 
 export interface PpnHandle {
     /** Asset Hub WebSocket endpoint (registry lives here). */
@@ -129,17 +174,24 @@ async function ensureRegistryBuilt(): Promise<void> {
     }
 }
 
-/** Build the shared-counter template blobs if missing (`pnpm build:template`). */
+/** Build the shared-counter template blobs if missing (`pnpm build:template`),
+ * plus its 0.1.0 initialization through the manifest-free shim path. */
 export async function ensureTemplateBuilt(): Promise<void> {
-    if (existsSync(COUNTER_PVM) && existsSync(COUNTER_ABI_JSON)) return;
-    await execFileAsync("pnpm", ["build:template"], {
-        cwd: ROOT_DIR,
-        maxBuffer: 16 * 1024 * 1024,
-    });
-    if (!existsSync(COUNTER_PVM)) {
-        throw new Error(
-            `Counter .polkavm not produced at ${COUNTER_PVM} after pnpm build:template`,
-        );
+    if (!existsSync(COUNTER_PVM) || !existsSync(COUNTER_ABI_JSON)) {
+        await execFileAsync("pnpm", ["build:template"], {
+            cwd: ROOT_DIR,
+            maxBuffer: 16 * 1024 * 1024,
+        });
+        if (!existsSync(COUNTER_PVM)) {
+            throw new Error(`Counter .polkavm not produced at ${COUNTER_PVM}`);
+        }
+    }
+    if (!existsSync(COUNTER_INIT_PVM)) {
+        const { buildRustInitialization } = await import("@parity/cdm-builder");
+        await buildRustInitialization(TEMPLATE_DIR, "counter", {
+            version: "0.1.0",
+            sourcePath: resolve(TEMPLATE_DIR, "contracts/counter/initializations/0.1.0.rs"),
+        });
     }
 }
 

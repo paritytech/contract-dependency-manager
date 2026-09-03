@@ -133,6 +133,61 @@ contract Caller {
 
 The generated file contains an interface plus a small library with `ADDRESS`, `ref()`, and `cdm()`. Running `cdm i` updates that generated file from the registry, so contract source does not need an address edit.
 
+## Initializations
+
+Constructors never run behind a per-name proxy — an implementation's `deploy` entry point writes into its own throwaway storage, not the proxy's. Initializations are the real thing: custom logic that runs **exactly once, atomically, in the same transaction that publishes a version**, directly against the name's proxy storage. One concept covers both first-publish setup (owner, config) and upgrade-time storage transformation.
+
+An initialization is addressed by **(contract, version)**. Rust: `<crate>/initializations/<version>.rs` — the crate names the contract. Solidity: `initializations/<Contract>/<version>.sol` — the directory names the contract. Create the file, write `initialize`, done — no manifest entries, no imports; `cdm deploy` builds it on its own.
+
+The file addressed to a version runs when exactly that version is published — and only then:
+
+- Publishing a version with no matching file is a plain publish.
+- A file for an already-published version is inert forever; deleting it is optional.
+- Only the **published** version's initialization runs. Publishing 1.2 → 1.4 (skipping 1.3) never fires `1.3.0.rs`; 1.4's initialization sees `from = 1.2`'s key and must handle the whole distance itself.
+- A file addressed to a version *higher* than the one being published earns a deploy-time warning — it usually means a forgotten version bump.
+
+Each initialization exposes one conventional entry point, `initialize(uint128 from, address owner)`: `from` is the previously-latest version key (0 on a first publish), `owner` the name's registry owner. The registry delivers the call through the proxy's admin-only `callCode` meta operation, so initialization code is structurally unreachable by anyone else — no access-control boilerplate needed. If the initialization reverts, the entire publish rolls back.
+
+Initialization files are fully self-contained — a Rust initialization declares its own copy of the contract's (auto-numbered) storage fields:
+
+```rust
+// initializations/0.1.0.rs
+#[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
+mod counter_init_0_1_0 {
+    use pvm_contract_sdk::{Address, Lazy};
+
+    pub struct CounterInit {
+        count: Lazy<u32>,
+    }
+
+    impl CounterInit {
+        #[pvm_contract_sdk::method]
+        pub fn initialize(&mut self, _from: u128, _owner: Address) {
+            self.count.set(&0); // demonstrative
+        }
+    }
+}
+```
+
+A published initialization is frozen text, so the contract can evolve without breaking old initializations' builds. In Solidity the same self-containment falls out of inheritance:
+
+```solidity
+// initializations/Counter/0.1.0.sol
+import "../../Counter.sol";
+
+contract Init_0_1_0 is Counter {
+    function initialize(uint128, address) external {
+        count = 0; // demonstrative
+    }
+}
+```
+
+At deploy time CDM compares the initialization artifact's storage layout against the implementation's and **refuses to deploy on a mismatch** — a drifted layout would corrupt the proxy's storage. Rust artifacts always carry layouts; Foundry needs `extra_output = ["storageLayout"]`, Hardhat the equivalent `outputSelection` — the templates ship with both. If layout data is missing the check is impossible and the deploy proceeds with a loud warning.
+
+For upgrades that reshape storage incompatibly, pair an initialization with the freeze window: `freezeContract` halts all delegation (the meta plane stays live), the publish-with-initialization lands atomically, `unfreezeContract` resumes traffic on the new version.
+
+The shared-counter template ships a working `initializations/0.1.0.rs`, the foundry-counter template a working `initializations/CounterA/0.1.0.sol`.
+
 ## Using Contracts From A Triangle App
 
 Install published contract ABIs:
