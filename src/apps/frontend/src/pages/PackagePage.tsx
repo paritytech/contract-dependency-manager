@@ -8,6 +8,7 @@ import { handleExternalClick } from "../lib/external-link";
 import { usePackage } from "../hooks/usePackage";
 import { usePackageVersions } from "../hooks/usePackageVersions";
 import type { PackageVersionInfo } from "../data/registry-queries";
+import { semverToKey } from "@parity/cdm-builder/proxy";
 import type { AbiEntry, AbiParam, Package } from "../data/types";
 import "../components/SkeletonCard.css";
 import "./PackagePage.css";
@@ -320,15 +321,21 @@ function VersionsTab({ pkg, versions, loading, error }: VersionsTabProps) {
         return <p className="package-empty">No versions published.</p>;
     }
 
+    // Versions below the package's support floor (if any) get annotated.
+    const minSupportedKey = pkg.minSupportedVersion ? semverToKey(pkg.minSupportedVersion) : null;
+
     return (
         <ul className="package-versions">
             {[...versions].reverse().map((v) => (
                 <li key={v.version} className="package-version-row">
-                    <span className="package-version-num">v{v.version}</span>
+                    <span className="package-version-num">{v.version}</span>
                     <span className="package-version-address">
-                        {v.address ? <AddressLine address={v.address} /> : null}
+                        {v.target ? <AddressLine address={v.target} /> : null}
                     </span>
-                    {String(v.version) === pkg.version && (
+                    {minSupportedKey !== null && v.key < minSupportedKey && (
+                        <span className="package-version-unsupported">unsupported</span>
+                    )}
+                    {v.version === pkg.version && (
                         <span className="package-version-current">current</span>
                     )}
                 </li>
@@ -544,6 +551,11 @@ export default function PackagePage() {
                         <div className="sidebar-section">
                             <div className="sidebar-label">Contract Address</div>
                             <AddressLine address={pkg.address} />
+                            {pkg.proxyAddress && (
+                                <div className="sidebar-address-note">
+                                    Stable address (per-name proxy)
+                                </div>
+                            )}
                         </div>
                     )}
 

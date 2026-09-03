@@ -63,8 +63,13 @@ jobs:
               run: pnpm install --frozen-lockfile
             # Template contracts build with build-std against the PolkaVM JSON
             # target (see .cargo/config.toml), which needs nightly + rust-src.
-            - uses: dtolnay/rust-toolchain@nightly
+            # TEMPORARY pin: current nightlies reject trie-db (E0277 from the
+            # never-type fallback change, rust-lang/rust#148922), which breaks
+            # compiling cargo-pvm-contract from source. Unpin to @nightly once
+            # upstream trie-db/rustc settles.
+            - uses: dtolnay/rust-toolchain@master
               with:
+                  toolchain: nightly-2026-04-26
                   components: rust-src
             # cargo-pvm-contract is a floating git pin (branch = "main"), so
             # resolve the current upstream revision up front and key every
@@ -138,8 +143,10 @@ jobs:
               run: pnpm install --frozen-lockfile
             # Registry contracts build with build-std against the PolkaVM JSON
             # target (see .cargo/config.toml), which needs nightly + rust-src.
-            - uses: dtolnay/rust-toolchain@nightly
+            # TEMPORARY pin — see the templates job (rust-lang/rust#148922).
+            - uses: dtolnay/rust-toolchain@master
               with:
+                  toolchain: nightly-2026-04-26
                   components: rust-src
             - name: Resolve cargo-pvm-contract revision
               id: pvm-rev
@@ -175,6 +182,13 @@ jobs:
                   cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
             - name: Build registry contracts
               run: pnpm build:registry
+            # The Solidity e2e suite drives the real foundry pipeline (plain
+            # `forge build`; solc is auto-fetched on first build).
+            - name: Install foundry-polkadot
+              run: |
+                  curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash
+                  "$HOME/.foundry/bin/foundryup-polkadot"
+                  echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
             # The suite runs against a full local Polkadot product environment
             # (PPN: relay + Asset Hub + Bulletin + IPFS gateway), started from
             # prebuilt release binaries — nothing is compiled. preview-net-v1

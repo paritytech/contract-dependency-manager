@@ -7,3 +7,6 @@ solc_version = "0.8.28"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
+
+# Required by CDM's initialization storage-layout guard.
+extra_output = ["storageLayout"]

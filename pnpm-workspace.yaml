@@ -42,6 +42,8 @@ catalog:
   globals: ^16.5.0
   dompurify: ^3.3.1
   marked: ^17.0.3
+  semver: ^7.7.2
+  "@types/semver": ^7.7.0
   "@types/node": ^24.10.1
   "@types/bun": latest
   "@biomejs/biome": ^1.9.4

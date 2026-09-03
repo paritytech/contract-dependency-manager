@@ -1,6 +1,6 @@
 [package]
-name = "contract-registry-proxy"
-description = "EIP-1967 proxy holding the registry's stable address; delegates every call to the current contract-registry implementation"
+name = "contract-proxy"
+description = "Per-name CDM proxy: owns a contract name's stable address and storage, routing calls to any published implementation version"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -14,7 +14,7 @@ abi-gen = ["pvm-contract-sdk/abi-gen"]
 contract-registry-core = { path = "../core" }
 pvm-contract-sdk.workspace = true
 polkavm-derive.workspace = true
-picoalloc.workspace = true
+pvm-bump-allocator.workspace = true
 
 [dev-dependencies]
 pvm-contract-sdk = { workspace = true, features = ["std"] }

@@ -75,7 +75,7 @@ describe("bulletin ↔ asset hub ↔ gateway alignment", () => {
     });
 
     test("the registry records that CID for the package", async () => {
-        const published = await registry.publishLatest.tx(NAME, ADDR, publishedCid);
+        const published = await registry.publish.tx(NAME, 1n << 64n, ADDR, publishedCid);
         expect(published.ok).toBe(true);
 
         const uri = await registry.getMetadataUri.query(NAME);

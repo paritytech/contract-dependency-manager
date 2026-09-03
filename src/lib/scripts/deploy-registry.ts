@@ -7,12 +7,21 @@
  * registry address (CONTRACTS_REGISTRY_ADDR) — a pure function of
  * (factory, salt), independent of any bytecode or constructor input.
  *
+ * A fresh deploy also uploads the frozen per-name proxy blob and hands the
+ * registry its code hash (`setProxyCodeHash`). With --upgrade, no factory or
+ * proxy is redeployed: the new implementation blob is deployed at a fresh
+ * CREATE2 salt (numeric suffix bumped past consumed ones unless
+ * --impl-package pins it), `setCode` repoints the live proxy, and the
+ * per-name proxy code hash is ensured.
+ *
  * Usage:
  *   bun run src/lib/scripts/deploy-registry.ts --name local
  *   bun run src/lib/scripts/deploy-registry.ts --assethub-url ws://127.0.0.1:10020
  *   bun run src/lib/scripts/deploy-registry.ts --name local
  *   bun run src/lib/scripts/deploy-registry.ts --assethub-url wss://... --registry-address 0x...
  *   bun run src/lib/scripts/deploy-registry.ts -n paseo --migrate-from-registry 0x...
+ *   bun run src/lib/scripts/deploy-registry.ts -n paseo --upgrade
+ *   bun run src/lib/scripts/deploy-registry.ts -n paseo --upgrade --impl-package "@cdm/registry-impl.2"
  */
 import { dirname, resolve } from "path";
 import { existsSync, mkdirSync } from "fs";
@@ -38,6 +47,7 @@ import {
     CREATE3_FACTORY_ABI,
     predictRegistryDeploy,
     deployRegistryWithProxy,
+    upgradeRegistryImplementation,
 } from "@parity/cdm-builder";
 import {
     exportRegistrySnapshot,
@@ -54,6 +64,8 @@ const { values: opts } = parseArgs({
         "migrate-from-registry": { type: "string" },
         "migration-json": { type: "string" },
         "migration-batch-size": { type: "string" },
+        upgrade: { type: "boolean" },
+        "impl-package": { type: "string" },
         suri: { type: "string" },
     },
 });
@@ -67,6 +79,11 @@ const selectedRegistryAddress = opts["registry-address"] ?? preset?.registryAddr
 const hasExplicitRegistryAddress = Boolean(opts["registry-address"]);
 if (!assethubUrl) {
     console.error("Error: --assethub-url or --name is required");
+    process.exit(1);
+}
+if (opts.upgrade && opts["migrate-from-registry"]) {
+    console.error("Error: --upgrade and --migrate-from-registry are mutually exclusive");
+    console.error("An in-place upgrade keeps all registry state — there is nothing to migrate.");
     process.exit(1);
 }
 
@@ -165,6 +182,54 @@ try {
 const expected = predictRegistryDeploy(deployer, rootDir, implPvmPath);
 
 /**
+ * Registry handle (implementation ABI at the proxy address) with the admin
+ * signer attached — for `setCode` / `setProxyCodeHash` and their verifying
+ * reads.
+ */
+function registryContractAt(address: string) {
+    return createContractFromClient(
+        chainClient.raw.assetHub,
+        chainClient.descriptors.assetHub,
+        address as `0x${string}`,
+        CONTRACTS_REGISTRY_ABI,
+        { defaultSigner: signer, defaultOrigin: ss58Address(signer.publicKey) },
+    );
+}
+
+// In-place upgrade: deploy the new implementation blob at a fresh CREATE2
+// salt, `setCode` through the live proxy, and ensure the per-name proxy code
+// hash. No factory or proxy redeploy — the registry address never moves.
+if (opts.upgrade) {
+    const registryAddress = selectedRegistryAddress ?? expected.registryAddress;
+    const info = await chainClient.assetHub.query.Revive.AccountInfoOf.getValue(
+        registryAddress as `0x${string}`,
+    );
+    if (info?.account_type.type !== "Contract") {
+        console.error(`No registry deployed at ${registryAddress} — nothing to upgrade.`);
+        chainClient.destroy();
+        process.exit(1);
+    }
+
+    console.log(`Upgrading ContractRegistry implementation behind ${registryAddress}...`);
+    const upgraded = await upgradeRegistryImplementation(deployer, {
+        rootDir,
+        implPvmPath,
+        registryAddress,
+        implPackage: opts["impl-package"],
+        registryContract: registryContractAt,
+        log: console.log,
+    });
+    if (upgraded.implPackage) {
+        console.log(`Implementation salt: "${upgraded.implPackage}"`);
+    }
+    console.log(`\nCONTRACTS_REGISTRY_IMPL_ADDR=${upgraded.implAddress}`);
+    console.log(`CONTRACT_PROXY_CODE_HASH=${upgraded.proxyCodeHash}`);
+    console.log(`CONTRACTS_REGISTRY_ADDR=${registryAddress}`);
+    chainClient.destroy();
+    process.exit(0);
+}
+
+/**
  * Query the live implementation address via the registry proxy's `getCode()`.
  * The CREATE2 prediction only matches the initial deployment — after any
  * `setCode` upgrade the live implementation differs, so an already-deployed
@@ -187,7 +252,11 @@ async function queryLiveImplementation(registryAddress: string): Promise<string 
     return undefined;
 }
 
-async function finishWithRegistry(address: string, alreadyDeployed: boolean): Promise<void> {
+async function finishWithRegistry(
+    address: string,
+    alreadyDeployed: boolean,
+    proxyCodeHash?: string,
+): Promise<void> {
     try {
         if (migrationSnapshot) {
             if (migrationSourceRegistryAddress?.toLowerCase() === address.toLowerCase()) {
@@ -230,6 +299,9 @@ async function finishWithRegistry(address: string, alreadyDeployed: boolean): Pr
         }
         console.log(`CREATE3_FACTORY_ADDR=${expected.factoryAddress}`);
         console.log(`CONTRACTS_REGISTRY_ADDR=${address}`);
+        if (proxyCodeHash) {
+            console.log(`CONTRACT_PROXY_CODE_HASH=${proxyCodeHash}`);
+        }
     } finally {
         chainClient.destroy();
     }
@@ -289,7 +361,7 @@ if (
 console.log(
     `Deploying ContractRegistry via CREATE3 (factory salt "${CREATE3_FACTORY_PACKAGE}", registry salt "${CONTRACTS_REGISTRY_PACKAGE}")...`,
 );
-const { implAddress, proxyAddress } = await deployRegistryWithProxy(deployer, {
+const { implAddress, proxyAddress, proxyCodeHash } = await deployRegistryWithProxy(deployer, {
     rootDir,
     implPvmPath,
     proxyPvmPath,
@@ -301,8 +373,9 @@ const { implAddress, proxyAddress } = await deployRegistryWithProxy(deployer, {
             CREATE3_FACTORY_ABI,
             { defaultSigner: signer, defaultOrigin: ss58Address(signer.publicKey) },
         ),
+    registryContract: registryContractAt,
     prediction: expected,
     log: console.log,
 });
 console.log(`Implementation deployed at ${implAddress}`);
-await finishWithRegistry(proxyAddress, false);
+await finishWithRegistry(proxyAddress, false, proxyCodeHash);

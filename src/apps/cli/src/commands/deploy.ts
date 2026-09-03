@@ -28,7 +28,9 @@ import { ensureAccountMapped } from "../lib/account-mapping";
 import { runDeployWithUI, spinner } from "../lib/ui";
 
 const deploy = new Command("deploy")
-    .description("Deploy and register contracts")
+    .description(
+        "Deploy and register contracts at their declared versions; already-published versions are skipped",
+    )
     .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
     .option("--bulletin-url <url>", "WebSocket URL for Bulletin chain")
     .option("--ipfs-gateway-url <url>", "IPFS gateway URL for fetching metadata")

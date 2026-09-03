@@ -57,6 +57,9 @@ catalogs:
     '@types/react-dom':
       specifier: ^19.2.3
       version: 19.2.3
+    '@types/semver':
+      specifier: ^7.7.0
+      version: 7.8.0
     '@vitejs/plugin-react':
       specifier: ^5.1.1
       version: 5.1.4
@@ -102,6 +105,9 @@ catalogs:
     react-router-dom:
       specifier: ^7.13.0
       version: 7.13.1
+    semver:
+      specifier: ^7.7.2
+      version: 7.7.4
     smoldot:
       specifier: ^2.0.40
       version: 2.0.40
@@ -335,10 +341,16 @@ importers:
       polkadot-api:
         specifier: 'catalog:'
         version: 2.1.7(esbuild@0.28.0)(rxjs@7.8.2)
+      semver:
+        specifier: 'catalog:'
+        version: 7.7.4
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 24.10.15
+      '@types/semver':
+        specifier: 'catalog:'
+        version: 7.8.0
       tsup:
         specifier: 'catalog:'
         version: 8.5.0(postcss@8.5.6)(typescript@5.9.3)
@@ -1783,6 +1795,9 @@ packages:
 
   '@types/react@19.2.14':
     resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
+
+  '@types/semver@7.8.0':
+    resolution: {integrity: sha512-1mAINjtQCXXeLkJ9ehXkwOcBpqtLxiVtKhpUf83DdRNdQKV0iXZpaHYqRr7nj+wvxuJzoAmAwXI+sCNMv1CzLQ==}
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
@@ -4860,6 +4875,8 @@ snapshots:
   '@types/react@19.2.14':
     dependencies:
       csstype: 3.2.3
+
+  '@types/semver@7.8.0': {}
 
   '@types/trusted-types@2.0.7':
     optional: true

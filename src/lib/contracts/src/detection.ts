@@ -1,14 +1,32 @@
 import { execSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join, resolve } from "path";
+import { listInitializationFiles } from "./initializations";
 
 export type ContractToolchain = "rust" | "foundry" | "hardhat";
+
+/** One initialization: `initializations/<version>.rs|.sol`, run once when that version is published. */
+export interface ContractInitialization {
+    /** Canonical `X.Y.Z` the initialization is addressed to. */
+    version: string;
+    /** Absolute path to the initialization source file. */
+    sourcePath: string;
+    /** Solidity: the initialization contract declared in the file. */
+    contractName?: string;
+}
 
 export interface ContractInfo {
     /** Crate name (e.g., "reputation") */
     name: string;
     /** Human-readable display name when it differs from the stable internal name. */
     displayName?: string;
+    /**
+     * The semver a `cdm deploy` publishes. Rust crates source it from
+     * Cargo.toml `[package].version`, Solidity contracts from the `:X.Y.Z`
+     * suffix of the `@custom:cdm` NatSpec tag (`@org/name:1.2.3`). Absent
+     * when the target declares neither.
+     */
+    version?: string;
     /** Source toolchain that produced or will produce this contract artifact. */
     toolchain?: ContractToolchain;
     /** CDM package name (e.g., "@polkadot/reputation") - null if no CDM macro or not yet built */
@@ -27,6 +45,8 @@ export interface ContractInfo {
     path: string;
     /** Crate names this contract depends on */
     dependsOnCrates: string[];
+    /** Version-addressed initializations found under `initializations/` next to the source. */
+    initializations?: ContractInitialization[];
 }
 
 export interface DeploymentOrder {
@@ -60,9 +80,11 @@ interface CargoTarget {
     kind: string[];
 }
 
-interface CargoPackage {
+export interface CargoPackage {
     name: string;
     id: string;
+    version: string;
+    edition: string;
     description: string | null;
     authors: string[];
     homepage: string | null;
@@ -71,13 +93,26 @@ interface CargoPackage {
     manifest_path: string;
     dependencies: CargoDependency[];
     targets: CargoTarget[];
+    features: Record<string, string[]>;
     metadata: Record<string, unknown> | null;
 }
 
-interface CargoDependency {
+/** One resolved dependency row from `cargo metadata` — enough to reproduce
+ * the dep in a generated manifest (git/registry/path shapes). */
+export interface CargoDependency {
     name: string;
+    /** null = normal; "dev" / "build" otherwise. */
     kind: string | null;
+    /** Local path dependency (absolute). */
     path: string | null;
+    /** null (path dep), "git+url?branch=..." or "registry+...". */
+    source?: string | null;
+    /** Semver requirement, e.g. "^0.35". */
+    req?: string;
+    features?: string[];
+    uses_default_features?: boolean;
+    optional?: boolean;
+    rename?: string | null;
 }
 
 interface ResolveNode {
@@ -89,7 +124,7 @@ interface ResolveNode {
  * Get workspace metadata from Cargo's resolver.
  * This is 100% reliable - it uses Cargo's own dependency resolution.
  */
-function getCargoMetadata(rootDir: string): CargoMetadata {
+export function getCargoMetadata(rootDir: string): CargoMetadata {
     const manifestPath = resolve(rootDir, "Cargo.toml");
     const output = execSync(
         `cargo metadata --format-version 1 --manifest-path "${manifestPath}" --no-deps`,
@@ -135,6 +170,14 @@ function extractCdmPackage(pkg: CargoPackage): string | null {
     const cdmMeta = cdm as Record<string, unknown>;
     const packageName = cdmMeta.package ?? cdmMeta.name;
     return typeof packageName === "string" ? packageName : null;
+}
+
+/** Version-addressed `.rs` files under the crate's `initializations/`. */
+function extractRustInitializations(manifestDir: string): ContractInitialization[] {
+    return listInitializationFiles(manifestDir, ".rs").map((file) => ({
+        version: file.version,
+        sourcePath: file.path,
+    }));
 }
 
 function extractCdmDependencies(pkg: CargoPackage): string[] {
@@ -194,10 +237,12 @@ export function detectContracts(rootDir: string): ContractInfo[] {
 
         const manifestDir = resolve(pkg.manifest_path, "..");
         const configuredReadme = pkg.readme ? resolve(manifestDir, pkg.readme) : null;
+        const initializations = extractRustInitializations(manifestDir);
 
         return {
             name: pkg.name,
             displayName: pkg.name,
+            version: pkg.version,
             toolchain: "rust",
             cdmPackage: extractCdmPackage(pkg),
             description: pkg.description,
@@ -209,6 +254,7 @@ export function detectContracts(rootDir: string): ContractInfo[] {
                 findReadmeWithFallback(manifestDir, rootDir),
             path: manifestDir,
             dependsOnCrates: deps,
+            ...(initializations.length > 0 ? { initializations } : {}),
         };
     });
 }
@@ -499,6 +545,22 @@ if (import.meta.vitest) {
             writeFileSync(join(root, "README.md"), "workspace docs");
 
             expect(findReadmeWithFallback(contractDir, root)).toBe(join(root, "README.md"));
+        });
+    });
+
+    describe("rust initializations", () => {
+        test("lists version-addressed files; malformed names error", () => {
+            const root = makeProject();
+            mkdirSync(join(root, "initializations"), { recursive: true });
+            writeFileSync(join(root, "initializations", "0.1.0.rs"), "// init\n");
+
+            expect(extractRustInitializations(root)).toEqual([
+                { version: "0.1.0", sourcePath: join(root, "initializations", "0.1.0.rs") },
+            ]);
+            expect(extractRustInitializations(makeProject())).toEqual([]);
+
+            writeFileSync(join(root, "initializations", "latest.rs"), "// init\n");
+            expect(() => extractRustInitializations(root)).toThrow(/version-addressed/);
         });
     });
 

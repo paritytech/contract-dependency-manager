@@ -10,11 +10,6 @@ mod counter {
     }
 
     impl Counter {
-        #[pvm_contract_sdk::constructor]
-        pub fn new(&mut self) {
-            self.count.set(&0);
-        }
-
         #[pvm_contract_sdk::method]
         pub fn increment(&mut self) {
             let current = self.count.get();

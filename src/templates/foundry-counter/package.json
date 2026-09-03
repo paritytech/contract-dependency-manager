@@ -10,7 +10,7 @@
         "url": "https://github.com/paritytech/contract-dependency-manager"
     },
     "scripts": {
-        "build": "forge build --resolc",
+        "build": "forge build",
         "clean": "forge clean"
     }
 }

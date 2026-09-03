@@ -11,25 +11,19 @@ import {
 } from "@parity/product-sdk-tx";
 import type { Contract, ContractDef } from "@parity/product-sdk-contracts";
 import { keccakCodeHash, predictCreate3Address } from "./create3";
+import { isPublishableKey } from "./proxy";
 
-/**
- * Registry version index used to make CREATE2 salts unique across publishes
- * of the same CDM package.
- */
-export type DeploySaltVersion = number | bigint;
+/** Salt component keeping CREATE2 addresses unique per publish; semver strings canonical. */
+export type DeploySaltVersion = string | number | bigint;
 
 /**
  * Compute a deterministic 32-byte CREATE2 salt from a CDM package name, the
- * registry version index this deployment will publish, and optionally the
- * registry address the deployment is being published into.
+ * version this deployment will publish (semver string preferred), and
+ * optionally the registry address the deployment is being published into.
  *
- * With no version this preserves the original package-only salt, which keeps
- * existing callers such as the universal ContractRegistry deployment stable.
- * CDM package deployments should pass the next registry version index so each
- * publish derives a fresh address even if the deployer and bytecode repeat.
- * Passing `registryAddress` additionally scopes version numbers to a specific
- * registry generation, so a fresh registry can republish version 0 packages on
- * a chain that already has older CDM deployments.
+ * With no version this is the package-only salt the registry deployment
+ * uses. `registryAddress` scopes versions to one registry generation, so a
+ * fresh registry can republish a package's versions on the same chain.
  */
 export function computeDeploySalt(
     cdmPackage: string,
@@ -122,6 +116,29 @@ export const INSTANTIATE_WITH_CODE_STATIC_WEIGHT: WeightLike = {
     proof_size: 1_000_000n,
 };
 
+/** One prepared instantiate (dry-run done, unsigned tx built). */
+export interface PreparedDeploy {
+    tx: ReturnType<CdmDeployAssetHubApi["tx"]["Revive"]["instantiate_with_code"]>;
+    /** Execution-only weight limit passed to the extrinsic. */
+    gasLimit: WeightLike;
+    /**
+     * Full declared weight the dispatchable will assert at submission —
+     * `gasLimit + INSTANTIATE_WITH_CODE_STATIC_WEIGHT`. This is what
+     * block validation checks against `max_extrinsic` and what the
+     * chunker sums against the budget.
+     */
+    extrinsicWeight: WeightLike;
+    storageDeposit: bigint;
+    address: string;
+}
+
+/** An initialization deployed alongside its implementation; salted as `<package>#init` @ version. */
+export interface InitDeployRequest {
+    pvmPath: string;
+    saltPackage: string;
+    saltVersion?: DeploySaltVersion;
+}
+
 /**
  * Output of {@link ContractDeployer.planDeploy}. Exposes everything the
  * pipeline needs to emit a `deploy-plan` diagnostic event BEFORE submission,
@@ -133,20 +150,12 @@ export const INSTANTIATE_WITH_CODE_STATIC_WEIGHT: WeightLike = {
  */
 export interface DeployPlan {
     budget: WeightLike;
-    prepared: Array<{
-        tx: ReturnType<CdmDeployAssetHubApi["tx"]["Revive"]["instantiate_with_code"]>;
-        /** Execution-only weight limit passed to the extrinsic. */
-        gasLimit: WeightLike;
-        /**
-         * Full declared weight the dispatchable will assert at submission —
-         * `gasLimit + INSTANTIATE_WITH_CODE_STATIC_WEIGHT`. This is what
-         * block validation checks against `max_extrinsic` and what the
-         * chunker sums against the budget.
-         */
-        extrinsicWeight: WeightLike;
-        storageDeposit: bigint;
-        address: string;
-    }>;
+    prepared: Array<
+        PreparedDeploy & {
+            /** The version's initialization; chunked together with the implementation. */
+            init?: PreparedDeploy;
+        }
+    >;
     /** Index groups into `prepared` — each inner array is one on-chain chunk. */
     chunks: number[][];
 }
@@ -211,6 +220,8 @@ export interface Metadata {
     homepage: string;
     repository: string;
     abi: AbiEntry[];
+    /** The artifact's `storageLayout`; omitted (not null) when the toolchain emits none. */
+    storage_layout?: unknown;
 }
 
 /**
@@ -547,15 +558,36 @@ export class ContractDeployer {
         cdmPackages?: (string | undefined)[],
         saltVersions?: (DeploySaltVersion | undefined)[],
         saltScope?: string,
+        inits?: (InitDeployRequest | undefined)[],
     ): Promise<DeployPlan> {
-        const prepared = await Promise.all(
-            pvmPaths.map((p, i) =>
-                this.dryRunDeploy(p, cdmPackages?.[i], saltVersions?.[i], saltScope),
-            ),
+        const prepared: DeployPlan["prepared"] = await Promise.all(
+            pvmPaths.map(async (p, i): Promise<DeployPlan["prepared"][number]> => {
+                const main = await this.dryRunDeploy(
+                    p,
+                    cdmPackages?.[i],
+                    saltVersions?.[i],
+                    saltScope,
+                );
+                const initRequest = inits?.[i];
+                if (!initRequest) return main;
+                const init = await this.dryRunDeploy(
+                    initRequest.pvmPath,
+                    initRequest.saltPackage,
+                    initRequest.saltVersion,
+                    saltScope,
+                );
+                return { ...main, init };
+            }),
         );
         const budget = await this.resolveChunkBudget();
+        // Chunk on the combined (implementation + initialization) weight so a
+        // pair never splits across chunks and each chunk stays within budget.
         const chunks = chunkByWeight(
-            prepared.map((p) => p.extrinsicWeight),
+            prepared.map((p) => ({
+                ref_time: p.extrinsicWeight.ref_time + (p.init?.extrinsicWeight.ref_time ?? 0n),
+                proof_size:
+                    p.extrinsicWeight.proof_size + (p.init?.extrinsicWeight.proof_size ?? 0n),
+            })),
             budget,
         );
         return { budget, prepared, chunks };
@@ -687,11 +719,12 @@ export class ContractDeployer {
      * before the extrinsic lands, so the register calls can be built ahead of
      * time even though the deploys haven't executed yet.
      *
-     * Metadata is assumed to be address-independent (CDM metadata depends only
-     * on the compiled artifact: ABI + readme + package info), so the caller is
-     * expected to have published metadata to Bulletin first and pass the
-     * resulting CIDs in `metadataUris`. That ordering constraint stays in the
-     * caller (deploy-pipeline) for this migration step.
+     * Registration is `registry.publish(name, versionKey, address, metadataUri)`;
+     * the deployed contract is the version's implementation and the name's
+     * stable address is the proxy the registry creates (`getAddress(name)`).
+     *
+     * `metadataUris` are CIDs the caller computed from address-independent
+     * metadata; the Bulletin publish itself may run concurrently.
      *
      * IMPORTANT — cross-chunk non-atomicity: if a layer is too heavy to fit
      * in one extrinsic we split it. A failed later chunk won't roll back
@@ -705,10 +738,13 @@ export class ContractDeployer {
      *
      * @param pvmPaths - filesystem paths to compiled `.polkavm` bytecode, one per contract.
      * @param cdmPackages - CDM package name per contract — required because both CREATE2
-     *   salt derivation and `registry.publishLatest.contract_name` need it.
+     *   salt derivation and `registry.publish.contract_name` need it.
+     * @param versionKeys - packed semver version key per contract (see
+     *   `semverToKey`); the registry rejects keys that aren't strictly greater
+     *   than the name's latest.
      * @param registry - A product-sdk-contracts `Contract` handle for the on-chain
-     *   `ContractRegistry`. Used to `.prepare(...)` the `publishLatest(...)`
-     *   calls that get batched alongside the deploys.
+     *   `ContractRegistry`. Used to `.prepare(...)` the `publish(...)` calls
+     *   that get batched alongside the deploys.
      * @param metadataUris - CIDs from a prior Bulletin publish, one per contract (same order
      *   as `pvmPaths` / `cdmPackages`). Pass `""` for crates without metadata.
      * @param onChunk - Called synchronously after each chunk's submission
@@ -720,6 +756,7 @@ export class ContractDeployer {
     async deployAndRegisterBatch(
         pvmPaths: string[],
         cdmPackages: string[],
+        versionKeys: bigint[],
         registry: Contract<ContractDef>,
         metadataUris: string[],
         onChunk?: (result: {
@@ -730,39 +767,75 @@ export class ContractDeployer {
             chunkIndex: number;
             totalChunks: number;
         }) => void,
-        opts?: { plan?: DeployPlan; saltVersions?: DeploySaltVersion[]; saltScope?: string },
+        opts?: {
+            plan?: DeployPlan;
+            saltVersions?: DeploySaltVersion[];
+            saltScope?: string;
+            /** Aligned with `pvmPaths`; entries register via `publishWithInit`. */
+            inits?: (InitDeployRequest | undefined)[];
+        },
     ): Promise<{ addresses: string[]; chunkCount: number }> {
         if (pvmPaths.length === 0) return { addresses: [], chunkCount: 0 };
-        if (pvmPaths.length !== cdmPackages.length || pvmPaths.length !== metadataUris.length) {
+        if (
+            pvmPaths.length !== cdmPackages.length ||
+            pvmPaths.length !== versionKeys.length ||
+            pvmPaths.length !== metadataUris.length
+        ) {
             throw new Error(
-                `deployAndRegisterBatch: length mismatch — pvmPaths=${pvmPaths.length}, cdmPackages=${cdmPackages.length}, metadataUris=${metadataUris.length}`,
+                `deployAndRegisterBatch: length mismatch — pvmPaths=${pvmPaths.length}, cdmPackages=${cdmPackages.length}, versionKeys=${versionKeys.length}, metadataUris=${metadataUris.length}`,
             );
+        }
+        for (let i = 0; i < versionKeys.length; i++) {
+            if (!isPublishableKey(versionKeys[i])) {
+                throw new Error(
+                    `deployAndRegisterBatch: unpublishable version key ${versionKeys[i]} for ${cdmPackages[i]}`,
+                );
+            }
         }
 
         // 1. Dry-run + chunk (or reuse a caller-supplied plan).
         const plan =
             opts?.plan ??
-            (await this.planDeploy(pvmPaths, cdmPackages, opts?.saltVersions, opts?.saltScope));
+            (await this.planDeploy(
+                pvmPaths,
+                cdmPackages,
+                opts?.saltVersions,
+                opts?.saltScope,
+                opts?.inits,
+            ));
         const { prepared, chunks } = plan;
 
-        // 2. Build the `publishLatest` BatchableCalls via product-sdk
-        //    `.prepare(...)` using the precomputed CREATE2 address + CID.
+        // 2. Build the register BatchableCalls via product-sdk `.prepare(...)`
+        //    using the precomputed CREATE2 addresses + CIDs.
         const prepareOpts = {
             gasLimit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
             storageDepositLimit: STORAGE_DEPOSIT_LIMIT,
         };
         const preparedRegisterCalls = await Promise.all(
-            cdmPackages.map((pkg, i) =>
-                registry.publishLatest.prepare(pkg, prepared[i].address, metadataUris[i], {
-                    origin: this.origin,
-                    ...prepareOpts,
-                }),
-            ),
+            cdmPackages.map((pkg, i) => {
+                const init = prepared[i].init;
+                return init
+                    ? registry.publishWithInit.prepare(
+                          pkg,
+                          versionKeys[i],
+                          prepared[i].address,
+                          metadataUris[i],
+                          init.address,
+                          { origin: this.origin, ...prepareOpts },
+                      )
+                    : registry.publish.prepare(
+                          pkg,
+                          versionKeys[i],
+                          prepared[i].address,
+                          metadataUris[i],
+                          { origin: this.origin, ...prepareOpts },
+                      );
+            }),
         );
         const registerCalls = preparedRegisterCalls.map((r, i) => {
             if (!r.ok) {
                 throw new Error(
-                    `[AssetHub deploy+register] Failed to prepare publishLatest for ${cdmPackages[i]}: ${describeContractError(r.error)}`,
+                    `[AssetHub deploy+register] Failed to prepare publish for ${cdmPackages[i]}: ${describeContractError(r.error)}`,
                     { cause: r.error },
                 );
             }
@@ -772,12 +845,15 @@ export class ContractDeployer {
         const addresses: string[] = new Array(pvmPaths.length);
 
         // 3. Submit each chunk sequentially as an atomic batch_all of
-        //    (chunk's deploys) + (chunk's registers).
+        //    (chunk's deploys) + (chunk's initialization deploys) + (chunk's
+        //    registers).
         for (let ci = 0; ci < chunks.length; ci++) {
             const idxs = chunks[ci];
             const label = `[AssetHub deploy+register chunk ${ci + 1}/${chunks.length}]`;
+            const initIdxs = idxs.filter((i) => prepared[i].init);
             const chunkCalls = [
                 ...idxs.map((i) => prepared[i].tx),
+                ...initIdxs.map((i) => prepared[i].init!.tx),
                 ...idxs.map((i) => registerCalls[i]),
             ];
 
@@ -794,15 +870,17 @@ export class ContractDeployer {
 
             // Verify on-chain Instantiated events match our precomputed
             // addresses (sanity check — CREATE2 is deterministic, so any
-            // mismatch indicates a bug or chain version skew).
+            // mismatch indicates a bug or chain version skew). Events arrive
+            // in call order: implementations first, then initializations.
             const instantiated = this.api.event.Revive.Instantiated.filter(
                 result.value.events as Parameters<
                     typeof this.api.event.Revive.Instantiated.filter
                 >[0],
             );
-            if (instantiated.length !== idxs.length) {
+            const expectedEvents = idxs.length + initIdxs.length;
+            if (instantiated.length !== expectedEvents) {
                 throw new Error(
-                    `${label} Expected ${idxs.length} Instantiated events, got ${instantiated.length}`,
+                    `${label} Expected ${expectedEvents} Instantiated events, got ${instantiated.length}`,
                 );
             }
             const chunkAddrs = instantiated.map(
@@ -817,6 +895,15 @@ export class ContractDeployer {
                     );
                 }
                 addresses[idxs[j]] = chunkAddrs[j];
+            }
+            for (let j = 0; j < initIdxs.length; j++) {
+                const expected = prepared[initIdxs[j]].init!.address;
+                const actual = chunkAddrs[idxs.length + j];
+                if (actual.toLowerCase() !== expected.toLowerCase()) {
+                    throw new Error(
+                        `${label} Initialization address mismatch for ${cdmPackages[initIdxs[j]]}: precomputed ${expected}, on-chain ${actual}`,
+                    );
+                }
             }
 
             if (onChunk) {
@@ -845,32 +932,42 @@ if (import.meta.vitest) {
             );
         });
 
-        test("includes registry version when provided", () => {
+        test("includes the semver version when provided", () => {
             const unversioned = computeDeploySalt("@cdm/example");
-            const version0 = computeDeploySalt("@cdm/example", 0);
-            const version1 = computeDeploySalt("@cdm/example", 1);
+            const v100 = computeDeploySalt("@cdm/example", "1.0.0");
+            const v101 = computeDeploySalt("@cdm/example", "1.0.1");
 
-            expect(version0).not.toBe(unversioned);
-            expect(version1).not.toBe(version0);
+            expect(v100).not.toBe(unversioned);
+            expect(v101).not.toBe(v100);
+            expect(computeDeploySalt("@cdm/example", "1.0.0")).toBe(v100);
+        });
+
+        test("numeric and bigint versions salt identically", () => {
+            const version1 = computeDeploySalt("@cdm/example", 1);
             expect(computeDeploySalt("@cdm/example", 1n)).toBe(version1);
+            expect(version1).not.toBe(computeDeploySalt("@cdm/example", 0));
         });
 
         test("scopes salts by registry address when provided", () => {
-            const v0OldRegistry = computeDeploySalt(
+            const v100OldRegistry = computeDeploySalt(
                 "@cdm/example",
-                0,
+                "1.0.0",
                 "0x1111111111111111111111111111111111111111",
             );
-            const v0NewRegistry = computeDeploySalt(
+            const v100NewRegistry = computeDeploySalt(
                 "@cdm/example",
-                0,
+                "1.0.0",
                 "0x2222222222222222222222222222222222222222",
             );
 
-            expect(v0NewRegistry).not.toBe(v0OldRegistry);
+            expect(v100NewRegistry).not.toBe(v100OldRegistry);
             expect(
-                computeDeploySalt("@cdm/example", 0, "0x2222222222222222222222222222222222222222"),
-            ).toBe(v0NewRegistry);
+                computeDeploySalt(
+                    "@cdm/example",
+                    "1.0.0",
+                    "0x2222222222222222222222222222222222222222",
+                ),
+            ).toBe(v100NewRegistry);
         });
     });
 
@@ -878,14 +975,14 @@ if (import.meta.vitest) {
         test("appends the decoded typed-error signature when the message lacks it", () => {
             const err = Object.assign(
                 new Error(
-                    'Contract reverted in "publishLatest": 0x8e4a23d6. The transaction was not submitted.',
+                    'Contract reverted in "publish": 0x8e4a23d6. The transaction was not submitted.',
                 ),
                 {
                     decoded: { errorName: "Unauthorized", args: [] },
                 },
             );
             expect(describeContractError(err)).toBe(
-                'Contract reverted in "publishLatest": 0x8e4a23d6. The transaction was not submitted. [Unauthorized()]',
+                'Contract reverted in "publish": 0x8e4a23d6. The transaction was not submitted. [Unauthorized()]',
             );
         });
 
