@@ -2,13 +2,11 @@
 
 #[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
 mod counter {
-    use pvm_contract_sdk::{Address, Lazy};
+    use pvm_contract_sdk::Lazy;
 
     pub struct Counter {
-        // Storage slots are auto-numbered in declaration order, packing
-        // sub-word fields solc-style — count and owner share slot 0.
+        // Storage slots are auto-numbered in declaration order (`count` gets slot 0).
         count: Lazy<u32>,
-        owner: Lazy<Address>,
     }
 
     impl Counter {
@@ -21,11 +19,6 @@ mod counter {
         #[pvm_contract_sdk::method]
         pub fn get_count(&self) -> u32 {
             self.count.get()
-        }
-
-        #[pvm_contract_sdk::method]
-        pub fn get_owner(&self) -> Address {
-            self.owner.get()
         }
     }
 }

@@ -11,10 +11,11 @@ import "../../CounterA.sol";
 /// gives it the exact storage layout (and internal helpers) of that contract
 /// — which CDM's layout guard verifies before deploying.
 contract Init_0_1_0 is CounterA {
-    /// @param from The previously-latest version key — 0 on a first publish.
-    /// @param owner_ The name's registry owner (the publisher).
-    function initialize(uint128 from, address owner_) external {
-        from; // first publish — nothing to migrate from
-        owner = owner_;
+    /// `from` is the previously-latest version key (0 on a first publish);
+    /// `owner` is the name's registry owner.
+    function initialize(uint128, address) external {
+        // Demonstrates the shape — a real initialization would set genuine
+        // starting state or transform what's already there.
+        count = 0;
     }
 }

@@ -158,14 +158,14 @@ mod counter_init_0_1_0 {
 
     pub struct CounterInit {
         count: Lazy<u32>,
-        owner: Lazy<Address>,
     }
 
     impl CounterInit {
         #[pvm_contract_sdk::method]
-        pub fn initialize(&mut self, from: u128, owner: Address) {
-            let _ = (from, &self.count);
-            self.owner.set(&owner);
+        pub fn initialize(&mut self, _from: u128, _owner: Address) {
+            // Demonstrative — a real initialization would set genuine
+            // starting state or transform what's already there.
+            self.count.set(&0);
         }
     }
 }
@@ -178,8 +178,8 @@ Sharing nothing with the living contract is the point: once published, an initia
 import "../../Counter.sol";
 
 contract Init_0_1_0 is Counter {
-    function initialize(uint128 from, address owner_) external {
-        owner = owner_;
+    function initialize(uint128, address) external {
+        count = 0; // demonstrative — set genuine starting state here
     }
 }
 ```

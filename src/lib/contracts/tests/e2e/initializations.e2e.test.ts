@@ -15,15 +15,19 @@
 //    `callCode` at the proxy is registry-only.
 //
 // It also publishes the shared-counter template's real 0.1.0 initialization
-// blob, so the shipped example is proven on-chain, not just compiled.
+// blob (compile + layout proof) and runs a sentinel variant of it through
+// the same manifest-free shim path on-chain.
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import type { HexString } from "polkadot-api";
 import { createCdmAssetHubClient, prepareSigner, type CdmAssetHubClient } from "@parity/cdm-env";
 import { ALICE_SS58 } from "@parity/cdm-utils";
 import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder/abi";
-import { eoaH160FromPublicKey } from "@parity/cdm-builder";
+import { buildRustInitialization, eoaH160FromPublicKey } from "@parity/cdm-builder";
 import {
     encodeInitialize,
     encodeProxyCallCode,
@@ -41,6 +45,7 @@ import {
     rawCallTx,
     COUNTER_PVM,
     COUNTER_INIT_PVM,
+    TEMPLATE_DIR,
     FIXTURE_COUNTER_PVM,
     FIXTURE_INIT_SET_OWNER_PVM,
     FIXTURE_INIT_TRANSFORM_PVM,
@@ -147,7 +152,6 @@ afterAll(async () => {
 
 describe("built artifacts", () => {
     test("freshly built Rust artifacts carry storage layouts (toolchain regression guard)", async () => {
-        const { readFileSync } = await import("node:fs");
         const layout = (pvmPath: string) =>
             JSON.parse(readFileSync(pvmPath.replace(/\.polkavm$/, ".abi.json"), "utf8"))
                 .storageLayout;
@@ -298,13 +302,26 @@ describe("structural authorization", () => {
 });
 
 describe("the shared-counter template example", () => {
-    test("the shipped initializations/0.1.0.rs sets the owner on first publish", async () => {
-        const impl = await deployBlob(api, signer, COUNTER_PVM);
-        const init = await deployBlob(api, signer, COUNTER_INIT_PVM);
+    test("a manifest-free initialization builds through the shim and runs at publish", async () => {
+        // The shipped 0.1.0 initialization is a demonstrative no-op, so build
+        // a sentinel variant of it through the same manifest-free shim path
+        // and prove the write lands in the proxy's storage.
+        const shipped = join(TEMPLATE_DIR, "contracts/counter/initializations/0.1.0.rs");
+        const sentinel = join(mkdtempSync(join(tmpdir(), "cdm-init-e2e-")), "0.2.0.rs");
+        writeFileSync(
+            sentinel,
+            readFileSync(shipped, "utf8").replace("self.count.set(&0);", "self.count.set(&7);"),
+        );
+        const built = await buildRustInitialization(TEMPLATE_DIR, "counter", {
+            version: "0.2.0",
+            sourcePath: sentinel,
+        });
 
+        const impl = await deployBlob(api, signer, COUNTER_PVM);
+        const init = await deployBlob(api, signer, built.pvmPath);
         const r = await registry.publishWithInit.tx(
             TEMPLATE_NAME,
-            packVersionKey(0, 1, 0),
+            packVersionKey(0, 2, 0),
             impl,
             URI,
             init,
@@ -313,10 +330,8 @@ describe("the shared-counter template example", () => {
 
         const proxy = await registry.getProxy.query(TEMPLATE_NAME);
         const templateProxy = String((proxy.value as { value: string }).value);
-        const owner = await dryRunCall(api, templateProxy, GET_OWNER);
-        expect(owner.reverted).toBe(false);
-        expect(lc(owner.data)).toBe(
-            `0x${alice.toLowerCase().replace(/^0x/, "").padStart(64, "0")}`,
-        );
-    });
+        const count = await dryRunCall(api, templateProxy, GET_COUNT);
+        expect(count.reverted).toBe(false);
+        expect(BigInt(count.data)).toBe(7n);
+    }, 240_000);
 });

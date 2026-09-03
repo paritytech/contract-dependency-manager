@@ -60,7 +60,7 @@ export const COUNTER_ABI_JSON = resolve(
 /** The template counter's 0.1.0 initialization blob — built manifest-free
  * through the shim path (`buildRustInitialization`), so the e2e suite proves
  * the exact flow users get. */
-const TEMPLATE_DIR = resolve(ROOT_DIR, "src/templates/shared-counter");
+export const TEMPLATE_DIR = resolve(ROOT_DIR, "src/templates/shared-counter");
 export const COUNTER_INIT_PVM = resolve(
     TEMPLATE_DIR,
     "target/cdm/init-build/counter-init-0-1-0/target/release/counter-init-0-1-0.polkavm",

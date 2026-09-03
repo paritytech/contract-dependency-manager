@@ -18,16 +18,16 @@ mod counter_init_0_1_0 {
 
     pub struct CounterInit {
         count: Lazy<u32>,
-        owner: Lazy<Address>,
     }
 
     impl CounterInit {
         /// `from` is the previously-latest version key (0 on a first
         /// publish); `owner` is the name's registry owner.
         #[pvm_contract_sdk::method]
-        pub fn initialize(&mut self, from: u128, owner: Address) {
-            let _ = (from, &self.count);
-            self.owner.set(&owner);
+        pub fn initialize(&mut self, _from: u128, _owner: Address) {
+            // Demonstrates the shape — a real initialization would set
+            // genuine starting state or transform what's already there.
+            self.count.set(&0);
         }
     }
 }

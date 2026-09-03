@@ -5,8 +5,6 @@ pragma solidity ^0.8.28;
 /// @custom:cdm @example/counter-a:0.1.0
 contract CounterA {
     uint256 public count;
-    /// Set once by initializations/CounterA/0.1.0.sol when 0.1.0 is published.
-    address public owner;
 
     event Incremented(address indexed caller, uint256 count);
     event Added(address indexed caller, uint256 amount, uint256 count);
