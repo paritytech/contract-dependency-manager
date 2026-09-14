@@ -28,7 +28,8 @@ const contracts = ContractManager.fromClient(
     },
 );
 
-await ensureContractAccountMapped(contracts.getRuntime(), aliceAddress, signer);
+const mapped = await ensureContractAccountMapped(contracts.getRuntime(), aliceAddress, signer);
+if (!mapped.ok) throw mapped.error;
 
 // --- Get typed contract handles ---
 // TRY: running `cdm i -n paseo @example/counter @example/counter-writer @example/counter-reader`
@@ -44,7 +45,8 @@ console.log("getCount result:", count);
 
 // --- Write increment ---
 console.log("\nCalling counterWriter.writeIncrement...");
-await counterWriter.writeIncrement.tx();
+const increment = await counterWriter.writeIncrement.tx();
+if (!increment.ok) throw increment.error;
 
 console.log("Querying counter.getCount...");
 const { value: count2 } = await counter.getCount.query();

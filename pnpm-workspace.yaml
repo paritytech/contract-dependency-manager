@@ -5,26 +5,20 @@ packages:
   - "src/lib/contracts"
   - "src/lib/scripts"
   - "src/lib/cdm/typescript"
+  - "src/migrations"
 
 catalog:
-  polkadot-api: ^2.1.5
+  "@changesets/cli": ^2.29.8
+  polkadot-api: ^2.1.7
   "@polkadot-api/sdk-ink": ^0.7.0
-  "@novasamatech/host-api": 0.8.7-1
-  "@novasamatech/product-sdk": 0.7.9-4
-  "@parity/bulletin-sdk": ^0.3.0
-  "@parity/product-sdk-chain-client": 0.7.0
-  "@parity/product-sdk-cloud-storage": 0.6.0
-  "@parity/product-sdk-contracts": 0.7.3
-  "@parity/product-sdk-descriptors": 0.6.0
-  "@parity/product-sdk-host": 0.8.0
-  "@parity/product-sdk-keys": 0.3.6
-  "@parity/product-sdk-signer": 0.6.3
-  "@parity/product-sdk-tx": 0.2.10
-  "@polkadot-api/smoldot": ^0.4.2
-  "@polkadot-api/cli": ^0.21.1
+  "@parity/product-sdk-chain-client": 0.10.0
+  "@parity/product-sdk-cloud-storage": 0.10.0
+  "@parity/product-sdk-contracts": 0.10.1
+  "@parity/product-sdk-descriptors": 0.9.0
+  "@parity/product-sdk-host": 0.15.1
+  "@parity/product-sdk-tx": 0.4.1
   "@polkadot-labs/hdkd": ^0.0.26
   "@polkadot-labs/hdkd-helpers": ^0.0.27
-  "@polkadot/util-crypto": ^14.0.1
   smoldot: ^2.0.40
   react: ^19.2.4
   react-dom: ^19.2.0
@@ -48,7 +42,6 @@ catalog:
   globals: ^16.5.0
   dompurify: ^3.3.1
   marked: ^17.0.3
-  "@types/dompurify": ^3.0.5
   "@types/node": ^24.10.1
   "@types/bun": latest
   "@biomejs/biome": ^1.9.4

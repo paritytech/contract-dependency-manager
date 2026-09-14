@@ -25,6 +25,8 @@ describe("CLI commands", () => {
         expect(output).toContain("template");
         expect(output).toContain("init");
         expect(output).toContain("account");
+        expect(output).toContain("setup");
+        expect(output).toContain("update");
     });
 
     test("cdm build --help shows options", () => {
@@ -48,6 +50,19 @@ describe("CLI commands", () => {
         expect(output).toContain("--assethub-url");
         expect(output).toContain("--name");
         expect(output).toContain("--registry-address");
+    });
+
+    test("cdm setup --help shows options", () => {
+        const output = execSync(`bun run ${CLI} setup --help`).toString();
+        expect(output).toContain("--check");
+        expect(output).toContain("--cargo-pvm-contract-ref");
+    });
+
+    test("cdm update --help shows options", () => {
+        const output = execSync(`bun run ${CLI} update --help`).toString();
+        expect(output).toContain("--tag");
+        expect(output).toContain("--skip-setup");
+        expect(output).toContain("--cargo-pvm-contract-ref");
     });
 
     test("cdm template scaffolds project", () => {

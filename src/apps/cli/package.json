@@ -1,6 +1,6 @@
 {
     "name": "@parity/cdm-cli",
-    "version": "0.8.21",
+    "version": "0.13.0",
     "private": true,
     "type": "module",
     "bin": {
@@ -8,9 +8,9 @@
     },
     "scripts": {
         "dev": "bun run src/cli.ts",
-        "build": "echo 'No build needed - bun runs TypeScript directly'",
         "compile": "bun build --compile src/cli.ts --outfile dist/cdm",
         "test": "vitest run",
+        "typecheck": "tsc --noEmit",
         "embed-templates": "bun run ../../lib/scripts/embed-templates.ts",
         "clean": "rm -rf dist"
     },

@@ -3,14 +3,7 @@
 #[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 65536)]
 mod instagram {
     use alloc::string::String;
-    use pvm_contract_sdk::{Address, HostApi, Lazy, Mapping, SolType};
-
-    pvm_contract_sdk::sol_revert_enum! {
-        pub enum Error {
-            PostNotFound(PostNotFound),
-            UserNotFound(UserNotFound),
-        }
-    }
+    use pvm_contract_sdk::{Address, HostApi, Lazy, Mapping, SolStorage, SolType};
 
     #[derive(Debug, pvm_contract_sdk::SolError)]
     pub struct PostNotFound;
@@ -18,7 +11,15 @@ mod instagram {
     #[derive(Debug, pvm_contract_sdk::SolError)]
     pub struct UserNotFound;
 
-    #[derive(Clone, Default, SolType)]
+    #[derive(Debug, pvm_contract_sdk::SolError)]
+    pub enum Error {
+        PostNotFound(PostNotFound),
+        UserNotFound(UserNotFound),
+    }
+
+    // `SolType` covers ABI encoding (arguments/return values); `SolStorage`
+    // additionally lets the struct live in contract storage (`Mapping` values).
+    #[derive(Clone, Default, SolType, SolStorage)]
     pub struct PostData {
         pub description: String,
         pub photo_cid: String,
@@ -26,15 +27,11 @@ mod instagram {
     }
 
     pub struct Instagram {
-        #[slot(0)]
+        // Storage slots are auto-numbered in declaration order (slots 0..=4).
         post_counts: Mapping<[u8; 20], u64>,
-        #[slot(1)]
         posts: Mapping<([u8; 20], u64), PostData>,
-        #[slot(2)]
         user_count: Lazy<u64>,
-        #[slot(3)]
         users: Mapping<u64, [u8; 20]>,
-        #[slot(4)]
         user_registered: Mapping<[u8; 20], bool>,
     }
 

@@ -1,0 +1,19 @@
+[package]
+name = "create3-factory"
+description = "CREATE3 factory: deterministic, bytecode-independent contract addresses — target = f(factory, salt) via a CREATE2 child that CREATE1s the target"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+abi-gen = ["pvm-contract-sdk/abi-gen"]
+
+[dependencies]
+pvm-contract-sdk.workspace = true
+polkavm-derive.workspace = true
+picoalloc.workspace = true
+
+[dev-dependencies]
+pvm-contract-sdk = { workspace = true, features = ["std"] }

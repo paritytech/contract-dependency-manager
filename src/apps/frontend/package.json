@@ -6,6 +6,7 @@
     "scripts": {
         "dev": "vite",
         "build": "tsc -b && vite build",
+        "typecheck": "tsc -b",
         "lint": "eslint .",
         "preview": "vite preview",
         "clean": "rm -rf dist"
@@ -14,8 +15,6 @@
         "@parity/cdm-builder": "workspace:*",
         "@parity/cdm-env": "workspace:*",
         "@parity/cdm-utils": "workspace:*",
-        "@novasamatech/host-api": "catalog:",
-        "@novasamatech/product-sdk": "catalog:",
         "@parity/product-sdk-chain-client": "catalog:",
         "@parity/product-sdk-cloud-storage": "catalog:",
         "@parity/product-sdk-contracts": "catalog:",
@@ -29,7 +28,6 @@
     },
     "devDependencies": {
         "@eslint/js": "catalog:",
-        "@types/dompurify": "catalog:",
         "@types/node": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",

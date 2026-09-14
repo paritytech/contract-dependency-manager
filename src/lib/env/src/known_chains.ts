@@ -23,7 +23,17 @@ export interface ChainPreset {
 const PASEO_ASSET_HUB_URL = "wss://paseo-asset-hub-next-rpc.polkadot.io";
 const PASEO_IPFS_GATEWAY_URL = "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs";
 
-const KNOWN_CHAINS = {
+// The Paseo testnet Asset Hub (para 1000, EVM chain id 420420417, genesis
+// 0xd6eec2…11ef2) and its Bulletin ("Bulletin Paseo"). Distinct from the
+// `paseo` preset above, which targets the paseo-next preview network.
+// The Asset Hub URL mirrors the devnet-asset-hub descriptor's wsUrl; the
+// Bulletin URL comes from product-sdk's BULLETIN_RPCS. Metadata for the
+// devnet registry is pinned to public IPFS; Bulletin Paseo has no dedicated
+// HTTP gateway.
+const DEVNET_ASSET_HUB_URL = "wss://asset-hub-paseo-rpc.n.dwellir.com";
+const DEVNET_IPFS_GATEWAY_URL = "https://ipfs.io/ipfs";
+
+export const KNOWN_CHAINS = {
     polkadot: {
         assethubUrl: "wss://polkadot-asset-hub-rpc.polkadot.io",
         bulletinUrl: "wss://polkadot-bulletin-rpc.polkadot.io",
@@ -44,17 +54,20 @@ const KNOWN_CHAINS = {
             },
         ],
     },
-    w3s: {
-        assethubUrl: "wss://summit-asset-hub-rpc.polkadot.io",
-        bulletinUrl: "wss://summit-bulletin-rpc.polkadot.io",
-        ipfsGatewayUrl: "https://summit-ipfs.polkadot.io/ipfs",
-        registryAddress: getRegistryAddress("w3s"),
-        productSdkEnvironment: "summit",
+    devnet: {
+        assethubUrl: DEVNET_ASSET_HUB_URL,
+        bulletinUrl: BULLETIN_RPCS.devnet[0],
+        ipfsGatewayUrl: DEVNET_IPFS_GATEWAY_URL,
+        registryAddress: getRegistryAddress("devnet"),
+        productSdkEnvironment: "devnet",
+        faucets: [{ label: "Asset Hub", url: "https://faucet.polkadot.io/?parachain=1000" }],
     },
     local: {
         assethubUrl: "ws://127.0.0.1:10020",
         bulletinUrl: "ws://127.0.0.1:10030",
-        ipfsGatewayUrl: "http://127.0.0.1:8283/ipfs",
+        // PPN (product-preview-net) serves its IPFS gateway on 8080
+        // (config/ports.env IPFS_GATEWAY_PORT).
+        ipfsGatewayUrl: "http://127.0.0.1:8080/ipfs",
         registryAddress: getRegistryAddress("local"),
     },
 } as const satisfies Record<string, ChainPreset>;
@@ -63,9 +76,7 @@ export type KnownChainName = keyof typeof KNOWN_CHAINS;
 
 export function normalizeChainName(name: string): KnownChainName | "custom" | undefined {
     if (name === "paseo-next-v2" || name === "paseo-v2") return "paseo";
-    if (name === "paseo" || name === "polkadot" || name === "w3s" || name === "local") {
-        return name;
-    }
+    if (Object.hasOwn(KNOWN_CHAINS, name)) return name as KnownChainName;
     if (name === "custom") return "custom";
 }
 
@@ -89,4 +100,32 @@ export function findKnownChainByAssetHubUrl(url: string): KnownChainName | undef
     return Object.entries(KNOWN_CHAINS).find(
         ([, preset]) => preset.assethubUrl.replace(/\/+$/, "") === normalizedUrl,
     )?.[0] as KnownChainName | undefined;
+}
+
+if (import.meta.vitest) {
+    const { test, expect } = import.meta.vitest;
+
+    test("devnet preset targets the Paseo testnet Asset Hub registry", () => {
+        const preset = getChainPreset("devnet");
+
+        expect(preset.assethubUrl).toBe("wss://asset-hub-paseo-rpc.n.dwellir.com");
+        expect(preset.bulletinUrl).toBe("wss://bulletin-paseo.tservices.es:8443");
+        expect(preset.registryAddress).toBe("0x59b0245778917af55224e5f8fb55f7f8d452619f");
+        expect(preset.productSdkEnvironment).toBe("devnet");
+    });
+
+    test("normalizeChainName accepts devnet alongside the paseo-next aliases", () => {
+        expect(normalizeChainName("devnet")).toBe("devnet");
+        expect(isKnownChainPreset("devnet")).toBe(true);
+        expect(normalizeChainName("paseo-next-v2")).toBe("paseo");
+        expect(normalizeChainName("paseo-v2")).toBe("paseo");
+    });
+
+    test("normalizeChainName accepts every KNOWN_CHAINS key and custom, and rejects typos", () => {
+        for (const name of Object.keys(KNOWN_CHAINS)) {
+            expect(normalizeChainName(name)).toBe(name);
+        }
+        expect(normalizeChainName("custom")).toBe("custom");
+        expect(normalizeChainName("pasoe")).toBeUndefined();
+    });
 }

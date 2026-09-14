@@ -18,6 +18,7 @@ target/
 
 src/templates/*/**/.cdm/
 !src/templates/*/.papi/descriptors/dist/
+src/lib/cdm/import-test/.cdm/
 
 reference-repos/
 
@@ -26,3 +27,11 @@ ppn/
 cdm.local.json
 
 .DS_Store
+
+# Frozen CREATE3 artifacts are committed on purpose: their exact bytes are
+# part of every CREATE3-derived address (see src/contract/create3/).
+!src/contract/create3/artifacts/*.polkavm
+
+# Working registry-migration snapshots (the deploy script writes timestamped
+# copies under dist/; the migrations export CLI defaults to this path)
+src/migrations/registry-migration*.json

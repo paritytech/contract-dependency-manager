@@ -4,13 +4,15 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "echo 'No build needed'",
+        "typecheck": "tsc --noEmit",
         "clean": "echo 'Nothing to clean'"
     },
     "dependencies": {
         "@parity/cdm-builder": "workspace:*",
         "@parity/cdm-env": "workspace:*",
-        "@parity/cdm-utils": "workspace:*"
+        "@parity/cdm-migrations": "workspace:*",
+        "@parity/cdm-utils": "workspace:*",
+        "@parity/product-sdk-contracts": "catalog:"
     },
     "devDependencies": {
         "@types/bun": "catalog:",

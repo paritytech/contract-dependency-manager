@@ -69,19 +69,47 @@ export {
     ContractDeployer,
     computeDeploySalt,
     chunkByWeight,
+    decodedErrorSignature,
+    describeContractError,
     INSTANTIATE_WITH_CODE_STATIC_WEIGHT,
 } from "./deployer";
+
+export {
+    type DeployRegistryOptions,
+    type RegistryDeployPrediction,
+    encodeProxyConstructorArgs,
+    predictRegistryDeploy,
+    deployRegistryWithProxy,
+} from "./registry-deploy";
+
+export {
+    type FrozenCreate3Artifact,
+    CREATE3_ARTIFACTS_DIR,
+    CREATE3_CHILD_CODE_HASH,
+    CREATE3_FACTORY_CODE_HASH,
+    create1AddressAtNonce1,
+    create2Address,
+    eoaH160FromPublicKey,
+    keccakCodeHash,
+    loadCreate3ChildArtifact,
+    loadCreate3FactoryArtifact,
+    predictCreate3Address,
+    predictReviveCreate2Address,
+} from "./create3";
 
 export { MetadataPublisher } from "./publisher";
 
 export { computeCid } from "./cid";
 
-export { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
+export { CONTRACTS_REGISTRY_ABI, CONTRACTS_REGISTRY_PROXY_ABI } from "./abi/registry";
+
+export { CREATE3_FACTORY_ABI } from "./abi/create3-factory";
 
 export {
     GAS_LIMIT,
     STORAGE_DEPOSIT_LIMIT,
     CONTRACTS_REGISTRY_CRATE,
+    CONTRACTS_REGISTRY_PROXY_CRATE,
 } from "@parity/cdm-utils";
 
 export {

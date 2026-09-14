@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { metadataCidFromUri } from "../data/registry-queries";
 import type { Package } from "../data/types";
 import "./PackageCard.css";
 
@@ -21,8 +22,7 @@ function splitPackageName(name: string): { prefix: string; leaf: string } {
 }
 
 export default function PackageCard({ pkg, linkTarget }: PackageCardProps) {
-    const metadataLoading =
-        pkg.metadataUri && !pkg.metadataUri.includes(":") && !pkg.metadataLoaded;
+    const metadataLoading = !!metadataCidFromUri(pkg.metadataUri) && !pkg.metadataLoaded;
     const name = splitPackageName(pkg.name);
 
     const cardBody = (

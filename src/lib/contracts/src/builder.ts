@@ -1,6 +1,5 @@
 import { resolve } from "path";
 import { execFileSync, spawn } from "child_process";
-import { getRegistryAddress } from "@parity/cdm-env/registry";
 
 export interface BuildResult {
     crateName: string;
@@ -18,12 +17,17 @@ export type BuildProgressCallback = (
 
 /**
  * Build a single contract using `cargo pvm-contract build`.
+ *
+ * `registryAddress` is embedded into the contract via `CONTRACTS_REGISTRY_ADDR`
+ * and must be resolved explicitly by the caller (CLI/pipeline) — there is no
+ * implicit default, so an omitted address can never silently embed the wrong
+ * network's registry.
  */
 export function pvmContractBuild(
     rootDir: string,
     crateName: string,
-    features?: string,
-    registryAddress: string = getRegistryAddress(),
+    features: string | undefined,
+    registryAddress: string,
 ): void {
     const manifestPath = resolve(rootDir, "Cargo.toml");
     const args = ["pvm-contract", "build", "--manifest-path", manifestPath, "-p", crateName];
@@ -39,13 +43,15 @@ export function pvmContractBuild(
 
 /**
  * Build a single contract asynchronously with progress tracking.
+ *
+ * See {@link pvmContractBuild} for why `registryAddress` is required.
  */
 export async function pvmContractBuildAsync(
     rootDir: string,
     crateName: string,
-    onProgress?: BuildProgressCallback,
-    features?: string,
-    registryAddress: string = getRegistryAddress(),
+    onProgress: BuildProgressCallback | undefined,
+    features: string | undefined,
+    registryAddress: string,
 ): Promise<BuildResult> {
     const manifestPath = resolve(rootDir, "Cargo.toml");
 

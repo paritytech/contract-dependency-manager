@@ -6,6 +6,8 @@ import Layout from "../components/Layout";
 import { CopyIcon, CheckIcon } from "../components/Icons";
 import { handleExternalClick } from "../lib/external-link";
 import { usePackage } from "../hooks/usePackage";
+import { usePackageVersions } from "../hooks/usePackageVersions";
+import type { PackageVersionInfo } from "../data/registry-queries";
 import type { AbiEntry, AbiParam, Package } from "../data/types";
 import "../components/SkeletonCard.css";
 import "./PackagePage.css";
@@ -291,11 +293,56 @@ interface PackageBodyProps {
     setActiveTab: (tab: TabName) => void;
 }
 
+interface VersionsTabProps {
+    pkg: Package;
+    versions: PackageVersionInfo[] | null;
+    loading: boolean;
+    error: string | null;
+}
+
+function VersionsTab({ pkg, versions, loading, error }: VersionsTabProps) {
+    if (error) {
+        return <p className="package-empty">{error}</p>;
+    }
+
+    if (loading || versions === null) {
+        return (
+            <div className="versions-skeleton">
+                {Array.from({ length: 3 }).map((_, i) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: fixed decorative array
+                    <span key={i} className="skeleton-bar skeleton-bar--abi-row" />
+                ))}
+            </div>
+        );
+    }
+
+    if (versions.length === 0) {
+        return <p className="package-empty">No versions published.</p>;
+    }
+
+    return (
+        <ul className="package-versions">
+            {[...versions].reverse().map((v) => (
+                <li key={v.version} className="package-version-row">
+                    <span className="package-version-num">v{v.version}</span>
+                    <span className="package-version-address">
+                        {v.address ? <AddressLine address={v.address} /> : null}
+                    </span>
+                    {String(v.version) === pkg.version && (
+                        <span className="package-version-current">current</span>
+                    )}
+                </li>
+            ))}
+        </ul>
+    );
+}
+
 function PackageBody({ pkg, activeTab, setActiveTab }: PackageBodyProps) {
     const depEntries = Object.entries(pkg.dependencies ?? {});
-    const versions = pkg.versions ?? [];
-    const hasVersions = versions.length > 0;
     const metadataPending = !pkg.metadataLoaded && !!pkg.metadataUri;
+    // Lazy: nothing is queried until the Versions tab is first opened; the
+    // result then stays cached across tab switches.
+    const packageVersions = usePackageVersions(pkg.name, activeTab === "versions");
 
     const tabs: { key: TabName; label: string; count?: number }[] = [
         { key: "readme", label: "Readme" },
@@ -375,21 +422,12 @@ function PackageBody({ pkg, activeTab, setActiveTab }: PackageBodyProps) {
                     ))}
 
                 {activeTab === "versions" && (
-                    <ul className="package-versions">
-                        {(hasVersions ? versions : [{ version: pkg.version, date: "" }]).map(
-                            (v) => (
-                                <li key={v.version} className="package-version-row">
-                                    <span className="package-version-num">v{v.version}</span>
-                                    {v.date && (
-                                        <span className="package-version-date">{v.date}</span>
-                                    )}
-                                    {v.version === pkg.version && (
-                                        <span className="package-version-current">current</span>
-                                    )}
-                                </li>
-                            ),
-                        )}
-                    </ul>
+                    <VersionsTab
+                        pkg={pkg}
+                        versions={packageVersions.versions}
+                        loading={packageVersions.loading}
+                        error={packageVersions.error}
+                    />
                 )}
             </div>
         </div>
@@ -556,15 +594,14 @@ export default function PackagePage() {
                     {(pkg.keywords ?? []).length > 0 && (
                         <div className="sidebar-section">
                             <div className="sidebar-label">Keywords</div>
+                            {/* Plain chips, not links: search only matches
+                                name prefixes, so a keyword query is
+                                guaranteed to come back empty. */}
                             <div className="sidebar-keywords">
                                 {(pkg.keywords ?? []).map((kw) => (
-                                    <Link
-                                        key={kw}
-                                        to={`/search?q=${encodeURIComponent(kw)}`}
-                                        className="sidebar-keyword"
-                                    >
+                                    <span key={kw} className="sidebar-keyword">
                                         {kw}
-                                    </Link>
+                                    </span>
                                 ))}
                             </div>
                         </div>

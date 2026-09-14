@@ -1,5 +1,115 @@
 # @dotdm/cli
 
+## 0.13.0
+
+### Minor Changes
+
+- 3b23b96: Update product-sdk to the 0.21.0 release line (descriptors 0.9.0, host 0.15.1, contracts 0.10.1, tx 0.4.1, chain-client 0.10.0, cloud-storage 0.10.0). Descriptors 0.9.0 regenerates the paseo-bulletin bindings for the `v0.0.22-paseo` runtime (new `DataRenewal` pallet), fixing commands like `cdm account bal -n paseo` that broke against the upgraded Bulletin chain. Following descriptors 0.8.0's removal of the decommissioned Web3 Summit chains, the `w3s` chain preset is removed (`paseo`, `devnet`, `polkadot`, and `local` are unaffected). Template scaffolds pin the updated product-sdk versions.
+
+### Patch Changes
+
+- Updated dependencies [3b23b96]
+  - @parity/cdm-env@2.4.0
+  - @parity/cdm-builder@5.0.1
+  - @parity/cdm-codegen@0.6.26
+
+## 0.12.0
+
+### Minor Changes
+
+- e67c5c7: Registry longevity: rewrite the ContractRegistry on mainline cargo-pvm-contract behind an EIP-1967 proxy with `setCode` upgrades and `freeze`/`unfreeze`, drop on-chain prefix search, and deploy the proxy through a new CREATE3 factory (new `@cdm/registry.2` generation): the registry address is now a pure function of (factory, salt) — independent of bytecode and constructor input, stable across rebuilds and identical on every network bootstrapped by the same account.
+
+  Breaking for `@parity/cdm-builder`: `searchContractNames` is removed from the exported `CONTRACTS_REGISTRY_ABI`, and the registry now sits behind an EIP-1967 proxy with `setCode`/`freeze` admin entry points. Wire compatibility with already-deployed old-generation registries is preserved — multi-value returns keep the historical single-tuple encoding — so existing CLIs keep working.
+
+### Patch Changes
+
+- Updated dependencies [f373a8e]
+- Updated dependencies [e67c5c7]
+  - @parity/cdm-env@2.3.0
+  - @parity/cdm-builder@5.0.0
+  - @parity/cdm-utils@0.5.0
+  - @parity/cdm-codegen@0.6.25
+
+## 0.11.1
+
+### Patch Changes
+
+- 375ef73: Update bundled templates for the current pvm-contract-sdk API
+
+## 0.11.0
+
+### Minor Changes
+
+- 45b7942: Account mapping now only reports "already mapped" when Revive actually returns `AccountAlreadyMapped` (other failures surface and fail the command), `cdm update` no longer honors an ambient `VERSION` env var (use `--tag` or `CDM_TAG`) and resolves the release tag once, `cdm install --assethub-url` always wins over `--name` presets (no commander default), and `cdm deploy` gains `--ipfs-gateway-url`.
+
+### Patch Changes
+
+- Updated dependencies [8654118]
+- Updated dependencies [8654118]
+  - @parity/cdm-builder@4.0.0
+  - @parity/cdm-env@2.2.0
+  - @parity/cdm-codegen@0.6.24
+
+## 0.10.0
+
+### Minor Changes
+
+- 76eb137: Warn on startup when a newer CDM release is available. The check runs in a detached background process and caches its result in `~/.cdm/update-check.json`, so commands never wait on the network; being a major version behind triggers a stronger warning about a potentially stale CDM registry. Opt out with `CDM_NO_UPDATE_CHECK=1`.
+
+## 0.9.0
+
+### Minor Changes
+
+- ad53253: Add a `devnet` chain preset for the Paseo testnet Asset Hub (EVM chain id 420420417) wired to the community-operated ContractRegistry at `0x59b0245778917af55224e5f8fb55f7f8d452619f`, using the dedicated devnet descriptors and Bulletin RPC introduced in product-sdk 0.18.0, and clarify that the `paseo` preset targets the paseo-next preview network. Upgrades all `@parity/product-sdk-*` dependencies to the 0.18.0 release set and migrates to its `Result`-based error API (`submitAndWatch`, `batchSubmitAndWatch`, contract `.tx`/`.prepare`, `ensureContractAccountMapped`, cloud-storage `queryJson`).
+
+### Patch Changes
+
+- Updated dependencies [ad53253]
+  - @parity/cdm-env@2.1.0
+  - @parity/cdm-builder@3.2.0
+  - @parity/cdm-codegen@0.6.23
+
+## 0.8.26
+
+### Patch Changes
+
+- a33de04: Refresh the shell installer so binary installation stays small and delegates toolchain dependency setup to the new `cdm setup` command. Add `cdm update` for binary release updates and publish PR-scoped CLI dev releases when a pull request includes a `@parity/cdm-cli` changeset.
+
+## 0.8.25
+
+### Patch Changes
+
+- Updated dependencies [79fbc58]
+  - @parity/cdm-env@2.0.8
+  - @parity/cdm-builder@3.1.9
+  - @parity/cdm-codegen@0.6.22
+
+## 0.8.24
+
+### Patch Changes
+
+- Updated dependencies [40f6516]
+  - @parity/cdm-env@2.0.7
+  - @parity/cdm-builder@3.1.8
+  - @parity/cdm-codegen@0.6.21
+
+## 0.8.23
+
+### Patch Changes
+
+- Updated dependencies [02c7e06]
+  - @parity/cdm-builder@3.1.7
+  - @parity/cdm-codegen@0.6.20
+
+## 0.8.22
+
+### Patch Changes
+
+- Updated dependencies [083bc41]
+  - @parity/cdm-env@2.0.6
+  - @parity/cdm-codegen@0.6.19
+  - @parity/cdm-builder@3.1.6
+
 ## 0.8.21
 
 ### Patch Changes

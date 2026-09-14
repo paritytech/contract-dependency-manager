@@ -23,13 +23,14 @@ export function queryBulletinJson<T>(environment: ProductSdkEnvironment, cid: st
     if (inFlight) return inFlight as Promise<T>;
 
     const p = (async () => {
-        const value = await withTimeout(
+        const result = await withTimeout(
             queryJson<T>(cid),
             `Bulletin metadata lookup timed out for CID ${cid}.`,
             30_000,
         );
-        _jsonCache.set(key, value);
-        return value;
+        if (!result.ok) throw result.error;
+        _jsonCache.set(key, result.value);
+        return result.value;
     })().finally(() => {
         _jsonInFlight.delete(key);
     });

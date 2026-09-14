@@ -1,0 +1,11 @@
+[package]
+name = "contract-registry-core"
+description = "Host-independent registry logic shared by the registry implementation and its proxy"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+keccak-const.workspace = true

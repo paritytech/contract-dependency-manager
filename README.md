@@ -15,6 +15,28 @@ curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-mana
 
 This installs the `cdm` binary, the Rust nightly toolchain with `rust-src`, and `cargo-pvm-contract`.
 
+To install a specific release artifact, pass a tag through `VERSION` or `CDM_TAG`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | VERSION=v0.8.25 bash
+```
+
+Dependency setup can also be re-run later with `cdm setup`.
+
+Update an existing binary with:
+
+```bash
+cdm update
+```
+
+To test a PR dev release, use the `CDM_TAG=...` install command posted by CI, or run `cdm update --tag <dev-release-tag>` from an existing install.
+
+To install CDM while selecting a specific `cargo-pvm-contract` branch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | CDM_CARGO_PVM_CONTRACT_REF=<branch-or-tag> bash
+```
+
 ## Quick Start
 
 ```bash
@@ -122,12 +144,12 @@ This updates `cdm.json`, stores ABI/metadata artifacts under project-local `.cdm
 Install the product-sdk app/runtime packages:
 
 ```bash
-pnpm add @parity/product-sdk-chain-client@^0.5.2 \
-  @parity/product-sdk-contracts@^0.6.2 \
-  @parity/product-sdk-descriptors@^0.5.1 \
-  @parity/product-sdk-signer@^0.5.0 \
-  @parity/product-sdk-tx@^0.2.6 \
-  polkadot-api@^2.1.2
+pnpm add @parity/product-sdk-chain-client@^0.8.0 \
+  @parity/product-sdk-contracts@^0.9.0 \
+  @parity/product-sdk-descriptors@^0.7.0 \
+  @parity/product-sdk-signer@^0.10.0 \
+  @parity/product-sdk-tx@^0.3.0 \
+  polkadot-api@^2.1.7
 ```
 
 In frontend code, use product-sdk:
@@ -223,6 +245,16 @@ These templates are compile-ready starter projects and can be built, deployed, p
 
 ## Commands
 
+### `cdm setup`
+
+Install or repair the local CDM toolchain dependencies: Rust nightly, `rust-src`, and `cargo-pvm-contract`.
+
+```bash
+cdm setup
+cdm setup --check
+cdm setup --cargo-pvm-contract-ref <branch-or-tag>
+```
+
 ### `cdm build`
 
 Build all contracts with the selected ContractRegistry address baked in.
@@ -244,7 +276,7 @@ cdm deploy -n paseo --suri //Bob
 cdm deploy --registry-address 0x... --assethub-url wss://... --bulletin-url wss://...
 ```
 
-Supported deploy presets are `paseo` and `local`. Use explicit URLs with `--assethub-url`, `--bulletin-url`, and `--registry-address` for custom networks. The `paseo` preset points at Paseo v2.
+Supported deploy presets are `paseo`, `devnet`, and `local`. Use explicit URLs with `--assethub-url`, `--bulletin-url`, and `--registry-address` for custom networks. Note that the `paseo` preset targets **paseo-next** (the Paseo Asset Hub preview/next network, para 1500) — not the Paseo testnet. The `devnet` preset targets the Paseo testnet Asset Hub (para 1000, EVM chain id 420420417) with a ContractRegistry operated by the Polkadot Community Foundation.
 
 ### `cdm install -n <chain> <library>`
 
@@ -255,7 +287,17 @@ cdm i -n paseo @polkadot/contexts @polkadot/profiles
 cdm i -n paseo @yourorg/package:3
 ```
 
-`cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates the flat `cdm.json`, installs ABI/metadata artifacts under project-local `.cdm/contracts/`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`.
+`cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates the flat `cdm.json`, installs ABI/metadata artifacts under project-local `.cdm/contracts/`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`. Use `-n devnet` to resolve packages against the Paseo testnet Asset Hub registry.
+
+### `cdm update`
+
+Update the installed CDM binary from GitHub releases, then refresh toolchain dependencies.
+
+```bash
+cdm update
+cdm update --tag cdm-cli-dev-pr-58
+cdm update --cargo-pvm-contract-ref <branch-or-tag>
+```
 
 ### `cdm template [name]`
 
@@ -278,27 +320,34 @@ The Instagram template is the current browser app example. It uses product-sdk h
 ```bash
 git clone https://github.com/paritytech/contract-dependency-manager.git
 cd contract-dependency-manager
-make setup
+pnpm bootstrap           # first-time setup: install deps + build template contracts
 
 # Run the CLI in dev mode
 bun run src/apps/cli/src/cli.ts --help
 
-# Run the frontend; rebuilds local workspace deps first
-make frontend
+# Run the frontend dev server; rebuilds local workspace deps first
+pnpm dev
 
 # Run tests
-make test                # unit tests only (fast)
-pnpm test:e2e            # end-to-end: spawns revive-dev-node, deploys
-                         # the registry, exercises every method.
-                         # Requires `revive-dev-node` and `bun` on $PATH:
-                         #   cargo install --git https://github.com/paritytech/polkadot-sdk --bin revive-dev-node
-                         #   curl -fsSL https://bun.sh/install | bash
+pnpm test                # unit tests: vitest + macro + host-side Rust
+pnpm test:e2e            # end-to-end against a local PPN (product-preview-net):
+                         # deploys the registry and exercises Asset Hub +
+                         # Bulletin + IPFS gateway alignment. Requires `bun`
+                         # and a running PPN:
+                         #   git clone git@github.com:paritytech/preview-net-v1
+                         #   cd preview-net-v1 && make start
 
-# Build native binary
-make compile
+# Full gate: format check + typecheck + build + tests
+pnpm check
+
+# Build native binary to dist/cdm
+pnpm compile:cli
 
 # Cross-compile for all platforms
-make compile-all
+pnpm compile:all
+
+# Build + install the CLI to ~/.cdm/bin/cdm
+pnpm install:cli
 ```
 
 ## Architecture

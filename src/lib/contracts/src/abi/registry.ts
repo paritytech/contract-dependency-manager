@@ -1,21 +1,120 @@
-import type { AbiEntry } from "@parity/product-sdk-contracts";
+import type { AbiEntry, AbiParam } from "@parity/product-sdk-contracts";
 
 /**
- * ABI for the ContractRegistry contract.
+ * ABIs for the ContractRegistry contract pair.
  *
- * Source of truth: `src/contract/src/lib.rs` compiled to PolkaVM; this array
- * mirrors the Solidity-ABI export produced by `cargo pvm-contract build`
- * (`target/contract-registry.release.abi.json`). Keep it bit-for-bit identical
- * to the on-chain metadata — editing this file by hand will desync it from
- * the registry deployed on every network.
+ * Source of truth: `src/contract` (implementation) and `src/contract/proxy`
+ * (EIP-1967 proxy) compiled to PolkaVM; these arrays mirror the Solidity-ABI
+ * exports produced by `cargo pvm-contract build`
+ * (`target/release/contract-registry.abi.json` and
+ * `target/release/contract-registry-proxy.abi.json`). Keep them bit-for-bit
+ * identical to the generated metadata — `tests/registry-abi-sync.test.ts`
+ * compares them against the built artifacts when those exist.
  *
- * Previously exposed via generated descriptors; embedding it here removes the
- * papi codegen dependency for the one fixed contract every CDM deploy touches.
+ * The proxy holds the stable registry address and delegate-forwards every
+ * call to the implementation, so `CONTRACTS_REGISTRY_ABI` (the
+ * implementation's ABI) is used AT THE PROXY ADDRESS. The proxy's own ABI is
+ * only needed to deploy it (`constructor(address implementation)`).
+ *
+ * Multi-value returns use the HISTORICAL single-tuple wire encoding — each
+ * such function has ONE unnamed tuple-typed output with named components —
+ * matching every already-deployed registry so old CLIs keep decoding.
+ *
+ * Naming note: where the generated JSON names a tuple component `is_some`,
+ * this file uses the historical `isSome` (product-sdk keys decoded objects by
+ * component name and every consumer reads `isSome`/`value`). Names are
+ * display/decode keys only — types, structure, and order are bit-exact with
+ * the generated ABI.
  */
-export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
+
+/** Generated-ABI entry shape: `AbiEntry` plus the event-only fields. */
+type RegistryAbiParam = Omit<AbiParam, "components"> & {
+    indexed?: boolean;
+    components?: RegistryAbiParam[];
+};
+type RegistryAbiEntry = Omit<AbiEntry, "inputs" | "outputs"> & {
+    anonymous?: boolean;
+    inputs: RegistryAbiParam[];
+    outputs?: RegistryAbiParam[];
+};
+
+const REGISTRY_ABI: RegistryAbiEntry[] = [
     {
         type: "constructor",
         inputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "getAdmin",
+        inputs: [],
+        outputs: [{ name: "", type: "address" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "setAdmin",
+        inputs: [{ name: "new_admin", type: "address" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "setCode",
+        inputs: [{ name: "new_implementation", type: "address" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "getCode",
+        inputs: [],
+        outputs: [{ name: "", type: "address" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "freeze",
+        inputs: [],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "unfreeze",
+        inputs: [],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "isFrozen",
+        inputs: [],
+        outputs: [{ name: "", type: "bool" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "adminImportContracts",
+        inputs: [
+            {
+                name: "contracts",
+                type: "tuple[]",
+                components: [
+                    { name: "contract_name", type: "string" },
+                    { name: "owner", type: "address" },
+                    {
+                        name: "versions",
+                        type: "tuple[]",
+                        components: [
+                            { name: "address", type: "address" },
+                            { name: "metadata_uri", type: "string" },
+                        ],
+                    },
+                ],
+            },
+        ],
+        outputs: [],
         stateMutability: "nonpayable",
     },
     {
@@ -156,4 +255,75 @@ export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = [
         outputs: [{ name: "", type: "uint32" }],
         stateMutability: "view",
     },
+    { type: "error", name: "Unauthorized", inputs: [] },
+    { type: "error", name: "UnauthorizedAdmin", inputs: [] },
+    { type: "error", name: "ContractFrozen", inputs: [] },
+    { type: "error", name: "ContractNameEmpty", inputs: [] },
+    { type: "error", name: "ContractNameTooLong", inputs: [] },
+    { type: "error", name: "ContractNameInvalid", inputs: [] },
+    { type: "error", name: "ImportVersionsEmpty", inputs: [] },
+    { type: "error", name: "ImportContractExists", inputs: [] },
+    { type: "error", name: "VersionOverflow", inputs: [] },
+    { type: "error", name: "BadImplementation", inputs: [] },
+    {
+        type: "event",
+        name: "Published",
+        anonymous: false,
+        inputs: [
+            { indexed: true, name: "name", type: "string" },
+            { indexed: false, name: "version", type: "uint32" },
+            { indexed: false, name: "address", type: "address" },
+        ],
+    },
+    {
+        type: "event",
+        name: "Upgraded",
+        anonymous: false,
+        inputs: [{ indexed: true, name: "implementation", type: "address" }],
+    },
+    {
+        type: "event",
+        name: "AdminChanged",
+        anonymous: false,
+        inputs: [
+            { indexed: false, name: "previous_admin", type: "address" },
+            { indexed: false, name: "new_admin", type: "address" },
+        ],
+    },
+    {
+        type: "event",
+        name: "FrozenSet",
+        anonymous: false,
+        inputs: [{ indexed: false, name: "frozen", type: "bool" }],
+    },
+    { type: "error", name: "InvalidCalldata", inputs: [] },
+    { type: "error", name: "CalldataTooLarge", inputs: [] },
+    { type: "error", name: "NoSelector", inputs: [] },
+    { type: "error", name: "UnknownSelector", inputs: [] },
+    { type: "error", name: "NonPayableValueReceived", inputs: [] },
 ];
+
+export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = REGISTRY_ABI;
+
+const REGISTRY_PROXY_ABI: RegistryAbiEntry[] = [
+    {
+        type: "constructor",
+        inputs: [
+            { name: "implementation", type: "address" },
+            { name: "admin", type: "address" },
+        ],
+        stateMutability: "nonpayable",
+    },
+    { type: "error", name: "InvalidCalldata", inputs: [] },
+    { type: "error", name: "CalldataTooLarge", inputs: [] },
+    { type: "error", name: "NoSelector", inputs: [] },
+    { type: "error", name: "UnknownSelector", inputs: [] },
+    { type: "error", name: "NonPayableValueReceived", inputs: [] },
+];
+
+/**
+ * ABI of the EIP-1967 proxy that fronts the registry. Deploy-time only: the
+ * proxy exposes no methods of its own — call the registry through
+ * `CONTRACTS_REGISTRY_ABI` at the proxy address.
+ */
+export const CONTRACTS_REGISTRY_PROXY_ABI: AbiEntry[] = REGISTRY_PROXY_ABI;

@@ -1,14 +1,12 @@
 import { dirname, relative, resolve } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import type { PolkadotSigner, SS58String, HexString } from "polkadot-api";
-import { Enum } from "polkadot-api";
-import type { CdmChainClient } from "@parity/cdm-env";
+import { getRegistryAddress, type CdmChainClient } from "@parity/cdm-env";
 import {
     createContractFromClient,
     type Contract,
     type ContractDef,
 } from "@parity/product-sdk-contracts";
-import { stringifyBigInt } from "@parity/cdm-utils";
 import { CONTRACTS_REGISTRY_ABI } from "./abi/registry";
 
 import {
@@ -39,13 +37,7 @@ import {
     type SolidityAbiEntry,
     solidityImportPathForLibrary,
 } from "./solidity-imports";
-import {
-    ContractDeployer,
-    computeDeploySalt,
-    type AbiEntry,
-    type DeploySaltVersion,
-    type Metadata,
-} from "./deployer";
+import { ContractDeployer, type AbiEntry, type DeploySaltVersion, type Metadata } from "./deployer";
 import { MetadataPublisher } from "./publisher";
 
 async function queryRegistryVersionCounts(
@@ -82,8 +74,13 @@ export interface BuildContractsOptions {
     contracts?: string[];
     /** Cargo feature flags to pass to the build */
     features?: string;
-    /** Registry address embedded into contracts through CONTRACTS_REGISTRY_ADDR. */
-    registryAddress?: HexString;
+    /**
+     * Registry address embedded into contracts through CONTRACTS_REGISTRY_ADDR.
+     * Must be resolved by the caller (e.g. the CLI) — there is no implicit
+     * default, so an omitted address can never silently embed the wrong
+     * network's registry.
+     */
+    registryAddress: HexString;
     onEvent?: (e: BuildEvent) => void;
 }
 
@@ -264,14 +261,26 @@ interface DetectedBuildPipeline {
     };
 }
 
-/** Detect + optionally filter layers. Shared between build and deploy. */
+/**
+ * Detect + optionally filter layers. Shared between build and deploy.
+ * The filter matches crate name, displayName, and CDM package name — the same
+ * semantics `matchesContractFilter` applies to Solidity targets, so
+ * `--contracts @org/pkg` selects Rust contracts too.
+ */
 function detectAndFilter(rootDir: string, filter: string[] | undefined): DetectedPipeline {
     const order = detectDeploymentOrderLayered(rootDir);
     let layers = order.layers;
     if (filter && filter.length > 0) {
         const filterSet = new Set(filter);
         layers = layers
-            .map((layer) => layer.filter((crate) => filterSet.has(crate)))
+            .map((layer) =>
+                layer.filter((crate) => {
+                    const contract = order.contractMap.get(crate);
+                    return contract
+                        ? matchesContractFilter(contract, filterSet)
+                        : filterSet.has(crate);
+                }),
+            )
             .filter((layer) => layer.length > 0);
     }
     return { order, layers };
@@ -405,8 +414,8 @@ async function buildRustTargets(
     build: BuildPhaseResult,
     crates: string[],
     emit: BuildEmitter,
-    features?: string,
-    registryAddress?: HexString,
+    features: string | undefined,
+    registryAddress: HexString,
 ): Promise<void> {
     const results = await Promise.all(
         crates.map(async (crate) => {
@@ -586,8 +595,8 @@ async function runBuildLayer(
     build: BuildPhaseResult,
     layer: string[],
     emit: BuildEmitter,
-    features?: string,
-    registryAddress?: HexString,
+    features: string | undefined,
+    registryAddress: HexString,
 ): Promise<string[]> {
     const runnable: string[] = [];
     for (const crate of layer) {
@@ -636,8 +645,8 @@ async function runDetectedBuild(
     rootDir: string,
     detected: DetectedBuildPipeline,
     emit: BuildEmitter,
-    features?: string,
-    registryAddress?: HexString,
+    features: string | undefined,
+    registryAddress: HexString,
     onLayerBuilt?: (args: {
         layerIndex: number;
         layer: string[];
@@ -836,31 +845,6 @@ function writeSolidityImportForDeployable(
     writeGeneratedSolidityFile(rootDir, generated);
 }
 
-async function precomputeDeployAddress(
-    api: PipelineChainClient["assetHub"],
-    origin: SS58String,
-    deployable: DeployableContract,
-    version: DeploySaltVersion,
-    registryAddress: HexString,
-): Promise<HexString> {
-    const code = new Uint8Array(readFileSync(deployable.pvmPath));
-    const salt = computeDeploySalt(deployable.cdmPackage, version, registryAddress);
-    const result = await api.apis.ReviveApi.instantiate(
-        origin,
-        0n,
-        undefined,
-        undefined,
-        Enum("Upload", code),
-        new Uint8Array(0),
-        salt,
-        { at: "best" },
-    );
-    if (!result.result.success) {
-        throw new Error(`Dry-run failed: ${stringifyBigInt(result.result)}`);
-    }
-    return result.result.value.addr as HexString;
-}
-
 // ---------- public API ----------
 
 /**
@@ -946,12 +930,16 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
 
         // ---- 2. wire service classes (implementation details) ----
         const signer = opts.signer;
-        const assetHubApi = opts.client.assetHub;
         const assetHubClient = opts.client.raw.assetHub;
         const bulletinApi = opts.client.bulletin;
         const bulletinClient = opts.client.raw.bulletin;
 
-        const deployer = new ContractDeployer(signer, opts.origin, assetHubClient, assetHubApi);
+        const deployer = new ContractDeployer(
+            signer,
+            opts.origin,
+            assetHubClient,
+            opts.client.assetHub,
+        );
         const publisher = new MetadataPublisher(
             opts.metadataSigner ?? signer,
             bulletinApi,
@@ -1073,39 +1061,68 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     );
                 }
 
-                // Precomputed addresses for emit "check-needs-deploy" — the
-                // deploy-register batch computes this internally, but we
-                // need it eagerly for the event before signing.
+                const pvmPaths = deployables.map((contract) => contract.pvmPath);
+                const saltVersions = deployables.map((contract) => {
+                    const version = nextVersionByCrate.get(contract.crate);
+                    if (version === undefined) {
+                        throw new Error(
+                            `Missing registry version count for "${contract.cdmPackage}"`,
+                        );
+                    }
+                    return version;
+                });
+                const metadataUris = deployables.map((contract) => cidMap[contract.crate]);
+
+                // Plan BEFORE submission: a single dry-run per contract yields
+                // the CREATE2 addresses (emitted as `check-needs-deploy`), the
+                // real budget, per-contract weights, and the final chunk layout
+                // for the diagnostic `deploy-plan` event. The same plan is
+                // reused inside the batch call — no duplicate dry-run. Plan
+                // failures propagate to the layer error handler below like any
+                // other deploy failure. At this point Rust, Foundry, and
+                // Hardhat contracts are all the same shape.
                 emit({
                     type: "phase",
                     name: "precomputing-addresses",
                     description: `Dry-running ${deployables.length} contract deploy${deployables.length === 1 ? "" : "s"} for layer ${layerIndex + 1}`,
                     layer: layerIndex,
                 });
-                for (const deployable of deployables) {
-                    try {
-                        const version = nextVersionByCrate.get(deployable.crate);
-                        if (version === undefined) {
-                            throw new Error(
-                                `Missing registry version count for "${deployable.cdmPackage}"`,
-                            );
-                        }
-                        const addr = await precomputeDeployAddress(
-                            assetHubApi,
-                            opts.origin,
-                            deployable,
-                            version,
-                            opts.registryAddress,
-                        );
-                        emit({
-                            type: "check-needs-deploy",
-                            crate: deployable.crate,
-                            address: addr,
-                        });
-                    } catch {
-                        // best-effort event — swallow
-                    }
+                const plan = await deployer.planDeploy(
+                    pvmPaths,
+                    deployablePackages,
+                    saltVersions,
+                    opts.registryAddress,
+                );
+                for (let i = 0; i < deployables.length; i++) {
+                    emit({
+                        type: "check-needs-deploy",
+                        crate: deployables[i].crate,
+                        address: plan.prepared[i].address as HexString,
+                    });
                 }
+                const perContract = plan.prepared.map((prepared, i) => ({
+                    crate: deployableCrates[i],
+                    gasLimit: {
+                        ref_time: prepared.gasLimit.ref_time,
+                        proof_size: prepared.gasLimit.proof_size,
+                    },
+                    extrinsicWeight: {
+                        ref_time: prepared.extrinsicWeight.ref_time,
+                        proof_size: prepared.extrinsicWeight.proof_size,
+                    },
+                    storageDeposit: prepared.storageDeposit,
+                }));
+                emit({
+                    type: "deploy-plan",
+                    layer: layerIndex,
+                    crates: deployableCrates,
+                    budget: {
+                        ref_time: plan.budget.ref_time,
+                        proof_size: plan.budget.proof_size,
+                    },
+                    perContract,
+                    chunks: plan.chunks.map((idxs) => idxs.map((i) => deployableCrates[i])),
+                });
 
                 // Sign requests fire immediately before submission.
                 emit({
@@ -1133,53 +1150,6 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 const deployT0 = Date.now();
                 const publishT0 = Date.now();
                 let deployCursor = 0;
-
-                const pvmPaths = deployables.map((contract) => contract.pvmPath);
-                const saltVersions = deployables.map((contract) => {
-                    const version = nextVersionByCrate.get(contract.crate);
-                    if (version === undefined) {
-                        throw new Error(
-                            `Missing registry version count for "${contract.cdmPackage}"`,
-                        );
-                    }
-                    return version;
-                });
-                const metadataUris = deployables.map((contract) => cidMap[contract.crate]);
-
-                // Plan BEFORE submission so we can emit a diagnostic
-                // `deploy-plan` event carrying the real budget, per-contract
-                // weights, and final chunk layout. Reuses the plan inside the
-                // batch call (no duplicate dry-run). At this point Rust,
-                // Foundry, and Hardhat contracts are all the same shape.
-                const plan = await deployer.planDeploy(
-                    pvmPaths,
-                    deployablePackages,
-                    saltVersions,
-                    opts.registryAddress,
-                );
-                const perContract = plan.prepared.map((prepared, i) => ({
-                    crate: deployableCrates[i],
-                    gasLimit: {
-                        ref_time: prepared.gasLimit.ref_time,
-                        proof_size: prepared.gasLimit.proof_size,
-                    },
-                    extrinsicWeight: {
-                        ref_time: prepared.extrinsicWeight.ref_time,
-                        proof_size: prepared.extrinsicWeight.proof_size,
-                    },
-                    storageDeposit: prepared.storageDeposit,
-                }));
-                emit({
-                    type: "deploy-plan",
-                    layer: layerIndex,
-                    crates: deployableCrates,
-                    budget: {
-                        ref_time: plan.budget.ref_time,
-                        proof_size: plan.budget.proof_size,
-                    },
-                    perContract,
-                    chunks: plan.chunks.map((idxs) => idxs.map((i) => deployableCrates[i])),
-                });
 
                 const [deployRes, publishRes] = await Promise.all([
                     deployer.deployAndRegisterBatch(
@@ -1476,10 +1446,15 @@ if (import.meta.vitest) {
         };
     }
 
+    const testRegistry = "0x00000000000000000000000000000000000000aa" as HexString;
+
     describe("buildContracts", () => {
         test("contracts in same layer build concurrently", async () => {
             (mockDetect as any).mockReturnValue(makeOrder([["a", "b"]]));
-            const summary = await buildContracts({ rootDir: "/fake" });
+            const summary = await buildContracts({
+                rootDir: "/fake",
+                registryAddress: testRegistry,
+            });
             expect(mockBuild).toHaveBeenCalledTimes(2);
             expect(summary.contracts.map((c) => c.crate).sort()).toEqual(["a", "b"]);
             expect(summary.contracts.every((c) => !c.error)).toBe(true);
@@ -1494,7 +1469,7 @@ if (import.meta.vitest) {
                 callOrder.push(`end:${crateName}`);
                 return { crateName, success: true, stdout: "", stderr: "", durationMs: 50 };
             });
-            await buildContracts({ rootDir: "/fake" });
+            await buildContracts({ rootDir: "/fake", registryAddress: testRegistry });
             expect(callOrder.indexOf("end:a")).toBeLessThan(callOrder.indexOf("start:b"));
         });
 
@@ -1512,7 +1487,10 @@ if (import.meta.vitest) {
                 }
                 return { crateName, success: true, stdout: "", stderr: "", durationMs: 10 };
             });
-            const summary = await buildContracts({ rootDir: "/fake" });
+            const summary = await buildContracts({
+                rootDir: "/fake",
+                registryAddress: testRegistry,
+            });
             expect(summary.contracts.find((c) => c.crate === "a")!.error).toBeDefined();
             expect(summary.contracts.find((c) => c.crate === "b")!.error).toBe(
                 "Skipped: dependency failed",
@@ -1522,7 +1500,11 @@ if (import.meta.vitest) {
         test("emits detect + pipeline-done events", async () => {
             (mockDetect as any).mockReturnValue(makeOrder([["a"]]));
             const events: BuildEvent[] = [];
-            await buildContracts({ rootDir: "/fake", onEvent: (e) => events.push(e) });
+            await buildContracts({
+                rootDir: "/fake",
+                registryAddress: testRegistry,
+                onEvent: (e) => events.push(e),
+            });
             expect(events[0].type).toBe("detect");
             expect(events.at(-1)!.type).toBe("pipeline-done");
         });
@@ -1533,46 +1515,77 @@ if (import.meta.vitest) {
                 contractMap: new Map(),
                 cdmPackageMap: new Map(),
             });
-            const summary = await buildContracts({ rootDir: "/fake" });
+            const summary = await buildContracts({
+                rootDir: "/fake",
+                registryAddress: testRegistry,
+            });
             expect(summary.contracts).toEqual([]);
         });
 
         test("contract filter narrows the build set", async () => {
             (mockDetect as any).mockReturnValue(makeOrder([["a", "b", "c"]]));
-            const summary = await buildContracts({ rootDir: "/fake", contracts: ["b"] });
+            const summary = await buildContracts({
+                rootDir: "/fake",
+                registryAddress: testRegistry,
+                contracts: ["b"],
+            });
             expect(summary.contracts.map((c) => c.crate)).toEqual(["b"]);
+        });
+
+        test("contract filter matches Rust contracts by CDM package name and display name", async () => {
+            const order = makeOrder([["a", "b", "c"]], {}, { a: "@example/counter" });
+            order.contractMap.get("b")!.displayName = "Fancy B";
+            (mockDetect as any).mockReturnValue(order);
+
+            const byPackage = await buildContracts({
+                rootDir: "/fake",
+                registryAddress: testRegistry,
+                contracts: ["@example/counter"],
+            });
+            expect(byPackage.contracts.map((c) => c.crate)).toEqual(["a"]);
+
+            const byDisplayName = await buildContracts({
+                rootDir: "/fake",
+                registryAddress: testRegistry,
+                contracts: ["Fancy B"],
+            });
+            expect(byDisplayName.contracts.map((c) => c.crate)).toEqual(["b"]);
         });
 
         test("rejects duplicate CDM package names", async () => {
             (mockDetect as any).mockReturnValue(
                 makeOrder([["a", "b"]], {}, { a: "@example/counter", b: "@example/counter" }),
             );
-            await expect(buildContracts({ rootDir: "/fake" })).rejects.toThrow(
-                'Duplicate CDM package "@example/counter"',
-            );
+            await expect(
+                buildContracts({ rootDir: "/fake", registryAddress: testRegistry }),
+            ).rejects.toThrow('Duplicate CDM package "@example/counter"');
         });
 
         test("features option is forwarded to pvmContractBuildAsync", async () => {
             (mockDetect as any).mockReturnValue(makeOrder([["a"]]));
-            await buildContracts({ rootDir: "/fake", features: "my-feature" });
+            await buildContracts({
+                rootDir: "/fake",
+                registryAddress: testRegistry,
+                features: "my-feature",
+            });
             expect(mockBuild).toHaveBeenCalledWith(
                 "/fake",
                 "a",
                 expect.any(Function),
                 "my-feature",
-                undefined,
+                testRegistry,
             );
         });
 
         test("features is undefined when not provided", async () => {
             (mockDetect as any).mockReturnValue(makeOrder([["a"]]));
-            await buildContracts({ rootDir: "/fake" });
+            await buildContracts({ rootDir: "/fake", registryAddress: testRegistry });
             expect(mockBuild).toHaveBeenCalledWith(
                 "/fake",
                 "a",
                 expect.any(Function),
                 undefined,
-                undefined,
+                testRegistry,
             );
         });
 
@@ -1617,7 +1630,7 @@ if (import.meta.vitest) {
                 missing: [],
             });
 
-            await buildContracts({ rootDir: "/fake" });
+            await buildContracts({ rootDir: "/fake", registryAddress: testRegistry });
 
             expect(mockWriteFileSync).toHaveBeenCalledWith(
                 "/fake/.cdm/solidity/example/counter-a.sol",
@@ -1633,6 +1646,18 @@ if (import.meta.vitest) {
     });
 
     describe("deployContracts", () => {
+        // No ReviveApi.instantiate stub on the fake client: address
+        // precomputation must come from `planDeploy` (one dry-run per
+        // contract), never from a second per-contract instantiate call.
+        function makeFakeClient() {
+            return {
+                assetHub: {},
+                bulletin: {},
+                raw: { assetHub: {}, bulletin: {} },
+                descriptors: { assetHub: {} },
+            } as any;
+        }
+
         test("deploys each layer before building its dependents", async () => {
             (mockDetect as any).mockReturnValue(
                 makeOrder([["a"], ["b"]], { b: ["a"] }, { a: "@example/a", b: "@example/b" }),
@@ -1643,28 +1668,10 @@ if (import.meta.vitest) {
             const metadataSigner = makePolkadotSigner(2);
             await deployContracts({
                 rootDir: "/fake",
-                client: {
-                    assetHub: {
-                        apis: {
-                            ReviveApi: {
-                                instantiate: vi.fn(async () => ({
-                                    result: {
-                                        success: true,
-                                        value: {
-                                            addr: "0x0000000000000000000000000000000000000001",
-                                        },
-                                    },
-                                })),
-                            },
-                        },
-                    },
-                    bulletin: {},
-                    raw: { assetHub: {}, bulletin: {} },
-                    descriptors: { assetHub: {} },
-                } as any,
+                client: makeFakeClient(),
                 signer: deploySigner,
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
-                registryAddress: "0xf62c2ece29cd8df2e10040ecfa5a894a5c5d9cb0",
+                registryAddress: getRegistryAddress("paseo") as HexString,
                 metadataSigner,
                 onEvent: (event) => {
                     if (event.type === "build-start") events.push(`build-start:${event.crate}`);
@@ -1683,6 +1690,92 @@ if (import.meta.vitest) {
                 expect.anything(),
                 expect.anything(),
             );
+        });
+
+        test("emits check-needs-deploy from the plan before deploy-plan and submission events", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder([["a", "b"]], {}, { a: "@example/a", b: "@example/b" }),
+            );
+
+            const events: DeployEvent[] = [];
+            await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                onEvent: (event) => events.push(event),
+            });
+
+            const layerEventTypes = events
+                .filter((event) =>
+                    [
+                        "check-needs-deploy",
+                        "deploy-plan",
+                        "sign-request",
+                        "deploy-register-start",
+                        "publish-start",
+                        "deploy-register-done",
+                        "publish-done",
+                    ].includes(event.type),
+                )
+                .map((event) => event.type);
+            expect(layerEventTypes).toEqual([
+                "check-needs-deploy",
+                "check-needs-deploy",
+                "deploy-plan",
+                "sign-request",
+                "sign-request",
+                "deploy-register-start",
+                "publish-start",
+                "deploy-register-done",
+                "publish-done",
+            ]);
+
+            // Addresses come from planDeploy's prepared entries (one dry-run
+            // per contract — the mocked plan assigns 0x…01, 0x…02).
+            const checkEvents = events.filter((event) => event.type === "check-needs-deploy");
+            expect(checkEvents).toEqual([
+                {
+                    type: "check-needs-deploy",
+                    crate: "a",
+                    address: `0x${"1".padStart(40, "0")}`,
+                },
+                {
+                    type: "check-needs-deploy",
+                    crate: "b",
+                    address: `0x${"2".padStart(40, "0")}`,
+                },
+            ]);
+        });
+
+        test("propagates plan failures into deploy-register-error and contract status", async () => {
+            (mockDetect as any).mockReturnValue(makeOrder([["a"]], {}, { a: "@example/a" }));
+            const { ContractDeployer: MockedDeployer } = await import("./deployer");
+            (MockedDeployer as any).mockImplementationOnce(() => ({
+                planDeploy: vi.fn(async () => {
+                    throw new Error("Dry-run failed: boom");
+                }),
+                deployAndRegisterBatch: vi.fn(),
+            }));
+
+            const events: DeployEvent[] = [];
+            const summary = await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                onEvent: (event) => events.push(event),
+            });
+
+            const errorEvent = events.find((event) => event.type === "deploy-register-error");
+            expect(errorEvent).toMatchObject({ crates: ["a"], error: "Dry-run failed: boom" });
+            expect(summary.contracts[0]).toMatchObject({
+                crate: "a",
+                status: "error",
+                error: "Dry-run failed: boom",
+            });
         });
     });
 }

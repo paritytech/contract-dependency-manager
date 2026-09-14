@@ -42,7 +42,7 @@ salt = blake2b-256(JSON.stringify([cdmPackage, nextRegistryVersion]))
 addr = create2_address(deployer, salt, keccak256(bytecode))
 ```
 
-This makes a contract's address a function of `(deployer, cdmPackage, nextRegistryVersion, bytecode)`. Re-publishing the same package gets a fresh address instead of colliding with a previous deployment. The registry itself is the special stable case and is deployed under the package-only salt `blake2b-256("@cdm/registry")`.
+This makes a contract's address a function of `(deployer, cdmPackage, nextRegistryVersion, bytecode)`. Re-publishing the same package gets a fresh address instead of colliding with a previous deployment. The registry itself is the special stable case and is deployed under the package-only salt `blake2b-256("@cdm/registry.2")`.
 
 The metadata blob composition is in the right panel of the publish-pipeline diagram. Two non-obvious fields: `publish_block` is set to Asset Hub's head at submit time; `published_at` is the deployer's wall clock at submit time.
 
@@ -50,7 +50,7 @@ The metadata blob composition is in the right panel of the publish-pipeline diag
 
 ![ContractRegistry — state machine, storage, queries](./assets/cdm-registry.svg)
 
-The registry is a `pallet-revive` contract on Asset Hub, CREATE2-deployed under `@cdm/registry`. Registry addresses are environment-scoped and resolved through `@parity/cdm-env` (`getRegistryAddress(name)`, defaulting to Paseo); custom environments can still pass `--registry-address`. `cdm.json.registry` records the registry used for the installed snapshot.
+The registry is a `pallet-revive` contract on Asset Hub, CREATE2-deployed under `@cdm/registry.2`. It is split into an EIP-1967 proxy (the stable registry address, supporting admin `setCode` upgrades and `freeze`) and a delegate-called implementation contract that holds the logic. Registry addresses are environment-scoped and resolved through `@parity/cdm-env` (`getRegistryAddress(name)`, defaulting to Paseo); custom environments can still pass `--registry-address`. `cdm.json.registry` records the registry used for the installed snapshot.
 
 Key invariants:
 
@@ -164,7 +164,7 @@ writeFileSync(".cdm/contracts.d.ts", generateContractTypes(resolved));
 - `src/apps/cli/src/lib/{install-pipeline,deploy-pipeline}.ts`
 - `src/lib/contracts/src/{detection,builder,pipeline,deployer,publisher,store,cdm-json,cdm-local-json}.ts`
 - `src/lib/cdm/rust-macros/src/lib.rs` — `cdm::import!()` proc-macro
-- `src/contract/src/lib.rs` — ContractRegistry on-chain contract
+- `src/contract/src/main.rs` — ContractRegistry on-chain contract
 
 **New TypeScript SDK (separate repo, replaces `@parity/cdm-codegen`):**
 

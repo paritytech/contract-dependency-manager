@@ -11,12 +11,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@parity/product-sdk-chain-client": "^0.5.3",
-    "@parity/product-sdk-cloud-storage": "^0.5.3",
-    "@parity/product-sdk-contracts": "^0.7.0",
-    "@parity/product-sdk-descriptors": "^0.5.2",
-    "@parity/product-sdk-signer": "^0.6.0",
-    "polkadot-api": "^2.1.5",
+    "@parity/product-sdk-chain-client": "^0.10.0",
+    "@parity/product-sdk-cloud-storage": "^0.10.0",
+    "@parity/product-sdk-contracts": "^0.10.1",
+    "@parity/product-sdk-descriptors": "^0.9.0",
+    "@parity/product-sdk-signer": "^0.12.1",
+    "polkadot-api": "^2.1.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

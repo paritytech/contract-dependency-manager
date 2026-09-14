@@ -1,5 +1,52 @@
 # @dotdm/env
 
+## 2.4.0
+
+### Minor Changes
+
+- 3b23b96: Update product-sdk to the 0.21.0 release line (descriptors 0.9.0, host 0.15.1, contracts 0.10.1, tx 0.4.1, chain-client 0.10.0, cloud-storage 0.10.0). Descriptors 0.9.0 regenerates the paseo-bulletin bindings for the `v0.0.22-paseo` runtime (new `DataRenewal` pallet), fixing commands like `cdm account bal -n paseo` that broke against the upgraded Bulletin chain. Following descriptors 0.8.0's removal of the decommissioned Web3 Summit chains, the `w3s` chain preset is removed (`paseo`, `devnet`, `polkadot`, and `local` are unaffected). Template scaffolds pin the updated product-sdk versions.
+
+## 2.3.0
+
+### Minor Changes
+
+- f373a8e: Point the paseo preset at the new-generation registry (`0xc1a73a4f93fde65b1cb1680baead248073566cb0`) — the EIP-1967 proxy deployed via the CREATE3 factory and migrated from the old registry — and fix the local preset's IPFS gateway port to match PPN (8080).
+
+### Patch Changes
+
+- Updated dependencies [e67c5c7]
+  - @parity/cdm-utils@0.5.0
+
+## 2.2.0
+
+### Minor Changes
+
+- 8654118: `getRegistryAddress` now throws an actionable error for unknown chain names instead of returning an empty address, and chain-name validation is derived from the KNOWN_CHAINS presets in one place (`normalizeChainName`), so typo'd chain names fail fast everywhere.
+
+## 2.1.0
+
+### Minor Changes
+
+- ad53253: Add a `devnet` chain preset for the Paseo testnet Asset Hub (EVM chain id 420420417) wired to the community-operated ContractRegistry at `0x59b0245778917af55224e5f8fb55f7f8d452619f`, using the dedicated devnet descriptors and Bulletin RPC introduced in product-sdk 0.18.0, and clarify that the `paseo` preset targets the paseo-next preview network. Upgrades all `@parity/product-sdk-*` dependencies to the 0.18.0 release set and migrates to its `Result`-based error API (`submitAndWatch`, `batchSubmitAndWatch`, contract `.tx`/`.prepare`, `ensureContractAccountMapped`, cloud-storage `queryJson`).
+
+## 2.0.8
+
+### Patch Changes
+
+- 79fbc58: Refresh Product SDK packages to the 0.17 release line and align `polkadot-api` with the SDK's required version so contract runtime types resolve against a single PAPI instance.
+
+## 2.0.7
+
+### Patch Changes
+
+- 40f6516: Update the Paseo registry preset to the migrated ContractRegistry and keep pipeline tests aligned with the env preset.
+
+## 2.0.6
+
+### Patch Changes
+
+- 083bc41: Add the W3S registry address to the environment registry.
+
 ## 2.0.5
 
 ### Patch Changes

@@ -1,6 +1,17 @@
 [workspace]
 resolver = "2"
-members = ["src/contract", "src/lib/cdm/rust", "src/lib/cdm/rust-macros", "src/lib/cdm/import-test"]
+members = [
+    "src/contract",
+    "src/contract/core",
+    "src/contract/create3/child",
+    "src/contract/create3/factory",
+    "src/contract/proxy",
+    "src/lib/cdm/rust",
+    "src/lib/cdm/rust-macros",
+    "src/lib/cdm/rust-macros/pvm-cdm",
+    "src/lib/cdm/rust-macros/pvm-cdm-macros",
+    "src/lib/cdm/import-test",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,7 +23,7 @@ repository = "https://github.com/paritytech/contract-dependency-manager"
 [workspace.dependencies]
 pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "main", features = ["alloc"] }
 pvm-cdm = { path = "src/lib/cdm/rust-macros/pvm-cdm" }
-polkavm-derive = "0.31"
+polkavm-derive = "0.35"
 picoalloc = "5.2"
 cdm = { path = "src/lib/cdm/rust" }
 cdm-macros = { path = "src/lib/cdm/rust-macros" }
@@ -21,5 +32,4 @@ quote = "1"
 proc-macro2 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-home = "0.5"
 keccak-const = "0.2"

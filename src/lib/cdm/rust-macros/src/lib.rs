@@ -318,14 +318,6 @@ fn resolve_installed_abi(
             .map_err(|e| format!("Failed to serialize ABI for '{}': {}", package_name, e))?;
         std::fs::write(&abi_path, abi)
             .map_err(|e| format!("Failed to write {}: {}", abi_path.display(), e))?;
-    };
-
-    if !abi_path.exists() {
-        return Err(format!(
-            "ABI file not found at {}. Run 'cdm install {}' to download it.",
-            abi_path.display(),
-            package_name
-        ));
     }
 
     Ok(abi_path)

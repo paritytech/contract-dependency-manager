@@ -2,12 +2,6 @@ import { stringifyBigInt } from "@parity/cdm-utils";
 import type { Package, AbiEntry } from "./types";
 import type { RegistryContract } from "../utils/contracts";
 
-export interface ContractNameSearchPage {
-    names: string[];
-    nextOffset: number;
-    done: boolean;
-}
-
 export interface ContractPage {
     total: number;
     packages: Package[];
@@ -124,41 +118,52 @@ export async function queryContractsPage(
     return parseContractPage(result.value);
 }
 
-function parseSearchPage(value: unknown): ContractNameSearchPage {
-    if (Array.isArray(value)) {
-        return {
-            names: Array.isArray(value[0]) ? value[0] : [],
-            nextOffset: Number(value[1] ?? 0),
-            done: Boolean(value[2]),
-        };
-    }
-
-    if (value && typeof value === "object") {
-        const page = value as {
-            names?: unknown;
-            next_offset?: unknown;
-            nextOffset?: unknown;
-            done?: unknown;
-        };
-        return {
-            names: Array.isArray(page.names) ? (page.names as string[]) : [],
-            nextOffset: Number(page.next_offset ?? page.nextOffset ?? 0),
-            done: Boolean(page.done),
-        };
-    }
-
-    return { names: [], nextOffset: 0, done: true };
+export interface PackageVersionInfo {
+    version: number;
+    address?: string;
+    metadataUri?: string;
 }
 
-export async function queryContractNamesByPrefix(
+/**
+ * Query every published version of a contract: version count first, then each
+ * version's address and metadata URI in parallel. Returned in ascending
+ * version order (0..count-1).
+ */
+export async function queryContractVersions(
     registry: RegistryContract,
-    prefix: string,
-    offset: number,
-    limit: number,
-): Promise<ContractNameSearchPage> {
-    const result = await registry.searchContractNames.query(prefix, offset, limit);
-    if (!result.success) throw registryQueryError("Failed to search contract names", result.value);
-    return parseSearchPage(result.value);
+    name: string,
+): Promise<PackageVersionInfo[]> {
+    const countResult = await registry.getVersionCount.query(name);
+    if (!countResult.success) {
+        throw registryQueryError(`Failed to query version count for ${name}`, countResult.value);
+    }
+    const count = Number(countResult.value ?? 0);
+
+    return Promise.all(
+        Array.from({ length: count }, async (_, version) => {
+            const [addressResult, metadataResult] = await Promise.all([
+                registry.getAddressAtVersion.query(name, version),
+                registry.getMetadataUriAtVersion.query(name, version),
+            ]);
+            if (!addressResult.success) {
+                throw registryQueryError(
+                    `Failed to query address for ${name} v${version}`,
+                    addressResult.value,
+                );
+            }
+            if (!metadataResult.success) {
+                throw registryQueryError(
+                    `Failed to query metadata URI for ${name} v${version}`,
+                    metadataResult.value,
+                );
+            }
+            return {
+                version,
+                address: unwrapOption<string>(addressResult.value),
+                metadataUri: unwrapOption<string>(metadataResult.value),
+            };
+        }),
+    );
 }
 
 export function metadataCidFromUri(uri: string | undefined): string | undefined {

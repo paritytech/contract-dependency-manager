@@ -1,0 +1,19 @@
+[package]
+name = "create3-child"
+description = "CREATE3 child deployer: CREATE1s exactly one contract on behalf of the factory, making the target address independent of its code and constructor input"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+abi-gen = ["pvm-contract-sdk/abi-gen"]
+
+[dependencies]
+pvm-contract-sdk.workspace = true
+polkavm-derive.workspace = true
+picoalloc.workspace = true
+
+[dev-dependencies]
+pvm-contract-sdk = { workspace = true, features = ["std"] }

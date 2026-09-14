@@ -86,7 +86,7 @@ export default function App() {
       return;
     }
     setConnectStatus("Preparing account...");
-    await ensureContractAccountMapped(
+    const mapped = await ensureContractAccountMapped(
       contracts.getRuntime(),
       product.value.address,
       product.value.getSigner(),
@@ -96,6 +96,10 @@ export default function App() {
         ),
       },
     );
+    if (!mapped.ok) {
+      setConnectError(mapped.error.message);
+      return;
+    }
     activeProductAccount = product.value;
     contracts.setDefaults({
       origin: product.value.address,
@@ -426,7 +430,8 @@ function CreatePost({ onCreated }: { onCreated: () => void }) {
         photoCid = await publishBlob(bytes);
       }
       setStatus("Submitting post on-chain...");
-      await ig.createPost.tx(desc, photoCid);
+      const posted = await ig.createPost.tx(desc, photoCid);
+      if (!posted.ok) throw posted.error;
       reset(); setOpen(false); onCreated();
     } catch (err) {
       console.error("Create post error:", err);

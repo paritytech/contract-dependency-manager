@@ -9,6 +9,7 @@ import {
 import type { Account } from "@parity/cdm-utils/accounts";
 import { getAccount, saveAccount, accountFromMnemonic } from "@parity/cdm-utils/accounts";
 import supportsHyperlinks from "supports-hyperlinks";
+import { ensureAccountMapped } from "../lib/account-mapping";
 
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
@@ -143,12 +144,19 @@ account
         const chainClient = await createCdmAssetHubClient(preset.assethubUrl, opts.name);
         await chainClient.raw.assetHub.getChainSpecData();
         try {
-            await chainClient.assetHub.tx.Revive.map_account().signAndSubmit(
+            const outcome = await ensureAccountMapped(
+                chainClient.assetHub,
                 prepareSignerFromMnemonic(acc.mnemonic),
             );
-            console.log("Account mapped.");
-        } catch {
-            console.log("Account already mapped.");
+            console.log(
+                outcome === "already-mapped" ? "Account already mapped." : "Account mapped.",
+            );
+        } catch (err) {
+            console.error(
+                `Failed to map account: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            chainClient.destroy();
+            process.exit(1);
         }
         chainClient.destroy();
     });

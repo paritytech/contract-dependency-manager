@@ -55,30 +55,42 @@ const install = new Command("install")
         "[libraries...]",
         'CDM libraries (e.g., "@polkadot/reputation" or "@polkadot/reputation:3"). Omit to install all from cdm.json.',
     )
-    .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain", DEFAULT_NODE_URL)
-    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, w3s, local)")
+    .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
+    .option("-n, --name <name>", "Chain preset name (polkadot, paseo, devnet, local)")
     .option("--ipfs-gateway-url <url>", "IPFS gateway URL for fetching metadata")
     .option("--registry-address <address>", "Registry contract address");
 
 type InstallOptions = {
-    assethubUrl: string;
+    assethubUrl?: string;
     name?: string;
     ipfsGatewayUrl?: string;
     registryAddress?: string;
 };
 
-install.action(async (libraries: string[], opts: InstallOptions) => {
+/**
+ * Resolve connection options: explicit flags >> chain preset >> default URL.
+ * `--assethub-url` has no commander default so an explicitly passed URL always
+ * wins over `--name`'s preset — even when it happens to equal the default.
+ * Matches the deploy command's resolution pattern.
+ */
+export function resolveInstallOptions(opts: InstallOptions): InstallOptions & {
+    assethubUrl: string;
+} {
+    const resolved = { ...opts };
+    if (resolved.name && resolved.name !== "custom") {
+        const preset = getChainPreset(resolved.name);
+        resolved.assethubUrl = resolved.assethubUrl ?? preset.assethubUrl;
+        resolved.ipfsGatewayUrl = resolved.ipfsGatewayUrl ?? preset.ipfsGatewayUrl;
+        resolved.registryAddress = resolved.registryAddress ?? preset.registryAddress;
+    }
+    return { ...resolved, assethubUrl: resolved.assethubUrl ?? DEFAULT_NODE_URL };
+}
+
+install.action(async (libraries: string[], rawOpts: InstallOptions) => {
     const cdmResult = readCdmJson();
     const cdmJson = cdmResult?.cdmJson ?? { dependencies: {}, contracts: {} };
 
-    // Resolve chain preset
-    if (opts.name && opts.name !== "custom") {
-        const preset = getChainPreset(opts.name);
-        opts.assethubUrl =
-            opts.assethubUrl === DEFAULT_NODE_URL ? preset.assethubUrl : opts.assethubUrl;
-        opts.ipfsGatewayUrl = opts.ipfsGatewayUrl ?? preset.ipfsGatewayUrl;
-        opts.registryAddress = opts.registryAddress ?? preset.registryAddress;
-    }
+    const opts = resolveInstallOptions(rawOpts);
 
     if (!opts.ipfsGatewayUrl) {
         console.error(
@@ -149,6 +161,7 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
     const { results, success } = await runInstallWithUI({
         libraries: toInstall,
         registry,
+        registryAddress,
         ipfs,
         artifactsDir,
         ipfsGatewayUrl: opts.ipfsGatewayUrl,
@@ -193,3 +206,29 @@ install.action(async (libraries: string[], opts: InstallOptions) => {
 });
 
 export const installCommand = install;
+
+if (import.meta.vitest) {
+    const { describe, expect, test } = import.meta.vitest;
+
+    describe("resolveInstallOptions", () => {
+        test("an explicitly passed Asset Hub URL wins over the preset even when it equals the default", () => {
+            const resolved = resolveInstallOptions({
+                assethubUrl: DEFAULT_NODE_URL,
+                name: "paseo",
+            });
+            expect(resolved.assethubUrl).toBe(DEFAULT_NODE_URL);
+        });
+
+        test("the preset fills in URLs that were not passed explicitly", () => {
+            const preset = getChainPreset("paseo");
+            const resolved = resolveInstallOptions({ name: "paseo" });
+            expect(resolved.assethubUrl).toBe(preset.assethubUrl);
+            expect(resolved.ipfsGatewayUrl).toBe(preset.ipfsGatewayUrl);
+            expect(resolved.registryAddress).toBe(preset.registryAddress);
+        });
+
+        test("falls back to the default node URL when neither a URL nor a preset is given", () => {
+            expect(resolveInstallOptions({}).assethubUrl).toBe(DEFAULT_NODE_URL);
+        });
+    });
+}

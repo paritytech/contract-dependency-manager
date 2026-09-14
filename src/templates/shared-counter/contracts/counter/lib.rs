@@ -5,7 +5,7 @@ mod counter {
     use pvm_contract_sdk::Lazy;
 
     pub struct Counter {
-        #[slot(0)]
+        // Storage slots are auto-numbered in declaration order (`count` gets slot 0).
         count: Lazy<u32>,
     }
 

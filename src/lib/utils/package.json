@@ -1,6 +1,6 @@
 {
     "name": "@parity/cdm-utils",
-    "version": "0.4.1",
+    "version": "0.5.0",
     "type": "module",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
@@ -20,6 +20,7 @@
     },
     "scripts": {
         "build": "tsup src/index.ts src/accounts.ts --format esm --dts --clean",
+        "typecheck": "tsc --noEmit",
         "clean": "rm -rf dist"
     },
     "dependencies": {

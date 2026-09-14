@@ -1,6 +1,6 @@
 {
     "name": "@parity/cdm-codegen",
-    "version": "0.6.18",
+    "version": "0.6.26",
     "type": "module",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
@@ -24,6 +24,7 @@
     },
     "scripts": {
         "build": "tsup src/index.ts src/browser.ts src/codegen.ts --format esm --dts --clean",
+        "typecheck": "tsc --noEmit",
         "clean": "rm -rf dist"
     },
     "dependencies": {

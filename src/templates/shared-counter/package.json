@@ -6,10 +6,10 @@
         "start": "bun src/index.ts"
     },
     "dependencies": {
-        "@parity/product-sdk-contracts": "^0.7.0",
-        "@parity/product-sdk-descriptors": "^0.5.2",
-        "@parity/product-sdk-tx": "^0.2.7",
-        "polkadot-api": "^2.1.5",
+        "@parity/product-sdk-contracts": "^0.10.1",
+        "@parity/product-sdk-descriptors": "^0.9.0",
+        "@parity/product-sdk-tx": "^0.4.1",
+        "polkadot-api": "^2.1.7",
         "@polkadot-labs/hdkd-helpers": "^0.0.27"
     }
 }
