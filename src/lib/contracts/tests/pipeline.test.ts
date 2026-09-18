@@ -1,5 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import type { HexString, PolkadotSigner, SS58String } from "polkadot-api";
+import { getRegistryAddress } from "@parity/cdm-env";
 import {
     buildContracts,
     deployContracts,

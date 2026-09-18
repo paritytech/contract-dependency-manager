@@ -12,7 +12,6 @@ export function registryQueryError(action: string, value: unknown): Error {
     return new Error(`${action}: ${stringifyBigInt(value)}`);
 }
 
-
 export async function queryContractByName(
     registry: RegistryContract,
     name: string,
