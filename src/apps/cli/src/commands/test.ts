@@ -1,7 +1,6 @@
 import { Command } from "commander";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { readBuildManifest } from "@parity/cdm-builder";
 import { ensurePpnInstalled, isLocalNetworkUp, waitForLocalNetwork } from "./network";
 import { cdmInvocation } from "../lib/cdm-invocation";
 
@@ -67,7 +66,7 @@ const test = new Command("test")
             const packages = discoverCdmPackages(rootDir);
             if (packages.length === 0) {
                 console.error(
-                    "No CDM packages discovered in target/. Did the deploy run? (Looked for target/*.release.cdm.json with a cdmPackage field.)",
+                    "No CDM packages discovered. Did the build run? (Looked for target/cdm/build-manifest.json with cdmPackage entries.)",
                 );
                 process.exit(1);
             }
@@ -107,27 +106,22 @@ async function ensureLocalNetworkUp(): Promise<void> {
 }
 
 /**
- * Walk `target/*.release.cdm.json` to find this workspace's CDM packages.
- * Each per-crate cdm.json carries the `cdmPackage` annotation embedded by
- * `#[pvm::contract(cdm = "@org/name")]`.
+ * Read `target/cdm/build-manifest.json` to find this workspace's CDM packages.
+ * Each contract carries the `cdmPackage` annotation declared by
+ * `[package.metadata.cdm]` in its Cargo.toml.
+ *
+ * The manifest is written by the build phase; the per-crate
+ * `*.release.cdm.json` files this used to walk no longer exist (removed by the
+ * "flatten cdm manifest artifacts" refactor), so walking them silently yielded
+ * zero packages and `cdm test` exited before running vitest.
  */
 function discoverCdmPackages(rootDir: string): string[] {
-    const targetDir = resolve(rootDir, "target");
-    if (!existsSync(targetDir)) return [];
-    const packages: string[] = [];
-    for (const file of readdirSync(targetDir)) {
-        const m = file.match(/^(.+)\.release\.cdm\.json$/);
-        if (!m || m[1] === "contract-registry") continue;
-        try {
-            const meta = JSON.parse(readFileSync(resolve(targetDir, file), "utf-8")) as {
-                cdmPackage?: string;
-            };
-            if (meta.cdmPackage) packages.push(meta.cdmPackage);
-        } catch {
-            // skip malformed
-        }
-    }
-    return packages;
+    const manifest = readBuildManifest(rootDir);
+    if (!manifest) return [];
+    return manifest.contracts
+        .filter((contract) => contract.name !== "contract-registry")
+        .map((contract) => contract.cdmPackage)
+        .filter((pkg): pkg is string => Boolean(pkg));
 }
 
 function runCdm(args: string[]): void {
