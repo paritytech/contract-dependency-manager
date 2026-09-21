@@ -1,12 +1,12 @@
-# Add `@dotdm/cdm/test` subpath for shared integration-test helpers
+# Add `@parity/cdm-codegen/test` subpath for shared integration-test helpers
 
-**Status:** Design note for the next `@dotdm/cdm` release after `cdm test` lands.
+**Status:** Design note for the next `@parity/cdm-codegen` release after `cdm test` lands.
 
 ## Summary
 
 Every project running `cdm test` reproduces the same three helper files:
 dev accounts, `cdm.json` + ContractManager setup, and tx-result assertions.
-Ship them once from `@dotdm/cdm` under a new `./test` subpath so consumers
+Ship them once from `@parity/cdm-codegen` under a new `./test` subpath so consumers
 import them instead of copy-pasting.
 
 `setupForeignContracts` ships in the same subpath and solves a separate
@@ -51,11 +51,12 @@ interface MakeCdmOptions {
     rootDir?: string;          // default process.cwd()
     signer: PolkadotSigner;
     origin: string;
-    targetHash?: string;       // else CDM_TARGET_HASH env, else local, else first
+    assethubUrl?: string;      // else CDM_ASSETHUB_URL env, else local PPN
 }
 export function makeCdm(opts: MakeCdmOptions): Cdm;
 export function makeCdmAs(account: DevAccount, opts?: Omit<MakeCdmOptions, "signer" | "origin">): Cdm;
-export function selectTargetHash(rootDir?: string): string;
+// (An earlier draft keyed connections off cdm.json "targets" via a targetHash;
+// the flat cdm.json shape dropped targets, so the chain is now selected by URL.)
 
 // vitest-agnostic assertions (throw on failure; expect-style without depending on vitest)
 export function expectOk(promise: Promise<{ ok: boolean }>, label?: string): Promise<void>;
@@ -63,12 +64,14 @@ export function expectRevert(promise: Promise<{ ok: boolean }>, label?: string):
 
 // foreign contracts
 interface SetupForeignContractsOptions {
-    from: "paseo" | "polkadot" | "preview-net" | "custom";
-    assethubUrl?: string;        // required if from === "custom"
-    packages: string[];          // "@org/name:version", ":latest" allowed (warns)
-    to?: string;                 // local target, default "local"
-    signer?: PolkadotSigner;     // default Alice
-    cacheDir?: string;           // default ~/.cdm/cache/foreign/
+    from: "paseo" | "polkadot" | "devnet" | "custom";
+    assethubUrl?: string;          // required if from === "custom"
+    sourceRegistryAddress?: string; // required if from === "custom"
+    packages: string[];            // "@org/name:version", ":latest" allowed (warns)
+    to?: string;                   // local target, default "local"
+    destRegistryAddress?: string;  // else cdm.local.json / ~/.cdm/local-registry, else preset
+    signer?: PolkadotSigner;       // default Alice
+    cacheDir?: string;             // default ~/.cdm/cache/foreign/
 }
 interface SetupForeignContractsResult {
     addresses: Record<string, string>;   // pkg → local H160
@@ -84,7 +87,7 @@ Shaped to drop into vitest's `globalSetup`. Idempotent across re-runs.
 
 ```ts
 // tests/global-setup.ts
-import { setupForeignContracts } from "@dotdm/cdm/test";
+import { setupForeignContracts } from "@parity/cdm-codegen/test";
 export default () => setupForeignContracts({
     from: "paseo",
     packages: ["@polkadot/contexts:3", "@polkadot/reputation:5"],
@@ -103,8 +106,11 @@ For `@polkadot/contexts:3`:
 1. Connect to source chain. Resolve via its CDM registry:
    `get_address_at_version("@polkadot/contexts", 3)` → H160.
 2. `Revive.AccountInfoOf → PristineCode` → bytecode bytes.
-3. Cache by content hash at `~/.cdm/cache/foreign/<pkg>/<v>@<chain>:<sha>.polkavm`.
-4. If the local registry already has this package at this bytecode hash, skip.
+3. Cache at `~/.cdm/cache/foreign/<pkg>/v<v>@<chain>.polkavm`. (The content
+   hash can't be part of the lookup key — it's only known after the fetch —
+   so hash checking happens at deploy time instead.)
+4. If the local registry already has this package at this bytecode hash
+   (sha256 of cached vs on-chain bytes), skip.
 5. Otherwise redeploy locally and register under the same `@org/pkg` name.
 
 ### Why `:version`, not `:atBlock`
@@ -128,15 +134,15 @@ CDM registry, but `:version` is the default.
 
 ## Migration
 
-1. Add `src/test.ts` to `@dotdm/cdm`. Build, publish minor version.
+1. Add `src/test.ts` to `@parity/cdm-codegen`. Build, publish minor version.
 2. Once published, update consumers:
    - `contract-developer-tools/src/tests/helpers/` → delete; switch to
-     `import { ... } from "@dotdm/cdm/test"` in each test file.
+     `import { ... } from "@parity/cdm-codegen/test"` in each test file.
    - `src/templates/shared-counter/tests/` → same. Re-run
-     `make embed-templates` so scaffolded projects pick it up.
+     `pnpm embed:templates` so scaffolded projects pick it up.
 
 The `tests/helpers/` files in `contract-developer-tools` carry a
-`CANDIDATE FOR @dotdm/cdm/test` comment so the lift-and-shift target is
+`CANDIDATE FOR @parity/cdm-codegen/test` comment so the lift-and-shift target is
 findable when this work happens.
 
 ## What stays per-repo
@@ -149,7 +155,7 @@ findable when this work happens.
 
 - Existing helpers being lifted:
   [`contract-developer-tools/src/tests/helpers/`](file:///Users/reinhard/projects/contract-developer-tools/src/tests/helpers/)
-- Existing `@dotdm/cdm` package:
+- Existing `@parity/cdm-codegen` package:
   [`src/lib/cdm/typescript/`](../../src/lib/cdm/typescript/)
 - `cdm test` command consumers:
   [`src/apps/cli/src/commands/test.ts`](../../src/apps/cli/src/commands/test.ts)

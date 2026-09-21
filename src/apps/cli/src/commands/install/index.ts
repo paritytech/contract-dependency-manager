@@ -100,12 +100,22 @@ install.action(async (libraries: string[], rawOpts: InstallOptions) => {
         process.exit(1);
     }
 
-    // On local, prefer the pinned address from cdm.local.json (what was
-    // actually bootstrapped) over the canonical preset address.
+    // On local, resolve the pinned address from cdm.local.json /
+    // ~/.cdm/local-registry (written by `cdm deploy --bootstrap`). Truthy
+    // checks throughout: the local preset's registryAddress is "" — local has
+    // no canonical address — and that empty string must not short-circuit
+    // the fallback chain.
     const registryAddress =
-        opts.registryAddress ??
-        (opts.name === "local" ? resolveLocalRegistry() : undefined) ??
+        opts.registryAddress ||
+        (opts.name === "local" ? resolveLocalRegistry() : undefined) ||
         getRegistryAddress(opts.name);
+    if (!registryAddress) {
+        console.error(
+            "Error: no registry address available. Run `cdm deploy --bootstrap -n local` first " +
+                "for local installs, or pass --registry-address.",
+        );
+        process.exit(1);
+    }
     const artifactsDir = resolve(process.cwd(), ".cdm");
 
     // Connect to chain with spinner (matching deploy command style)

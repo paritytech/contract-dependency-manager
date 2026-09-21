@@ -7,17 +7,18 @@ import { resolve } from "node:path";
 import { createCdmAssetHubClient, getChainPreset } from "@parity/cdm-env";
 import type { SizedHex } from "polkadot-api";
 import { resolveLocalRegistry } from "@parity/cdm-builder";
-import { retryWithBackoff } from "@parity/cdm-utils";
+import {
+    LOCAL_ASSETHUB_PORT,
+    LOCAL_BULLETIN_PORT,
+    LOCAL_IPFS_GATEWAY_PORT,
+    retryWithBackoff,
+} from "@parity/cdm-utils";
 import { startBulletinIpfsGateway } from "../lib/bulletin-ipfs-gateway";
 import { cdmInvocation } from "../lib/cdm-invocation";
 
 const PPN_DIR = resolve(homedir(), ".cdm/ppn");
 const PPN_PROXY_INSTALL_URL =
     "https://raw.githubusercontent.com/paritytech/ppn-proxy/main/install.sh";
-const LOCAL_ASSETHUB_PORT = 10020;
-const LOCAL_BULLETIN_PORT = 10030;
-const LOCAL_IPFS_GATEWAY_PORT = 8283;
-
 const network = new Command("network").description(
     "Manage the local Polkadot ecosystem (Product Preview Network) used by `cdm test`",
 );
@@ -62,15 +63,14 @@ network
             );
             process.exit(1);
         }
-        // PPN doesn't ship a bulletin→IPFS gateway. Spawn our own translator so
-        // `cdm install -n local` (and any other CID consumer) can resolve local
-        // bulletin preimages over standard HTTP. Detached + unref'd so it
-        // outlives the `start` invocation; `stop` reaps it by port.
-        //
-        // TODO: upstream this gateway into paritytech/ppn-proxy so it ships
-        // alongside the chain binaries and gets its own `make` target —
-        // symmetric with how we start PPN above. That lets us delete the
-        // `cdm network gateway` subcommand and the `selfInvocation` helper.
+        // Newer PPN builds serve their own IPFS gateway on this port
+        // (config/ports.env IPFS_GATEWAY_PORT). For builds without one, spawn
+        // the bundled bulletin→IPFS translator on the same port so
+        // `cdm install -n local` (and any other CID consumer) can resolve
+        // local bulletin preimages over standard HTTP. The port probe below
+        // makes this a no-op when PPN's native gateway is already up.
+        // Detached + unref'd so it outlives the `start` invocation; `stop`
+        // reaps it by port.
         if (!(await tcpProbe(LOCAL_IPFS_GATEWAY_PORT))) {
             console.log(`Starting bulletin → IPFS gateway on :${LOCAL_IPFS_GATEWAY_PORT}...`);
             const { cmd, baseArgs } = cdmInvocation();

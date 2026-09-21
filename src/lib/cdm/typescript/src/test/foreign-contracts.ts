@@ -8,7 +8,7 @@ import {
     CONTRACTS_REGISTRY_ABI,
     ContractDeployer,
     getCdmRoot,
-    readCdmLocalJson,
+    resolveLocalRegistry,
     unwrapQueryOption,
 } from "@parity/cdm-builder";
 import {
@@ -23,21 +23,21 @@ import {
 const defaultCacheDir = () => resolve(getCdmRoot(), "cache/foreign");
 
 export interface SetupForeignContractsOptions {
-    /** Chain to pull bytecode from (name from getChainPreset or "custom"). */
+    /** Chain to pull bytecode from (name from getChainPreset, or "custom"). */
     from: string;
-    /** Required when `from` is a custom URL not in the preset list. */
+    /** Source Asset Hub URL. Required when `from` is "custom". */
     assethubUrl?: string;
+    /** Source registry address. Required when `from` is "custom". */
+    sourceRegistryAddress?: string;
     /** Packages to fetch in `@org/name:version` form. `:latest` allowed, warns. */
     packages: string[];
     /** Local chain to redeploy onto. Default "local". */
     to?: string;
     /**
-     * Override the dest chain's registry address. Useful when the local
-     * chain's bootstrapped registry doesn't match the canonical
-     * `REGISTRY_ADDRESS` (e.g., bytecode drift between local toolchain and
-     * the source the canonical constant is pinned to). When omitted,
-     * resolution falls back to `cdm.local.json`'s `localRegistry` field
-     * (written by `cdm deploy --bootstrap`), then to the chain preset.
+     * Override the dest chain's registry address. When omitted, local
+     * resolves through `cdm.local.json` / `~/.cdm/local-registry` (both
+     * written by `cdm deploy --bootstrap`); other chains use the canonical
+     * preset address.
      */
     destRegistryAddress?: string;
     /** Override the deploying signer. Default: Alice. */
@@ -78,8 +78,10 @@ export function parsePackageSpec(spec: string): ParsedPackageSpec {
 
 /**
  * Path under the cache root for a resolved (pkg, version, source-chain) tuple.
- * Exported so callers can pre-warm or inspect the cache; not part of the
- * stable API.
+ * The content hash can't be part of the lookup key — it's only known after
+ * the fetch — so idempotency is enforced at deploy time instead, by comparing
+ * sha256 of the cached bytes against what's on the dest chain. Exported so
+ * callers can pre-warm or inspect the cache; not part of the stable API.
  */
 export function cachePathFor(
     pkgName: string,
@@ -121,8 +123,13 @@ export async function setupForeignContracts(
     const destChain = opts.to ?? "local";
 
     // === Phase A: pull bytecode from source ===
+    if (opts.from === "custom" && (!opts.assethubUrl || !opts.sourceRegistryAddress)) {
+        throw new Error(
+            '`from: "custom"` requires both `assethubUrl` and `sourceRegistryAddress`.',
+        );
+    }
     const sourceAssethubUrl = opts.assethubUrl ?? getChainPreset(opts.from).assethubUrl;
-    const sourceRegistryAddress = getRegistryAddress(opts.from);
+    const sourceRegistryAddress = opts.sourceRegistryAddress ?? getRegistryAddress(opts.from);
 
     console.log(`[setupForeignContracts] source: ${opts.from} (${sourceAssethubUrl})`);
     const sourceClient = await createCdmAssetHubClient(sourceAssethubUrl, opts.from);
@@ -240,7 +247,7 @@ export async function setupForeignContracts(
             throw new Error(
                 `No ContractRegistry found at ${destRegistryAddress} on '${destChain}'. ` +
                     `Run \`cdm deploy --bootstrap -n ${destChain}\` ` +
-                    `(or \`make deploy-registry CHAIN=${destChain}\`) first.`,
+                    `(or \`pnpm deploy:registry -- --name ${destChain}\` from a cdm checkout) first.`,
             );
         }
 
@@ -281,20 +288,22 @@ export async function setupForeignContracts(
 }
 
 /**
- * Resolve the dest registry address with a three-tier fallback:
+ * Resolve the dest registry address:
  *   1. Explicit `opts.destRegistryAddress`.
- *   2. `localRegistry` from cdm.local.json (written by `cdm deploy --bootstrap`).
- *   3. Canonical address from the chain preset (non-local only — local has no
- *      canonical address, so this is a hard error pointing at the bootstrap).
+ *   2. On local: the pin from cdm.local.json, then the per-machine
+ *      `~/.cdm/local-registry` (both written by `cdm deploy --bootstrap`).
+ *      Local has no canonical preset address, so an unpinned local is a hard
+ *      error pointing at the bootstrap.
+ *   3. Otherwise the canonical address from the chain preset.
  */
 function resolveDestRegistry(opts: SetupForeignContractsOptions, destChain: string): string {
     if (opts.destRegistryAddress) return opts.destRegistryAddress;
-    const local = readCdmLocalJson();
-    if (local?.cdmLocalJson.localRegistry) return local.cdmLocalJson.localRegistry;
     if (destChain === "local") {
+        const pinned = resolveLocalRegistry();
+        if (pinned) return pinned;
         throw new Error(
             `No local registry available. Run \`cdm deploy --bootstrap -n local\` first ` +
-                "to write cdm.local.json, or pass destRegistryAddress explicitly.",
+                "(writes cdm.local.json and ~/.cdm/local-registry), or pass destRegistryAddress explicitly.",
         );
     }
     return getRegistryAddress(destChain);

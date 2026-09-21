@@ -39,6 +39,7 @@ import {
     predictRegistryDeploy,
     deployRegistryWithProxy,
     writeCdmLocalJson,
+    writeGlobalLocalRegistry,
 } from "@parity/cdm-builder";
 import {
     exportRegistrySnapshot,
@@ -238,7 +239,9 @@ async function finishWithRegistry(address: string, alreadyDeployed: boolean): Pr
             const cdmLocalPath = writeCdmLocalJson(rootDir, {
                 localRegistry: address as `0x${string}`,
             });
+            const globalPath = writeGlobalLocalRegistry(address as `0x${string}`);
             console.log(`localRegistry → ${cdmLocalPath}`);
+            console.log(`localRegistry → ${globalPath}`);
         }
     } finally {
         chainClient.destroy();

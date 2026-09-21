@@ -170,16 +170,18 @@ async function checkRegistryOnChain(
     assethubUrl: string,
     registryAddress: string,
 ): Promise<boolean> {
+    let client: Awaited<ReturnType<typeof createCdmAssetHubClient>> | undefined;
     try {
-        const client = await createCdmAssetHubClient(assethubUrl, "local");
+        client = await createCdmAssetHubClient(assethubUrl, "local");
         await client.raw.assetHub.getChainSpecData();
         const info = await client.assetHub.query.Revive.AccountInfoOf.getValue(
             registryAddress as HexString,
         );
-        client.destroy();
         return info?.account_type.type === "Contract";
     } catch {
         return false;
+    } finally {
+        client?.destroy();
     }
 }
 

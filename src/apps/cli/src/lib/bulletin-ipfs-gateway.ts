@@ -2,22 +2,26 @@
 /**
  * Local bulletin → IPFS HTTP gateway.
  *
- * PPN doesn't ship a bulletin-to-IPFS translator, but the bulletin node
- * already exposes a `bitswap_v1_get` JSON-RPC method that fetches bytes by
- * CID. This gateway translates the standard `GET /ipfs/<cid>` HTTP shape
+ * Older PPN builds don't ship a bulletin-to-IPFS translator (newer ones
+ * serve their own gateway — see LOCAL_IPFS_GATEWAY_PORT), but the bulletin
+ * node already exposes a `bitswap_v1_get` JSON-RPC method that fetches bytes
+ * by CID. This gateway translates the standard `GET /ipfs/<cid>` HTTP shape
  * into that RPC call so that any tool expecting an IPFS gateway (CDM's
  * `connectIpfsGateway`, frontends, generic CID fetchers) just works against
- * local PPN.
+ * local PPN. `cdm network start` only spawns it when nothing is already
+ * listening on the gateway port.
  *
- * Run standalone: `bun src/lib/scripts/bulletin-ipfs-gateway.ts`
+ * Run standalone: `cdm network gateway` (or
+ * `bun src/apps/cli/src/lib/bulletin-ipfs-gateway.ts`)
  * Programmatic:   `import { startBulletinIpfsGateway } from "..."`
  *
  * Configurable via env when run standalone:
  *   BULLETIN_RPC  default http://127.0.0.1:10030
- *   PORT          default 8283
+ *   PORT          default 8080 (LOCAL_IPFS_GATEWAY_PORT)
  *   HOST          default 127.0.0.1
  */
 import { createServer, type Server } from "node:http";
+import { LOCAL_BULLETIN_HTTP_URL, LOCAL_IPFS_GATEWAY_PORT } from "@parity/cdm-utils";
 
 export interface BulletinIpfsGatewayOptions {
     bulletinRpc?: string;
@@ -57,8 +61,8 @@ async function fetchBitswap(bulletinRpc: string, cid: string): Promise<Uint8Arra
 }
 
 export function startBulletinIpfsGateway(opts: BulletinIpfsGatewayOptions = {}): Server {
-    const bulletinRpc = opts.bulletinRpc ?? "http://127.0.0.1:10030";
-    const port = opts.port ?? 8283;
+    const bulletinRpc = opts.bulletinRpc ?? LOCAL_BULLETIN_HTTP_URL;
+    const port = opts.port ?? LOCAL_IPFS_GATEWAY_PORT;
     const host = opts.host ?? "127.0.0.1";
 
     const server = createServer(async (req, res) => {
@@ -107,7 +111,7 @@ export function startBulletinIpfsGateway(opts: BulletinIpfsGatewayOptions = {}):
     return server;
 }
 
-// Allow `bun src/lib/scripts/bulletin-ipfs-gateway.ts` to run the server directly.
+// Allow `bun src/apps/cli/src/lib/bulletin-ipfs-gateway.ts` to run the server directly.
 if (import.meta.main) {
     startBulletinIpfsGateway({
         bulletinRpc: process.env.BULLETIN_RPC,

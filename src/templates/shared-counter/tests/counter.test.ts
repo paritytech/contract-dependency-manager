@@ -3,29 +3,17 @@ import {
     ContractManager,
     ensureContractAccountMapped,
     type CdmJson,
-    type CdmJsonTarget,
 } from "@parity/product-sdk-contracts";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
-import { previewnet_asset_hub } from "@parity/product-sdk-descriptors/previewnet-asset-hub";
 import { createDevSigner, getDevPublicKey } from "@parity/product-sdk-tx";
 import { ss58Address } from "@polkadot-labs/hdkd-helpers";
-import { createClient, type ChainDefinition, type SS58String } from "polkadot-api";
+import { createClient, type SS58String } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import cdmJson from "../cdm.json";
 
-function getTarget(config: CdmJson): CdmJsonTarget {
-    const target = Object.values(config.targets)[0];
-    if (!target) {
-        throw new Error(
-            "No CDM target found in cdm.json. Run `cdm test` (which deploys + installs) first.",
-        );
-    }
-    return target;
-}
-
-function descriptorFor(target: CdmJsonTarget): ChainDefinition {
-    return target["asset-hub"].includes("previewnet") ? previewnet_asset_hub : paseo_asset_hub;
-}
+// `cdm test` deploys + installs against the local PPN, then runs this suite.
+// Override the URL to point the tests at another chain.
+const ASSETHUB_URL = process.env.CDM_ASSETHUB_URL ?? "ws://127.0.0.1:10020";
 
 // Rename "@example" to match the org you set in lib.rs before running.
 const COUNTER = "@example/counter";
@@ -35,9 +23,10 @@ const COUNTER_READER = "@example/counter-reader";
 const signer = createDevSigner("Alice");
 const aliceAddress = ss58Address(getDevPublicKey("Alice"), 42) as SS58String;
 
-const target = getTarget(cdmJson as CdmJson);
-const client = createClient(getWsProvider(target["asset-hub"]));
-const contracts = ContractManager.fromClient(cdmJson as CdmJson, client, descriptorFor(target), {
+// The local PPN chain reuses the paseo descriptors — the Revive/contract
+// surface is identical across the two.
+const client = createClient(getWsProvider(ASSETHUB_URL));
+const contracts = ContractManager.fromClient(cdmJson as CdmJson, client, paseo_asset_hub, {
     defaultOrigin: aliceAddress,
     defaultSigner: signer,
 });
@@ -46,7 +35,12 @@ afterAll(() => client.destroy());
 
 describe("shared counter", () => {
     test("Alice is mapped on Revive", async () => {
-        await ensureContractAccountMapped(contracts.getRuntime(), aliceAddress, signer);
+        const mapped = await ensureContractAccountMapped(
+            contracts.getRuntime(),
+            aliceAddress,
+            signer,
+        );
+        expect(mapped.ok).toBe(true);
     });
 
     test("getCount returns a number", async () => {

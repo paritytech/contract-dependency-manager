@@ -23,11 +23,16 @@ type BuildOptions = {
 function resolveRegistryAddress(rootDir: string, opts: BuildOptions): string {
     warnOnStaleCdmJsonRegistry(rootDir, opts);
     if (opts.registryAddress) return opts.registryAddress;
-    // On local, prefer the pinned address from cdm.local.json (what was
-    // actually bootstrapped) over the canonical preset address.
+    // On local, resolve the pinned address from cdm.local.json /
+    // ~/.cdm/local-registry — the local preset has no canonical address
+    // (its registryAddress is "").
     if (opts.name === "local") {
         const local = resolveLocalRegistry(rootDir);
         if (local) return local;
+        console.error(
+            "Error: local registry not bootstrapped. Run `cdm deploy --bootstrap -n local` first, or pass --registry-address.",
+        );
+        process.exit(1);
     }
     if (opts.name && opts.name !== "custom") {
         return getChainPreset(opts.name).registryAddress ?? getRegistryAddress(opts.name);

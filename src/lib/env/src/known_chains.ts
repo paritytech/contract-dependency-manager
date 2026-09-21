@@ -1,4 +1,5 @@
 import { BULLETIN_RPCS } from "@parity/product-sdk-host";
+import { LOCAL_ASSETHUB_URL, LOCAL_BULLETIN_URL, LOCAL_IPFS_GATEWAY_URL } from "@parity/cdm-utils";
 import { getRegistryAddress, type ProductSdkEnvironment } from "./registry";
 
 export interface ChainFaucet {
@@ -63,11 +64,12 @@ export const KNOWN_CHAINS = {
         faucets: [{ label: "Asset Hub", url: "https://faucet.polkadot.io/?parachain=1000" }],
     },
     local: {
-        assethubUrl: "ws://127.0.0.1:10020",
-        bulletinUrl: "ws://127.0.0.1:10030",
-        // PPN (product-preview-net) serves its IPFS gateway on 8080
-        // (config/ports.env IPFS_GATEWAY_PORT).
-        ipfsGatewayUrl: "http://127.0.0.1:8080/ipfs",
+        assethubUrl: LOCAL_ASSETHUB_URL,
+        bulletinUrl: LOCAL_BULLETIN_URL,
+        // PPN (product-preview-net) serves its IPFS gateway here
+        // (config/ports.env IPFS_GATEWAY_PORT); `cdm network start` bundles a
+        // fallback gateway on the same port for PPN builds without one.
+        ipfsGatewayUrl: LOCAL_IPFS_GATEWAY_URL,
         registryAddress: getRegistryAddress("local"),
     },
 } as const satisfies Record<string, ChainPreset>;

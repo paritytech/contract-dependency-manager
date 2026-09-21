@@ -5,7 +5,7 @@
 ## Summary
 
 Add the CDM `ContractRegistry` to Asset Hub's genesis state, at the canonical
-`REGISTRY_ADDRESS` that CDM uses on Paseo and Polkadot. Same mechanism PPN
+registry address that CDM uses on Paseo and Polkadot. Same mechanism PPN
 already uses to inject the 26 DotNS contracts — just one more entry.
 
 ## Proposed change
@@ -15,7 +15,7 @@ Extend PPN's chain-spec generator (the path that prints
 the cdm `ContractRegistry`:
 
 - **Address:** `0xae344f7f0f91d3a2176032af2990abcc7606c7d4`
-  (from `@dotdm/utils/constants.ts:REGISTRY_ADDRESS`).
+  (from `@parity/cdm-env`'s per-chain registry addresses (`src/lib/env/src/registry.ts`)).
 - **Bytecode:** `contract-registry.release.polkavm`, published as a release
   asset on `paritytech/contract-dependency-manager` once CDM ships the
   CI-built artifact (currently builds at install time; see "Dependency on
@@ -27,7 +27,7 @@ the cdm `ContractRegistry`:
 ## User-facing effect
 
 ```bash
-make start-network          # PPN boots with ContractRegistry at REGISTRY_ADDRESS
+cdm network start           # PPN boots with the ContractRegistry pre-injected
 cdm test                    # registry present → no bootstrap step → straight to deploy + tests
 ```
 
@@ -45,8 +45,8 @@ Until that's stable, PPN has no canonical artifact to pull.
 
 ## Required coordination
 
-- Injected bytecode must match the `REGISTRY_ADDRESS` constant in
-  `@dotdm/utils`. If the registry source changes, CDM and PPN release in
+- Injected bytecode must match the per-chain registry address in
+  `@parity/cdm-env` (`src/lib/env/src/registry.ts`). If the registry source changes, CDM and PPN release in
   lockstep.
 - `previewnet.substrate.dev` operators already deploy this contract on the
   public testnet. This proposal adds the local-PPN side so the two match.
@@ -78,8 +78,8 @@ first.
 
 ## References
 
-- CDM `REGISTRY_ADDRESS` constant: [`src/lib/utils/src/constants.ts`](../../src/lib/utils/src/constants.ts)
-- CDM registry source: [`src/contract/src/lib.rs`](../../src/contract/src/lib.rs)
+- CDM registry addresses: [`src/lib/env/src/registry.ts`](../../src/lib/env/src/registry.ts)
+- CDM registry source: [`src/contract/src/main.rs`](../../src/contract/src/main.rs)
 - CDM auto-bootstrap detection: [`src/apps/cli/src/commands/deploy.ts`](../../src/apps/cli/src/commands/deploy.ts) (`checkRegistryOnChain`)
 - CDM bytecode pull from a live chain: [`src/lib/contracts/src/deployer.ts`](../../src/lib/contracts/src/deployer.ts) (`getOnChainCode`)
 - PPN's existing genesis-injection path: the "Injecting DotNS genesis

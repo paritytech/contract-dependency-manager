@@ -32,5 +32,18 @@ export const CREATE3_FACTORY_PACKAGE = "@cdm/create3-factory.1";
 // (upgrades go through `setCode`, never a proxy redeploy).
 export const CONTRACTS_REGISTRY_IMPL_PACKAGE = "@cdm/registry-impl.1";
 
+// Local PPN (product-preview-net) ports — mirror ppn's config/ports.env.
+export const LOCAL_ASSETHUB_PORT = 10020;
+export const LOCAL_BULLETIN_PORT = 10030;
+// PPN serves its own IPFS gateway here (config/ports.env IPFS_GATEWAY_PORT).
+// `cdm network start` spawns the bundled bulletin→IPFS gateway on this same
+// port only when nothing is listening yet (PPN builds without the gateway).
+export const LOCAL_IPFS_GATEWAY_PORT = 8080;
+
+export const LOCAL_ASSETHUB_URL = `ws://127.0.0.1:${LOCAL_ASSETHUB_PORT}`;
+export const LOCAL_BULLETIN_URL = `ws://127.0.0.1:${LOCAL_BULLETIN_PORT}`;
+export const LOCAL_BULLETIN_HTTP_URL = `http://127.0.0.1:${LOCAL_BULLETIN_PORT}`;
+export const LOCAL_IPFS_GATEWAY_URL = `http://127.0.0.1:${LOCAL_IPFS_GATEWAY_PORT}/ipfs`;
+
 // Default WebSocket URL for local development
-export const DEFAULT_NODE_URL = "ws://127.0.0.1:10020";
+export const DEFAULT_NODE_URL = LOCAL_ASSETHUB_URL;

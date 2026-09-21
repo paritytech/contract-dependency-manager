@@ -3,13 +3,11 @@ import { homedir } from "os";
 import { resolve } from "path";
 
 /**
- * Per-machine file caching the local-chain ContractRegistry address. CREATE2
- * makes the address deterministic from `(deployer, registry bytecode, salt)`,
- * so every project on the same machine targets the same address. Persisting it
- * here lets a fresh project (with no `cdm.local.json`) discover the existing
- * registry without redeploying — and lets bootstrap detect the
- * `DuplicateContract` case cleanly when the chain is unchanged but `~/.cdm`
- * was wiped.
+ * Per-machine file caching the local-chain ContractRegistry address. The
+ * CREATE3 bootstrap makes the registry (proxy) address deterministic from
+ * `(factory, salt)`, so every project on the same machine targets the same
+ * address. Persisting it here lets a fresh project (with no `cdm.local.json`)
+ * discover the existing registry without redeploying.
  */
 const GLOBAL_LOCAL_REGISTRY_PATH = resolve(homedir(), ".cdm/local-registry");
 

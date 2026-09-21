@@ -2,6 +2,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
     test: {
+        // `cdm test` runs `vitest --project contract` by default — the name
+        // marks this suite as the chain-dependent one.
+        name: "contract",
         include: ["tests/**/*.test.ts"],
         testTimeout: 60_000,
         hookTimeout: 60_000,
