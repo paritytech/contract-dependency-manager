@@ -167,10 +167,9 @@ export type DeployEvent =
            *  - `preparing-metadata`      — assembling ABI/readme/etc for publish
            *  - `publishing`              — about to emit `publish-start`
            *  - `deploying`               — about to emit `deploy-register-start`
-           *                                (publish completes first: the registry
-           *                                commits to the metadata CID, so its
-           *                                content must be on Bulletin before
-           *                                anything is registered)
+           *                                (publish completes first — see the
+           *                                ordering comment above the publish
+           *                                submission in `deployContracts`)
            *  - `done`                    — pipeline complete (paired with pipeline-done)
            */
           type: "phase";
@@ -179,8 +178,8 @@ export type DeployEvent =
               | "checking-versions"
               | "precomputing-addresses"
               | "preparing-metadata"
-              | "deploying"
               | "publishing"
+              | "deploying"
               | "done";
           description: string;
           layer?: number;
@@ -223,6 +222,8 @@ export type DeployEvent =
           blockHash: string;
           durationMs: number;
       }
+    // Generic layer-failure event: also fires after `publish-error` when the
+    // layer aborts before the deploy+register batch was ever submitted.
     | { type: "deploy-register-error"; crates: string[]; error: string }
     | { type: "publish-start"; crates: string[] }
     | {
@@ -231,6 +232,7 @@ export type DeployEvent =
           txHash: string;
           durationMs: number;
       }
+    | { type: "publish-error"; crates: string[]; error: string }
     | { type: "pipeline-done"; summary: DeploySummary }
     | { type: "pipeline-error"; error: string };
 
@@ -1149,15 +1151,27 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 emit({ type: "publish-start", crates: deployableCrates });
 
                 const publishT0 = Date.now();
-                const publishRes = await publisher.publishBatch(metadataList);
-                // Verify CIDs match precomputation — any drift indicates a
-                // code bug or serialization mismatch.
-                for (let i = 0; i < metadataList.length; i++) {
-                    if (publishRes.cids[i] !== cidMap[deployableCrates[i]]) {
-                        throw new Error(
-                            `CID mismatch for ${deployableCrates[i]}: expected ${cidMap[deployableCrates[i]]}, got ${publishRes.cids[i]}`,
-                        );
+                let publishRes: Awaited<ReturnType<typeof publisher.publishBatch>>;
+                try {
+                    publishRes = await publisher.publishBatch(metadataList);
+                    // Verify CIDs match precomputation — any drift indicates a
+                    // code bug or serialization mismatch.
+                    for (let i = 0; i < metadataList.length; i++) {
+                        if (publishRes.cids[i] !== cidMap[deployableCrates[i]]) {
+                            throw new Error(
+                                `CID mismatch for ${deployableCrates[i]}: expected ${cidMap[deployableCrates[i]]}, got ${publishRes.cids[i]}`,
+                            );
+                        }
                     }
+                } catch (err) {
+                    // Publish-phase failures get their own event before the
+                    // rethrow hands bookkeeping to the layer error handler.
+                    emit({
+                        type: "publish-error",
+                        crates: deployableCrates,
+                        error: err instanceof Error ? err.message : String(err),
+                    });
+                    throw err;
                 }
 
                 const cidsOut: Record<string, string> = {};
@@ -1724,10 +1738,10 @@ if (import.meta.vitest) {
                         "check-needs-deploy",
                         "deploy-plan",
                         "sign-request",
-                        "deploy-register-start",
                         "publish-start",
-                        "deploy-register-done",
                         "publish-done",
+                        "deploy-register-start",
+                        "deploy-register-done",
                     ].includes(event.type),
                 )
                 .map((event) => event.type);
@@ -1787,6 +1801,51 @@ if (import.meta.vitest) {
                 status: "error",
                 error: "Dry-run failed: boom",
             });
+        });
+
+        test("a publish failure aborts before deploy+register is submitted", async () => {
+            (mockDetect as any).mockReturnValue(makeOrder([["a"]], {}, { a: "@example/a" }));
+            const { ContractDeployer: MockedDeployer } = await import("./deployer");
+            const deployAndRegisterBatch = vi.fn();
+            (MockedDeployer as any).mockImplementationOnce(() => ({
+                planDeploy: vi.fn(async (pvmPaths: string[]) => ({
+                    prepared: pvmPaths.map((_path, index) => ({
+                        address: `0x${String(index + 1).padStart(40, "0")}`,
+                        gasLimit: { ref_time: 1n, proof_size: 1n },
+                        extrinsicWeight: { ref_time: 1n, proof_size: 1n },
+                        storageDeposit: 0n,
+                    })),
+                    budget: { ref_time: 10n, proof_size: 10n },
+                    chunks: [pvmPaths.map((_path, index) => index)],
+                })),
+                deployAndRegisterBatch,
+            }));
+            (mockMetadataPublisher as any).mockImplementationOnce(() => ({
+                publishBatch: vi.fn(async () => {
+                    throw new Error("[Bulletin publish] Transaction timed out after 300s.");
+                }),
+            }));
+
+            const events: DeployEvent[] = [];
+            const summary = await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                onEvent: (event) => events.push(event),
+            });
+
+            // The whole point of publish-before-register: nothing may be
+            // registered when the publish never landed.
+            expect(deployAndRegisterBatch).not.toHaveBeenCalled();
+            expect(events.some((event) => event.type === "deploy-register-start")).toBe(false);
+            const publishError = events.find((event) => event.type === "publish-error");
+            expect(publishError).toMatchObject({
+                crates: ["a"],
+                error: expect.stringContaining("timed out"),
+            });
+            expect(summary.contracts[0]).toMatchObject({ crate: "a", status: "error" });
         });
     });
 }

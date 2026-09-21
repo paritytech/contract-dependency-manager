@@ -1,5 +1,6 @@
 ---
 "@parity/cdm-builder": patch
+"@parity/cdm-cli": patch
 ---
 
-Deploy pipeline: publish metadata to Bulletin before deploy+register instead of concurrently. The registry entry commits to the precomputed metadata CID, so the old `Promise.all` could register a CID whose content never landed on Bulletin (e.g. the store transaction timed out) — leaving the package registered but permanently uninstallable, with a retry deploying a fresh orphaned version. Sequencing restores the invariant that a registered CID is always fetchable; a failed publish now aborts before anything is registered, making the deploy safely retryable.
+`cdm deploy` now publishes metadata to Bulletin (and verifies CIDs) before submitting the deploy+register batch, instead of running both concurrently. A failed publish aborts before anything is registered — the registry can no longer end up pointing at an unfetchable CID, and the deploy is safely retryable. Publish-phase failures are reported through a new `publish-error` deploy event.
