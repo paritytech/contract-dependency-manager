@@ -200,10 +200,10 @@ mod contract_registry {
             self.info.insert(&contract_name, &info);
 
             self.address_of
-                .view_mut(&contract_name)
+                .entry(&contract_name)
                 .insert(&version, &contract_address);
             self.metadata_uri_of
-                .view_mut(&contract_name)
+                .entry(&contract_name)
                 .insert(&version, &metadata_uri);
 
             Published {
@@ -223,7 +223,7 @@ mod contract_registry {
         #[pvm_contract_sdk::method]
         pub fn get_address(&self, contract_name: String) -> OptionalAddress {
             self.latest_version(&contract_name)
-                .map(|version| self.address_of.view(&contract_name).get(&version))
+                .map(|version| self.address_of.get(&contract_name).get(&version))
                 .into()
         }
 
@@ -231,7 +231,7 @@ mod contract_registry {
         #[pvm_contract_sdk::method]
         pub fn get_metadata_uri(&self, contract_name: String) -> OptionalString {
             self.latest_version(&contract_name)
-                .map(|version| self.metadata_uri_of.view(&contract_name).get(&version))
+                .map(|version| self.metadata_uri_of.get(&contract_name).get(&version))
                 .into()
         }
 
@@ -242,7 +242,7 @@ mod contract_registry {
             version: u32,
         ) -> OptionalAddress {
             self.version_exists(&contract_name, version)
-                .then(|| self.address_of.view(&contract_name).get(&version))
+                .then(|| self.address_of.get(&contract_name).get(&version))
                 .into()
         }
 
@@ -253,7 +253,7 @@ mod contract_registry {
             version: u32,
         ) -> OptionalString {
             self.version_exists(&contract_name, version)
-                .then(|| self.metadata_uri_of.view(&contract_name).get(&version))
+                .then(|| self.metadata_uri_of.get(&contract_name).get(&version))
                 .into()
         }
 
@@ -331,8 +331,8 @@ mod contract_registry {
             let version = info.version_count.checked_sub(1)?;
             Some(ContractEntry {
                 version,
-                address: self.address_of.view(&name).get(&version),
-                metadata_uri: self.metadata_uri_of.view(&name).get(&version),
+                address: self.address_of.get(&name).get(&version),
+                metadata_uri: self.metadata_uri_of.get(&name).get(&version),
                 owner: info.owner,
                 name,
             })
@@ -348,8 +348,8 @@ mod contract_registry {
                 return Err(ImportContractExists.into());
             }
 
-            let mut addresses = self.address_of.view_mut(&contract_name);
-            let mut metadata_uris = self.metadata_uri_of.view_mut(&contract_name);
+            let mut addresses = self.address_of.entry(&contract_name);
+            let mut metadata_uris = self.metadata_uri_of.entry(&contract_name);
             let mut version_count: u32 = 0;
             for version in contract.versions {
                 addresses.insert(&version_count, &version.address);
