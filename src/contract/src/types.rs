@@ -124,6 +124,10 @@ pub struct VersionOverflow;
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct BadImplementation;
 
+/// `transferName` target owner is the zero address.
+#[derive(Debug, PartialEq, Eq, SolError)]
+pub struct InvalidNewOwner;
+
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub enum Error {
     Unauthorized(Unauthorized),
@@ -136,6 +140,7 @@ pub enum Error {
     ImportContractExists(ImportContractExists),
     VersionOverflow(VersionOverflow),
     BadImplementation(BadImplementation),
+    InvalidNewOwner(InvalidNewOwner),
 }
 
 impl From<NameError> for Error {

@@ -30,7 +30,7 @@ export const CREATE3_FACTORY_PACKAGE = "@cdm/create3-factory.1";
 // CREATE2 salt material for the registry IMPLEMENTATION blob the proxy
 // delegates to. Bump independently when shipping a new implementation build
 // (upgrades go through `setCode`, never a proxy redeploy).
-export const CONTRACTS_REGISTRY_IMPL_PACKAGE = "@cdm/registry-impl.1";
+export const CONTRACTS_REGISTRY_IMPL_PACKAGE = "@cdm/registry-impl.2";
 
 // Default WebSocket URL for local development
 export const DEFAULT_NODE_URL = "ws://127.0.0.1:10020";

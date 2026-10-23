@@ -28,7 +28,11 @@ import {
     type CdmDeployAssetHubApi,
 } from "@parity/cdm-env";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
-import { CONTRACTS_REGISTRY_PACKAGE, CREATE3_FACTORY_PACKAGE } from "@parity/cdm-utils";
+import {
+    CONTRACTS_REGISTRY_IMPL_PACKAGE,
+    CONTRACTS_REGISTRY_PACKAGE,
+    CREATE3_FACTORY_PACKAGE,
+} from "@parity/cdm-utils";
 import { getAccount } from "@parity/cdm-utils/accounts";
 import {
     ContractDeployer,
@@ -55,6 +59,7 @@ const { values: opts } = parseArgs({
         "migration-json": { type: "string" },
         "migration-batch-size": { type: "string" },
         suri: { type: "string" },
+        upgrade: { type: "boolean", default: false },
     },
 });
 
@@ -233,6 +238,100 @@ async function finishWithRegistry(address: string, alreadyDeployed: boolean): Pr
     } finally {
         chainClient.destroy();
     }
+}
+
+// ── In-place implementation upgrade (`--upgrade`) ─────────────────────────
+//
+// Deploys the freshly built implementation blob and repoints the existing
+// registry proxy at it via setCode. The registry address and all its state
+// stay put — that is the whole point of the proxy + CREATE3 architecture.
+// Requires the signer to be the registry admin.
+if (opts.upgrade) {
+    const target = selectedRegistryAddress ?? expected.registryAddress;
+    const info = await chainClient.assetHub.query.Revive.AccountInfoOf.getValue(
+        target as `0x${string}`,
+    );
+    if (info?.account_type.type !== "Contract") {
+        console.error(`--upgrade: no registry found at ${target}; deploy one first.`);
+        chainClient.destroy();
+        process.exit(1);
+    }
+
+    const registry = await createContractFromClient(
+        chainClient.raw.assetHub,
+        chainClient.descriptors.assetHub,
+        target as `0x${string}`,
+        CONTRACTS_REGISTRY_ABI,
+        { defaultSigner: signer, defaultOrigin: ss58Address(signer.publicKey) },
+    );
+    const origin = ss58Address(signer.publicKey);
+
+    const [beforeCount, liveImpl] = await Promise.all([
+        registry.getContractCount.query({ origin }),
+        registry.getCode.query({ origin }),
+    ]);
+    if (!beforeCount.success || !liveImpl.success) {
+        throw new Error(`--upgrade: could not query registry state at ${target}`);
+    }
+    console.log(
+        `Upgrading registry ${target} (implementation ${String(liveImpl.value)}, ${beforeCount.value} contracts)...`,
+    );
+
+    if (String(liveImpl.value).toLowerCase() === expected.implAddress.toLowerCase()) {
+        console.log(`Registry already runs implementation ${expected.implAddress}; nothing to do.`);
+        console.log(`\nCONTRACTS_REGISTRY_IMPL_ADDR=${expected.implAddress}`);
+        console.log(`CONTRACTS_REGISTRY_ADDR=${target}`);
+        chainClient.destroy();
+        process.exit(0);
+    }
+
+    if ((await deployer.getOnChainCode(expected.implAddress)) === null) {
+        console.log(`Deploying new implementation...`);
+        await deployer.deploy(implPvmPath, CONTRACTS_REGISTRY_IMPL_PACKAGE);
+    }
+    console.log(`New implementation at ${expected.implAddress}`);
+
+    // Dry-run first: surfaces UnauthorizedAdmin cleanly before submitting.
+    const dryRun = await registry.setCode.query(expected.implAddress, { origin });
+    if (!dryRun.success) {
+        throw new Error(
+            `setCode dry-run failed (is ${origin} the registry admin?): ${JSON.stringify(
+                dryRun.value,
+                (_k, v) => (typeof v === "bigint" ? v.toString() : v),
+            )}`,
+        );
+    }
+    const result = await registry.setCode.tx(expected.implAddress, { origin });
+    if (!result.ok) {
+        throw new Error(
+            `setCode failed: ${JSON.stringify(result, (_k, v) => (typeof v === "bigint" ? v.toString() : v))}`,
+        );
+    }
+
+    const [afterCount, afterImpl] = await Promise.all([
+        registry.getContractCount.query({ origin }),
+        registry.getCode.query({ origin }),
+    ]);
+    if (
+        !afterImpl.success ||
+        String(afterImpl.value).toLowerCase() !== expected.implAddress.toLowerCase()
+    ) {
+        throw new Error(
+            `setCode verification failed: getCode() returned ${String(afterImpl.value)}`,
+        );
+    }
+    if (!afterCount.success || afterCount.value !== beforeCount.value) {
+        throw new Error(
+            `State sanity check failed: contract count ${String(beforeCount.value)} -> ${String(afterCount.value)}`,
+        );
+    }
+    console.log(
+        `Upgrade complete: implementation ${String(liveImpl.value)} -> ${expected.implAddress}, state intact (${afterCount.value} contracts).`,
+    );
+    console.log(`\nCONTRACTS_REGISTRY_IMPL_ADDR=${expected.implAddress}`);
+    console.log(`CONTRACTS_REGISTRY_ADDR=${target}`);
+    chainClient.destroy();
+    process.exit(0);
 }
 
 if (selectedRegistryAddress) {
