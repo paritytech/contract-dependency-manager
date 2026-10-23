@@ -47,7 +47,7 @@ catalogs:
       version: 0.0.27
     '@types/bun':
       specifier: latest
-      version: 1.3.14
+      version: 1.4.3
     '@types/node':
       specifier: ^24.10.1
       version: 24.10.15
@@ -121,8 +121,8 @@ catalogs:
       specifier: ^8.48.0
       version: 8.56.1
     vite:
-      specifier: ^7.3.1
-      version: 7.3.1
+      specifier: ^7.3.7
+      version: 7.3.7
     vitest:
       specifier: ^3.1.4
       version: 3.2.4
@@ -188,7 +188,7 @@ importers:
     devDependencies:
       '@types/bun':
         specifier: 'catalog:'
-        version: 1.3.14
+        version: 1.4.3
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.14
@@ -252,7 +252,7 @@ importers:
         version: 19.2.3(@types/react@19.2.14)
       '@vitejs/plugin-react':
         specifier: 'catalog:'
-        version: 5.1.4(vite@7.3.1(@types/node@24.10.15))
+        version: 5.1.4(vite@7.3.7(@types/node@24.10.15))
       esbuild:
         specifier: 'catalog:'
         version: 0.28.0
@@ -276,7 +276,7 @@ importers:
         version: 8.56.1(eslint@9.39.3)(typescript@5.9.3)
       vite:
         specifier: 'catalog:'
-        version: 7.3.1(@types/node@24.10.15)
+        version: 7.3.7(@types/node@24.10.15)
 
   src/lib/cdm/typescript:
     dependencies:
@@ -396,11 +396,11 @@ importers:
         version: link:../utils
       '@parity/product-sdk-contracts':
         specifier: 'catalog:'
-        version: 0.10.1(esbuild@0.28.0)(rxjs@7.8.2)(typescript@5.9.3)(zod@4.3.6)
+        version: 0.10.1(rxjs@7.8.2)(typescript@5.9.3)(zod@4.3.6)
     devDependencies:
       '@types/bun':
         specifier: 'catalog:'
-        version: 1.3.14
+        version: 1.4.3
       '@types/node':
         specifier: 'catalog:'
         version: 24.10.15
@@ -447,7 +447,7 @@ importers:
     devDependencies:
       '@types/bun':
         specifier: 'catalog:'
-        version: 1.3.14
+        version: 1.4.3
       '@types/node':
         specifier: 'catalog:'
         version: 24.10.15
@@ -1743,8 +1743,8 @@ packages:
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
 
-  '@types/bun@1.3.14':
-    resolution: {integrity: sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw==}
+  '@types/bun@1.4.3':
+    resolution: {integrity: sha512-N67Pqy8JXbAY/j0tNraS3V5mubGvc6rrrNDmDCtZLlFzccbUJPDb0tvgUBC5q4m8ybkP93Jcn1QB+RYQ6PvBhw==}
 
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
@@ -1766,9 +1766,6 @@ packages:
 
   '@types/node@24.10.15':
     resolution: {integrity: sha512-BgjLoRuSr0MTI5wA6gMw9Xy0sFudAaUuvrnjgGx9wZ522fYYLA5SYJ+1Y30vTcJEG+DRCyDHx/gzQVfofYzSdg==}
-
-  '@types/node@25.9.1':
-    resolution: {integrity: sha512-xfrlY7UD5rMJk3ZVJP8BNzS28J36YJg+xp+LPXV1TdWxr8uMH5A860QNxYDGQe/ylDSgjxE52Q9VnO7p75tJxg==}
 
   '@types/node@25.9.4':
     resolution: {integrity: sha512-dszCsrKb5U7ZsVZBWiHFklTloVl0mSEnWH/iZXfZUlI4rzCUnsvGmgqfuVRHL54ugE7/wRuxEIXRa2iMZ+BG6g==}
@@ -1982,8 +1979,8 @@ packages:
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
 
-  bun-types@1.3.14:
-    resolution: {integrity: sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ==}
+  bun-types@1.4.3:
+    resolution: {integrity: sha512-tinRJNGOmUN+tEAsn2y2e942n9JHRHR42iUYzDH75NmhJqVBokGSQkkfSFdNWwsANIdrK6ACH9t01M452YyTwg==}
 
   bundle-require@5.1.0:
     resolution: {integrity: sha512-3WrrOuZiyaaZPWiEt4G3+IffISVC9HYlWueJEBWED4ZH4aIAC2PnkdnuRrR94M+w6yGWn4AglWtJtBI8YqvgoA==}
@@ -2212,6 +2209,7 @@ packages:
   eslint@9.39.3:
     resolution: {integrity: sha512-VmQ+sifHUbI/IcSopBCF/HO3YiHQx/AVd3UVyYL6weuwW+HvON9VYn5l6Zl1WZzPWXPNZrSQpxwkkZ/VuvJZzg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -3366,6 +3364,46 @@ packages:
       yaml:
         optional: true
 
+  vite@7.3.7:
+    resolution: {integrity: sha512-AHEzTORMbi7/7aXp7w7KZ5+DCUdSeLsJz0grY8xHpc9DHdYb0vQu6DqJfm2tOw3gDExNgPgnJTXxM6syYFHaCA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    hasBin: true
+    peerDependencies:
+      '@types/node': ^20.19.0 || >=22.12.0
+      jiti: '>=1.21.0'
+      less: ^4.0.0
+      lightningcss: ^1.21.0
+      sass: ^1.70.0
+      sass-embedded: ^1.70.0
+      stylus: '>=0.54.8'
+      sugarss: ^5.0.0
+      terser: ^5.16.0
+      tsx: ^4.8.1
+      yaml: ^2.4.2
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+      jiti:
+        optional: true
+      less:
+        optional: true
+      lightningcss:
+        optional: true
+      sass:
+        optional: true
+      sass-embedded:
+        optional: true
+      stylus:
+        optional: true
+      sugarss:
+        optional: true
+      terser:
+        optional: true
+      tsx:
+        optional: true
+      yaml:
+        optional: true
+
   vitest@3.2.4:
     resolution: {integrity: sha512-LUCP5ev3GURDysTWiP47wRRUpLKMOfPh+yKTx3kVIEiu5KOMeqzpnYNsKyOoVrULivR8tLcks4+lga33Whn90A==}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
@@ -4241,6 +4279,27 @@ snapshots:
       - utf-8-validate
       - zod
 
+  '@parity/product-sdk-contracts@0.10.1(rxjs@7.8.2)(typescript@5.9.3)(zod@4.3.6)':
+    dependencies:
+      '@parity/product-sdk-address': 0.1.1
+      '@parity/product-sdk-errors': 0.2.0
+      '@parity/product-sdk-keys': 0.3.18(rxjs@7.8.2)
+      '@parity/product-sdk-logger': 0.1.1
+      '@parity/product-sdk-signer': 0.12.1(rxjs@7.8.2)
+      '@parity/product-sdk-tx': 0.4.1(rxjs@7.8.2)
+      '@parity/result': 0.2.0
+      '@polkadot-labs/hdkd-helpers': 0.0.30
+      polkadot-api: 2.1.7(rxjs@7.8.2)
+      viem: 2.52.0(typescript@5.9.3)(zod@4.3.6)
+    transitivePeerDependencies:
+      - bufferutil
+      - esbuild
+      - rxjs
+      - supports-color
+      - typescript
+      - utf-8-validate
+      - zod
+
   '@parity/product-sdk-crypto@0.1.1':
     dependencies:
       '@noble/ciphers': 1.3.0
@@ -4277,6 +4336,23 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@parity/product-sdk-host@0.15.1(rxjs@7.8.2)':
+    dependencies:
+      '@parity/product-sdk-errors': 0.2.0
+      '@parity/product-sdk-logger': 0.1.1
+      '@parity/result': 0.2.0
+      '@parity/truapi': 0.7.0
+      '@polkadot-api/json-rpc-provider': 0.2.0
+      '@polkadot-api/substrate-bindings': 0.20.3
+      neverthrow: 8.2.0
+      polkadot-api: 2.1.7(rxjs@7.8.2)
+    transitivePeerDependencies:
+      - bufferutil
+      - esbuild
+      - rxjs
+      - supports-color
+      - utf-8-validate
+
   '@parity/product-sdk-keys@0.3.18(esbuild@0.28.0)(rxjs@7.8.2)':
     dependencies:
       '@parity/product-sdk-address': 0.1.1
@@ -4294,9 +4370,37 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@parity/product-sdk-keys@0.3.18(rxjs@7.8.2)':
+    dependencies:
+      '@parity/product-sdk-address': 0.1.1
+      '@parity/product-sdk-crypto': 0.1.1
+      '@parity/product-sdk-local-storage': 0.3.4(rxjs@7.8.2)
+      '@polkadot-labs/hdkd': 0.0.28
+      '@polkadot-labs/hdkd-helpers': 0.0.30
+      '@scure/sr25519': 2.2.0
+      polkadot-api: 2.1.7(rxjs@7.8.2)
+      scale-ts: 1.6.1
+    transitivePeerDependencies:
+      - bufferutil
+      - esbuild
+      - rxjs
+      - supports-color
+      - utf-8-validate
+
   '@parity/product-sdk-local-storage@0.3.4(esbuild@0.28.0)(rxjs@7.8.2)':
     dependencies:
       '@parity/product-sdk-host': 0.15.1(esbuild@0.28.0)(rxjs@7.8.2)
+      '@parity/product-sdk-logger': 0.1.1
+    transitivePeerDependencies:
+      - bufferutil
+      - esbuild
+      - rxjs
+      - supports-color
+      - utf-8-validate
+
+  '@parity/product-sdk-local-storage@0.3.4(rxjs@7.8.2)':
+    dependencies:
+      '@parity/product-sdk-host': 0.15.1(rxjs@7.8.2)
       '@parity/product-sdk-logger': 0.1.1
     transitivePeerDependencies:
       - bufferutil
@@ -4323,6 +4427,22 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@parity/product-sdk-signer@0.12.1(rxjs@7.8.2)':
+    dependencies:
+      '@parity/product-sdk-address': 0.1.1
+      '@parity/product-sdk-errors': 0.2.0
+      '@parity/product-sdk-host': 0.15.1(rxjs@7.8.2)
+      '@parity/product-sdk-keys': 0.3.18(rxjs@7.8.2)
+      '@parity/product-sdk-logger': 0.1.1
+      '@parity/result': 0.2.0
+      polkadot-api: 2.1.7(rxjs@7.8.2)
+    transitivePeerDependencies:
+      - bufferutil
+      - esbuild
+      - rxjs
+      - supports-color
+      - utf-8-validate
+
   '@parity/product-sdk-tx@0.4.1(esbuild@0.28.0)(rxjs@7.8.2)':
     dependencies:
       '@parity/product-sdk-errors': 0.2.0
@@ -4338,6 +4458,21 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@parity/product-sdk-tx@0.4.1(rxjs@7.8.2)':
+    dependencies:
+      '@parity/product-sdk-errors': 0.2.0
+      '@parity/product-sdk-keys': 0.3.18(rxjs@7.8.2)
+      '@parity/product-sdk-logger': 0.1.1
+      '@parity/result': 0.2.0
+      '@polkadot-labs/hdkd-helpers': 0.0.30
+      polkadot-api: 2.1.7(rxjs@7.8.2)
+    transitivePeerDependencies:
+      - bufferutil
+      - esbuild
+      - rxjs
+      - supports-color
+      - utf-8-validate
+
   '@parity/result@0.2.0': {}
 
   '@parity/truapi@0.7.0':
@@ -4345,6 +4480,41 @@ snapshots:
       '@noble/hashes': 2.2.0
       neverthrow: 8.2.0
       scale-ts: 1.6.1
+
+  '@polkadot-api/cli@0.21.6':
+    dependencies:
+      '@commander-js/extra-typings': 15.0.0(commander@15.0.0)
+      '@polkadot-api/codegen': 0.22.5
+      '@polkadot-api/ink-contracts': 0.6.3
+      '@polkadot-api/json-rpc-provider': 0.2.0
+      '@polkadot-api/known-chains': 0.11.6
+      '@polkadot-api/metadata-compatibility': 0.6.3
+      '@polkadot-api/observable-client': 0.18.7(rxjs@7.8.2)
+      '@polkadot-api/sm-provider': 0.3.6(@polkadot-api/smoldot@0.4.5)
+      '@polkadot-api/smoldot': 0.4.5
+      '@polkadot-api/substrate-bindings': 0.20.3
+      '@polkadot-api/substrate-client': 0.7.0
+      '@polkadot-api/utils': 0.4.0
+      '@polkadot-api/wasm-executor': 0.2.3
+      '@polkadot-api/ws-middleware': 0.3.5(rxjs@7.8.2)
+      '@polkadot-api/ws-provider': 0.9.0(rxjs@7.8.2)
+      '@types/node': 25.9.4
+      commander: 15.0.0
+      execa: 9.6.1
+      fs.promises.exists: 1.1.4
+      ora: 9.4.1
+      read-pkg: 10.1.0
+      rollup: 4.62.2
+      rollup-plugin-esbuild: 6.2.1(rollup@4.62.2)
+      rxjs: 7.8.2
+      tsc-prog: 2.3.0(typescript@6.0.3)
+      typescript: 6.0.3
+      write-package: 7.2.0
+    transitivePeerDependencies:
+      - bufferutil
+      - esbuild
+      - supports-color
+      - utf-8-validate
 
   '@polkadot-api/cli@0.21.6(esbuild@0.25.12)':
     dependencies:
@@ -4820,9 +4990,9 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.0
 
-  '@types/bun@1.3.14':
+  '@types/bun@1.4.3':
     dependencies:
-      bun-types: 1.3.14
+      bun-types: 1.4.3
 
   '@types/chai@5.2.3':
     dependencies:
@@ -4842,10 +5012,6 @@ snapshots:
   '@types/node@24.10.15':
     dependencies:
       undici-types: 7.16.0
-
-  '@types/node@25.9.1':
-    dependencies:
-      undici-types: 7.24.6
 
   '@types/node@25.9.4':
     dependencies:
@@ -4955,7 +5121,7 @@ snapshots:
       '@typescript-eslint/types': 8.56.1
       eslint-visitor-keys: 5.0.1
 
-  '@vitejs/plugin-react@5.1.4(vite@7.3.1(@types/node@24.10.15))':
+  '@vitejs/plugin-react@5.1.4(vite@7.3.7(@types/node@24.10.15))':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.29.0)
@@ -4963,7 +5129,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-rc.3
       '@types/babel__core': 7.20.5
       react-refresh: 0.18.0
-      vite: 7.3.1(@types/node@24.10.15)
+      vite: 7.3.7(@types/node@24.10.15)
     transitivePeerDependencies:
       - supports-color
 
@@ -5088,9 +5254,10 @@ snapshots:
       node-releases: 2.0.27
       update-browserslist-db: 1.2.3(browserslist@4.28.1)
 
-  bun-types@1.3.14:
+  bun-types@1.4.3:
     dependencies:
-      '@types/node': 25.9.1
+      '@types/node': 25.9.4
+      undici-types: 7.24.6
 
   bundle-require@5.1.0(esbuild@0.25.12):
     dependencies:
@@ -5396,7 +5563,7 @@ snapshots:
 
   estree-walker@3.0.3:
     dependencies:
-      '@types/estree': 1.0.8
+      '@types/estree': 1.0.9
 
   esutils@2.0.3: {}
 
@@ -5469,7 +5636,7 @@ snapshots:
     dependencies:
       magic-string: 0.30.21
       mlly: 1.8.0
-      rollup: 4.59.0
+      rollup: 4.62.2
 
   flat-cache@4.0.1:
     dependencies:
@@ -5982,6 +6149,34 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  polkadot-api@2.1.7(rxjs@7.8.2):
+    dependencies:
+      '@polkadot-api/cli': 0.21.6
+      '@polkadot-api/ink-contracts': 0.6.3
+      '@polkadot-api/json-rpc-provider': 0.2.0
+      '@polkadot-api/known-chains': 0.11.6
+      '@polkadot-api/logs-provider': 0.2.0
+      '@polkadot-api/metadata-builders': 0.14.3
+      '@polkadot-api/metadata-compatibility': 0.6.3
+      '@polkadot-api/observable-client': 0.18.7(rxjs@7.8.2)
+      '@polkadot-api/pjs-signer': 0.7.3
+      '@polkadot-api/polkadot-signer': 0.1.6
+      '@polkadot-api/signer': 0.3.3
+      '@polkadot-api/sm-provider': 0.3.6(@polkadot-api/smoldot@0.4.5)
+      '@polkadot-api/smoldot': 0.4.5
+      '@polkadot-api/substrate-bindings': 0.20.3
+      '@polkadot-api/substrate-client': 0.7.0
+      '@polkadot-api/utils': 0.4.0
+      '@polkadot-api/ws-middleware': 0.3.5(rxjs@7.8.2)
+      '@polkadot-api/ws-provider': 0.9.0(rxjs@7.8.2)
+      '@rx-state/core': 0.1.4(rxjs@7.8.2)
+      rxjs: 7.8.2
+    transitivePeerDependencies:
+      - bufferutil
+      - esbuild
+      - supports-color
+      - utf-8-validate
+
   postcss-load-config@6.0.1(postcss@8.5.6):
     dependencies:
       lilconfig: 3.1.3
@@ -6103,6 +6298,16 @@ snapshots:
       debug: 4.4.3
       es-module-lexer: 1.7.0
       esbuild: 0.28.0
+      get-tsconfig: 4.14.0
+      rollup: 4.62.2
+      unplugin-utils: 0.2.5
+    transitivePeerDependencies:
+      - supports-color
+
+  rollup-plugin-esbuild@6.2.1(rollup@4.62.2):
+    dependencies:
+      debug: 4.4.3
+      es-module-lexer: 1.7.0
       get-tsconfig: 4.14.0
       rollup: 4.62.2
       unplugin-utils: 0.2.5
@@ -6555,28 +6760,28 @@ snapshots:
       - tsx
       - yaml
 
-  vite@7.3.1(@types/node@24.10.15):
-    dependencies:
-      esbuild: 0.27.3
-      fdir: 6.5.0(picomatch@4.0.3)
-      picomatch: 4.0.3
-      postcss: 8.5.6
-      rollup: 4.59.0
-      tinyglobby: 0.2.15
-    optionalDependencies:
-      '@types/node': 24.10.15
-      fsevents: 2.3.3
-
   vite@7.3.1(@types/node@25.9.4):
     dependencies:
       esbuild: 0.27.3
       fdir: 6.5.0(picomatch@4.0.3)
       picomatch: 4.0.3
       postcss: 8.5.6
-      rollup: 4.59.0
+      rollup: 4.62.2
       tinyglobby: 0.2.15
     optionalDependencies:
       '@types/node': 25.9.4
+      fsevents: 2.3.3
+
+  vite@7.3.7(@types/node@24.10.15):
+    dependencies:
+      esbuild: 0.28.0
+      fdir: 6.5.0(picomatch@4.0.3)
+      picomatch: 4.0.3
+      postcss: 8.5.6
+      rollup: 4.62.2
+      tinyglobby: 0.2.15
+    optionalDependencies:
+      '@types/node': 24.10.15
       fsevents: 2.3.3
 
   vitest@3.2.4(@types/node@25.9.4):
