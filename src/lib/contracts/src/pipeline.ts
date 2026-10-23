@@ -165,8 +165,11 @@ export type DeployEvent =
            *  - `checking-versions`       — querying registry version counts
            *  - `precomputing-addresses`  — dry-run planDeploy for CREATE2 addrs
            *  - `preparing-metadata`      — assembling ABI/readme/etc for publish
-           *  - `deploying`               — about to emit `deploy-register-start`
            *  - `publishing`              — about to emit `publish-start`
+           *  - `deploying`               — about to emit `deploy-register-start`
+           *                                (publish completes first — see the
+           *                                ordering comment above the publish
+           *                                submission in `deployContracts`)
            *  - `done`                    — pipeline complete (paired with pipeline-done)
            */
           type: "phase";
@@ -175,8 +178,8 @@ export type DeployEvent =
               | "checking-versions"
               | "precomputing-addresses"
               | "preparing-metadata"
-              | "deploying"
               | "publishing"
+              | "deploying"
               | "done";
           description: string;
           layer?: number;
@@ -219,6 +222,8 @@ export type DeployEvent =
           blockHash: string;
           durationMs: number;
       }
+    // Generic layer-failure event: also fires after `publish-error` when the
+    // layer aborts before the deploy+register batch was ever submitted.
     | { type: "deploy-register-error"; crates: string[]; error: string }
     | { type: "publish-start"; crates: string[] }
     | {
@@ -227,6 +232,7 @@ export type DeployEvent =
           txHash: string;
           durationMs: number;
       }
+    | { type: "publish-error"; crates: string[]; error: string }
     | { type: "pipeline-done"; summary: DeploySummary }
     | { type: "pipeline-error"; error: string };
 
@@ -1124,21 +1130,18 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     chunks: plan.chunks.map((idxs) => idxs.map((i) => deployableCrates[i])),
                 });
 
-                // Sign requests fire immediately before submission.
-                emit({
-                    type: "sign-request",
-                    phase: "deploy-register",
-                    crates: deployableCrates,
-                });
+                // Publish metadata to Bulletin BEFORE deploy+register. The
+                // registry entry commits to the precomputed CID, so running
+                // both concurrently could register a CID whose content never
+                // landed on Bulletin (e.g. the store tx times out) — leaving
+                // the package registered but uninstallable, with no repair
+                // path since the metadata bytes are timestamped and only ever
+                // held in memory. Sequencing restores the invariant
+                // "registered ⇒ fetchable": if publish fails, nothing is
+                // registered and the deploy can simply be retried; if
+                // deploy+register fails after a successful publish, the
+                // orphaned Bulletin content is harmless.
                 emit({ type: "sign-request", phase: "publish", crates: deployableCrates });
-
-                emit({
-                    type: "phase",
-                    name: "deploying",
-                    description: "Submitting deploy+register batch",
-                    layer: layerIndex,
-                });
-                emit({ type: "deploy-register-start", crates: deployableCrates });
                 emit({
                     type: "phase",
                     name: "publishing",
@@ -1147,60 +1150,28 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 });
                 emit({ type: "publish-start", crates: deployableCrates });
 
-                const deployT0 = Date.now();
                 const publishT0 = Date.now();
-                let deployCursor = 0;
-
-                const [deployRes, publishRes] = await Promise.all([
-                    deployer.deployAndRegisterBatch(
-                        pvmPaths,
-                        deployablePackages,
-                        registryContract,
-                        metadataUris,
-                        (chunk) => {
-                            // Callback fires in chunk order; the i-th chunk covers
-                            // deployables[deployCursor..+len].
-                            const addrs: Record<string, HexString> = {};
-                            const start = deployCursor;
-                            for (let i = 0; i < chunk.addresses.length; i++) {
-                                const crate = deployableCrates[start + i];
-                                addrs[crate] = chunk.addresses[i] as HexString;
-                                addresses[crate] = chunk.addresses[i] as HexString;
-                            }
-                            deployCursor += chunk.addresses.length;
-                            emit({
-                                type: "deploy-register-done",
-                                addresses: addrs,
-                                txHash: chunk.txHash,
-                                blockHash: chunk.blockHash,
-                                durationMs: Date.now() - deployT0,
-                            });
-                        },
-                        { plan, saltVersions, saltScope: opts.registryAddress },
-                    ),
-                    publisher.publishBatch(metadataList).then((r) => {
-                        // Verify CIDs match precomputation — any drift
-                        // indicates a code bug or serialization mismatch.
-                        for (let i = 0; i < metadataList.length; i++) {
-                            if (r.cids[i] !== cidMap[deployableCrates[i]]) {
-                                throw new Error(
-                                    `CID mismatch for ${deployableCrates[i]}: expected ${cidMap[deployableCrates[i]]}, got ${r.cids[i]}`,
-                                );
-                            }
+                let publishRes: Awaited<ReturnType<typeof publisher.publishBatch>>;
+                try {
+                    publishRes = await publisher.publishBatch(metadataList);
+                    // Verify CIDs match precomputation — any drift indicates a
+                    // code bug or serialization mismatch.
+                    for (let i = 0; i < metadataList.length; i++) {
+                        if (publishRes.cids[i] !== cidMap[deployableCrates[i]]) {
+                            throw new Error(
+                                `CID mismatch for ${deployableCrates[i]}: expected ${cidMap[deployableCrates[i]]}, got ${publishRes.cids[i]}`,
+                            );
                         }
-                        return r;
-                    }),
-                ]);
-
-                for (let i = 0; i < deployables.length; i++) {
-                    const address = deployRes.addresses[i] as HexString;
-                    addresses[deployableCrates[i]] = address;
-                    writeSolidityImportForDeployable(
-                        opts.rootDir,
-                        deployables[i],
-                        address,
-                        saltVersions[i],
-                    );
+                    }
+                } catch (err) {
+                    // Publish-phase failures get their own event before the
+                    // rethrow hands bookkeeping to the layer error handler.
+                    emit({
+                        type: "publish-error",
+                        crates: deployableCrates,
+                        error: err instanceof Error ? err.message : String(err),
+                    });
+                    throw err;
                 }
 
                 const cidsOut: Record<string, string> = {};
@@ -1213,6 +1184,60 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     txHash: publishRes.txHash,
                     durationMs: Date.now() - publishT0,
                 });
+
+                emit({
+                    type: "sign-request",
+                    phase: "deploy-register",
+                    crates: deployableCrates,
+                });
+                emit({
+                    type: "phase",
+                    name: "deploying",
+                    description: "Submitting deploy+register batch",
+                    layer: layerIndex,
+                });
+                emit({ type: "deploy-register-start", crates: deployableCrates });
+
+                const deployT0 = Date.now();
+                let deployCursor = 0;
+
+                const deployRes = await deployer.deployAndRegisterBatch(
+                    pvmPaths,
+                    deployablePackages,
+                    registryContract,
+                    metadataUris,
+                    (chunk) => {
+                        // Callback fires in chunk order; the i-th chunk covers
+                        // deployables[deployCursor..+len].
+                        const addrs: Record<string, HexString> = {};
+                        const start = deployCursor;
+                        for (let i = 0; i < chunk.addresses.length; i++) {
+                            const crate = deployableCrates[start + i];
+                            addrs[crate] = chunk.addresses[i] as HexString;
+                            addresses[crate] = chunk.addresses[i] as HexString;
+                        }
+                        deployCursor += chunk.addresses.length;
+                        emit({
+                            type: "deploy-register-done",
+                            addresses: addrs,
+                            txHash: chunk.txHash,
+                            blockHash: chunk.blockHash,
+                            durationMs: Date.now() - deployT0,
+                        });
+                    },
+                    { plan, saltVersions, saltScope: opts.registryAddress },
+                );
+
+                for (let i = 0; i < deployables.length; i++) {
+                    const address = deployRes.addresses[i] as HexString;
+                    addresses[deployableCrates[i]] = address;
+                    writeSolidityImportForDeployable(
+                        opts.rootDir,
+                        deployables[i],
+                        address,
+                        saltVersions[i],
+                    );
+                }
 
                 // Mark status
                 for (const deployable of deployables) {
@@ -1713,10 +1738,10 @@ if (import.meta.vitest) {
                         "check-needs-deploy",
                         "deploy-plan",
                         "sign-request",
-                        "deploy-register-start",
                         "publish-start",
-                        "deploy-register-done",
                         "publish-done",
+                        "deploy-register-start",
+                        "deploy-register-done",
                     ].includes(event.type),
                 )
                 .map((event) => event.type);
@@ -1725,11 +1750,11 @@ if (import.meta.vitest) {
                 "check-needs-deploy",
                 "deploy-plan",
                 "sign-request",
+                "publish-start",
+                "publish-done",
                 "sign-request",
                 "deploy-register-start",
-                "publish-start",
                 "deploy-register-done",
-                "publish-done",
             ]);
 
             // Addresses come from planDeploy's prepared entries (one dry-run
@@ -1776,6 +1801,51 @@ if (import.meta.vitest) {
                 status: "error",
                 error: "Dry-run failed: boom",
             });
+        });
+
+        test("a publish failure aborts before deploy+register is submitted", async () => {
+            (mockDetect as any).mockReturnValue(makeOrder([["a"]], {}, { a: "@example/a" }));
+            const { ContractDeployer: MockedDeployer } = await import("./deployer");
+            const deployAndRegisterBatch = vi.fn();
+            (MockedDeployer as any).mockImplementationOnce(() => ({
+                planDeploy: vi.fn(async (pvmPaths: string[]) => ({
+                    prepared: pvmPaths.map((_path, index) => ({
+                        address: `0x${String(index + 1).padStart(40, "0")}`,
+                        gasLimit: { ref_time: 1n, proof_size: 1n },
+                        extrinsicWeight: { ref_time: 1n, proof_size: 1n },
+                        storageDeposit: 0n,
+                    })),
+                    budget: { ref_time: 10n, proof_size: 10n },
+                    chunks: [pvmPaths.map((_path, index) => index)],
+                })),
+                deployAndRegisterBatch,
+            }));
+            (mockMetadataPublisher as any).mockImplementationOnce(() => ({
+                publishBatch: vi.fn(async () => {
+                    throw new Error("[Bulletin publish] Transaction timed out after 300s.");
+                }),
+            }));
+
+            const events: DeployEvent[] = [];
+            const summary = await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makePolkadotSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                onEvent: (event) => events.push(event),
+            });
+
+            // The whole point of publish-before-register: nothing may be
+            // registered when the publish never landed.
+            expect(deployAndRegisterBatch).not.toHaveBeenCalled();
+            expect(events.some((event) => event.type === "deploy-register-start")).toBe(false);
+            const publishError = events.find((event) => event.type === "publish-error");
+            expect(publishError).toMatchObject({
+                crates: ["a"],
+                error: expect.stringContaining("timed out"),
+            });
+            expect(summary.contracts[0]).toMatchObject({ crate: "a", status: "error" });
         });
     });
 }
