@@ -35,13 +35,16 @@ export interface QueryResult<T> {
 
 // Query options override (trailing argument after the method's positional args)
 export interface QueryOpts {
+    /** Dry-run caller; defaults per the origin rule on {@link CdmOptions}. */
     origin?: SS58String;
     value?: bigint;
 }
 
 // Transaction options override (trailing argument after the method's positional args)
 export interface TxOpts {
+    /** Signs and submits; without an explicit `origin` it is also the dry-run caller. */
     signer?: CdmSigner;
+    /** Caller for the sizing dry-run; defaults per the origin rule on {@link CdmOptions}. */
     origin?: SS58String;
     value?: bigint;
     gasLimit?: Weight;
@@ -66,18 +69,28 @@ export type CdmContract<C extends CdmContractDef> = {
     };
 };
 
-// Mutable defaults shared across all contract handles
+// Mutable defaults shared across all contract handles (see `Cdm.setDefaults`)
 export interface CdmDefaults {
     origin?: SS58String;
     signer?: CdmSigner;
 }
 
-// Options for createCdm()
+/**
+ * Options for `createCdm()` / `new Cdm()`.
+ *
+ * Origin rule (the caller of `.query()` and of `.tx()`'s sizing dry-run): an
+ * explicitly provided origin always wins — per-call `origin`, else
+ * `defaultOrigin` / `setDefaults({ origin })`. Otherwise the origin is the
+ * account of the effective signer: the per-call `signer` (`.tx()` only), else
+ * the default signer. With neither configured, Alice signs and is the origin.
+ */
 export interface CdmOptions {
     cdmJsonPath?: string;
     client?: PolkadotClient;
     assethubUrl?: string;
+    /** Fixed caller for all calls, overriding the signer-derived origin. */
     defaultOrigin?: SS58String;
+    /** Default signer for `.tx()`; also the default origin unless `defaultOrigin` is set. Defaults to Alice. */
     defaultSigner?: CdmSigner;
     /**
      * Chain descriptor matching the Asset Hub the client is connected to. Only

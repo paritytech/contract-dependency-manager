@@ -33,8 +33,9 @@ function mapSolidityType(param: AbiParam): string {
     // Address
     if (t === "address") return "HexString";
 
-    // Bytes
-    if (t === "bytes") return "Uint8Array";
+    // Bytes: hex strings both ways (viem rejects Uint8Array inputs), matching
+    // product-sdk's own codegen.
+    if (t === "bytes") return "HexString";
     const bytesMatch = t.match(/^bytes(\d+)$/);
     if (bytesMatch) return `SizedHex<${bytesMatch[1]}>`;
 

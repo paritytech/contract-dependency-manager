@@ -1,7 +1,8 @@
 import { describe, test, expect, vi } from "vitest";
 import type { Contract, ContractDef } from "@parity/product-sdk-contracts";
+import { ALICE_SS58 } from "@parity/cdm-utils";
 import { prepareSigner } from "@parity/cdm-env";
-import { wrapContract } from "../src/wrap";
+import { wrapContract as wrap, type CallDefaults } from "../src/wrap";
 import type { AbiEntry } from "../src/types";
 
 const ABI: AbiEntry[] = [
@@ -43,6 +44,18 @@ const ABI: AbiEntry[] = [
 
 const WEIGHT = { ref_time: 11n, proof_size: 22n };
 const BOB_SS58 = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty";
+const CHARLIE_SS58 = "5FLSigC9HGRKVhB9FiEo4Y3koPsNmBmLJbpXg2mp1hXcS59Y";
+const ALICE = prepareSigner("Alice");
+const BOB = prepareSigner("Bob");
+
+/** Wrap with Cdm's no-config defaults (Alice signer, no explicit origin) unless given. */
+function wrapContract(
+    handle: Contract<ContractDef>,
+    abi: AbiEntry[],
+    defaults: CallDefaults = { signer: ALICE },
+) {
+    return wrap(handle, abi, () => defaults);
+}
 
 const TX_OK = {
     ok: true as const,
@@ -76,7 +89,7 @@ describe("wrapContract query", () => {
 
         const result = await wrapped.add.query(1, 2);
 
-        expect(query).toHaveBeenCalledWith(1, 2, {});
+        expect(query).toHaveBeenCalledWith(1, 2, { origin: ALICE_SS58 });
         expect(result).toEqual({ success: true, value: 42, gasRequired: WEIGHT });
     });
 
@@ -102,7 +115,7 @@ describe("wrapContract query", () => {
 
         await wrapContract(handle, ABI).setPoint.query(point);
 
-        expect(query).toHaveBeenCalledWith(point, {});
+        expect(query).toHaveBeenCalledWith(point, { origin: ALICE_SS58 });
     });
 
     test("failure: value is undefined and the payload is surfaced on `error`", async () => {
@@ -128,6 +141,100 @@ describe("wrapContract query", () => {
         );
         expect(query).not.toHaveBeenCalled();
     });
+
+    test("treats a trailing `undefined` options argument as no overrides", async () => {
+        const { handle, query } = mockHandle();
+        const wrapped = wrapContract(handle, ABI);
+        const point = { x: 1, y: 2 };
+
+        await wrapped.getCount.query(undefined);
+        await wrapped.add.query(1, 2, undefined);
+        await wrapped.setPoint.query(point, undefined);
+
+        expect(query.mock.calls).toEqual([
+            [{ origin: ALICE_SS58 }],
+            [1, 2, { origin: ALICE_SS58 }],
+            [point, { origin: ALICE_SS58 }],
+        ]);
+    });
+
+    test("only strips `undefined` from the options slot; other counts still throw", async () => {
+        const { handle, query } = mockHandle();
+        const wrapped = wrapContract(handle, ABI);
+
+        await expect(wrapped.getCount.query(undefined, undefined)).rejects.toThrow(
+            "getCount expects 0 argument(s), got 2",
+        );
+        await expect(wrapped.add.query(undefined)).rejects.toThrow(
+            "add expects 2 argument(s), got 1",
+        );
+        expect(query).not.toHaveBeenCalled();
+    });
+});
+
+describe("wrapContract origin resolution", () => {
+    const originOf = (mock: ReturnType<typeof vi.fn>) =>
+        (mock.mock.calls[0].at(-1) as { origin?: string }).origin;
+
+    test("query: per-call origin > explicit default origin > default signer's account", async () => {
+        const perCall = mockHandle();
+        await wrapContract(perCall.handle, ABI, {
+            signer: BOB,
+            origin: CHARLIE_SS58,
+        }).getCount.query({ origin: ALICE_SS58 });
+        expect(originOf(perCall.query)).toBe(ALICE_SS58);
+
+        const explicit = mockHandle();
+        await wrapContract(explicit.handle, ABI, {
+            signer: BOB,
+            origin: CHARLIE_SS58,
+        }).getCount.query();
+        expect(originOf(explicit.query)).toBe(CHARLIE_SS58);
+
+        const derived = mockHandle();
+        await wrapContract(derived.handle, ABI, { signer: BOB }).getCount.query();
+        expect(originOf(derived.query)).toBe(BOB_SS58);
+    });
+
+    test("tx: the origin follows a per-call signer unless an origin is explicit", async () => {
+        const derived = mockHandle();
+        await wrapContract(derived.handle, ABI).getCount.tx({ signer: BOB });
+        expect(derived.tx).toHaveBeenCalledWith({
+            waitFor: "finalized",
+            signer: BOB,
+            origin: BOB_SS58,
+        });
+
+        const explicitDefault = mockHandle();
+        await wrapContract(explicitDefault.handle, ABI, {
+            signer: ALICE,
+            origin: CHARLIE_SS58,
+        }).getCount.tx({ signer: BOB });
+        expect(originOf(explicitDefault.tx)).toBe(CHARLIE_SS58);
+
+        const perCall = mockHandle();
+        await wrapContract(perCall.handle, ABI, {
+            signer: ALICE,
+            origin: CHARLIE_SS58,
+        }).getCount.tx({
+            signer: BOB,
+            origin: ALICE_SS58,
+        });
+        expect(originOf(perCall.tx)).toBe(ALICE_SS58);
+    });
+
+    test("reads the defaults at call time", async () => {
+        const { handle, query, tx } = mockHandle();
+        const defaults: CallDefaults = { signer: ALICE };
+        const wrapped = wrap(handle, ABI, () => defaults);
+
+        defaults.signer = BOB;
+        await wrapped.getCount.query();
+        await wrapped.getCount.tx();
+
+        expect(originOf(query)).toBe(BOB_SS58);
+        expect(tx.mock.calls[0][0]).toMatchObject({ signer: BOB, origin: BOB_SS58 });
+    });
 });
 
 describe("wrapContract tx", () => {
@@ -136,7 +243,11 @@ describe("wrapContract tx", () => {
 
         await wrapContract(handle, ABI).add.tx(1, 2);
 
-        expect(tx).toHaveBeenCalledWith(1, 2, { waitFor: "finalized" });
+        expect(tx).toHaveBeenCalledWith(1, 2, {
+            waitFor: "finalized",
+            signer: ALICE,
+            origin: ALICE_SS58,
+        });
     });
 
     test("maps every override onto TxOptions; gasLimit Weight passes through unchanged", async () => {
@@ -163,6 +274,20 @@ describe("wrapContract tx", () => {
             storageDepositLimit: 4n,
         });
         expect(opts.gasLimit).toBe(gasLimit);
+    });
+
+    test("treats a trailing `undefined` options argument as no overrides", async () => {
+        const { handle, tx } = mockHandle();
+        const wrapped = wrapContract(handle, ABI);
+        const defaults = { waitFor: "finalized", signer: ALICE, origin: ALICE_SS58 };
+
+        await wrapped.getCount.tx(undefined);
+        await wrapped.add.tx(1, 2, undefined);
+
+        expect(tx.mock.calls).toEqual([[defaults], [1, 2, defaults]]);
+        await expect(wrapped.add.tx(1, undefined, undefined, undefined)).rejects.toThrow(
+            "add expects 2 argument(s), got 4",
+        );
     });
 
     test("maps the product-sdk TxResult onto CDM's TxResult", async () => {

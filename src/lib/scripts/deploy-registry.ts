@@ -159,6 +159,8 @@ const mapping = await ensureContractAccountMapped(
     createContractRuntimeFromClient(chainClient.raw.assetHub, chainClient.descriptors.assetHub),
     ss58Address(signer.publicKey),
     signer,
+    // Same inclusion timeout as the CLI's account mapping (cdm account map / deploy).
+    { timeoutMs: 300_000 },
 );
 if (mapping.ok) {
     console.log(mapping.value === null ? "Account already mapped." : "Account mapped.");

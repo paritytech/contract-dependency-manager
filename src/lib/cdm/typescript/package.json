@@ -33,6 +33,7 @@
         "@parity/cdm-utils": "workspace:*",
         "@parity/product-sdk-contracts": "catalog:",
         "@parity/product-sdk-descriptors": "catalog:",
+        "@parity/product-sdk-tx": "catalog:",
         "polkadot-api": "catalog:"
     },
     "devDependencies": {

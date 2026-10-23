@@ -1,6 +1,6 @@
 import { createClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
-import type { ChainDefinition, PolkadotClient, SS58String, HexString } from "polkadot-api";
+import type { ChainDefinition, PolkadotClient, HexString } from "polkadot-api";
 import {
     ContractManager,
     createContractRuntimeFromClient,
@@ -8,9 +8,8 @@ import {
 } from "@parity/product-sdk-contracts";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import type { CdmJson, CdmJsonContract } from "@parity/cdm-builder";
-import { ALICE_SS58 } from "@parity/cdm-utils";
 import { prepareSigner } from "@parity/cdm-env";
-import { wrapContract } from "./wrap";
+import { wrapContract, type CallDefaults } from "./wrap";
 import type { AbiEntry, CdmContract, CdmContracts, CdmDefaults, CdmOptions } from "./types";
 
 /**
@@ -24,7 +23,7 @@ export class Cdm {
     private _client: PolkadotClient | null = null;
     private _manager: ContractManager | null = null;
     private ownsClient: boolean = false;
-    private defaults: CdmDefaults;
+    private defaults: CallDefaults;
     private descriptor: ChainDefinition;
 
     constructor(cdmJson: CdmJson, options?: CdmOptions) {
@@ -39,16 +38,23 @@ export class Cdm {
             this.ownsClient = true;
         }
 
+        // No origin unless given explicitly: it then follows the signer (see
+        // `CdmOptions`), so the Alice fallback signer also means Alice's origin.
         this.defaults = {
-            origin: options?.defaultOrigin ?? (ALICE_SS58 as SS58String),
+            origin: options?.defaultOrigin,
             signer: options?.defaultSigner ?? prepareSigner("Alice"),
         };
     }
 
+    /**
+     * Update the defaults used by every contract handle, including existing
+     * ones. Only the fields given change: an explicitly set origin (here or
+     * via `defaultOrigin`) is kept when only the signer changes; without one,
+     * the origin follows the new signer. See {@link CdmOptions}.
+     */
     setDefaults(defaults: CdmDefaults): void {
         if (defaults.origin !== undefined) this.defaults.origin = defaults.origin;
         if (defaults.signer !== undefined) this.defaults.signer = defaults.signer;
-        this._manager?.setDefaults({ origin: defaults.origin, signer: defaults.signer });
     }
 
     get client(): PolkadotClient {
@@ -65,14 +71,11 @@ export class Cdm {
             });
             // cdm-builder's CdmJson types addresses as `string` and ABIs as
             // `unknown[]`; product-sdk wants `0x${string}` / `AbiEntry[]`. Same
-            // JSON on disk, so this is a type-only bridge.
+            // JSON on disk, so this is a type-only bridge. No manager defaults:
+            // the wrapper passes signer and origin on every call.
             this._manager = new ContractManager(
                 this.cdmJson as unknown as ProductSdkCdmJson,
                 runtime,
-                {
-                    defaultOrigin: this.defaults.origin,
-                    defaultSigner: this.defaults.signer,
-                },
             );
         }
         return this._manager;
@@ -90,7 +93,9 @@ export class Cdm {
         const data = this.getContractData(library);
         const contract = this.manager.getContract(library);
 
-        return wrapContract(contract, data.abi as AbiEntry[]) as CdmContract<CdmContracts[K]>;
+        return wrapContract(contract, data.abi as AbiEntry[], () => this.defaults) as CdmContract<
+            CdmContracts[K]
+        >;
     }
 
     getAddress(library: string): HexString {
