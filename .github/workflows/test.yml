@@ -98,7 +98,9 @@ jobs:
             # Same install steps/flags as `cdm setup` (src/apps/cli/src/lib/toolchain.ts):
             # shallow-fetch the resolved revision, then `cargo install` with an
             # explicit host target because the root .cargo/config.toml pins the
-            # default build target to PolkaVM.
+            # default build target to PolkaVM. The binary is built with the
+            # stable toolchain upstream pins in its rust-toolchain.toml: its
+            # locked trie-db 0.30.0 no longer compiles on current nightly.
             - name: Install cargo-pvm-contract
               if: steps.cache-pvm-bin.outputs.cache-hit != 'true'
               run: |
@@ -107,8 +109,10 @@ jobs:
                   git -C "$tmp_dir" remote add origin https://github.com/paritytech/cargo-pvm-contract.git
                   git -C "$tmp_dir" fetch -q --depth 1 origin "${{ steps.pvm-rev.outputs.rev }}"
                   git -C "$tmp_dir" checkout -q FETCH_HEAD
+                  toolchain="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$tmp_dir/rust-toolchain.toml")"
+                  rustup toolchain install "$toolchain" --profile minimal
                   host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
-                  cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
+                  cargo "+$toolchain" install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
             - name: Compile cdm::import! consumer to PolkaVM
               run: pnpm test:macro
             - name: Build template contracts
@@ -171,8 +175,10 @@ jobs:
                   git -C "$tmp_dir" remote add origin https://github.com/paritytech/cargo-pvm-contract.git
                   git -C "$tmp_dir" fetch -q --depth 1 origin "${{ steps.pvm-rev.outputs.rev }}"
                   git -C "$tmp_dir" checkout -q FETCH_HEAD
+                  toolchain="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$tmp_dir/rust-toolchain.toml")"
+                  rustup toolchain install "$toolchain" --profile minimal
                   host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
-                  cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
+                  cargo "+$toolchain" install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
             - name: Build registry contracts
               run: pnpm build:registry
             # The suite runs against a full local Polkadot product environment
