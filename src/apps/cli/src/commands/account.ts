@@ -9,6 +9,7 @@ import {
 import type { Account } from "@parity/cdm-utils/accounts";
 import { getAccount, saveAccount, accountFromMnemonic } from "@parity/cdm-utils/accounts";
 import supportsHyperlinks from "supports-hyperlinks";
+import { createContractRuntimeFromClient } from "@parity/product-sdk-contracts";
 import { ensureAccountMapped } from "../lib/account-mapping";
 
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -145,7 +146,10 @@ account
         await chainClient.raw.assetHub.getChainSpecData();
         try {
             const outcome = await ensureAccountMapped(
-                chainClient.assetHub,
+                createContractRuntimeFromClient(
+                    chainClient.raw.assetHub,
+                    chainClient.descriptors.assetHub,
+                ),
                 prepareSignerFromMnemonic(acc.mnemonic),
             );
             console.log(
