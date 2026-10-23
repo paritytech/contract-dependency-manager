@@ -112,9 +112,10 @@ import { ContractManager } from "@parity/product-sdk-contracts";
 import { SignerManager } from "@parity/product-sdk-signer";
 import cdmJson from "./cdm.json";
 
+// Connections route through the host provider (Polkadot Browser / Desktop);
+// there is no direct-WebSocket fallback, so no RPC endpoints are configured.
 const client = await createChainClient({
     chains: { assetHub: paseo_asset_hub },
-    rpcs:   { assetHub: ["wss://paseo-asset-hub-next-rpc.polkadot.io"] },
 });
 
 const signerManager = new SignerManager();
@@ -138,7 +139,7 @@ const prepared = counter.increment.prepare();
 
 Material differences from `@parity/cdm-codegen`:
 
-- Targets `pallet-revive` directly (not Ink) — wholesale replacement, not an upgrade.
+- `@parity/cdm-codegen`'s `Cdm` is itself a thin wrapper over `ContractManager` (finalized reads and tx waits, throws instead of returning `Result`); using the SDK directly gets `Result` returns and best-block defaults.
 - Consumer owns the chain client; the SDK wraps it (rather than constructing one internally).
 - `SignerManager` enables dynamic account switching; static `defaultSigner` is a fallback for queries.
 - `.prepare()` enables batching with other Asset Hub extrinsics.
