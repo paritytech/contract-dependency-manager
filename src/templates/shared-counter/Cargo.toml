@@ -10,7 +10,7 @@ edition = "2024"
 
 [workspace.dependencies]
 cdm = { git = "https://github.com/paritytech/contract-dependency-manager", branch = "main" }
-pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "main", features = ["alloc"] }
+pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", rev = "6400a32d1cbf15ab332e25352786504b7289660b", features = ["alloc"] }
 pvm-cdm = { git = "https://github.com/paritytech/contract-dependency-manager", branch = "main" }
 polkavm-derive = "0.31"
 picoalloc = "5.2"

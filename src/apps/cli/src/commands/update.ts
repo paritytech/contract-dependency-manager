@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { installCdmRelease } from "../lib/releases";
 import { spinner } from "../lib/ui";
+import { DEFAULT_CARGO_PVM_CONTRACT_REF } from "../lib/toolchain";
 import { runSetupWithUi } from "./setup";
 
 export const updateCommand = new Command("update")
@@ -10,7 +11,7 @@ export const updateCommand = new Command("update")
     .option(
         "--cargo-pvm-contract-ref <ref>",
         "cargo-pvm-contract git branch, tag, or commit to install during setup",
-        process.env.CDM_CARGO_PVM_CONTRACT_REF ?? "main",
+        process.env.CDM_CARGO_PVM_CONTRACT_REF ?? DEFAULT_CARGO_PVM_CONTRACT_REF,
     )
     .action(
         async (opts: {

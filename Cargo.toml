@@ -21,7 +21,12 @@ license = "Apache-2.0"
 repository = "https://github.com/paritytech/contract-dependency-manager"
 
 [workspace.dependencies]
-pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "main", features = ["alloc"] }
+# Pinned to a known-good revision: upstream `main` has moved past this, and
+# its storage-nesting rewrite (#133) removed `Mapping::view`/`view_mut`, which
+# `src/contract` still uses. Keep this in sync with the CLI's
+# DEFAULT_CARGO_PVM_CONTRACT_REF (src/apps/cli/src/lib/toolchain.ts) and the
+# template Cargo.tomls.
+pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", rev = "6400a32d1cbf15ab332e25352786504b7289660b", features = ["alloc"] }
 pvm-cdm = { path = "src/lib/cdm/rust-macros/pvm-cdm" }
 polkavm-derive = "0.35"
 picoalloc = "5.2"

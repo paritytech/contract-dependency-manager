@@ -4,12 +4,6 @@ on:
     push:
         branches: [main]
     pull_request:
-    schedule:
-        # The template contracts and the cdm::import! consumer track floating
-        # `branch = "main"` git pins (pvm-contract-sdk), so upstream can break
-        # them without any activity in this repo. A nightly run catches that
-        # drift the day it happens instead of on the next fresh `bootstrap`.
-        - cron: "17 3 * * *"
 
 jobs:
     ts:
@@ -61,19 +55,23 @@ jobs:
                   node-version: "22"
             - name: Install dependencies
               run: pnpm install --frozen-lockfile
+            # cargo-pvm-contract itself is a host tool built with stable: current
+            # nightlies fail to compile its locked trie-db dependency (E0277).
+            - uses: dtolnay/rust-toolchain@stable
             # Template contracts build with build-std against the PolkaVM JSON
             # target (see .cargo/config.toml), which needs nightly + rust-src.
             - uses: dtolnay/rust-toolchain@nightly
               with:
                   components: rust-src
-            # cargo-pvm-contract is a floating git pin (branch = "main"), so
-            # resolve the current upstream revision up front and key every
-            # cache on it: any upstream change invalidates the installed
-            # binary and build caches together.
+            # cargo-pvm-contract is pinned by revision in Cargo.toml and in the
+            # CLI's toolchain defaults. Read that revision rather than resolving
+            # upstream `main`, so the installed binary and the cached build
+            # artifacts always match the SDK the contracts compile against.
             - name: Resolve cargo-pvm-contract revision
               id: pvm-rev
               run: |
-                  rev="$(git ls-remote https://github.com/paritytech/cargo-pvm-contract.git refs/heads/main | cut -f1)"
+                  rev="$(sed -n 's/.*cargo-pvm-contract", rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)"
+                  test -n "$rev"
                   echo "rev=${rev}" >> "$GITHUB_OUTPUT"
             - name: Cache cargo-pvm-contract binary
               id: cache-pvm-bin
@@ -107,8 +105,8 @@ jobs:
                   git -C "$tmp_dir" remote add origin https://github.com/paritytech/cargo-pvm-contract.git
                   git -C "$tmp_dir" fetch -q --depth 1 origin "${{ steps.pvm-rev.outputs.rev }}"
                   git -C "$tmp_dir" checkout -q FETCH_HEAD
-                  host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
-                  cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
+                  host_target="$(rustc +stable -vV | awk '/^host:/ { print $2 }')"
+                  cargo +stable install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
             - name: Compile cdm::import! consumer to PolkaVM
               run: pnpm test:macro
             - name: Build template contracts
@@ -136,15 +134,20 @@ jobs:
                   node-version: "22"
             - name: Install dependencies
               run: pnpm install --frozen-lockfile
+            # cargo-pvm-contract itself is a host tool built with stable: current
+            # nightlies fail to compile its locked trie-db dependency (E0277).
+            - uses: dtolnay/rust-toolchain@stable
             # Registry contracts build with build-std against the PolkaVM JSON
             # target (see .cargo/config.toml), which needs nightly + rust-src.
             - uses: dtolnay/rust-toolchain@nightly
               with:
                   components: rust-src
+            # Same pinned revision as the templates job (read from Cargo.toml).
             - name: Resolve cargo-pvm-contract revision
               id: pvm-rev
               run: |
-                  rev="$(git ls-remote https://github.com/paritytech/cargo-pvm-contract.git refs/heads/main | cut -f1)"
+                  rev="$(sed -n 's/.*cargo-pvm-contract", rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)"
+                  test -n "$rev"
                   echo "rev=${rev}" >> "$GITHUB_OUTPUT"
             - name: Cache cargo-pvm-contract binary
               id: cache-pvm-bin
@@ -171,8 +174,8 @@ jobs:
                   git -C "$tmp_dir" remote add origin https://github.com/paritytech/cargo-pvm-contract.git
                   git -C "$tmp_dir" fetch -q --depth 1 origin "${{ steps.pvm-rev.outputs.rev }}"
                   git -C "$tmp_dir" checkout -q FETCH_HEAD
-                  host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
-                  cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
+                  host_target="$(rustc +stable -vV | awk '/^host:/ { print $2 }')"
+                  cargo +stable install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
             - name: Build registry contracts
               run: pnpm build:registry
             # The suite runs against a full local Polkadot product environment

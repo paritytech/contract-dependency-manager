@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { spinner } from "../lib/ui";
 import {
     createToolSteps,
+    DEFAULT_CARGO_PVM_CONTRACT_REF,
     runToolchainSetup,
     type ToolStep,
     type ToolStepEvent,
@@ -79,7 +80,7 @@ export const setupCommand = new Command("setup")
     .option(
         "--cargo-pvm-contract-ref <ref>",
         "cargo-pvm-contract git branch, tag, or commit to install",
-        process.env.CDM_CARGO_PVM_CONTRACT_REF ?? "main",
+        process.env.CDM_CARGO_PVM_CONTRACT_REF ?? DEFAULT_CARGO_PVM_CONTRACT_REF,
     )
     .action(
         async (opts: {

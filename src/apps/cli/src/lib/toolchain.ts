@@ -82,7 +82,11 @@ export interface ToolStep {
 }
 
 const DEFAULT_CARGO_PVM_CONTRACT_REPO = "https://github.com/paritytech/cargo-pvm-contract.git";
-const DEFAULT_CARGO_PVM_CONTRACT_REF = "main";
+// Pinned to the same revision as the workspace Cargo.toml: upstream `main`
+// currently fails to build and its storage-nesting rewrite removed APIs the
+// registry contracts use. Override with CDM_CARGO_PVM_CONTRACT_REF when
+// testing a newer revision.
+export const DEFAULT_CARGO_PVM_CONTRACT_REF = "6400a32d1cbf15ab332e25352786504b7289660b";
 
 interface CargoPvmContractOptions {
     ref?: string;
