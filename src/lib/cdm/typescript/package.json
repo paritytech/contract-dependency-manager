@@ -31,7 +31,9 @@
         "@parity/cdm-builder": "workspace:*",
         "@parity/cdm-env": "workspace:*",
         "@parity/cdm-utils": "workspace:*",
-        "@polkadot-api/sdk-ink": "catalog:",
+        "@parity/product-sdk-contracts": "catalog:",
+        "@parity/product-sdk-descriptors": "catalog:",
+        "@parity/product-sdk-tx": "catalog:",
         "polkadot-api": "catalog:"
     },
     "devDependencies": {

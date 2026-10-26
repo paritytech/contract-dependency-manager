@@ -144,12 +144,12 @@ This updates `cdm.json`, stores ABI/metadata artifacts under project-local `.cdm
 Install the product-sdk app/runtime packages:
 
 ```bash
-pnpm add @parity/product-sdk-chain-client@^0.8.0 \
-  @parity/product-sdk-contracts@^0.9.0 \
-  @parity/product-sdk-descriptors@^0.7.0 \
-  @parity/product-sdk-signer@^0.10.0 \
-  @parity/product-sdk-tx@^0.3.0 \
-  polkadot-api@^2.1.7
+pnpm add @parity/product-sdk-chain-client@^0.13.4 \
+  @parity/product-sdk-contracts@^0.11.4 \
+  @parity/product-sdk-descriptors@^0.14.0 \
+  @parity/product-sdk-signer@^0.17.4 \
+  @parity/product-sdk-tx@^0.5.4 \
+  polkadot-api@^3.3.0
 ```
 
 In frontend code, use product-sdk:

@@ -27,4 +27,5 @@ export {
     prepareSignerFromSuri,
     prepareSignerFromMnemonic,
     ss58Address,
+    type CdmSigner,
 } from "./signer";

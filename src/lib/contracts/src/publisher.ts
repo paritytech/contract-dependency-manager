@@ -1,6 +1,5 @@
 // TODO! Report the Bulletin quota preflight issue to product-sdk from https://github.com/paritytech/contract-dependency-manager/pull/53, then replace this hand-rolled submit path with the fixed SDK flow.
-import type { PolkadotSigner } from "polkadot-api";
-import type { CdmBulletinApi } from "@parity/cdm-env";
+import type { CdmBulletinApi, CdmSigner } from "@parity/cdm-env";
 import { calculateCid } from "@parity/product-sdk-cloud-storage";
 import { submitAndWatch, type SubmittableTransaction } from "@parity/product-sdk-tx";
 import type { Metadata } from "./deployer";
@@ -22,10 +21,10 @@ import type { Metadata } from "./deployer";
  * nonce-ordering requirement.
  */
 export class MetadataPublisher {
-    public signer: PolkadotSigner;
+    public signer: CdmSigner;
     public bulletinApi: CdmBulletinApi;
 
-    constructor(signer: PolkadotSigner, api: CdmBulletinApi, _client?: unknown) {
+    constructor(signer: CdmSigner, api: CdmBulletinApi, _client?: unknown) {
         this.signer = signer;
         this.bulletinApi = api;
     }
@@ -105,14 +104,13 @@ if (import.meta.vitest) {
 
     function fakeStoreTx() {
         return {
-            signSubmitAndWatch: vi.fn(() => ({
+            createSubmitAndWatch: vi.fn(() => ({
                 subscribe: (handlers: {
                     next: (event: unknown) => void;
                     error: (error: Error) => void;
                 }) => {
                     handlers.next({
-                        type: "txBestBlocksState",
-                        found: true,
+                        type: "inBestBlock",
                         ok: true,
                         txHash: "0xstore",
                         block: { hash: "0xblock", number: 42, index: 0 },
@@ -140,7 +138,7 @@ if (import.meta.vitest) {
                 },
             },
         } as unknown as CdmBulletinApi;
-        const signer = { publicKey: new Uint8Array(32) } as unknown as PolkadotSigner;
+        const signer = { publicKey: new Uint8Array(32) } as unknown as CdmSigner;
 
         const result = await new MetadataPublisher(signer, api).publish(metadata);
 
@@ -168,7 +166,7 @@ if (import.meta.vitest) {
                     },
                 },
             } as unknown as CdmBulletinApi;
-            const signer = { publicKey: new Uint8Array(32) } as unknown as PolkadotSigner;
+            const signer = { publicKey: new Uint8Array(32) } as unknown as CdmSigner;
 
             const result = await new MetadataPublisher(signer, api).publishBatch([
                 metadata,
