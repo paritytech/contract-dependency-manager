@@ -271,6 +271,16 @@ export class PipelineStatusAdapter {
                     });
                 }
                 return;
+            case "publish-error":
+                for (const crate of e.crates) {
+                    this.update(crate, "error", {
+                        error: e.error,
+                        deployInProgress: false,
+                        publishInProgress: false,
+                        registerInProgress: false,
+                    });
+                }
+                return;
             case "deploy-register-error":
                 for (const crate of e.crates) {
                     this.update(crate, "error", {
