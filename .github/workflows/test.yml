@@ -211,7 +211,7 @@ jobs:
                   # A warm cache boots in under a minute; the first run downloads
                   # ~500 MB of binaries first.
                   for i in $(seq 1 600); do
-                      if nc -z 127.0.0.1 10020 10030 8080 2>/dev/null; then
+                      if nc -z 127.0.0.1 10020 && nc -z 127.0.0.1 10030 && nc -z 127.0.0.1 8080; then
                           echo "PPN ready after ${i}s"
                           exit 0
                       fi
