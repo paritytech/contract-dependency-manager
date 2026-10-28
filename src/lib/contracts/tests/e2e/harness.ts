@@ -113,10 +113,8 @@ async function ensureRegistryBuilt(): Promise<void> {
     }
 }
 
-// PPN's boot sequence submits sudo calls from //Alice on Asset Hub; a deploy
-// that races one of them is rejected with `Invalid.Stale` (nonce already
-// spent), which product-sdk-tx leaves to callers to retry. Every step of the
-// script is idempotent, so it is simply run again.
+// PPN's boot submits //Alice sudo calls on Asset Hub; a deploy racing one is
+// rejected with `Invalid.Stale`. The script is idempotent, so it is run again.
 async function runDeployScript(wsUrl: string, attempts = 3): Promise<string> {
     for (let attempt = 1; ; attempt++) {
         try {
@@ -134,10 +132,9 @@ async function runDeployScript(wsUrl: string, attempts = 3): Promise<string> {
     }
 }
 
-// The deploy script gates its transactions on best-block inclusion while
-// its idempotency pre-checks read the finalized head (papi's default for
-// storage reads), so a suite starting inside that window would redeploy and
-// hit `DuplicateContract`. Hand the registry back only once it is finalized.
+// The deploy script gates on best-block inclusion but its idempotency checks
+// read the finalized head; a suite starting in between would redeploy and hit
+// `DuplicateContract`.
 async function waitForFinalizedContract(
     wsUrl: string,
     address: HexString,

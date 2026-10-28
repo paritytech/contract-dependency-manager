@@ -181,19 +181,17 @@ jobs:
                   cargo "+$toolchain" install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
             - name: Build registry contracts
               run: pnpm build:registry
-            # The suite runs against a full local Polkadot product environment
-            # (PPN: relay + Asset Hub + Bulletin + IPFS gateway) that
-            # @parity/ppn spawns from prebuilt release binaries — nothing is
-            # compiled. Parity tooling floats on latest, so the release is
-            # resolved up front and the binary cache keyed on it.
+            # The suite runs against a full local product environment (relay +
+            # Asset Hub + Bulletin + IPFS gateway) that @parity/ppn spawns from
+            # prebuilt binaries. The version is resolved up front so the binary
+            # cache can be keyed on it.
             - name: Resolve @parity/ppn version
               id: ppn-version
               run: echo "version=$(npm view @parity/ppn version)" >> "$GITHUB_OUTPUT"
             - name: Install @parity/ppn
               run: npm install -g "@parity/ppn@${{ steps.ppn-version.outputs.version }}"
-            # ~/.ppn/bin holds the ~500 MB of chain binaries and runtimes a
-            # first start downloads. The IPFS repo inside it is per-run state
-            # (ppn re-initialises it when absent), so it stays out.
+            # ~/.ppn/bin is the ~500 MB a first start downloads; .ipfs inside
+            # it is per-run state that ppn recreates.
             - name: Cache PPN binaries
               uses: actions/cache@v4
               with:
@@ -201,47 +199,28 @@ jobs:
                       ~/.ppn/bin
                       !~/.ppn/bin/.ipfs
                   key: ppn-bin-${{ runner.os }}-${{ steps.ppn-version.outputs.version }}
-            # `ppn start` runs in the foreground, so it is backgrounded with
-            # its output in a log file. It resolves every binary against
-            # GitHub releases, and GitHub throttles anonymous downloads hard —
-            # the default Actions token is enough to lift that.
+            # GitHub throttles anonymous release downloads; the default Actions
+            # token lifts that.
             - name: Start ephemeral PPN
               env:
                   GITHUB_TOKEN: ${{ github.token }}
               run: |
                   ppn start --ephemeral > "$RUNNER_TEMP/ppn-start.log" 2>&1 &
                   ppn_pid=$!
-                  rpc() {
-                      curl -sf --max-time 2 -X POST -H 'Content-Type: application/json' \
-                          -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"$2\",\"params\":[$3]}" \
-                          "http://127.0.0.1:$1"
-                  }
-                  # A chain counts as ready once it has finalized a block, not
-                  # once its RPC answers: the suite's transactions wait for
-                  # finality, and the RPC is up before block #1 exists.
-                  finalizing() {
-                      head="$(rpc "$1" chain_getFinalizedHead '' | jq -r '.result // empty')"
-                      [ -n "$head" ] \
-                          && [ "$(rpc "$1" chain_getHeader "\"$head\"" | jq -r '.result.number // "0x0"')" != "0x0" ]
-                  }
-                  # Gate on the three endpoints the suite talks to rather than
-                  # the whole network: zombienet keeps spawning the other
-                  # chains after these answer. The empty inline CID (bafkqaaa)
-                  # is served by any gateway without a network fetch. A warm
-                  # cache boots in about a minute; the first-run download can
-                  # take several, hence the 10 min ceiling.
-                  while [ "$SECONDS" -lt 600 ]; do
-                      if finalizing 10020 && finalizing 10030 \
-                          && curl -sf --max-time 2 -o /dev/null http://127.0.0.1:8080/ipfs/bafkqaaa; then
-                          echo "PPN ready after ${SECONDS}s"
+                  # TCP-open is enough here — the harness re-probes RPC readiness.
+                  # A warm cache boots in under a minute; the first run downloads
+                  # ~500 MB of binaries first.
+                  for i in $(seq 1 600); do
+                      if nc -z 127.0.0.1 10020 && nc -z 127.0.0.1 10030 && nc -z 127.0.0.1 8080; then
+                          echo "PPN ready after ${i}s"
                           exit 0
                       fi
                       if ! kill -0 "$ppn_pid" 2>/dev/null; then
-                          echo "ppn start exited early; last log lines:" >&2
+                          echo "ppn start exited; last log lines:" >&2
                           tail -50 "$RUNNER_TEMP/ppn-start.log" >&2
                           exit 1
                       fi
-                      sleep 2
+                      sleep 1
                   done
                   echo "PPN did not become ready; last log lines:" >&2
                   tail -50 "$RUNNER_TEMP/ppn-start.log" >&2
@@ -251,9 +230,8 @@ jobs:
             - name: Stop PPN
               if: always()
               run: ppn kill || true
-            # The orchestrator log says which node timed out; that node's own
-            # log says why. An ephemeral run keeps node state in zombienet's
-            # temp dir rather than ~/.ppn/data, so both are collected.
+            # An ephemeral run keeps node logs in zombienet's temp dir, not
+            # ~/.ppn/data.
             - name: Upload PPN logs
               if: failure()
               uses: actions/upload-artifact@v4
