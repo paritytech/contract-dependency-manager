@@ -29,7 +29,6 @@ import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import type { HexString } from "polkadot-api";
-import { createCdmAssetHubClient } from "@parity/cdm-env";
 
 // Deploy via `bun run src/lib/scripts/deploy-registry.ts` rather than
 // invoking `ContractDeployer` programmatically: the deploy dry-run behaves
@@ -132,28 +131,6 @@ async function runDeployScript(wsUrl: string, attempts = 3): Promise<string> {
     }
 }
 
-// The deploy script gates on best-block inclusion but its idempotency checks
-// read the finalized head; a suite starting in between would redeploy and hit
-// `DuplicateContract`.
-async function waitForFinalizedContract(
-    wsUrl: string,
-    address: HexString,
-    timeoutMs = 120_000,
-): Promise<void> {
-    const client = await createCdmAssetHubClient(wsUrl, "local");
-    try {
-        const start = Date.now();
-        while (Date.now() - start < timeoutMs) {
-            const info = await client.assetHub.query.Revive.AccountInfoOf.getValue(address);
-            if (info?.account_type.type === "Contract") return;
-            await new Promise((r) => setTimeout(r, 1000));
-        }
-        throw new Error(`Registry at ${address} not finalized within ${timeoutMs / 1000}s`);
-    } finally {
-        client.destroy();
-    }
-}
-
 export interface DeployedRegistry {
     /** The stable registry address — the EIP-1967 proxy, CREATE3-derived. */
     address: HexString;
@@ -168,7 +145,7 @@ export interface DeployedRegistry {
  * CREATE3 factory bootstrap first (frozen artifacts), then the
  * implementation blob (plain CREATE2), then the proxy THROUGH the factory.
  * Idempotent: on a network that already has the registry it verifies and
- * returns the existing addresses. Resolves once the registry is finalized.
+ * returns the existing addresses.
  *
  * Spawns `bun run src/lib/scripts/deploy-registry.ts`. See the import-site
  * note above for why we don't invoke `ContractDeployer` directly under Node.
@@ -194,11 +171,9 @@ export async function deployRegistry(wsUrl: string): Promise<DeployedRegistry> {
             `Could not parse CREATE3 factory address from deploy-registry.ts output:\n${stdout}`,
         );
     }
-    const deployed = {
+    return {
         address: match[1] as HexString,
         implAddress: implMatch[1] as HexString,
         factoryAddress: factoryMatch[1] as HexString,
     };
-    await waitForFinalizedContract(wsUrl, deployed.address);
-    return deployed;
 }

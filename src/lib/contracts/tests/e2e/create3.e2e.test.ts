@@ -77,6 +77,7 @@ describe("CREATE3 address derivation", () => {
     test("the registry address is a real contract account", async () => {
         const info = await chainClient.assetHub.query.Revive.AccountInfoOf.getValue(
             deployed.address,
+            { at: "best" },
         );
         expect(info?.account_type.type).toBe("Contract");
     });
