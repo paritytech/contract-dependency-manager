@@ -330,12 +330,12 @@ pnpm dev
 
 # Run tests
 pnpm test                # unit tests: vitest + macro + host-side Rust
-pnpm test:e2e            # end-to-end against a local PPN (product-preview-net):
+pnpm test:e2e            # end-to-end against a local PPN (Product Preview Network):
                          # deploys the registry and exercises Asset Hub +
                          # Bulletin + IPFS gateway alignment. Requires `bun`
-                         # and a running PPN:
-                         #   git clone git@github.com:paritytech/preview-net-v1
-                         #   cd preview-net-v1 && make start
+                         # and a running PPN (Node 24+):
+                         #   npm install -g @parity/ppn
+                         #   ppn start --ephemeral
 
 # Full gate: format check + typecheck + build + tests
 pnpm check
