@@ -20,8 +20,6 @@ src/lib/cdm/import-test/.cdm/
 
 reference-repos/
 
-ppn/
-
 cdm.local.json
 
 .DS_Store

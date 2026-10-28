@@ -6,11 +6,13 @@
 // node, so tests can cover the real cross-chain flow: registry state on
 // Asset Hub, metadata on Bulletin, content served by the IPFS gateway.
 //
-// Requires a running PPN (one command, prebuilt binaries, ~seconds to boot):
+// Requires a running PPN (@parity/ppn — Node 24+, prebuilt binaries; the
+// first start downloads ~500 MB, later starts are up in about a minute):
 //
-//   git clone git@github.com:paritytech/preview-net-v1 && cd preview-net-v1
-//   make start            # persistent local network
-//   make start EPHEMERAL=1  # throwaway network (what CI uses)
+//   npm install -g @parity/ppn
+//   ppn start               # persistent local network
+//   ppn start --ephemeral   # throwaway network (what CI uses)
+//   ppn kill                # stop it
 //
 // PPN serves Asset Hub on :10020, Bulletin on :10030, and the IPFS gateway
 // on :8080 — matching @parity/cdm-env's `local` preset. Override with
@@ -27,6 +29,7 @@ import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import type { HexString } from "polkadot-api";
+import { createCdmAssetHubClient } from "@parity/cdm-env";
 
 // Deploy via `bun run src/lib/scripts/deploy-registry.ts` rather than
 // invoking `ContractDeployer` programmatically: the deploy dry-run behaves
@@ -80,8 +83,8 @@ async function pollRpcReady(url: string, timeoutMs = 60_000): Promise<void> {
     }
     throw new Error(
         `No chain RPC answering at ${url}. Is PPN running?\n` +
-            `  Start it with \`make start\` in a preview-net-v1 checkout ` +
-            `(or \`make start EPHEMERAL=1\` for a throwaway network).`,
+            `  npm install -g @parity/ppn && ppn start ` +
+            `(or \`ppn start --ephemeral\` for a throwaway network).`,
     );
 }
 
@@ -110,6 +113,50 @@ async function ensureRegistryBuilt(): Promise<void> {
     }
 }
 
+// PPN's boot sequence submits sudo calls from //Alice on Asset Hub; a deploy
+// that races one of them is rejected with `Invalid.Stale` (nonce already
+// spent), which product-sdk-tx leaves to callers to retry. Every step of the
+// script is idempotent, so it is simply run again.
+async function runDeployScript(wsUrl: string, attempts = 3): Promise<string> {
+    for (let attempt = 1; ; attempt++) {
+        try {
+            const { stdout } = await execFileAsync(
+                "bun",
+                ["run", "src/lib/scripts/deploy-registry.ts", "--assethub-url", wsUrl],
+                { cwd: ROOT_DIR, maxBuffer: 16 * 1024 * 1024 },
+            );
+            return stdout;
+        } catch (err) {
+            const stderr = (err as { stderr?: string }).stderr ?? "";
+            if (attempt >= attempts || !stderr.includes("Invalid.Stale")) throw err;
+            await new Promise((r) => setTimeout(r, 5000));
+        }
+    }
+}
+
+// The deploy script gates its transactions on best-block inclusion while
+// its idempotency pre-checks read the finalized head (papi's default for
+// storage reads), so a suite starting inside that window would redeploy and
+// hit `DuplicateContract`. Hand the registry back only once it is finalized.
+async function waitForFinalizedContract(
+    wsUrl: string,
+    address: HexString,
+    timeoutMs = 120_000,
+): Promise<void> {
+    const client = await createCdmAssetHubClient(wsUrl, "local");
+    try {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            const info = await client.assetHub.query.Revive.AccountInfoOf.getValue(address);
+            if (info?.account_type.type === "Contract") return;
+            await new Promise((r) => setTimeout(r, 1000));
+        }
+        throw new Error(`Registry at ${address} not finalized within ${timeoutMs / 1000}s`);
+    } finally {
+        client.destroy();
+    }
+}
+
 export interface DeployedRegistry {
     /** The stable registry address — the EIP-1967 proxy, CREATE3-derived. */
     address: HexString;
@@ -124,18 +171,14 @@ export interface DeployedRegistry {
  * CREATE3 factory bootstrap first (frozen artifacts), then the
  * implementation blob (plain CREATE2), then the proxy THROUGH the factory.
  * Idempotent: on a network that already has the registry it verifies and
- * returns the existing addresses.
+ * returns the existing addresses. Resolves once the registry is finalized.
  *
  * Spawns `bun run src/lib/scripts/deploy-registry.ts`. See the import-site
  * note above for why we don't invoke `ContractDeployer` directly under Node.
  */
 export async function deployRegistry(wsUrl: string): Promise<DeployedRegistry> {
     await ensureRegistryBuilt();
-    const { stdout } = await execFileAsync(
-        "bun",
-        ["run", "src/lib/scripts/deploy-registry.ts", "--assethub-url", wsUrl],
-        { cwd: ROOT_DIR, maxBuffer: 16 * 1024 * 1024 },
-    );
+    const stdout = await runDeployScript(wsUrl);
     const match = stdout.match(/^CONTRACTS_REGISTRY_ADDR=(0x[a-fA-F0-9]+)/m);
     if (!match) {
         throw new Error(
@@ -154,9 +197,11 @@ export async function deployRegistry(wsUrl: string): Promise<DeployedRegistry> {
             `Could not parse CREATE3 factory address from deploy-registry.ts output:\n${stdout}`,
         );
     }
-    return {
+    const deployed = {
         address: match[1] as HexString,
         implAddress: implMatch[1] as HexString,
         factoryAddress: factoryMatch[1] as HexString,
     };
+    await waitForFinalizedContract(wsUrl, deployed.address);
+    return deployed;
 }
