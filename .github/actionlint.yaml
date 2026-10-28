@@ -1,0 +1,5 @@
+# Parity self-hosted runner labels (pools in paritytech/devops-cloud-infra;
+# parity-large is 32 vCPU / 64 GB). actionlint only knows GitHub-hosted labels.
+self-hosted-runner:
+    labels:
+        - parity-large
