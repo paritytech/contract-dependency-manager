@@ -1,5 +1,12 @@
 # @parity/cdm-migrations
 
+## 0.0.9
+
+### Patch Changes
+
+- Updated dependencies [40d4ac0]
+  - @parity/cdm-builder@6.0.1
+
 ## 0.0.8
 
 ### Patch Changes

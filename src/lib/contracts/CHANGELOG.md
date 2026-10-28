@@ -1,5 +1,11 @@
 # @dotdm/contracts
 
+## 6.0.1
+
+### Patch Changes
+
+- 40d4ac0: Read contract existence and uploaded code at the best block, matching where deploys land, so re-runs stay idempotent while finality lags
+
 ## 6.0.0
 
 ### Major Changes

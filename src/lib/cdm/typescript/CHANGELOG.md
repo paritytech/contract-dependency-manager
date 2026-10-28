@@ -1,5 +1,12 @@
 # @dotdm/cdm
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [40d4ac0]
+  - @parity/cdm-builder@6.0.1
+
 ## 0.7.0
 
 ### Minor Changes
