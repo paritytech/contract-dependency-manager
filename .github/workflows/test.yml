@@ -205,7 +205,9 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ github.token }}
               run: |
-                  ppn start --ephemeral > "$RUNNER_TEMP/ppn-start.log" 2>&1 &
+                  # Only the chains the suite uses: the full network starves a 2-vCPU runner.
+                  PPN_PARACHAINS=asset-hub,bulletin ppn genesis-toml > "$RUNNER_TEMP/ppn.toml"
+                  ppn start --ephemeral --toml "$RUNNER_TEMP/ppn.toml" > "$RUNNER_TEMP/ppn-start.log" 2>&1 &
                   ppn_pid=$!
                   # TCP-open is enough here — the harness re-probes RPC readiness.
                   # A warm cache boots in under a minute; the first run downloads
