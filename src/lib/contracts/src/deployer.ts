@@ -378,10 +378,12 @@ export class ContractDeployer {
     async getOnChainCode(address: string): Promise<Uint8Array | null> {
         try {
             const addr = address as SizedHex<20>;
-            const info = await this.api.query.Revive.AccountInfoOf.getValue(addr);
+            const info = await this.api.query.Revive.AccountInfoOf.getValue(addr, { at: "best" });
             if (!info || info.account_type.type !== "Contract") return null;
             const codeHash = info.account_type.value.code_hash;
-            const pristine = await this.api.query.Revive.PristineCode.getValue(codeHash);
+            const pristine = await this.api.query.Revive.PristineCode.getValue(codeHash, {
+                at: "best",
+            });
             if (!pristine) return null;
             return pristine;
         } catch {
@@ -404,7 +406,7 @@ export class ContractDeployer {
         code: Uint8Array,
     ): Promise<{ codeHash: SizedHex<32>; alreadyUploaded: boolean }> {
         const codeHash = keccakCodeHash(code) as SizedHex<32>;
-        if (await this.api.query.Revive.PristineCode.getValue(codeHash)) {
+        if (await this.api.query.Revive.PristineCode.getValue(codeHash, { at: "best" })) {
             return { codeHash, alreadyUploaded: true };
         }
 
@@ -435,7 +437,7 @@ export class ContractDeployer {
         if (!result.ok) {
             // Somebody else may have uploaded the same blob between our
             // pre-check and the submission — that still means "uploaded".
-            if (await this.api.query.Revive.PristineCode.getValue(codeHash)) {
+            if (await this.api.query.Revive.PristineCode.getValue(codeHash, { at: "best" })) {
                 return { codeHash, alreadyUploaded: true };
             }
             throw new Error(`[AssetHub upload_code] ${describeContractError(result.error)}`, {

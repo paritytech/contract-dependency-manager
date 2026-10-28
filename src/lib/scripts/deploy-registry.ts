@@ -248,6 +248,7 @@ async function finishWithRegistry(address: string, alreadyDeployed: boolean): Pr
 if (selectedRegistryAddress) {
     const info = await chainClient.assetHub.query.Revive.AccountInfoOf.getValue(
         selectedRegistryAddress as `0x${string}`,
+        { at: "best" },
     );
     if (info?.account_type.type === "Contract") {
         if (expected.registryAddress.toLowerCase() === selectedRegistryAddress.toLowerCase()) {
@@ -275,6 +276,7 @@ if (
 
 const expectedInfo = await chainClient.assetHub.query.Revive.AccountInfoOf.getValue(
     expected.registryAddress as `0x${string}`,
+    { at: "best" },
 );
 if (expectedInfo?.account_type.type === "Contract") {
     console.log(`ContractRegistry already deployed at ${expected.registryAddress}`);
