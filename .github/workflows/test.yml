@@ -127,7 +127,7 @@ jobs:
 
     e2e:
         name: E2E
-        runs-on: parity-large
+        runs-on: ubuntu-latest
         timeout-minutes: 45
         steps:
             - uses: actions/checkout@v4
