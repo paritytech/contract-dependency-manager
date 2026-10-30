@@ -1,0 +1,4 @@
+# Parity's own runner labels, which actionlint otherwise rejects as unknown.
+self-hosted-runner:
+    labels:
+        - parity-large
