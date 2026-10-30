@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1290" height="700" viewBox="0 0 1290 700" role="img" aria-label="Three per-name proxy architectures side by side: today (routing logic frozen in the proxy), option A (frozen shim asks a beacon for an upgradeable router that delegate-calls the version), option B (frozen shim asks an upgradeable resolver where to route, then delegate-calls the version directly). Dashed blue arrows mark where the registry writes at publish or upgrade time.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker>
+    <marker id="arrowSoft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/></marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#1d4ed8"/></marker>
+  </defs>
+  <g font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+
+  <!-- ============ column frames ============ -->
+  <rect x="30" y="30" width="400" height="600" rx="12" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="46" y="56" font-size="10.5" font-weight="700" fill="#94a3b8" letter-spacing="1.5">TODAY</text>
+  <rect x="445" y="30" width="400" height="600" rx="12" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="461" y="56" font-size="10.5" font-weight="700" fill="#94a3b8" letter-spacing="1.5">OPTION A &#8212; BEACON</text>
+  <rect x="860" y="30" width="400" height="600" rx="12" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="876" y="56" font-size="10.5" font-weight="700" fill="#94a3b8" letter-spacing="1.5">OPTION B &#8212; SHIM + RESOLVER</text>
+
+  <!-- ============ TODAY (cx=230) ============ -->
+  <circle cx="230" cy="108" r="28" fill="#ffffff" stroke="#475569" stroke-width="2"/>
+  <text x="230" y="112" font-size="12.5" font-weight="600" fill="#334155" text-anchor="middle">caller</text>
+  <line x1="230" y1="136" x2="230" y2="176" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="242" y="162" font-size="11" fill="#64748b">&#9312; call</text>
+
+  <rect x="120" y="180" width="220" height="70" rx="10" fill="#eef2ff" stroke="#4f46e5" stroke-width="2.2"/>
+  <text x="212" y="208" font-size="14" font-weight="700" fill="#3730a3" text-anchor="middle">@org/foo proxy</text>
+  <text x="212" y="230" font-family="Menlo, Consolas, monospace" font-size="10" fill="#475569" text-anchor="middle">routing logic + slots</text>
+  <path d="M 306 222 V 236 A 12 4 0 0 0 330 236 V 222" fill="#fef3c7" stroke="#b45309" stroke-width="1.4"/>
+  <ellipse cx="318" cy="222" rx="12" ry="4" fill="#fde68a" stroke="#b45309" stroke-width="1.4"/>
+
+  <line x1="230" y1="250" x2="230" y2="386" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="242" y="322" font-size="11" fill="#64748b">&#9313; delegatecall</text>
+
+  <rect x="150" y="390" width="160" height="44" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="2"/>
+  <text x="230" y="417" font-family="Menlo, Consolas, monospace" font-size="12.5" font-weight="700" fill="#134e4a" text-anchor="middle">impl 1.2.0</text>
+
+  <text x="230" y="480" font-size="11" fill="#475569" text-anchor="middle">stacked frames: 2</text>
+  <text x="230" y="498" font-size="11" fill="#dc2626" text-anchor="middle">routing behavior can never change</text>
+
+  <rect x="120" y="560" width="220" height="50" rx="10" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2.2"/>
+  <text x="230" y="590" font-size="13.5" font-weight="700" fill="#1e3a8a" text-anchor="middle">ContractRegistry</text>
+  <line x1="120" y1="560" x2="120" y2="254" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrowBlue)"/>
+  <text x="128" y="540" font-size="10" fill="#1d4ed8">publish &#183; ratchet &#183; freeze</text>
+
+  <!-- ============ OPTION A (cx=600) ============ -->
+  <circle cx="600" cy="108" r="28" fill="#ffffff" stroke="#475569" stroke-width="2"/>
+  <text x="600" y="112" font-size="12.5" font-weight="600" fill="#334155" text-anchor="middle">caller</text>
+  <line x1="600" y1="136" x2="600" y2="176" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="612" y="162" font-size="11" fill="#64748b">&#9312; call</text>
+
+  <rect x="490" y="180" width="220" height="70" rx="10" fill="#eef2ff" stroke="#4f46e5" stroke-width="2.2"/>
+  <text x="582" y="208" font-size="14" font-weight="700" fill="#3730a3" text-anchor="middle">@org/foo shim</text>
+  <text x="582" y="230" font-family="Menlo, Consolas, monospace" font-size="10" fill="#475569" text-anchor="middle">slots only, no logic</text>
+  <path d="M 676 222 V 236 A 12 4 0 0 0 700 236 V 222" fill="#fef3c7" stroke="#b45309" stroke-width="1.4"/>
+  <ellipse cx="688" cy="222" rx="12" ry="4" fill="#fde68a" stroke="#b45309" stroke-width="1.4"/>
+
+  <!-- beacon lookup (transient) -->
+  <line x1="710" y1="200" x2="746" y2="200" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arrowSoft)" marker-start="url(#arrowSoft)"/>
+  <rect x="750" y="180" width="82" height="40" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="2"/>
+  <text x="791" y="204" font-size="12" font-weight="700" fill="#134e4a" text-anchor="middle">beacon</text>
+  <text x="728" y="190" font-size="10" fill="#64748b" text-anchor="middle">&#9313;</text>
+
+  <line x1="600" y1="250" x2="600" y2="296" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="612" y="278" font-size="11" fill="#64748b">&#9314; delegatecall</text>
+
+  <rect x="490" y="300" width="220" height="56" rx="10" fill="#ffffff" stroke="#0f766e" stroke-width="2"/>
+  <text x="600" y="324" font-size="13.5" font-weight="700" fill="#134e4a" text-anchor="middle">router</text>
+  <text x="600" y="343" font-size="10.5" fill="#64748b" text-anchor="middle">routing logic, runs in the name&#8217;s storage</text>
+
+  <line x1="600" y1="356" x2="600" y2="386" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="612" y="376" font-size="11" fill="#64748b">&#9315; delegatecall</text>
+
+  <rect x="520" y="390" width="160" height="44" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="2"/>
+  <text x="600" y="417" font-family="Menlo, Consolas, monospace" font-size="12.5" font-weight="700" fill="#134e4a" text-anchor="middle">impl 1.2.0</text>
+
+  <text x="600" y="480" font-size="11" fill="#475569" text-anchor="middle">stacked frames: 3</text>
+  <text x="600" y="498" font-size="11" fill="#0f766e" text-anchor="middle">one beacon update upgrades every name</text>
+
+  <rect x="490" y="560" width="220" height="50" rx="10" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2.2"/>
+  <text x="600" y="590" font-size="13.5" font-weight="700" fill="#1e3a8a" text-anchor="middle">ContractRegistry</text>
+  <line x1="490" y1="560" x2="490" y2="254" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrowBlue)"/>
+  <text x="498" y="540" font-size="10" fill="#1d4ed8">publish &#183; ratchet &#183; freeze</text>
+  <line x1="710" y1="585" x2="791" y2="585" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <line x1="791" y1="585" x2="791" y2="224" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrowBlue)"/>
+  <text x="783" y="540" font-size="10" fill="#1d4ed8" text-anchor="end">upgrade router</text>
+
+  <!-- ============ OPTION B (cx=1015) ============ -->
+  <circle cx="1015" cy="108" r="28" fill="#ffffff" stroke="#475569" stroke-width="2"/>
+  <text x="1015" y="112" font-size="12.5" font-weight="600" fill="#334155" text-anchor="middle">caller</text>
+  <line x1="1015" y1="136" x2="1015" y2="176" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1027" y="162" font-size="11" fill="#64748b">&#9312; call</text>
+
+  <rect x="905" y="180" width="220" height="70" rx="10" fill="#eef2ff" stroke="#4f46e5" stroke-width="2.2"/>
+  <text x="997" y="208" font-size="14" font-weight="700" fill="#3730a3" text-anchor="middle">@org/foo shim</text>
+  <text x="997" y="230" font-family="Menlo, Consolas, monospace" font-size="10" fill="#475569" text-anchor="middle">contract state only</text>
+  <path d="M 1091 222 V 236 A 12 4 0 0 0 1115 236 V 222" fill="#fef3c7" stroke="#b45309" stroke-width="1.4"/>
+  <ellipse cx="1103" cy="222" rx="12" ry="4" fill="#fde68a" stroke="#b45309" stroke-width="1.4"/>
+
+  <!-- resolver lookup (transient) -->
+  <line x1="1125" y1="215" x2="1161" y2="215" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arrowSoft)" marker-start="url(#arrowSoft)"/>
+  <text x="1143" y="205" font-size="10" fill="#64748b" text-anchor="middle">&#9313;</text>
+  <rect x="1165" y="180" width="84" height="120" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="2"/>
+  <text x="1207" y="204" font-size="12" font-weight="700" fill="#134e4a" text-anchor="middle">resolver</text>
+  <text x="1207" y="221" font-size="9.5" fill="#64748b" text-anchor="middle">routing logic</text>
+  <text x="1207" y="234" font-size="9.5" fill="#64748b" text-anchor="middle">+ meta ops</text>
+  <path d="M 1193 262 V 280 A 14 4.5 0 0 0 1221 280 V 262" fill="#fef3c7" stroke="#b45309" stroke-width="1.4"/>
+  <ellipse cx="1207" cy="262" rx="14" ry="4.5" fill="#fde68a" stroke="#b45309" stroke-width="1.4"/>
+  <text x="1207" y="296" font-size="9" fill="#92400e" text-anchor="middle">tables, all names</text>
+
+  <line x1="1015" y1="250" x2="1015" y2="386" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1027" y="322" font-size="11" fill="#64748b">&#9314; delegatecall</text>
+
+  <rect x="935" y="390" width="160" height="44" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="2"/>
+  <text x="1015" y="417" font-family="Menlo, Consolas, monospace" font-size="12.5" font-weight="700" fill="#134e4a" text-anchor="middle">impl 1.2.0</text>
+
+  <text x="1015" y="480" font-size="11" fill="#475569" text-anchor="middle">stacked frames: 2</text>
+  <text x="1015" y="498" font-size="11" fill="#0f766e" text-anchor="middle">one resolver upgrade upgrades every name</text>
+
+  <rect x="905" y="560" width="220" height="50" rx="10" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2.2"/>
+  <text x="1015" y="590" font-size="13.5" font-weight="700" fill="#1e3a8a" text-anchor="middle">ContractRegistry</text>
+  <line x1="1125" y1="585" x2="1207" y2="585" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <line x1="1207" y1="585" x2="1207" y2="304" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrowBlue)"/>
+  <text x="1199" y="540" font-size="10" fill="#1d4ed8" text-anchor="end">publish &#183; ratchet &#183; freeze &#183; upgrade</text>
+  <line x1="905" y1="560" x2="905" y2="254" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrowBlue)"/>
+  <text x="913" y="540" font-size="10" fill="#1d4ed8">callCode only</text>
+
+  <!-- ============ legend ============ -->
+  <rect x="40" y="654" width="14" height="14" rx="3" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.8"/>
+  <text x="62" y="665" font-size="11" fill="#475569">frozen forever (per-name blob)</text>
+  <rect x="270" y="654" width="14" height="14" rx="3" fill="#ffffff" stroke="#0f766e" stroke-width="1.8"/>
+  <text x="292" y="665" font-size="11" fill="#475569">upgradeable</text>
+  <line x1="400" y1="661" x2="440" y2="661" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="450" y="665" font-size="11" fill="#475569">call frame (stacked)</text>
+  <line x1="600" y1="661" x2="640" y2="661" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arrowSoft)" marker-start="url(#arrowSoft)"/>
+  <text x="650" y="665" font-size="11" fill="#475569">transient lookup (returns before next hop)</text>
+  <line x1="920" y1="661" x2="960" y2="661" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrowBlue)"/>
+  <text x="970" y="665" font-size="11" fill="#475569">registry writes &#8212; publish / upgrade time only</text>
+  </g>
+</svg>
