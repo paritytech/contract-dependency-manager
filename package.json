@@ -31,5 +31,14 @@
     "turbo": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "pnpm": {
+    "packageExtensions": {
+      "@polkadot-api/cli": {
+        "dependencies": {
+          "esbuild": "^0.28.0"
+        }
+      }
+    }
   }
 }

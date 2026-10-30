@@ -108,7 +108,7 @@ pnpm deploy:registry -- --name local  # bun run src/lib/scripts/deploy-registry.
 
 # Testing
 pnpm test                     # vitest + test:macro + test:rust
-pnpm test:e2e                 # end-to-end tests (requires a running local PPN — see tests/e2e/harness.ts)
+pnpm test:e2e                 # end-to-end tests (requires a running local PPN: `npm install -g @parity/ppn && ppn start --ephemeral` — see src/lib/contracts/tests/e2e/harness.ts)
 pnpm test:macro               # Compile cdm::import! consumer to PolkaVM
 pnpm test:rust                # Host-side Rust unit tests
 
@@ -188,7 +188,7 @@ Tests use `vitest`. Run from project root:
 
 - Template files live at `src/templates/`, embedded at build time into `src/apps/cli/src/generated/`
 - Stubs (e.g., react-devtools-core) at `src/stubs/`
-- Polkadot API config and descriptors at `src/lib/descriptors/.papi/` (gitignored codegen)
+- No local papi codegen: typed chain APIs/descriptors come prebuilt from `@parity/product-sdk-descriptors` (e.g. `@parity/product-sdk-descriptors/paseo-asset-hub`), version-pinned in the `pnpm-workspace.yaml` catalog
 - Rust build artifacts at `target/` (project root, shared by Cargo workspace)
 - Local imports use no `.js` extensions (moduleResolution: "bundler"); exception: `@noble/hashes/blake2.js`
 - From `src/apps/cli/tests/`: `../../../..` = project root, `../../..` = `src/`

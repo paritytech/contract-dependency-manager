@@ -22,7 +22,10 @@ import {
     deployRegistryWithProxy,
     resolveFeatures,
 } from "@parity/cdm-builder";
-import { createContractFromClient } from "@parity/product-sdk-contracts";
+import {
+    createContractFromClient,
+    createContractRuntimeFromClient,
+} from "@parity/product-sdk-contracts";
 import type { HexString } from "polkadot-api";
 import { ensureAccountMapped } from "../lib/account-mapping";
 import { runDeployWithUI, spinner } from "../lib/ui";
@@ -231,7 +234,13 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     // Map account (required for Revive pallet on fresh chains)
     console.log("Mapping account...");
     try {
-        const outcome = await ensureAccountMapped(chainClient.assetHub, signer);
+        const outcome = await ensureAccountMapped(
+            createContractRuntimeFromClient(
+                chainClient.raw.assetHub,
+                chainClient.descriptors.assetHub,
+            ),
+            signer,
+        );
         console.log(
             outcome === "already-mapped" ? "  Account already mapped\n" : "  Account mapped\n",
         );

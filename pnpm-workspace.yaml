@@ -9,17 +9,16 @@ packages:
 
 catalog:
   "@changesets/cli": ^2.29.8
-  polkadot-api: ^2.1.7
-  "@polkadot-api/sdk-ink": ^0.7.0
-  "@parity/product-sdk-chain-client": 0.10.0
-  "@parity/product-sdk-cloud-storage": 0.10.0
-  "@parity/product-sdk-contracts": 0.10.1
-  "@parity/product-sdk-descriptors": 0.9.0
-  "@parity/product-sdk-host": 0.15.1
-  "@parity/product-sdk-tx": 0.4.1
-  "@polkadot-labs/hdkd": ^0.0.26
-  "@polkadot-labs/hdkd-helpers": ^0.0.27
-  smoldot: ^2.0.40
+  polkadot-api: ^3.3.0
+  "@parity/product-sdk-chain-client": 0.13.4
+  "@parity/product-sdk-cloud-storage": 0.13.4
+  "@parity/product-sdk-contracts": 0.11.4
+  "@parity/product-sdk-descriptors": 0.14.0
+  "@parity/product-sdk-host": 0.29.0
+  "@parity/product-sdk-tx": 0.5.4
+  "@polkadot-labs/hdkd": ^0.0.32
+  "@polkadot-labs/hdkd-helpers": ^0.0.34
+  smoldot: ^3.7.0
   react: ^19.2.4
   react-dom: ^19.2.0
   react-router-dom: ^7.13.0
@@ -28,7 +27,7 @@ catalog:
   commander: ^12.0.0
   ink: ^6.8.0
   "@noble/hashes": ^2.0.1
-  multiformats: ^13.4.2
+  multiformats: ^14.0.5
   vite: ^7.3.1
   "@vitejs/plugin-react": ^5.1.1
   esbuild: ^0.28.0

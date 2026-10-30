@@ -1,6 +1,6 @@
 {
     "name": "@parity/cdm-codegen",
-    "version": "0.6.26",
+    "version": "0.7.1",
     "type": "module",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
@@ -31,7 +31,9 @@
         "@parity/cdm-builder": "workspace:*",
         "@parity/cdm-env": "workspace:*",
         "@parity/cdm-utils": "workspace:*",
-        "@polkadot-api/sdk-ink": "catalog:",
+        "@parity/product-sdk-contracts": "catalog:",
+        "@parity/product-sdk-descriptors": "catalog:",
+        "@parity/product-sdk-tx": "catalog:",
         "polkadot-api": "catalog:"
     },
     "devDependencies": {

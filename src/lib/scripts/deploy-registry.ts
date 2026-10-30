@@ -36,7 +36,11 @@ import {
     ss58Address,
     type CdmDeployAssetHubApi,
 } from "@parity/cdm-env";
-import { createContractFromClient } from "@parity/product-sdk-contracts";
+import {
+    createContractFromClient,
+    createContractRuntimeFromClient,
+    ensureContractAccountMapped,
+} from "@parity/product-sdk-contracts";
 import { CONTRACTS_REGISTRY_PACKAGE, CREATE3_FACTORY_PACKAGE } from "@parity/cdm-utils";
 import { getAccount } from "@parity/cdm-utils/accounts";
 import {
@@ -167,12 +171,18 @@ const deployer = new ContractDeployer(
     deployAssetHubApi,
 );
 
-// Map account (required on fresh chains, harmless if already mapped)
-try {
-    await chainClient.assetHub.tx.Revive.map_account().signAndSubmit(signer);
-    console.log("Account mapped.");
-} catch {
-    // already mapped
+// Map account (required on fresh chains, skipped if already mapped)
+const mapping = await ensureContractAccountMapped(
+    createContractRuntimeFromClient(chainClient.raw.assetHub, chainClient.descriptors.assetHub),
+    ss58Address(signer.publicKey),
+    signer,
+    // Same inclusion timeout as the CLI's account mapping (cdm account map / deploy).
+    { timeoutMs: 300_000 },
+);
+if (mapping.ok) {
+    console.log(mapping.value === null ? "Account already mapped." : "Account mapped.");
+} else {
+    console.warn(`Account mapping failed, continuing: ${mapping.error.message}`);
 }
 
 // Predict every address offline (CREATE3 factory, implementation, registry
@@ -310,6 +320,7 @@ async function finishWithRegistry(
 if (selectedRegistryAddress) {
     const info = await chainClient.assetHub.query.Revive.AccountInfoOf.getValue(
         selectedRegistryAddress as `0x${string}`,
+        { at: "best" },
     );
     if (info?.account_type.type === "Contract") {
         if (expected.registryAddress.toLowerCase() === selectedRegistryAddress.toLowerCase()) {
@@ -337,6 +348,7 @@ if (
 
 const expectedInfo = await chainClient.assetHub.query.Revive.AccountInfoOf.getValue(
     expected.registryAddress as `0x${string}`,
+    { at: "best" },
 );
 if (expectedInfo?.account_type.type === "Contract") {
     console.log(`ContractRegistry already deployed at ${expected.registryAddress}`);

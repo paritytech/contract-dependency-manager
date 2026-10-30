@@ -2,7 +2,6 @@ node_modules/
 src/apps/cli/src/generated/
 
 dist/
-src/lib/descriptors/generated/
 
 .turbo/
 
@@ -17,12 +16,9 @@ target/
 *-lock.json
 
 src/templates/*/**/.cdm/
-!src/templates/*/.papi/descriptors/dist/
 src/lib/cdm/import-test/.cdm/
 
 reference-repos/
-
-ppn/
 
 cdm.local.json
 

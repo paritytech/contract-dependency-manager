@@ -1,8 +1,8 @@
 import { dirname, relative, resolve } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { keccak_256 } from "@noble/hashes/sha3.js";
-import type { PolkadotSigner, SS58String, HexString } from "polkadot-api";
-import { getRegistryAddress, type CdmChainClient } from "@parity/cdm-env";
+import type { SS58String, HexString } from "polkadot-api";
+import { getRegistryAddress, type CdmChainClient, type CdmSigner } from "@parity/cdm-env";
 import {
     createContractFromClient,
     type Contract,
@@ -198,7 +198,7 @@ export interface DeployContractsOptions {
 
     // Injected infra — REQUIRED, do not create connections internally
     client: PipelineChainClient;
-    signer: PolkadotSigner;
+    signer: CdmSigner;
     origin: SS58String;
     registryAddress: HexString;
     /**
@@ -209,7 +209,7 @@ export interface DeployContractsOptions {
      * keeping `signer`/`origin` as the Asset Hub product account that deploys
      * contracts and publishes registry entries.
      */
-    metadataSigner?: PolkadotSigner;
+    metadataSigner?: CdmSigner;
 
     // Tuning (reserved for future use by internal tx layers)
     waitFor?: "best-block" | "finalized";
@@ -1813,12 +1813,11 @@ if (import.meta.vitest) {
         (mockReadFileSync as any).mockImplementation(() => Buffer.from("[]"));
     });
 
-    function makePolkadotSigner(fill: number): PolkadotSigner {
-        return {
+    function makeSigner(fill: number): CdmSigner {
+        return Object.assign(vi.fn(), {
             publicKey: new Uint8Array(32).fill(fill),
-            signTx: vi.fn(async () => new Uint8Array(65).fill(fill)),
             signBytes: vi.fn(async () => new Uint8Array(64).fill(fill)),
-        };
+        }) as unknown as CdmSigner;
     }
 
     const testRegistry = "0x00000000000000000000000000000000000000aa" as HexString;
@@ -2074,8 +2073,8 @@ if (import.meta.vitest) {
             );
 
             const events: string[] = [];
-            const deploySigner = makePolkadotSigner(1);
-            const metadataSigner = makePolkadotSigner(2);
+            const deploySigner = makeSigner(1);
+            const metadataSigner = makeSigner(2);
             await deployContracts({
                 rootDir: "/fake",
                 client: makeFakeClient(),
@@ -2111,7 +2110,7 @@ if (import.meta.vitest) {
             await deployContracts({
                 rootDir: "/fake",
                 client: makeFakeClient(),
-                signer: makePolkadotSigner(1),
+                signer: makeSigner(1),
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                 registryAddress: getRegistryAddress("paseo") as HexString,
                 onEvent: (event) => events.push(event),
@@ -2174,7 +2173,7 @@ if (import.meta.vitest) {
             const summary = await deployContracts({
                 rootDir: "/fake",
                 client: makeFakeClient(),
-                signer: makePolkadotSigner(1),
+                signer: makeSigner(1),
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                 registryAddress: getRegistryAddress("paseo") as HexString,
                 onEvent: (event) => events.push(event),
@@ -2235,7 +2234,7 @@ if (import.meta.vitest) {
             const summary = await deployContracts({
                 rootDir: "/fake",
                 client: makeFakeClient(),
-                signer: makePolkadotSigner(1),
+                signer: makeSigner(1),
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                 registryAddress: getRegistryAddress("paseo") as HexString,
                 onEvent: (event) => events.push(event),
@@ -2280,7 +2279,7 @@ if (import.meta.vitest) {
             const summary = await deployContracts({
                 rootDir: "/fake",
                 client: makeFakeClient(),
-                signer: makePolkadotSigner(1),
+                signer: makeSigner(1),
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                 registryAddress: getRegistryAddress("paseo") as HexString,
                 onEvent: (event) => events.push(event),
@@ -2325,7 +2324,7 @@ if (import.meta.vitest) {
             await deployContracts({
                 rootDir: "/fake",
                 client: makeFakeClient(),
-                signer: makePolkadotSigner(1),
+                signer: makeSigner(1),
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                 registryAddress: getRegistryAddress("paseo") as HexString,
             });
@@ -2393,7 +2392,7 @@ if (import.meta.vitest) {
             const summary = await deployContracts({
                 rootDir: "/fake",
                 client: makeFakeClient(),
-                signer: makePolkadotSigner(1),
+                signer: makeSigner(1),
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                 registryAddress: getRegistryAddress("paseo") as HexString,
                 onEvent: (event) => events.push(event),
@@ -2451,7 +2450,7 @@ if (import.meta.vitest) {
             await deployContracts({
                 rootDir: "/fake",
                 client: makeFakeClient(),
-                signer: makePolkadotSigner(1),
+                signer: makeSigner(1),
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                 registryAddress: getRegistryAddress("paseo") as HexString,
                 onEvent: (event) => events.push(event),
@@ -2512,7 +2511,7 @@ if (import.meta.vitest) {
             const summary = await deployContracts({
                 rootDir: "/fake",
                 client: makeFakeClient(),
-                signer: makePolkadotSigner(1),
+                signer: makeSigner(1),
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                 registryAddress: getRegistryAddress("paseo") as HexString,
                 onEvent: (event) => events.push(event),
@@ -2551,7 +2550,7 @@ if (import.meta.vitest) {
             await deployContracts({
                 rootDir: "/fake",
                 client: makeFakeClient(),
-                signer: makePolkadotSigner(1),
+                signer: makeSigner(1),
                 origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                 registryAddress: getRegistryAddress("paseo") as HexString,
                 onEvent: (event) => events.push(event),
@@ -2571,7 +2570,7 @@ if (import.meta.vitest) {
                 deployContracts({
                     rootDir: "/fake",
                     client: makeFakeClient(),
-                    signer: makePolkadotSigner(1),
+                    signer: makeSigner(1),
                     origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                     registryAddress: getRegistryAddress("paseo") as HexString,
                     onEvent: (event) => events.push(event),
@@ -2591,7 +2590,7 @@ if (import.meta.vitest) {
                 deployContracts({
                     rootDir: "/fake",
                     client: makeFakeClient(),
-                    signer: makePolkadotSigner(1),
+                    signer: makeSigner(1),
                     origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                     registryAddress: getRegistryAddress("paseo") as HexString,
                 }),
@@ -2607,7 +2606,7 @@ if (import.meta.vitest) {
                 deployContracts({
                     rootDir: "/fake",
                     client: makeFakeClient(),
-                    signer: makePolkadotSigner(1),
+                    signer: makeSigner(1),
                     origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
                     registryAddress: getRegistryAddress("paseo") as HexString,
                 }),

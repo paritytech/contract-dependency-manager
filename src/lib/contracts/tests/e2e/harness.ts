@@ -6,11 +6,13 @@
 // node, so tests can cover the real cross-chain flow: registry state on
 // Asset Hub, metadata on Bulletin, content served by the IPFS gateway.
 //
-// Requires a running PPN (one command, prebuilt binaries, ~seconds to boot):
+// Requires a running PPN (@parity/ppn — Node 24+, prebuilt binaries; the
+// first start downloads ~500 MB, later starts are up in about a minute):
 //
-//   git clone git@github.com:paritytech/preview-net-v1 && cd preview-net-v1
-//   make start            # persistent local network
-//   make start EPHEMERAL=1  # throwaway network (what CI uses)
+//   npm install -g @parity/ppn
+//   ppn start               # persistent local network
+//   ppn start --ephemeral   # throwaway network (what CI uses)
+//   ppn kill                # stop it
 //
 // PPN serves Asset Hub on :10020, Bulletin on :10030, and the IPFS gateway
 // on :8080 — matching @parity/cdm-env's `local` preset. Override with
@@ -139,8 +141,8 @@ async function pollRpcReady(url: string, timeoutMs = 60_000): Promise<void> {
     }
     throw new Error(
         `No chain RPC answering at ${url}. Is PPN running?\n` +
-            `  Start it with \`make start\` in a preview-net-v1 checkout ` +
-            `(or \`make start EPHEMERAL=1\` for a throwaway network).`,
+            `  npm install -g @parity/ppn && ppn start ` +
+            `(or \`ppn start --ephemeral\` for a throwaway network).`,
     );
 }
 
@@ -291,6 +293,25 @@ export async function rawCallTx(api: any, signer: any, dest: string, input: stri
     }
 }
 
+// PPN's boot submits //Alice sudo calls on Asset Hub; a deploy racing one is
+// rejected with `Invalid.Stale`. The script is idempotent, so it is run again.
+async function runDeployScript(wsUrl: string, attempts = 3): Promise<string> {
+    for (let attempt = 1; ; attempt++) {
+        try {
+            const { stdout } = await execFileAsync(
+                "bun",
+                ["run", "src/lib/scripts/deploy-registry.ts", "--assethub-url", wsUrl],
+                { cwd: ROOT_DIR, maxBuffer: 16 * 1024 * 1024 },
+            );
+            return stdout;
+        } catch (err) {
+            const stderr = (err as { stderr?: string }).stderr ?? "";
+            if (attempt >= attempts || !stderr.includes("Invalid.Stale")) throw err;
+            await new Promise((r) => setTimeout(r, 5000));
+        }
+    }
+}
+
 export interface DeployedRegistry {
     /** The stable registry address — the EIP-1967 proxy, CREATE3-derived. */
     address: HexString;
@@ -312,11 +333,7 @@ export interface DeployedRegistry {
  */
 export async function deployRegistry(wsUrl: string): Promise<DeployedRegistry> {
     await ensureRegistryBuilt();
-    const { stdout } = await execFileAsync(
-        "bun",
-        ["run", "src/lib/scripts/deploy-registry.ts", "--assethub-url", wsUrl],
-        { cwd: ROOT_DIR, maxBuffer: 16 * 1024 * 1024 },
-    );
+    const stdout = await runDeployScript(wsUrl);
     const match = stdout.match(/^CONTRACTS_REGISTRY_ADDR=(0x[a-fA-F0-9]+)/m);
     if (!match) {
         throw new Error(
