@@ -183,11 +183,10 @@ jobs:
             - name: Build registry contracts
               run: pnpm build:registry
             # The Solidity e2e suite drives the real foundry pipeline (plain
-            # `forge build`; solc is auto-fetched on first build). FOUNDRY_DIR
-            # is pinned because the installer defaults to $XDG_CONFIG_HOME,
-            # which the runner sets.
+            # `forge build`; solc is auto-fetched on first build).
             - name: Install foundry-polkadot
               run: |
+                  # The installer defaults to $XDG_CONFIG_HOME/.foundry, which the runner sets.
                   export FOUNDRY_DIR="$HOME/.foundry"
                   curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash
                   "$FOUNDRY_DIR/bin/foundryup-polkadot"
