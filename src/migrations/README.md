@@ -30,14 +30,17 @@ pnpm deploy:registry -- --name paseo \
 When `MIGRATION_JSON` is omitted, the deploy script writes the exported snapshot
 to `dist/registry-migration-<chain>-<timestamp>.json`.
 
-The JSON shape matches the contract's `adminImportContracts` input:
+Each snapshot entry carries the name's per-name proxy and its version rows
+(packed semver `versionKey` as a decimal string, implementation `target`,
+`metadataUri`):
 
 ```json
 {
   "contract_name": "@scope/name",
   "owner": "0x...",
+  "proxy": "0x...",
   "versions": [
-    { "address": "0x...", "metadata_uri": "ipfs://..." }
+    { "versionKey": "18446744073709551617", "target": "0x...", "metadataUri": "ipfs://..." }
   ]
 }
 ```

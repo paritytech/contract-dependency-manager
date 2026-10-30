@@ -48,7 +48,7 @@ jobs:
             # default target to PolkaVM, so an explicit host target is required.
             - name: Run host-side tests
               run: |
-                  cargo test -p cdm-macros -p pvm-cdm -p pvm-cdm-macros -p contract-registry-core -p contract-registry -p contract-registry-proxy -p create3-factory -p create3-child --target "$(rustc -vV | sed -n 's/^host: //p')"
+                  cargo test -p cdm-macros -p pvm-cdm -p pvm-cdm-macros -p contract-registry-core -p contract-registry -p contract-registry-proxy -p contract-proxy -p create3-factory -p create3-child --target "$(rustc -vV | sed -n 's/^host: //p')"
 
     templates:
         name: Templates
@@ -168,6 +168,7 @@ jobs:
                       ~/.cargo/registry
                       ~/.cargo/git
                       target
+                      src/templates/shared-counter/target
                   key: e2e-cargo-${{ runner.os }}-parity-large-${{ steps.pvm-rev.outputs.rev }}-${{ hashFiles('src/contract/**/Cargo.toml') }}
                   restore-keys: |
                       e2e-cargo-${{ runner.os }}-parity-large-
@@ -185,6 +186,15 @@ jobs:
                   cargo "+$toolchain" install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
             - name: Build registry contracts
               run: pnpm build:registry
+            # The Solidity e2e suite drives the real foundry pipeline (plain
+            # `forge build`; solc is auto-fetched on first build).
+            - name: Install foundry-polkadot
+              run: |
+                  # The installer defaults to $XDG_CONFIG_HOME/.foundry, which the runner sets.
+                  export FOUNDRY_DIR="$HOME/.foundry"
+                  curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash
+                  "$FOUNDRY_DIR/bin/foundryup-polkadot"
+                  echo "$FOUNDRY_DIR/bin" >> "$GITHUB_PATH"
             # The suite runs against a full local product environment (relay +
             # Asset Hub + Bulletin + IPFS gateway) that @parity/ppn spawns from
             # prebuilt binaries. The version is resolved up front so the binary

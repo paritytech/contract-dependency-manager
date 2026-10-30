@@ -1,15 +1,24 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve } from "path";
 
+/**
+ * A resolved dependency snapshot in `cdm.json`. `version` is the installed
+ * semver; `address` is the name's STABLE address (its per-name proxy).
+ */
 export interface CdmJsonContract {
-    version: number;
+    version: string;
     address: string;
     abi: unknown[];
     metadataCid?: string;
 }
 
+/**
+ * Flat project manifest. `dependencies` values are version REQUESTS:
+ * `"latest"`, an exact semver (`"1.2.3"`), or an npm-style range (`"^1.2.3"`)
+ * resolved against on-chain semver version keys.
+ */
 export interface CdmJson {
-    dependencies: Record<string, number | string>;
+    dependencies: Record<string, string>;
     contracts?: Record<string, CdmJsonContract>;
     registry?: string;
 }
@@ -40,10 +49,10 @@ if (import.meta.vitest) {
     describe("normalizeCdmJson", () => {
         test("keeps manifests unchanged", () => {
             const manifest = {
-                dependencies: { "@example/counter": "latest" },
+                dependencies: { "@example/counter": "^1.2.0", "@example/other": "latest" },
                 contracts: {
                     "@example/counter": {
-                        version: 1,
+                        version: "1.2.3",
                         address: "0x0000000000000000000000000000000000000001",
                         abi: [],
                     },

@@ -14,5 +14,12 @@ export default defineConfig({
 		],
 		reporters: "verbose",
 		environment: "node",
+		server: {
+			deps: {
+				// Resolve workspace package dists like node: vite would inline and
+				// re-transform their code-split tsup chunks, leaving exports undefined.
+				external: [/src\/lib\/(contracts|env|utils)\/dist\//],
+			},
+		},
 	},
 });

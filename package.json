@@ -15,7 +15,7 @@
     "test": "vitest run && pnpm test:macro && pnpm test:rust",
     "test:e2e": "turbo build --filter=@parity/cdm-utils --filter=@parity/cdm-env --filter=@parity/cdm-builder && vitest run --config vitest.e2e.config.ts",
     "test:macro": "cargo pvm-contract build --manifest-path src/lib/cdm/import-test/Cargo.toml",
-    "test:rust": "cargo test -p cdm-macros -p pvm-cdm -p pvm-cdm-macros -p contract-registry-core -p contract-registry -p contract-registry-proxy -p create3-factory -p create3-child --target \"$(rustc -vV | sed -n 's/^host: //p')\"",
+    "test:rust": "cargo test -p cdm-macros -p pvm-cdm -p pvm-cdm-macros -p contract-registry-core -p contract-registry -p contract-registry-proxy -p contract-proxy -p create3-factory -p create3-child --target \"$(rustc -vV | sed -n 's/^host: //p')\"",
     "format": "biome format --write . && cargo fmt --all && cargo fmt --all --manifest-path src/templates/shared-counter/Cargo.toml",
     "format:check": "biome format . && cargo fmt --all -- --check && cargo fmt --all --manifest-path src/templates/shared-counter/Cargo.toml -- --check",
     "clean": "turbo clean && rm -rf dist/ target/",

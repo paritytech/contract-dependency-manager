@@ -17,7 +17,8 @@ export interface InstallStatus {
     library: string;
     state: InstallState;
     error?: string;
-    version?: number;
+    /** Resolved semver. */
+    version?: string;
     address?: string;
     metadataCid?: string;
     savedPath?: string;

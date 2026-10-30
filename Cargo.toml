@@ -6,6 +6,7 @@ members = [
     "src/contract/create3/child",
     "src/contract/create3/factory",
     "src/contract/proxy",
+    "src/contract/registry-proxy",
     "src/lib/cdm/rust",
     "src/lib/cdm/rust-macros",
     "src/lib/cdm/rust-macros/pvm-cdm",
@@ -25,6 +26,7 @@ pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", b
 pvm-cdm = { path = "src/lib/cdm/rust-macros/pvm-cdm" }
 polkavm-derive = "0.35"
 picoalloc = "5.2"
+pvm-bump-allocator = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "main" }
 cdm = { path = "src/lib/cdm/rust" }
 cdm-macros = { path = "src/lib/cdm/rust-macros" }
 syn = "2"

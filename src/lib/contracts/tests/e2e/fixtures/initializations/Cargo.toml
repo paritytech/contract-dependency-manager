@@ -1,0 +1,36 @@
+# E2E fixture crate for the initializations suite: one implementation
+# contract plus three self-contained initialization contracts, each declaring
+# its own copy of the (auto-numbered) layout it reads and writes.
+[workspace]
+
+[package]
+name = "counter-fixture"
+version = "1.0.0"
+edition = "2024"
+publish = false
+
+[features]
+abi-gen = ["pvm-contract-sdk/abi-gen"]
+
+[[bin]]
+name = "counter-fix"
+path = "src/counter.rs"
+
+[[bin]]
+name = "counter-fix-init-set-owner"
+path = "src/init_set_owner.rs"
+
+[[bin]]
+name = "counter-fix-init-transform"
+path = "src/init_transform.rs"
+
+[[bin]]
+name = "counter-fix-init-revert"
+path = "src/init_revert.rs"
+
+[dependencies]
+pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "main", features = [
+    "alloc",
+] }
+polkavm-derive = "0.35"
+picoalloc = "5.2"

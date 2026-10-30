@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="470" viewBox="0 0 1240 470" role="img" aria-label="Versioned routing: at build time the builder installs @org/foo at 1.1.0 via the ContractRegistry into cdm.json; the build produces the app or contract blob, which at run time calls the per-name proxy, and the proxy routes the delegate call to the 1.1.0 implementation. Versions below the minimum sit under a red divider as a stack.">
+  <defs>
+    <marker id="arrowSoft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <!-- build-time group -->
+  <rect x="40" y="40" width="330" height="390" rx="12" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="56" y="66" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#94a3b8" letter-spacing="1.5">BUILD TIME</text>
+
+  <!-- run-time group -->
+  <rect x="410" y="40" width="800" height="390" rx="12" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="426" y="66" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#94a3b8" letter-spacing="1.5">CALL TIME</text>
+
+  <!-- builder -->
+  <circle cx="160" cy="122" r="44" fill="#ffffff" stroke="#475569" stroke-width="2.2"/>
+  <text x="160" y="127" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#334155" text-anchor="middle">builder</text>
+
+  <!-- 1: install -->
+  <line x1="160" y1="170" x2="160" y2="198" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <text x="174" y="189" font-family="Menlo, Consolas, monospace" font-size="11" fill="#64748b">&#9312; cdm i @org/foo:1.1.0</text>
+
+  <!-- registry -->
+  <rect x="60" y="202" width="200" height="80" rx="10" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2.2"/>
+  <text x="160" y="237" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1e3a8a" text-anchor="middle">ContractRegistry</text>
+  <text x="160" y="260" font-family="Menlo, Consolas, monospace" font-size="11" fill="#334155" text-anchor="middle">name &#8594; address + abi</text>
+
+  <!-- 2: address + abi -->
+  <line x1="160" y1="286" x2="160" y2="314" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <text x="174" y="305" font-family="Menlo, Consolas, monospace" font-size="11" fill="#64748b">&#9313; address + abi @ 1.1.0</text>
+
+  <!-- cdm.json -->
+  <text x="106" y="362" font-family="Menlo, Consolas, monospace" font-size="58" fill="#475569" text-anchor="middle">{</text>
+  <text x="214" y="362" font-family="Menlo, Consolas, monospace" font-size="58" fill="#475569" text-anchor="middle">}</text>
+  <text x="160" y="349" font-family="Menlo, Consolas, monospace" font-size="13.5" font-weight="700" fill="#334155" text-anchor="middle">cdm.json</text>
+
+  <!-- 3: build, across into run time -->
+  <line x1="234" y1="344" x2="544" y2="344" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <text x="330" y="366" font-family="Menlo, Consolas, monospace" font-size="11" fill="#64748b" text-anchor="middle">&#9314; build</text>
+
+  <!-- app/contract blob -->
+  <circle cx="600" cy="344" r="52" fill="#ffffff" stroke="#475569" stroke-width="2.2"/>
+  <text x="600" y="340" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#334155" text-anchor="middle">app / contract</text>
+  <text x="600" y="358" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#334155" text-anchor="middle">blob</text>
+
+  <!-- 4: call, straight up -->
+  <line x1="600" y1="288" x2="600" y2="236" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <text x="614" y="268" font-family="Menlo, Consolas, monospace" font-size="12" fill="#64748b">&#9315; call function @ 1.1.0</text>
+
+  <!-- per-name proxy -->
+  <text x="600" y="126" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="11" fill="#64748b" text-anchor="middle">storage persists on proxy</text>
+  <rect x="470" y="150" width="260" height="80" rx="10" fill="#eef2ff" stroke="#4f46e5" stroke-width="2.2"/>
+  <path d="M 486 195 V 209 A 16 5 0 0 0 518 209 V 195" fill="#fef3c7" stroke="#b45309" stroke-width="1.6"/>
+  <ellipse cx="502" cy="195" rx="16" ry="5" fill="#fde68a" stroke="#b45309" stroke-width="1.6"/>
+  <path d="M 532 122 H 502 V 184" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrowSoft)"/>
+  <text x="600" y="184" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="15.5" font-weight="700" fill="#3730a3" text-anchor="middle">@org/foo proxy</text>
+  <text x="600" y="207" font-family="Menlo, Consolas, monospace" font-size="10.5" fill="#475569" text-anchor="middle">0x5A31&#8230;9c4e</text>
+
+  <!-- 5: route -->
+  <text x="780" y="76" font-family="Menlo, Consolas, monospace" font-size="11.5" fill="#64748b">&#9316; route delegate</text>
+  <text x="780" y="94" font-family="Menlo, Consolas, monospace" font-size="11.5" fill="#64748b">call to specified</text>
+  <text x="780" y="112" font-family="Menlo, Consolas, monospace" font-size="11.5" fill="#64748b">implementation version</text>
+
+  <!-- 2.0.0 (latest) -->
+  <line x1="734" y1="170" x2="946" y2="120" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <rect x="950" y="96" width="160" height="44" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.8"/>
+  <text x="966" y="123" font-family="Menlo, Consolas, monospace" font-size="13" fill="#334155">2.0.0</text>
+  <text x="1096" y="123" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="600" fill="#64748b" text-anchor="end">latest</text>
+
+  <!-- 1.1.0 (called) -->
+  <line x1="734" y1="190" x2="944" y2="190" stroke="#94a3b8" stroke-width="2.4" marker-end="url(#arrowSoft)"/>
+  <rect x="950" y="168" width="160" height="44" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="2.4"/>
+  <text x="966" y="195" font-family="Menlo, Consolas, monospace" font-size="13" font-weight="700" fill="#134e4a">1.1.0</text>
+
+  <!-- min-version divider -->
+  <text x="1030" y="236" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="10.5" fill="#dc2626" text-anchor="middle">below min version &#8212; reverts</text>
+  <line x1="950" y1="244" x2="1110" y2="244" stroke="#dc2626" stroke-width="1.5"/>
+
+  <!-- unsupported stack -->
+  <line x1="734" y1="210" x2="946" y2="278" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <rect x="962" y="280" width="160" height="44" rx="8" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.6"/>
+  <rect x="956" y="268" width="160" height="44" rx="8" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.6"/>
+  <rect x="950" y="256" width="160" height="44" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.8"/>
+  <text x="966" y="283" font-family="Menlo, Consolas, monospace" font-size="13" fill="#94a3b8">1.0.0</text>
+</svg>
