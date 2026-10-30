@@ -229,11 +229,8 @@ jobs:
                   exit 1
             - name: Run e2e suite
               run: pnpm test:e2e
-            - name: Stop PPN
-              if: always()
-              run: ppn kill || true
             # An ephemeral run keeps node logs in zombienet's temp dir, not
-            # ~/.ppn/data.
+            # ~/.ppn/data, and that dir is gone once the network is stopped.
             - name: Upload PPN logs
               if: failure()
               uses: actions/upload-artifact@v4
@@ -244,3 +241,6 @@ jobs:
                       ~/.ppn/data/**/*.log
                       /tmp/zombie-*/**/*.log
                   if-no-files-found: warn
+            - name: Stop PPN
+              if: always()
+              run: ppn kill || true
