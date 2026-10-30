@@ -213,6 +213,7 @@ if (opts.upgrade) {
     const registryAddress = selectedRegistryAddress ?? expected.registryAddress;
     const info = await chainClient.assetHub.query.Revive.AccountInfoOf.getValue(
         registryAddress as `0x${string}`,
+        { at: "best" },
     );
     if (info?.account_type.type !== "Contract") {
         console.error(`No registry deployed at ${registryAddress} — nothing to upgrade.`);
