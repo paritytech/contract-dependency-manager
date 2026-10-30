@@ -163,6 +163,7 @@ jobs:
                       ~/.cargo/registry
                       ~/.cargo/git
                       target
+                      src/templates/shared-counter/target
                   key: e2e-cargo-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}-${{ hashFiles('src/contract/**/Cargo.toml') }}
                   restore-keys: |
                       e2e-cargo-${{ runner.os }}-

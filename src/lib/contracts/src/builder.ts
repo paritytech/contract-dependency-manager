@@ -226,7 +226,9 @@ export interface RustInitializationBuild {
 
 /**
  * Build `initializations/<version>.rs` for `crateName` through a generated
- * shim crate under `target/cdm/init-build/`.
+ * shim crate under `target/cdm/init-build/`. The shim builds into the
+ * project's own cargo target dir so it reuses the contract's build-std and
+ * dependency artifacts instead of compiling them again per version.
  */
 export async function buildRustInitialization(
     rootDir: string,
@@ -234,11 +236,13 @@ export async function buildRustInitialization(
     init: { version: string; sourcePath: string },
     registryAddress?: string,
 ): Promise<RustInitializationBuild> {
-    const pkg = getCargoMetadata(rootDir).packages.find((entry) => entry.name === crateName);
+    const metadata = getCargoMetadata(rootDir);
+    const pkg = metadata.packages.find((entry) => entry.name === crateName);
     if (!pkg) throw new Error(`Crate ${crateName} not found in ${rootDir}'s cargo metadata`);
 
+    const targetDir = metadata.target_directory;
     const shimName = `${crateName.replace(/_/g, "-")}-init-${init.version.replace(/\./g, "-")}`;
-    const shimDir = resolve(rootDir, "target/cdm/init-build", shimName);
+    const shimDir = resolve(targetDir, "cdm/init-build", shimName);
     mkdirSync(shimDir, { recursive: true });
     writeFileSync(
         join(shimDir, "Cargo.toml"),
@@ -248,7 +252,14 @@ export async function buildRustInitialization(
     try {
         await execFileAsync(
             "cargo",
-            ["pvm-contract", "build", "--manifest-path", join(shimDir, "Cargo.toml")],
+            [
+                "pvm-contract",
+                "build",
+                "--manifest-path",
+                join(shimDir, "Cargo.toml"),
+                "--output-dir",
+                targetDir,
+            ],
             {
                 cwd: rootDir,
                 maxBuffer: 16 * 1024 * 1024,
@@ -265,11 +276,11 @@ export async function buildRustInitialization(
         );
     }
 
-    const pvmPath = join(shimDir, `target/release/${shimName}.polkavm`);
+    const pvmPath = join(targetDir, "release", `${shimName}.polkavm`);
     if (!existsSync(pvmPath)) {
         throw new Error(`Initialization build produced no artifact at ${pvmPath}`);
     }
-    return { pvmPath, abiPath: join(shimDir, `target/release/${shimName}.abi.json`) };
+    return { pvmPath, abiPath: join(targetDir, "release", `${shimName}.abi.json`) };
 }
 
 if (import.meta.vitest) {

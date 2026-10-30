@@ -61,15 +61,13 @@ export const COUNTER_ABI_JSON = resolve(
 );
 /** The template counter's 0.1.0 initialization blob, built through `buildRustInitialization`. */
 export const TEMPLATE_DIR = resolve(ROOT_DIR, "src/templates/shared-counter");
-export const COUNTER_INIT_PVM = resolve(
-    TEMPLATE_DIR,
-    "target/cdm/init-build/counter-init-0-1-0/target/release/counter-init-0-1-0.polkavm",
-);
+export const COUNTER_INIT_PVM = resolve(TEMPLATE_DIR, "target/release/counter-init-0-1-0.polkavm");
 
 /** The initializations fixture crate (tests/e2e/fixtures/initializations):
- * one implementation + three initialization blobs over one shared storage. */
+ * one implementation + three initialization blobs over one shared storage,
+ * built into the repo's target dir so they share the registry's build cache. */
 const INIT_FIXTURES_DIR = resolve(__dirname, "fixtures/initializations");
-const INIT_FIXTURES_RELEASE = resolve(INIT_FIXTURES_DIR, "target/release");
+const INIT_FIXTURES_RELEASE = resolve(ROOT_DIR, "target/release");
 export const FIXTURE_COUNTER_PVM = resolve(INIT_FIXTURES_RELEASE, "counter-fix.polkavm");
 export const FIXTURE_INIT_SET_OWNER_PVM = resolve(
     INIT_FIXTURES_RELEASE,
@@ -95,7 +93,14 @@ export async function ensureInitFixturesBuilt(): Promise<void> {
     if (blobs.every((blob) => existsSync(blob))) return;
     await execFileAsync(
         "cargo",
-        ["pvm-contract", "build", "--manifest-path", resolve(INIT_FIXTURES_DIR, "Cargo.toml")],
+        [
+            "pvm-contract",
+            "build",
+            "--manifest-path",
+            resolve(INIT_FIXTURES_DIR, "Cargo.toml"),
+            "--output-dir",
+            resolve(ROOT_DIR, "target"),
+        ],
         { cwd: ROOT_DIR, maxBuffer: 16 * 1024 * 1024 },
     );
     for (const blob of blobs) {

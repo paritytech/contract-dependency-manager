@@ -71,6 +71,7 @@ export interface DeploymentOrderLayered {
 
 interface CargoMetadata {
     packages: CargoPackage[];
+    target_directory: string;
     workspace_members: string[];
     resolve: { nodes: ResolveNode[] } | null;
 }
