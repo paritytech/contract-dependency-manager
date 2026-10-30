@@ -131,9 +131,14 @@ jobs:
         timeout-minutes: 45
         steps:
             - uses: actions/checkout@v4
+            # actions/cache stores paths outside the workspace relative to it,
+            # and this runner's workspace sits deeper than ubuntu-latest's, so
+            # archives the other jobs save unpack into the wrong directory
+            # here. Bun skips its shared cache; the keys below are per-runner.
             - uses: oven-sh/setup-bun@v2
               with:
                   bun-version: "1.2.x"
+                  no-cache: true
             - uses: pnpm/action-setup@v4
             - uses: actions/setup-node@v4
               with:
@@ -155,7 +160,7 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: ~/.cargo/bin/cargo-pvm-contract
-                  key: cargo-pvm-contract-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}
+                  key: cargo-pvm-contract-${{ runner.os }}-parity-large-${{ steps.pvm-rev.outputs.rev }}
             - name: Cache cargo dependencies and registry build artifacts
               uses: actions/cache@v4
               with:
@@ -163,10 +168,9 @@ jobs:
                       ~/.cargo/registry
                       ~/.cargo/git
                       target
-                  key: e2e-cargo-${{ runner.os }}-${{ steps.pvm-rev.outputs.rev }}-${{ hashFiles('src/contract/**/Cargo.toml') }}
+                  key: e2e-cargo-${{ runner.os }}-parity-large-${{ steps.pvm-rev.outputs.rev }}-${{ hashFiles('src/contract/**/Cargo.toml') }}
                   restore-keys: |
-                      e2e-cargo-${{ runner.os }}-
-                      templates-cargo-${{ runner.os }}-
+                      e2e-cargo-${{ runner.os }}-parity-large-
             - name: Install cargo-pvm-contract
               if: steps.cache-pvm-bin.outputs.cache-hit != 'true'
               run: |
@@ -198,7 +202,7 @@ jobs:
                   path: |
                       ~/.ppn/bin
                       !~/.ppn/bin/.ipfs
-                  key: ppn-bin-${{ runner.os }}-${{ steps.ppn-version.outputs.version }}
+                  key: ppn-bin-${{ runner.os }}-parity-large-${{ steps.ppn-version.outputs.version }}
             # GitHub throttles anonymous release downloads; the default Actions
             # token lifts that.
             - name: Start ephemeral PPN
