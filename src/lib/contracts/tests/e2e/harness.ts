@@ -45,9 +45,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // src/lib/contracts/tests/e2e -> repo root is 5 levels up
 const ROOT_DIR = resolve(__dirname, "../../../../..");
 // Keep these aligned with the paths `deploy-registry.ts` reads from.
-const REGISTRY_PVM = resolve(ROOT_DIR, "target/release/contract-registry.polkavm");
-const REGISTRY_PROXY_PVM = resolve(ROOT_DIR, "target/release/contract-registry-proxy.polkavm");
-const CONTRACT_PROXY_PVM = resolve(ROOT_DIR, "target/release/contract-proxy.polkavm");
+const REGISTRY_BLOBS = [
+    "contract-registry",
+    "contract-eip1967-proxy",
+    "contract-resolver",
+    "contract-proxy",
+].map((crate) => resolve(ROOT_DIR, `target/release/${crate}.polkavm`));
 
 /** The shared-counter template's counter blob — a real, callable implementation
  * contract for per-name proxy e2e (its own Cargo workspace, own target dir). */
@@ -63,33 +66,25 @@ export const COUNTER_ABI_JSON = resolve(
 export const TEMPLATE_DIR = resolve(ROOT_DIR, "src/templates/shared-counter");
 export const COUNTER_INIT_PVM = resolve(TEMPLATE_DIR, "target/release/counter-init-0-1-0.polkavm");
 
-/** The initializations fixture crate (tests/e2e/fixtures/initializations):
- * one implementation + three initialization blobs over one shared storage,
- * built into the repo's target dir so they share the registry's build cache. */
-const INIT_FIXTURES_DIR = resolve(__dirname, "fixtures/initializations");
-const INIT_FIXTURES_RELEASE = resolve(ROOT_DIR, "target/release");
-export const FIXTURE_COUNTER_PVM = resolve(INIT_FIXTURES_RELEASE, "counter-fix.polkavm");
+/** Fixture crates (tests/e2e/fixtures/*) build into the repo's target dir so
+ * they share the registry's build cache. */
+const FIXTURES_RELEASE = resolve(ROOT_DIR, "target/release");
+/** The initializations fixture: one implementation + three initialization
+ * blobs over one shared storage. */
+export const FIXTURE_COUNTER_PVM = resolve(FIXTURES_RELEASE, "counter-fix.polkavm");
 export const FIXTURE_INIT_SET_OWNER_PVM = resolve(
-    INIT_FIXTURES_RELEASE,
+    FIXTURES_RELEASE,
     "counter-fix-init-set-owner.polkavm",
 );
 export const FIXTURE_INIT_TRANSFORM_PVM = resolve(
-    INIT_FIXTURES_RELEASE,
+    FIXTURES_RELEASE,
     "counter-fix-init-transform.polkavm",
 );
-export const FIXTURE_INIT_REVERT_PVM = resolve(
-    INIT_FIXTURES_RELEASE,
-    "counter-fix-init-revert.polkavm",
-);
+export const FIXTURE_INIT_REVERT_PVM = resolve(FIXTURES_RELEASE, "counter-fix-init-revert.polkavm");
+/** The resolver fixture: a resolver that answers every call with a marker. */
+export const FIXTURE_RESOLVER_PVM = resolve(FIXTURES_RELEASE, "resolver-fix.polkavm");
 
-/** Build the initializations fixture blobs if missing. */
-export async function ensureInitFixturesBuilt(): Promise<void> {
-    const blobs = [
-        FIXTURE_COUNTER_PVM,
-        FIXTURE_INIT_SET_OWNER_PVM,
-        FIXTURE_INIT_TRANSFORM_PVM,
-        FIXTURE_INIT_REVERT_PVM,
-    ];
+async function ensureFixtureBuilt(crateDir: string, blobs: string[]): Promise<void> {
     if (blobs.every((blob) => existsSync(blob))) return;
     await execFileAsync(
         "cargo",
@@ -97,7 +92,7 @@ export async function ensureInitFixturesBuilt(): Promise<void> {
             "pvm-contract",
             "build",
             "--manifest-path",
-            resolve(INIT_FIXTURES_DIR, "Cargo.toml"),
+            resolve(__dirname, "fixtures", crateDir, "Cargo.toml"),
             "--output-dir",
             resolve(ROOT_DIR, "target"),
         ],
@@ -108,6 +103,21 @@ export async function ensureInitFixturesBuilt(): Promise<void> {
             throw new Error(`Fixture blob not produced at ${blob}`);
         }
     }
+}
+
+/** Build the initializations fixture blobs if missing. */
+export function ensureInitFixturesBuilt(): Promise<void> {
+    return ensureFixtureBuilt("initializations", [
+        FIXTURE_COUNTER_PVM,
+        FIXTURE_INIT_SET_OWNER_PVM,
+        FIXTURE_INIT_TRANSFORM_PVM,
+        FIXTURE_INIT_REVERT_PVM,
+    ]);
+}
+
+/** Build the resolver fixture blob if missing. */
+export function ensureResolverFixtureBuilt(): Promise<void> {
+    return ensureFixtureBuilt("resolver", [FIXTURE_RESOLVER_PVM]);
 }
 
 export interface PpnHandle {
@@ -164,17 +174,12 @@ export async function connectPpn(): Promise<PpnHandle> {
 }
 
 async function ensureRegistryBuilt(): Promise<void> {
-    if (
-        existsSync(REGISTRY_PVM) &&
-        existsSync(REGISTRY_PROXY_PVM) &&
-        existsSync(CONTRACT_PROXY_PVM)
-    )
-        return;
+    if (REGISTRY_BLOBS.every((pvm) => existsSync(pvm))) return;
     await execFileAsync("pnpm", ["build:registry"], {
         cwd: ROOT_DIR,
         maxBuffer: 16 * 1024 * 1024,
     });
-    for (const pvm of [REGISTRY_PVM, REGISTRY_PROXY_PVM, CONTRACT_PROXY_PVM]) {
+    for (const pvm of REGISTRY_BLOBS) {
         if (!existsSync(pvm)) {
             throw new Error(`Registry .polkavm not produced at ${pvm} after pnpm build:registry`);
         }
@@ -247,14 +252,15 @@ export function hexBytes(hex: string): Uint8Array {
 /** Dry-run a raw contract call (versioned/meta wire formats have no ABI).
  * Argument types mirror product-sdk's own `dryRunCall` exactly — a hex
  * string `dest` and `Uint8Array` calldata — which is the combination PPN's
- * runtime metadata encodes without an `Incompatible runtime entry` error. */
+ * runtime metadata encodes without an `Incompatible runtime entry` error.
+ * `refTime` is the weight the dry-run consumed. */
 export async function dryRunCall(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     api: any,
     dest: string,
     input: string,
     origin: string = ALICE_SS58,
-): Promise<{ success: boolean; reverted: boolean; data: string }> {
+): Promise<{ success: boolean; reverted: boolean; data: string; refTime: bigint }> {
     const r = await api.apis.ReviveApi.call(
         origin,
         dest,
@@ -264,8 +270,9 @@ export async function dryRunCall(
         hexBytes(input),
         { at: "best" },
     );
+    const refTime = BigInt(r.weight_consumed?.ref_time ?? 0);
     if (!r.result.success) {
-        return { success: false, reverted: false, data: "0x" };
+        return { success: false, reverted: false, data: "0x", refTime };
     }
     const flags = Number(r.result.value.flags);
     const raw = r.result.value.data;
@@ -277,7 +284,12 @@ export async function dryRunCall(
                     .map((b: number) => b.toString(16).padStart(2, "0"))
                     .join("")}`
               : raw.asHex();
-    return { success: true, reverted: (flags & 1) === 1, data: String(data).toLowerCase() };
+    return {
+        success: true,
+        reverted: (flags & 1) === 1,
+        data: String(data).toLowerCase(),
+        refTime,
+    };
 }
 
 /** Submit a raw contract call as a transaction (fixed generous limits). */
@@ -324,14 +336,16 @@ export interface DeployedRegistry {
     implAddress: HexString;
     /** The CREATE3 factory the proxy was deployed through. */
     factoryAddress: HexString;
+    /** The resolver proxy every per-name shim asks, CREATE3-derived. */
+    resolverAddress: HexString;
 }
 
 /**
  * Build the registry blobs (if needed) and deploy them against `wsUrl` —
  * CREATE3 factory bootstrap first (frozen artifacts), then the
- * implementation blob (plain CREATE2), then the proxy THROUGH the factory.
- * Idempotent: on a network that already has the registry it verifies and
- * returns the existing addresses.
+ * implementation blob (plain CREATE2), the registry proxy THROUGH the
+ * factory, then the resolver pair. Idempotent: on a network that already has
+ * the registry it verifies and returns the existing addresses.
  *
  * Spawns `bun run src/lib/scripts/deploy-registry.ts`. See the import-site
  * note above for why we don't invoke `ContractDeployer` directly under Node.
@@ -339,27 +353,17 @@ export interface DeployedRegistry {
 export async function deployRegistry(wsUrl: string): Promise<DeployedRegistry> {
     await ensureRegistryBuilt();
     const stdout = await runDeployScript(wsUrl);
-    const match = stdout.match(/^CONTRACTS_REGISTRY_ADDR=(0x[a-fA-F0-9]+)/m);
-    if (!match) {
-        throw new Error(
-            `Could not parse registry address from deploy-registry.ts output:\n${stdout}`,
-        );
-    }
-    const implMatch = stdout.match(/^CONTRACTS_REGISTRY_IMPL_ADDR=(0x[a-fA-F0-9]+)/m);
-    if (!implMatch) {
-        throw new Error(
-            `Could not parse registry implementation address from deploy-registry.ts output:\n${stdout}`,
-        );
-    }
-    const factoryMatch = stdout.match(/^CREATE3_FACTORY_ADDR=(0x[a-fA-F0-9]+)/m);
-    if (!factoryMatch) {
-        throw new Error(
-            `Could not parse CREATE3 factory address from deploy-registry.ts output:\n${stdout}`,
-        );
-    }
+    const printed = (key: string): HexString => {
+        const match = stdout.match(new RegExp(`^${key}=(0x[a-fA-F0-9]+)`, "m"));
+        if (!match) {
+            throw new Error(`Could not parse ${key} from deploy-registry.ts output:\n${stdout}`);
+        }
+        return match[1] as HexString;
+    };
     return {
-        address: match[1] as HexString,
-        implAddress: implMatch[1] as HexString,
-        factoryAddress: factoryMatch[1] as HexString,
+        address: printed("CONTRACTS_REGISTRY_ADDR"),
+        implAddress: printed("CONTRACTS_REGISTRY_IMPL_ADDR"),
+        factoryAddress: printed("CREATE3_FACTORY_ADDR"),
+        resolverAddress: printed("CDM_RESOLVER_ADDR"),
     };
 }

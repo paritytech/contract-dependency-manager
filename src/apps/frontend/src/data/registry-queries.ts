@@ -29,16 +29,15 @@ function toVersionKey(value: unknown): bigint {
 
 export async function queryContractByName(
     registry: RegistryContract,
+    resolver: RegistryContract,
     name: string,
 ): Promise<Package | null> {
-    const [latestResult, metadataResult, addressResult, proxyResult, minSupportedResult] =
-        await Promise.all([
-            registry.getLatestKey.query(name),
-            registry.getMetadataUri.query(name),
-            registry.getAddress.query(name),
-            registry.getProxy.query(name),
-            registry.getMinSupported.query(name),
-        ]);
+    const [latestResult, metadataResult, addressResult, proxyResult] = await Promise.all([
+        registry.getLatestKey.query(name),
+        registry.getMetadataUri.query(name),
+        registry.getAddress.query(name),
+        registry.getProxy.query(name),
+    ]);
 
     if (!latestResult.success) {
         throw registryQueryError(`Failed to query latest version for ${name}`, latestResult.value);
@@ -57,22 +56,23 @@ export async function queryContractByName(
     if (!proxyResult.success) {
         throw registryQueryError(`Failed to query proxy for ${name}`, proxyResult.value);
     }
-    if (!minSupportedResult.success) {
-        throw registryQueryError(
-            `Failed to query min supported version for ${name}`,
-            minSupportedResult.value,
-        );
-    }
 
-    // getMinSupported returns 0 when no support floor has been set.
-    const minSupportedKey = toVersionKey(minSupportedResult.value);
+    // The resolver keys routing state by the name's proxy; `min_supported`
+    // is 0 when no support floor has been set.
+    const proxyAddress = unwrapOption<string>(proxyResult.value);
+    const routingResult = await resolver.routingOf.query(proxyAddress);
+    if (!routingResult.success) {
+        throw registryQueryError(`Failed to query routing for ${name}`, routingResult.value);
+    }
+    const routing = routingResult.value as { min_supported?: unknown; minSupported?: unknown };
+    const minSupportedKey = toVersionKey(routing.min_supported ?? routing.minSupported);
 
     return {
         name,
         version: keyToSemver(latestKey),
         weeklyCalls: 0,
         address: unwrapOption<string>(addressResult.value),
-        proxyAddress: unwrapOption<string>(proxyResult.value),
+        proxyAddress,
         minSupportedVersion: minSupportedKey === 0n ? undefined : keyToSemver(minSupportedKey),
         metadataUri: unwrapOption<string>(metadataResult.value),
         metadataLoaded: false,

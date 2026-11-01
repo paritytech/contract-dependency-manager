@@ -4,17 +4,17 @@ import { fileURLToPath } from "url";
 import { keccakCodeHash } from "./create3";
 
 /**
- * Frozen per-name proxy blob (`contract-proxy`). Every future per-name
- * address is `create2(registry, keccak(blob), keccak(name))`, so rebuilding
- * the blob moves every address the registry derives from then on. Regenerate
- * only with `bun run src/lib/scripts/freeze-proxy-artifact.ts`.
+ * Frozen per-name shim blob (`contract-proxy`). Every future per-name
+ * address is `create2(registry, keccak(blob ++ resolver word), keccak(name))`,
+ * so rebuilding the blob moves every address the registry derives from then
+ * on. Regenerate only with `bun run src/lib/scripts/freeze-proxy-artifact.ts`.
  */
 
 export const CONTRACT_PROXY_ARTIFACTS_DIR = "src/contract/proxy/artifacts";
 
 /** keccak-256 of the committed blob; the tests pin it to the manifest and the bytes. */
 export const CONTRACT_PROXY_CODE_HASH =
-    "0x9c918a8b6fb50007becfcf66fdbc2ceed18060b3a75f6721669601083a542e86";
+    "0xb3dfaba2388406b525c6a7dd53311909e40f78a707e762f1a6ef9de6e7313734";
 
 export interface FrozenContractProxyArtifact {
     bytes: Uint8Array;

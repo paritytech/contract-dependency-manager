@@ -1,32 +1,34 @@
-// Per-name proxy e2e against a local PPN: the shared-counter blob is
+// Per-name shim e2e against a local PPN: the shared-counter blob is
 // published twice as two versions of one name, then plain, versioned, and
-// meta calls must all read and write the same counter.
+// meta calls must all read and write the same counter, with the routing
+// state readable from the resolver.
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import type { HexString } from "polkadot-api";
 import { createCdmAssetHubClient, prepareSigner, type CdmAssetHubClient } from "@parity/cdm-env";
-import { ALICE_SS58, GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "@parity/cdm-utils";
-import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder/abi";
+import { ALICE_SS58 } from "@parity/cdm-utils";
+import { CONTRACTS_REGISTRY_ABI, CONTRACT_RESOLVER_ABI } from "@parity/cdm-builder/abi";
 import {
     encodeProxyAdmin,
-    encodeProxyFreeze,
+    encodeProxyCallCode,
     encodeProxyFrozen,
     encodeProxyImplOf,
     encodeProxyLatest,
+    encodeProxyMetaCall,
     encodeProxyMinSupported,
-    encodeProxyPublish,
     encodeVersionedCall,
     packVersionKey,
 } from "@parity/cdm-builder/proxy";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
-import { submitAndWatch, type SubmittableTransaction } from "@parity/product-sdk-tx";
 import {
     connectPpn,
     deployRegistry,
     deployBlob,
+    dryRunCall,
     ensureTemplateBuilt,
+    rawCallTx,
     COUNTER_PVM,
     COUNTER_ABI_JSON,
     type PpnHandle,
@@ -49,10 +51,12 @@ function selector(signature: string): `0x${string}` {
 
 const INCREMENT = selector("increment()");
 const GET_COUNT = selector("getCount()");
-// Proxy revert selectors (signatures pinned in contract-proxy + proxy.ts).
+// Resolver revert selectors (signatures pinned in contract-resolver + proxy.ts).
 const UNSUPPORTED_VERSION = selector("UnsupportedVersion(uint128,uint128)");
 const UNKNOWN_VERSION = selector("UnknownVersion()");
 const CONTRACT_FROZEN = selector("ContractFrozen()");
+const UNKNOWN_META_SELECTOR = selector("UnknownMetaSelector()");
+const UNAUTHORIZED_ADMIN = selector("UnauthorizedAdmin()");
 
 let ppn: PpnHandle;
 let chainClient: CdmAssetHubClient;
@@ -64,6 +68,8 @@ let signer: any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let registry: any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+let resolver: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let counter: any;
 let implA: HexString;
 let implB: HexString;
@@ -71,66 +77,6 @@ let proxyAddress: string;
 
 function lc(v: unknown): string {
     return String(v).toLowerCase();
-}
-
-/** Plain hex → bytes, matching product-sdk's own calldata handling. */
-function hexBytes(hex: string): Uint8Array {
-    const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
-    const out = new Uint8Array(stripped.length / 2);
-    for (let i = 0; i < out.length; i++) {
-        out[i] = Number.parseInt(stripped.slice(i * 2, i * 2 + 2), 16);
-    }
-    return out;
-}
-
-/** Dry-run a raw contract call (versioned/meta wire formats have no ABI).
- * Argument types mirror product-sdk's own `dryRunCall` exactly — a hex
- * string `dest` and `Uint8Array` calldata — which is the combination PPN's
- * runtime metadata encodes without an `Incompatible runtime entry` error. */
-async function dryRunCall(
-    dest: string,
-    input: string,
-): Promise<{ success: boolean; reverted: boolean; data: string }> {
-    const r = await api.apis.ReviveApi.call(
-        ALICE_SS58,
-        dest,
-        0n,
-        undefined,
-        undefined,
-        hexBytes(input),
-        { at: "best" },
-    );
-    if (!r.result.success) {
-        return { success: false, reverted: false, data: "0x" };
-    }
-    const flags = Number(r.result.value.flags);
-    const raw = r.result.value.data;
-    const data =
-        typeof raw === "string"
-            ? raw
-            : raw instanceof Uint8Array
-              ? `0x${Array.from(raw)
-                    .map((b) => b.toString(16).padStart(2, "0"))
-                    .join("")}`
-              : raw.asHex();
-    return { success: true, reverted: (flags & 1) === 1, data: lc(data) };
-}
-
-/** Submit a raw contract call as a transaction (fixed generous limits). */
-async function rawCallTx(dest: string, input: string): Promise<void> {
-    const tx = api.tx.Revive.call({
-        dest,
-        value: 0n,
-        weight_limit: { ref_time: GAS_LIMIT.refTime, proof_size: GAS_LIMIT.proofSize },
-        storage_deposit_limit: STORAGE_DEPOSIT_LIMIT,
-        data: hexBytes(input),
-    });
-    const result = await submitAndWatch(tx as unknown as SubmittableTransaction, signer, {
-        waitFor: "best-block",
-    });
-    if (!result.ok) {
-        throw new Error(`rawCallTx failed: ${JSON.stringify(result.error)}`);
-    }
 }
 
 /** Right-aligned 32-byte word containing a u128, as lowercase hex (no 0x). */
@@ -141,6 +87,14 @@ function u128Word(value: bigint): string {
 /** Right-aligned 32-byte word containing an address, lowercase hex (no 0x). */
 function addressWord(address: string): string {
     return address.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+}
+
+/** `routingOf(proxy)` as the resolver reports it. */
+async function routing(): Promise<{ minSupported: bigint; frozen: boolean }> {
+    const r = await resolver.routingOf.query(proxyAddress);
+    expect(r.success).toBe(true);
+    const row = r.value as { min_supported?: unknown; frozen?: unknown };
+    return { minSupported: BigInt(String(row.min_supported)), frozen: Boolean(row.frozen) };
 }
 
 beforeAll(async () => {
@@ -157,13 +111,16 @@ beforeAll(async () => {
     // product-sdk itself falls back to the unsafe api for the same reason.
     api = chainClient.raw.assetHub.getUnsafeApi();
 
-    registry = await createContractFromClient(
-        chainClient.raw.assetHub,
-        chainClient.descriptors.assetHub,
-        deployed.address,
-        CONTRACTS_REGISTRY_ABI,
-        { defaultSigner: signer, defaultOrigin: ALICE_SS58 },
-    );
+    const contractAt = (address: string, abi: typeof CONTRACTS_REGISTRY_ABI) =>
+        createContractFromClient(
+            chainClient.raw.assetHub,
+            chainClient.descriptors.assetHub,
+            address as HexString,
+            abi,
+            { defaultSigner: signer, defaultOrigin: ALICE_SS58 },
+        );
+    registry = await contractAt(deployed.address, CONTRACTS_REGISTRY_ABI);
+    resolver = await contractAt(deployed.resolverAddress, CONTRACT_RESOLVER_ABI);
 
     implA = await deployBlob(api, signer, COUNTER_PVM);
     implB = await deployBlob(api, signer, COUNTER_PVM);
@@ -173,8 +130,8 @@ afterAll(async () => {
     chainClient?.destroy();
 });
 
-describe("publish creates the per-name proxy", () => {
-    test("first publish instantiates the proxy and getAddress resolves to it", async () => {
+describe("publish creates the per-name shim", () => {
+    test("first publish instantiates the shim and getAddress resolves to it", async () => {
         const r = await registry.publish.tx(NAME, KEY_1_0_0, implA, URI);
         expect(r.ok).toBe(true);
 
@@ -184,7 +141,7 @@ describe("publish creates the per-name proxy", () => {
         proxyAddress = String(opt.value);
         expect(lc(proxyAddress)).not.toBe(lc(implA));
 
-        // The plain counter ABI is served straight through the proxy.
+        // The plain counter ABI is served straight through the shim.
         const abiJson = JSON.parse(readFileSync(COUNTER_ABI_JSON, "utf8"));
         const counterAbi = Array.isArray(abiJson) ? abiJson : abiJson.abi;
         counter = await createContractFromClient(
@@ -207,7 +164,7 @@ describe("publish creates the per-name proxy", () => {
 });
 
 describe("multiple versions over one storage", () => {
-    test("second publish keeps the proxy address", async () => {
+    test("second publish keeps the shim address", async () => {
         const r = await registry.publish.tx(NAME, KEY_1_1_0, implB, URI);
         expect(r.ok).toBe(true);
 
@@ -224,7 +181,7 @@ describe("multiple versions over one storage", () => {
     });
 
     test("a versioned call executes the OLD implementation on the same state", async () => {
-        await rawCallTx(proxyAddress, encodeVersionedCall(KEY_1_0_0, INCREMENT));
+        await rawCallTx(api, signer, proxyAddress, encodeVersionedCall(KEY_1_0_0, INCREMENT));
 
         const count = await counter.getCount.query();
         expect(Number(count.value)).toBe(3);
@@ -232,7 +189,7 @@ describe("multiple versions over one storage", () => {
 
     test("versioned reads through both versions see the same value", async () => {
         for (const key of [KEY_1_0_0, KEY_1_1_0]) {
-            const r = await dryRunCall(proxyAddress, encodeVersionedCall(key, GET_COUNT));
+            const r = await dryRunCall(api, proxyAddress, encodeVersionedCall(key, GET_COUNT));
             expect(r.success).toBe(true);
             expect(r.reverted).toBe(false);
             expect(BigInt(`0x${r.data.replace(/^0x/, "")}`)).toBe(3n);
@@ -241,6 +198,7 @@ describe("multiple versions over one storage", () => {
 
     test("a never-published version reverts UnknownVersion", async () => {
         const r = await dryRunCall(
+            api,
             proxyAddress,
             encodeVersionedCall(packVersionKey(9, 9, 9), GET_COUNT),
         );
@@ -252,26 +210,39 @@ describe("multiple versions over one storage", () => {
 
 describe("meta plane", () => {
     test("latest / implOf / admin / minSupported", async () => {
-        const latest = await dryRunCall(proxyAddress, encodeProxyLatest());
+        const latest = await dryRunCall(api, proxyAddress, encodeProxyLatest());
         expect(latest.data).toBe(`0x${u128Word(KEY_1_1_0)}${addressWord(implB)}`);
 
-        const implOf = await dryRunCall(proxyAddress, encodeProxyImplOf(KEY_1_0_0));
+        const implOf = await dryRunCall(api, proxyAddress, encodeProxyImplOf(KEY_1_0_0));
         expect(implOf.data).toBe(`0x${addressWord(implA)}`);
 
-        const admin = await dryRunCall(proxyAddress, encodeProxyAdmin());
+        const admin = await dryRunCall(api, proxyAddress, encodeProxyAdmin());
         expect(admin.data).toBe(`0x${addressWord(registryAddress)}`);
 
-        const min = await dryRunCall(proxyAddress, encodeProxyMinSupported());
+        const min = await dryRunCall(api, proxyAddress, encodeProxyMinSupported());
         expect(min.data).toBe(`0x${u128Word(0n)}`);
     });
 
-    test("meta admin ops from a non-registry caller revert", async () => {
-        const r = await dryRunCall(
-            proxyAddress,
-            encodeProxyPublish(packVersionKey(2, 0, 0), implA),
-        );
+    test("mutations are not meta operations: their selectors are unknown", async () => {
+        for (const signature of [
+            "publish(uint128,address)",
+            "setMinSupported(uint128)",
+            "setAdmin(address)",
+            "freeze()",
+            "unfreeze()",
+        ]) {
+            const r = await dryRunCall(api, proxyAddress, encodeProxyMetaCall(selector(signature)));
+            expect(r.success).toBe(true);
+            expect(r.reverted).toBe(true);
+            expect(r.data.startsWith(UNKNOWN_META_SELECTOR)).toBe(true);
+        }
+    });
+
+    test("callCode from anyone but the registry reverts UnauthorizedAdmin", async () => {
+        const r = await dryRunCall(api, proxyAddress, encodeProxyCallCode(implA, GET_COUNT));
         expect(r.success).toBe(true);
         expect(r.reverted).toBe(true);
+        expect(r.data.startsWith(UNAUTHORIZED_ADMIN)).toBe(true);
     });
 });
 
@@ -280,12 +251,13 @@ describe("min-supported ratchet", () => {
         const r = await registry.setMinSupported.tx(NAME, KEY_1_1_0);
         expect(r.ok).toBe(true);
 
-        const min = await dryRunCall(proxyAddress, encodeProxyMinSupported());
+        const min = await dryRunCall(api, proxyAddress, encodeProxyMinSupported());
         expect(min.data).toBe(`0x${u128Word(KEY_1_1_0)}`);
+        expect((await routing()).minSupported).toBe(KEY_1_1_0);
     });
 
     test("pinned calls below the floor revert UnsupportedVersion", async () => {
-        const r = await dryRunCall(proxyAddress, encodeVersionedCall(KEY_1_0_0, GET_COUNT));
+        const r = await dryRunCall(api, proxyAddress, encodeVersionedCall(KEY_1_0_0, GET_COUNT));
         expect(r.success).toBe(true);
         expect(r.reverted).toBe(true);
         expect(r.data.startsWith(UNSUPPORTED_VERSION)).toBe(true);
@@ -305,23 +277,22 @@ describe("freeze / unfreeze", () => {
         expect(r.ok).toBe(true);
 
         // Plain and versioned calls both revert ContractFrozen().
-        const plain = await dryRunCall(proxyAddress, GET_COUNT);
+        const plain = await dryRunCall(api, proxyAddress, GET_COUNT);
         expect(plain.reverted).toBe(true);
         expect(plain.data.startsWith(CONTRACT_FROZEN)).toBe(true);
-        const versioned = await dryRunCall(proxyAddress, encodeVersionedCall(KEY_1_1_0, GET_COUNT));
+        const versioned = await dryRunCall(
+            api,
+            proxyAddress,
+            encodeVersionedCall(KEY_1_1_0, GET_COUNT),
+        );
         expect(versioned.reverted).toBe(true);
         expect(versioned.data.startsWith(CONTRACT_FROZEN)).toBe(true);
 
-        // The meta plane keeps answering.
-        const frozen = await dryRunCall(proxyAddress, encodeProxyFrozen());
+        // The meta plane and the resolver both report the freeze.
+        const frozen = await dryRunCall(api, proxyAddress, encodeProxyFrozen());
         expect(frozen.reverted).toBe(false);
         expect(BigInt(frozen.data)).toBe(1n);
-    });
-
-    test("direct freeze at the proxy is registry-only", async () => {
-        const r = await dryRunCall(proxyAddress, encodeProxyFreeze());
-        expect(r.success).toBe(true);
-        expect(r.reverted).toBe(true);
+        expect((await routing()).frozen).toBe(true);
     });
 
     test("unfreeze restores delegation", async () => {
@@ -331,6 +302,7 @@ describe("freeze / unfreeze", () => {
         const count = await counter.getCount.query();
         expect(count.success).toBe(true);
         expect(Number(count.value)).toBe(4);
+        expect((await routing()).frozen).toBe(false);
     });
 });
 

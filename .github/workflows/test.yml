@@ -32,8 +32,10 @@ jobs:
               run: pnpm embed:templates
             - name: Typecheck
               run: pnpm typecheck
+            # The ABI drift test needs the built contract artifacts; the
+            # Templates job runs it after `pnpm build:registry`.
             - name: Run tests
-              run: pnpm vitest run
+              run: pnpm vitest run --exclude src/lib/contracts/tests/registry-abi-sync.test.ts
 
     rust:
         name: Rust
@@ -48,7 +50,7 @@ jobs:
             # default target to PolkaVM, so an explicit host target is required.
             - name: Run host-side tests
               run: |
-                  cargo test -p cdm-macros -p pvm-cdm -p pvm-cdm-macros -p contract-registry-core -p contract-registry -p contract-registry-proxy -p contract-proxy -p create3-factory -p create3-child --target "$(rustc -vV | sed -n 's/^host: //p')"
+                  cargo test -p cdm-macros -p pvm-cdm -p pvm-cdm-macros -p contract-registry-core -p contract-registry -p contract-eip1967-proxy -p contract-resolver -p contract-proxy -p create3-factory -p create3-child --target "$(rustc -vV | sed -n 's/^host: //p')"
 
     templates:
         name: Templates
@@ -117,9 +119,9 @@ jobs:
               run: pnpm test:macro
             - name: Build template contracts
               run: pnpm build:template
-            # Build the registry contracts and prove the embedded TS ABI
-            # matches the generated one — the drift test self-skips when the
-            # artifacts are missing, so it only has teeth right here.
+            # Build the registry contracts and prove the embedded TS ABIs
+            # match the generated ones; under CI the drift test fails when
+            # the artifacts are missing instead of skipping.
             - name: Build registry contracts
               run: pnpm build:registry
             - name: Check embedded registry ABI against generated ABI

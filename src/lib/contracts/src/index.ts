@@ -96,12 +96,16 @@ export {
 export {
     type DeployRegistryOptions,
     type RegistryDeployPrediction,
+    type ResolverDeployPrediction,
     type UpgradeRegistryOptions,
+    type UpgradeResolverOptions,
     bumpPackageSuffix,
     encodeProxyConstructorArgs,
     predictRegistryDeploy,
+    predictResolverDeploy,
     deployRegistryWithProxy,
     upgradeRegistryImplementation,
+    upgradeResolverImplementation,
 } from "./registry-deploy";
 
 export {
@@ -130,7 +134,8 @@ export { MetadataPublisher } from "./publisher";
 
 export { computeCid } from "./cid";
 
-export { CONTRACTS_REGISTRY_ABI, CONTRACTS_REGISTRY_PROXY_ABI } from "./abi/registry";
+export { CONTRACTS_REGISTRY_ABI, CONTRACTS_EIP1967_PROXY_ABI } from "./abi/registry";
+export { CONTRACT_RESOLVER_ABI } from "./abi/resolver";
 
 export {
     INITIALIZE_SELECTOR,
@@ -138,7 +143,8 @@ export {
     META_KEY,
     PROXY_MAGIC,
     PROXY_META,
-    PROXY_SLOTS,
+    RESOLUTION_KIND,
+    RESOLVE_SELECTOR,
     VERSIONED_HEADER_LEN,
     decodeAddressWord,
     decodeU128Word,
@@ -146,12 +152,11 @@ export {
     encodeInitialize,
     encodeProxyAdmin,
     encodeProxyCallCode,
+    encodeProxyFrozen,
     encodeProxyImplOf,
     encodeProxyLatest,
+    encodeProxyMetaCall,
     encodeProxyMinSupported,
-    encodeProxyPublish,
-    encodeProxySetAdmin,
-    encodeProxySetMinSupported,
     encodeVersionedCall,
     isPublishableKey,
     keyToSemver,
@@ -166,7 +171,8 @@ export {
     GAS_LIMIT,
     STORAGE_DEPOSIT_LIMIT,
     CONTRACTS_REGISTRY_CRATE,
-    CONTRACTS_REGISTRY_PROXY_CRATE,
+    CONTRACTS_EIP1967_PROXY_CRATE,
+    CONTRACTS_RESOLVER_CRATE,
 } from "@parity/cdm-utils";
 
 export {

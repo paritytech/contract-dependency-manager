@@ -1,16 +1,37 @@
-//! Per-name CDM proxy: one instance per published name, owning the name's
-//! stable address, storage, and balance. Versions are implementation
-//! contracts it delegate-calls against that single storage. It declares no
-//! methods; the only reserved calldata is the `MAGIC`-prefixed CDM wire
-//! format (`contract_registry_core::versioning`):
+//! Per-name CDM shim: the frozen blob behind every published contract name.
+//! One instance per name owns the name's permanent address, storage, and
+//! balance, and holds no policy at all: every call is answered by asking the
+//! shared resolver what to do and then doing exactly that. The blob can never
+//! change on-chain, so the protocol below is permanent.
 //!
-//! - plain calldata → the latest implementation;
-//! - `[MAGIC][version key]…` → that exact version;
-//! - `[MAGIC][0][meta selector]…` → CDM queries and registry-only admin ops.
+//! **Resolver address** — pallet immutable data, 20 bytes, written by the
+//! constructor `new(address resolver)`. pallet-revive accepts
+//! `set_immutable_data` only from a constructor, so no delegated code can ever
+//! redirect a shim.
 //!
-//! Instantiated by the registry with no constructor input (the CREATE2
-//! address must be a pure function of registry, name, and blob); the
-//! instantiation caller becomes admin.
+//! **Request** — one read-only call to the resolver:
+//! `resolve(address caller, uint256 value, bytes data)`, i.e. the selector
+//! `0x6a418533`, the caller word, the value word, the offset word `0x60`, the
+//! length word, then the shim's raw calldata zero-padded to 32 bytes
+//! (`contract_registry_core::versioning::resolve::request_header`).
+//!
+//! **Response** — the ABI encoding of
+//! `Resolution { uint8 kind, address target, uint32 strip, bytes payload }`:
+//! the offset word `0x20`, the kind word, the target word, the strip word, the
+//! offset word `0x80`, the length word, then the payload zero-padded.
+//!
+//! - kind `0` (Return): the call returns `payload`.
+//! - kind `1` (Delegate): the shim delegate-calls `target` with
+//!   `payload ++ data[strip..]` and bubbles the result unchanged, so every
+//!   version of the name runs against this storage.
+//!
+//! A resolver revert bubbles byte-for-byte: the resolver's typed errors are
+//! what callers see. Any other answer reverts `MalformedResolution()`, the
+//! shim's only own error.
+//!
+//! Instantiated by the registry via CREATE2 with the resolver as the one
+//! constructor argument, so a name's address is a pure function of
+//! (registry, this blob, resolver address, name).
 
 #![cfg_attr(all(not(feature = "abi-gen"), not(test)), no_main, no_std)]
 
@@ -19,133 +40,32 @@
 #[cfg(target_arch = "riscv64")]
 polkavm_derive::min_stack_size!(131072);
 
-#[pvm_contract_sdk::contract(allocator = "bump", allocator_size = 262144)]
+// Calldata and return data are each capped at 128 KiB: the SDK dispatcher
+// copies the calldata once, the request holds it again, and a bubbled revert
+// payload is copied once more.
+#[pvm_contract_sdk::contract(allocator = "bump", allocator_size = 524288)]
 mod contract_proxy {
     use alloc::vec;
-    use contract_registry_core::slots::{
-        ADMIN_SLOT, IMPL_OF_SLOT, IMPLEMENTATION_SLOT, LATEST_KEY_SLOT, MIN_SUPPORTED_SLOT,
-        PROXY_FROZEN_SLOT,
-    };
-    use contract_registry_core::versioning::{
-        CallRoute, META_HEADER_LEN, VERSIONED_HEADER_LEN, is_publishable_key, meta, route_calldata,
-    };
-    use pvm_contract_sdk::{Address, CallFlags, HostApi, Lazy, Mapping, SolError};
+    use alloc::vec::Vec;
+    use contract_registry_core::versioning::resolve;
+    use pvm_contract_sdk::{Address, CallFlags, HostApi, SolError};
 
-    /// EIP-1967 `Upgraded`, emitted on every publish: the latest
-    /// implementation is this proxy's EIP-1967 implementation.
-    #[derive(pvm_contract_sdk::SolEvent)]
-    pub struct Upgraded {
-        #[indexed]
-        pub implementation: Address,
-    }
-
-    /// Versioned call for a key that was never published.
+    /// The resolver answered with something other than a `Resolution`.
     #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct UnknownVersion;
-
-    /// Versioned call below the owner's minimum supported floor.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct UnsupportedVersion {
-        pub requested: u128,
-        pub min_supported: u128,
-    }
-
-    /// Meta admin operation from anyone but the registry.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct UnauthorizedAdmin;
-
-    /// Published keys must be strictly increasing.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct VersionNotMonotonic {
-        pub attempted: u128,
-        pub latest: u128,
-    }
-
-    /// Key is zero (reserved) or not a packed semver triple.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct InvalidVersionKey;
-
-    /// Publish target is the zero address.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct InvalidImplementation;
-
-    /// Magic-prefixed calldata too short for any CDM form, or undecodable
-    /// meta args.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct MalformedCall;
-
-    /// Meta call with an unrecognized selector.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct UnknownMetaSelector;
-
-    /// The min-supported floor only ratchets up.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct MinNotMonotonic {
-        pub requested: u128,
-        pub current: u128,
-    }
-
-    /// The min-supported floor cannot exceed the latest published version.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct MinAboveLatest {
-        pub requested: u128,
-        pub latest: u128,
-    }
-
-    /// Call arrived before the first publish.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct NoVersions;
-
-    /// Frozen: nothing is delegated until `unfreeze`; the meta plane still
-    /// answers.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct ContractFrozen;
+    pub struct MalformedResolution;
 
     #[derive(Debug, PartialEq, Eq, SolError)]
     pub enum Error {
-        UnknownVersion(UnknownVersion),
-        UnsupportedVersion(UnsupportedVersion),
-        UnauthorizedAdmin(UnauthorizedAdmin),
-        VersionNotMonotonic(VersionNotMonotonic),
-        InvalidVersionKey(InvalidVersionKey),
-        InvalidImplementation(InvalidImplementation),
-        MalformedCall(MalformedCall),
-        UnknownMetaSelector(UnknownMetaSelector),
-        MinNotMonotonic(MinNotMonotonic),
-        MinAboveLatest(MinAboveLatest),
-        NoVersions(NoVersions),
-        ContractFrozen(ContractFrozen),
+        MalformedResolution(MalformedResolution),
     }
 
-    pub struct ContractProxy {
-        /// No ordinary fields: slots 0.. belong to the implementations'
-        /// storage. Everything the proxy owns lives at fixed slots.
-        #[slot(raw = IMPLEMENTATION_SLOT)]
-        latest_impl: Lazy<Address>,
-        #[slot(raw = ADMIN_SLOT)]
-        admin: Lazy<Address>,
-        /// Floor version key; zero = no floor.
-        #[slot(raw = MIN_SUPPORTED_SLOT)]
-        min_supported: Lazy<u128>,
-        /// Latest published key; zero before the first publish.
-        #[slot(raw = LATEST_KEY_SLOT)]
-        latest_key: Lazy<u128>,
-        /// While set, nothing is delegated.
-        #[slot(raw = PROXY_FROZEN_SLOT)]
-        frozen: Lazy<bool>,
-        /// Version key → implementation.
-        #[slot(raw = IMPL_OF_SLOT)]
-        impl_of: Mapping<u128, Address>,
-    }
+    /// No fields: every storage slot belongs to the name's implementations.
+    pub struct ContractProxy {}
 
     impl ContractProxy {
-        /// No arguments: the CREATE2 address must not depend on constructor
-        /// input; the instantiation caller (the registry) becomes admin.
         #[pvm_contract_sdk::constructor]
-        pub fn new(&mut self) {
-            let mut caller = [0u8; 20];
-            self.host().caller(&mut caller);
-            self.admin.set(&Address(caller));
+        pub fn new(&mut self, resolver: Address) {
+            self.host().set_immutable_data(&resolver.0);
         }
 
         /// Every call lands here. Payable: value accrues to this address.
@@ -153,444 +73,257 @@ mod contract_proxy {
         #[pvm_contract_sdk::payable]
         pub fn fallback(&mut self) -> Result<(), Error> {
             let host = self.host();
-            let input_len = host.call_data_size() as usize;
-            let mut input = vec![0u8; input_len];
-            host.call_data_copy(&mut input, 0);
 
-            match route_calldata(&input) {
-                CallRoute::Plain => {
-                    self.require_unfrozen()?;
-                    let target = self.latest_impl.get();
-                    if target == Address::ZERO {
-                        return Err(NoVersions.into());
-                    }
-                    self.delegate(&target, &input)
-                }
-                CallRoute::Versioned(key) => {
-                    self.require_unfrozen()?;
-                    let min_supported = self.min_supported.get();
-                    if key < min_supported {
-                        return Err(UnsupportedVersion {
-                            requested: key,
-                            min_supported,
-                        }
-                        .into());
-                    }
-                    let target = self.impl_of.get(&key);
-                    if target == Address::ZERO {
-                        return Err(UnknownVersion.into());
-                    }
-                    self.delegate(&target, &input[VERSIONED_HEADER_LEN..])
-                }
-                CallRoute::Meta(selector) => {
-                    self.dispatch_meta(selector, &input[META_HEADER_LEN..])
-                }
-                CallRoute::Malformed => Err(MalformedCall.into()),
-            }
-        }
-
-        // ─── Delegation ──────────────────────────────────────────────────
-
-        /// Delegate-call `target` and bubble its return or revert unchanged.
-        fn delegate(&mut self, target: &Address, input: &[u8]) -> Result<(), Error> {
-            let host = self.host();
-            let result =
-                host.delegate_call_evm(CallFlags::empty(), &target.0, u64::MAX, input, None);
-
-            let output_len = host.return_data_size() as usize;
-            let mut output = vec![0u8; output_len];
-            let mut output_ref: &mut [u8] = &mut output;
-            host.return_data_copy(&mut output_ref, 0);
-
-            if result.is_err() {
-                host.revert(&output);
-            }
-            host.return_value(&output);
-
-            // `return_value` diverges on-chain; the host `MockHost` returns.
-            #[cfg(not(target_arch = "riscv64"))]
-            Ok(())
-        }
-
-        // ─── Meta dispatch ───────────────────────────────────────────────
-
-        fn dispatch_meta(&mut self, selector: [u8; 4], args: &[u8]) -> Result<(), Error> {
-            match selector {
-                meta::IMPL_OF => {
-                    let key = u128_arg(args, 0)?;
-                    self.respond(&word_address(&self.impl_of.get(&key)))
-                }
-                meta::LATEST => {
-                    let key = self.latest_key.get();
-                    if key == 0 {
-                        return Err(NoVersions.into());
-                    }
-                    let mut out = [0u8; 64];
-                    out[..32].copy_from_slice(&word_u128(key));
-                    out[32..].copy_from_slice(&word_address(&self.latest_impl.get()));
-                    self.respond(&out)
-                }
-                meta::MIN_SUPPORTED => self.respond(&word_u128(self.min_supported.get())),
-                meta::ADMIN => self.respond(&word_address(&self.admin.get())),
-                meta::PUBLISH => {
-                    self.require_admin()?;
-                    let key = u128_arg(args, 0)?;
-                    let implementation = address_arg(args, 1)?;
-                    self.publish(key, implementation)?;
-                    self.respond(&[])
-                }
-                meta::SET_MIN_SUPPORTED => {
-                    self.require_admin()?;
-                    let key = u128_arg(args, 0)?;
-                    self.set_min_supported(key)?;
-                    self.respond(&[])
-                }
-                meta::CALL_CODE => {
-                    // Live while frozen: the freeze → publish+init → unfreeze
-                    // window depends on it.
-                    self.require_admin()?;
-                    let target = address_arg(args, 0)?;
-                    if target == Address::ZERO {
-                        return Err(InvalidImplementation.into());
-                    }
-                    let data = bytes_arg(args, 1)?;
-                    self.delegate(&target, data)
-                }
-                meta::FROZEN => self.respond(&word_bool(self.frozen.get())),
-                meta::FREEZE => {
-                    self.require_admin()?;
-                    self.frozen.set(&true);
-                    self.respond(&[])
-                }
-                meta::UNFREEZE => {
-                    self.require_admin()?;
-                    self.frozen.set(&false);
-                    self.respond(&[])
-                }
-                meta::SET_ADMIN => {
-                    self.require_admin()?;
-                    let new_admin = address_arg(args, 0)?;
-                    // A zero admin would orphan the proxy forever.
-                    if new_admin == Address::ZERO {
-                        return Err(MalformedCall.into());
-                    }
-                    self.admin.set(&new_admin);
-                    self.respond(&[])
-                }
-                _ => Err(UnknownMetaSelector.into()),
-            }
-        }
-
-        fn publish(&mut self, key: u128, implementation: Address) -> Result<(), Error> {
-            if !is_publishable_key(key) {
-                return Err(InvalidVersionKey.into());
-            }
-            if implementation == Address::ZERO {
-                return Err(InvalidImplementation.into());
-            }
-            let latest = self.latest_key.get();
-            if key <= latest && latest != 0 {
-                return Err(VersionNotMonotonic {
-                    attempted: key,
-                    latest,
-                }
-                .into());
-            }
-            self.latest_key.set(&key);
-            self.impl_of.insert(&key, &implementation);
-            self.latest_impl.set(&implementation);
-            Upgraded { implementation }.emit(self.host());
-            Ok(())
-        }
-
-        fn set_min_supported(&mut self, key: u128) -> Result<(), Error> {
-            if key >> 96 != 0 {
-                return Err(InvalidVersionKey.into());
-            }
-            let current = self.min_supported.get();
-            if key < current {
-                return Err(MinNotMonotonic {
-                    requested: key,
-                    current,
-                }
-                .into());
-            }
-            let latest = self.latest_key.get();
-            if latest == 0 {
-                return Err(NoVersions.into());
-            }
-            if key > latest {
-                return Err(MinAboveLatest {
-                    requested: key,
-                    latest,
-                }
-                .into());
-            }
-            self.min_supported.set(&key);
-            Ok(())
-        }
-
-        // ─── Internals ───────────────────────────────────────────────────
-
-        fn require_unfrozen(&self) -> Result<(), Error> {
-            if self.frozen.get() {
-                return Err(ContractFrozen.into());
-            }
-            Ok(())
-        }
-
-        fn require_admin(&self) -> Result<(), Error> {
+            let data_len = host.call_data_size() as usize;
+            let data_end = resolve::REQUEST_HEADER_LEN + data_len;
+            let mut request = vec![0u8; resolve::REQUEST_HEADER_LEN + data_len.div_ceil(32) * 32];
             let mut caller = [0u8; 20];
-            self.host().caller(&mut caller);
-            if Address(caller) != self.admin.get() {
-                return Err(UnauthorizedAdmin.into());
-            }
-            Ok(())
-        }
+            host.caller(&mut caller);
+            let mut value = [0u8; 32];
+            host.value_transferred(&mut value);
+            value.reverse();
+            request[..resolve::REQUEST_HEADER_LEN]
+                .copy_from_slice(&resolve::request_header(&caller, &value, data_len));
+            host.call_data_copy(&mut request[resolve::REQUEST_HEADER_LEN..data_end], 0);
 
-        fn respond(&self, data: &[u8]) -> Result<(), Error> {
-            self.host().return_value(data);
+            let mut resolver = [0u8; 20];
+            let mut resolver_ref: &mut [u8] = &mut resolver;
+            host.get_immutable_data(&mut resolver_ref);
+            let asked = host.call_evm(
+                CallFlags::READ_ONLY,
+                &resolver,
+                u64::MAX,
+                &[0u8; 32],
+                &request,
+                None,
+            );
+            let response = self.return_data();
+            if asked.is_err() {
+                host.revert(&response);
+            }
+
+            let resolved = resolve::decode_response(&response).ok_or(MalformedResolution)?;
+            let start = resolve::REQUEST_HEADER_LEN + resolved.strip;
+            if start > data_end {
+                return Err(MalformedResolution.into());
+            }
+            match resolved.kind {
+                resolve::RETURN => host.return_value(resolved.payload),
+                resolve::DELEGATE => {
+                    // The header and the stripped prefix are dead once the
+                    // resolver has answered, so a payload that fits there is
+                    // prepended in place.
+                    let owned;
+                    let input = if resolved.payload.len() <= start {
+                        let from = start - resolved.payload.len();
+                        request[from..start].copy_from_slice(resolved.payload);
+                        &request[from..data_end]
+                    } else {
+                        owned = [resolved.payload, &request[start..data_end]].concat();
+                        &owned
+                    };
+                    let result = host.delegate_call_evm(
+                        CallFlags::TAIL_CALL,
+                        &resolved.target,
+                        u64::MAX,
+                        input,
+                        None,
+                    );
+                    // On-chain a successful tail call never returns here.
+                    let output = self.return_data();
+                    if result.is_err() {
+                        host.revert(&output);
+                    }
+                    host.return_value(&output);
+                }
+                _ => return Err(MalformedResolution.into()),
+            }
+
             #[cfg(not(target_arch = "riscv64"))]
             Ok(())
         }
-    }
 
-    // ─── ABI word helpers (meta args are plain 32-byte ABI words) ────────
-
-    fn word_at(args: &[u8], index: usize) -> Result<&[u8], Error> {
-        let start = index * 32;
-        args.get(start..start + 32)
-            .ok_or_else(|| MalformedCall.into())
-    }
-
-    fn u128_arg(args: &[u8], index: usize) -> Result<u128, Error> {
-        let word = word_at(args, index)?;
-        if word[..16] != [0u8; 16] {
-            return Err(MalformedCall.into());
+        fn return_data(&self) -> Vec<u8> {
+            let host = self.host();
+            let mut data = vec![0u8; host.return_data_size() as usize];
+            let mut data_ref: &mut [u8] = &mut data;
+            host.return_data_copy(&mut data_ref, 0);
+            data
         }
-        let mut bytes = [0u8; 16];
-        bytes.copy_from_slice(&word[16..]);
-        Ok(u128::from_be_bytes(bytes))
-    }
-
-    fn address_arg(args: &[u8], index: usize) -> Result<Address, Error> {
-        let word = word_at(args, index)?;
-        if word[..12] != [0u8; 12] {
-            return Err(MalformedCall.into());
-        }
-        let mut bytes = [0u8; 20];
-        bytes.copy_from_slice(&word[12..]);
-        Ok(Address(bytes))
-    }
-
-    /// Decode a dynamic `bytes` argument: the word at `index` is the offset
-    /// (from the start of `args`) of a `[len word][len bytes]` payload.
-    fn bytes_arg(args: &[u8], index: usize) -> Result<&[u8], Error> {
-        let offset = usize_word(word_at(args, index)?)?;
-        let len_word = args.get(offset..offset + 32).ok_or(MalformedCall)?;
-        let len = usize_word(len_word)?;
-        args.get(offset + 32..offset + 32 + len)
-            .ok_or_else(|| MalformedCall.into())
-    }
-
-    /// A 32-byte ABI word holding a value small enough to index calldata.
-    fn usize_word(word: &[u8]) -> Result<usize, MalformedCall> {
-        if word[..28] != [0u8; 28] {
-            return Err(MalformedCall);
-        }
-        let mut bytes = [0u8; 4];
-        bytes.copy_from_slice(&word[28..]);
-        Ok(u32::from_be_bytes(bytes) as usize)
-    }
-
-    fn word_u128(value: u128) -> [u8; 32] {
-        let mut word = [0u8; 32];
-        word[16..].copy_from_slice(&value.to_be_bytes());
-        word
-    }
-
-    fn word_address(address: &Address) -> [u8; 32] {
-        let mut word = [0u8; 32];
-        word[12..].copy_from_slice(&address.0);
-        word
-    }
-
-    fn word_bool(value: bool) -> [u8; 32] {
-        let mut word = [0u8; 32];
-        word[31] = value as u8;
-        word
     }
 }
 
-/// Everything goes through `fallback()` with staged calldata, so these lock
-/// the wire format as well as the behavior.
+/// Everything goes through `fallback()` with staged calldata and a mocked
+/// resolver, so these lock the protocol bytes as well as the behavior.
 #[cfg(test)]
 mod tests {
     use super::contract_proxy::{ContractProxy, Error};
-    use contract_registry_core::slots::{ADMIN_SLOT, IMPLEMENTATION_SLOT, MIN_SUPPORTED_SLOT};
-    use contract_registry_core::versioning::{MAGIC, META_KEY, meta, pack_version};
+    use contract_registry_core::versioning::resolve;
     use pvm_contract_sdk::{
-        MockHost, MockHostBuilder, ReturnFlags, SolError, keccak256, types::ReturnValue,
+        Address, Bytes, HostApi, MockHost, MockHostBuilder, ReturnFlags, SolEncode, U256,
+        types::ReturnValue,
     };
 
-    /// The registry proxy address — instantiation caller, therefore admin.
-    const REGISTRY: [u8; 20] = [0x9E; 20];
-    const STRANGER: [u8; 20] = [0x57; 20];
-    const IMPL_1: [u8; 20] = [0x11; 20];
-    const IMPL_2: [u8; 20] = [0x22; 20];
-    const IMPL_3: [u8; 20] = [0x33; 20];
+    const RESOLVER: [u8; 20] = [0x5E; 20];
+    const TARGET: [u8; 20] = [0x11; 20];
+    const CALLER: [u8; 20] = [0xCA; 20];
+    const CALLDATA: [u8; 36] = [0x77; 36];
 
-    const V0_1_0: u128 = pack_version(0, 1, 0);
-    const V1_0_0: u128 = pack_version(1, 0, 0);
-    const V1_2_3: u128 = pack_version(1, 2, 3);
-    const V2_0_0: u128 = pack_version(2, 0, 0);
-
-    // ─── Wire helpers ────────────────────────────────────────────────────
-
-    fn versioned_calldata(key: u128, inner: &[u8]) -> Vec<u8> {
-        let mut data = MAGIC.to_vec();
-        data.extend_from_slice(&key.to_be_bytes());
-        data.extend_from_slice(inner);
-        data
+    /// The resolver's return type, encoded here exactly as the SDK encodes
+    /// it on-chain.
+    #[derive(pvm_contract_sdk::SolType)]
+    struct Resolution {
+        kind: u8,
+        target: Address,
+        strip: u32,
+        payload: Bytes,
     }
 
-    fn meta_calldata(selector: [u8; 4], args: &[u8]) -> Vec<u8> {
-        let mut data = MAGIC.to_vec();
-        data.extend_from_slice(&META_KEY.to_be_bytes());
-        data.extend_from_slice(&selector);
-        data.extend_from_slice(args);
-        data
+    /// The resolver's answer, as `MockHost::mock_call` takes it.
+    type Answer = Result<Vec<u8>, ()>;
+
+    fn resolution(kind: u8, target: [u8; 20], strip: u32, payload: &[u8]) -> Answer {
+        let value = Resolution {
+            kind,
+            target: Address(target),
+            strip,
+            payload: Bytes(payload.to_vec()),
+        };
+        let mut encoded = vec![0u8; value.encode_len()];
+        value.encode_to(&mut encoded);
+        Ok(encoded)
     }
 
-    fn word_u128(value: u128) -> [u8; 32] {
-        let mut word = [0u8; 32];
-        word[16..].copy_from_slice(&value.to_be_bytes());
-        word
-    }
-
-    fn word_addr(address: [u8; 20]) -> [u8; 32] {
-        let mut word = [0u8; 32];
-        word[12..].copy_from_slice(&address);
-        word
-    }
-
-    fn publish_args(key: u128, implementation: [u8; 20]) -> Vec<u8> {
-        let mut args = word_u128(key).to_vec();
-        args.extend_from_slice(&word_addr(implementation));
-        args
-    }
-
-    /// ABI args of `callCode(address,bytes)`: target word, offset word
-    /// (0x40), length word, payload zero-padded to a 32-byte boundary.
-    fn call_code_args(target: [u8; 20], data: &[u8]) -> Vec<u8> {
-        let mut args = word_addr(target).to_vec();
-        let mut offset = [0u8; 32];
-        offset[31] = 0x40;
-        args.extend_from_slice(&offset);
-        let mut len = [0u8; 32];
-        len[24..].copy_from_slice(&(data.len() as u64).to_be_bytes());
-        args.extend_from_slice(&len);
-        args.extend_from_slice(data);
-        args.extend_from_slice(&vec![0u8; data.len().div_ceil(32) * 32 - data.len()]);
-        args
-    }
-
-    // ─── Host plumbing ───────────────────────────────────────────────────
-
-    /// A proxy with `calldata` staged for `fallback()` and `storage` carried
-    /// over from a previous host (MockHost caller/calldata are fixed at build).
-    fn proxy_call(
-        caller: [u8; 20],
-        calldata: Vec<u8>,
-        storage: Option<&MockHost>,
-    ) -> (ContractProxy, MockHost) {
+    /// A shim pointed at `RESOLVER` with `calldata` and `value` staged, the
+    /// resolver answering `response`.
+    fn deployed(calldata: &[u8], value: u64, response: Answer) -> (ContractProxy, MockHost) {
         let mock = MockHostBuilder::new()
-            .caller(caller)
-            .calldata(calldata)
+            .caller(CALLER)
+            .calldata(calldata.to_vec())
+            .value_transferred(U256::from(value))
+            .mock_call(RESOLVER, response)
             .build();
-        if let Some(prev) = storage {
-            for (key, value) in prev.storage_dump() {
-                mock.set_raw_storage(key, value);
-            }
-        }
         let mut proxy = ContractProxy::with_host(mock.clone());
-        if storage.is_none() {
-            proxy.new();
-        }
+        proxy.new(Address(RESOLVER));
         (proxy, mock)
     }
 
-    fn run(
-        caller: [u8; 20],
-        calldata: Vec<u8>,
-        storage: Option<&MockHost>,
-    ) -> (Result<(), Error>, MockHost) {
-        let (mut proxy, mock) = proxy_call(caller, calldata, storage);
-        let result = proxy.fallback();
-        (result, mock)
-    }
-
-    /// A proxy with `versions` published by the registry.
-    fn published(versions: &[(u128, [u8; 20])]) -> MockHost {
-        let (_proxy, mut mock) = proxy_call(REGISTRY, vec![], None);
-        for (key, implementation) in versions {
-            let calldata = meta_calldata(meta::PUBLISH, &publish_args(*key, *implementation));
-            let (result, next) = run(REGISTRY, calldata, Some(&mock));
-            assert_eq!(result, Ok(()), "test setup publish failed");
-            mock = next;
-        }
-        mock
-    }
-
-    // ─── Constructor ─────────────────────────────────────────────────────
-
-    #[test]
-    fn constructor_pins_admin_from_caller() {
-        let (_proxy, mock) = proxy_call(REGISTRY, vec![], None);
-        assert_eq!(
-            mock.get_raw_storage(&ADMIN_SLOT),
-            Some(word_addr(REGISTRY).to_vec())
+    /// The exact bytes the shim must send the resolver.
+    fn request(calldata: &[u8], value: u64) -> Vec<u8> {
+        let mut value_word = [0u8; 32];
+        value_word[24..].copy_from_slice(&value.to_be_bytes());
+        let mut out = resolve::request_header(&CALLER, &value_word, calldata.len()).to_vec();
+        out.extend_from_slice(calldata);
+        out.resize(
+            resolve::REQUEST_HEADER_LEN + calldata.len().div_ceil(32) * 32,
+            0,
         );
-        // No implementation yet: the slot is untouched until first publish.
-        assert_eq!(mock.get_raw_storage(&IMPLEMENTATION_SLOT), None);
+        out
     }
 
-    // ─── Plain calls ─────────────────────────────────────────────────────
+    #[test]
+    fn constructor_pins_the_resolver_as_immutable_data() {
+        let (_shim, mock) = deployed(&[], 0, Ok(vec![]));
+        let mut immutable = [0u8; 32];
+        let mut immutable_ref: &mut [u8] = &mut immutable;
+        mock.get_immutable_data(&mut immutable_ref);
+        assert_eq!(*immutable_ref, RESOLVER);
+    }
 
     #[test]
-    fn plain_call_delegates_to_latest_and_bubbles_return() {
-        let state = published(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2)]);
-        // Arbitrary user-ABI calldata; the proxy must not interpret it.
-        let calldata: Vec<u8> = [0xbf, 0x40, 0xfa, 0xc1]
-            .into_iter()
-            .chain([0x77; 32])
-            .collect();
+    fn return_answers_with_the_payload_after_one_resolver_call() {
+        let payload = [0xEE; 64];
+        let (mut shim, mock) = deployed(
+            &CALLDATA,
+            7,
+            resolution(resolve::RETURN, [0u8; 20], 0, &payload),
+        );
+        assert!(shim.fallback().is_ok());
 
-        let (_proxy, mock) = proxy_call(STRANGER, calldata.clone(), Some(&state));
-        let payload = vec![0xEE; 96];
-        mock.mock_call(IMPL_2, Ok(payload.clone()));
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-
-        assert_eq!(mock.take_recorded_calls(), vec![(IMPL_2, calldata)]);
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(RESOLVER, request(&CALLDATA, 7))]
+        );
         assert_eq!(
             mock.take_return_value(),
             Some(ReturnValue {
                 flags: ReturnFlags::empty(),
-                data: payload,
+                data: payload.to_vec(),
             })
         );
     }
 
     #[test]
-    fn plain_call_bubbles_callee_revert() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        let (_proxy, mock) = proxy_call(STRANGER, vec![1, 2, 3, 4], Some(&state));
-        mock.mock_call(IMPL_1, Err(()));
-        let mut proxy = ContractProxy::with_host(mock.clone());
+    fn delegate_forwards_calldata_from_strip_and_bubbles_the_return() {
+        let (mut shim, mock) =
+            deployed(&CALLDATA, 0, resolution(resolve::DELEGATE, TARGET, 20, &[]));
+        mock.mock_call(TARGET, Ok(vec![0x42; 32]));
+        assert!(shim.fallback().is_ok());
 
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![
+                (RESOLVER, request(&CALLDATA, 0)),
+                (TARGET, CALLDATA[20..].to_vec()),
+            ]
+        );
+        assert_eq!(
+            mock.take_return_value(),
+            Some(ReturnValue {
+                flags: ReturnFlags::empty(),
+                data: vec![0x42; 32],
+            })
+        );
+    }
+
+    #[test]
+    fn delegate_with_strip_zero_forwards_calldata_unchanged() {
+        let (mut shim, mock) =
+            deployed(&CALLDATA, 0, resolution(resolve::DELEGATE, TARGET, 0, &[]));
+        assert!(shim.fallback().is_ok());
+        assert_eq!(mock.take_recorded_calls()[1], (TARGET, CALLDATA.to_vec()));
+    }
+
+    #[test]
+    fn delegate_prepends_the_payload() {
+        // Fits in the dead prefix (header + stripped bytes) ...
+        let (mut shim, mock) = deployed(
+            &CALLDATA,
+            0,
+            resolution(resolve::DELEGATE, TARGET, 4, &[0xAB; 8]),
+        );
+        assert!(shim.fallback().is_ok());
+        assert_eq!(
+            mock.take_recorded_calls()[1],
+            (TARGET, [&[0xAB; 8][..], &CALLDATA[4..]].concat())
+        );
+
+        // ... and larger than it.
+        let big = [0xCD; 200];
+        let (mut shim, mock) =
+            deployed(&CALLDATA, 0, resolution(resolve::DELEGATE, TARGET, 0, &big));
+        assert!(shim.fallback().is_ok());
+        assert_eq!(
+            mock.take_recorded_calls()[1],
+            (TARGET, [&big[..], &CALLDATA[..]].concat())
+        );
+    }
+
+    #[test]
+    fn empty_calldata_is_forwarded_as_an_empty_request_body() {
+        let (mut shim, mock) = deployed(&[], 0, resolution(resolve::DELEGATE, TARGET, 0, &[]));
+        assert!(shim.fallback().is_ok());
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(RESOLVER, request(&[], 0)), (TARGET, vec![])]
+        );
+    }
+
+    #[test]
+    fn resolver_revert_bubbles_and_nothing_is_delegated() {
+        let (mut shim, mock) = deployed(&CALLDATA, 0, Err(()));
         let rv = mock.expect_revert(|| {
-            let _ = proxy.fallback();
+            let _ = shim.fallback();
         });
         assert_eq!(
             rv,
@@ -599,535 +332,32 @@ mod tests {
                 data: vec![],
             }
         );
+        assert_eq!(mock.take_recorded_calls().len(), 1);
     }
 
     #[test]
-    fn plain_call_before_first_publish_reverts_no_versions() {
-        let (result, _mock) = run(STRANGER, vec![0xAA, 0xBB, 0xCC, 0xDD], None);
-        assert!(matches!(result, Err(Error::NoVersions(_))));
-    }
-
-    #[test]
-    fn empty_calldata_routes_to_latest() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        let (_proxy, mock) = proxy_call(STRANGER, vec![], Some(&state));
-        mock.mock_call(IMPL_1, Ok(vec![]));
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-        assert_eq!(mock.take_recorded_calls(), vec![(IMPL_1, vec![])]);
-    }
-
-    // ─── Versioned calls ─────────────────────────────────────────────────
-
-    #[test]
-    fn versioned_call_routes_to_exact_version_with_inner_calldata() {
-        let state = published(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2), (V2_0_0, IMPL_3)]);
-        let inner: Vec<u8> = [0xde, 0xad, 0xbe, 0xef]
-            .into_iter()
-            .chain([0x01; 32])
-            .collect();
-
-        // Pinned to 1.2.3 — not latest, not first.
-        let (_proxy, mock) = proxy_call(STRANGER, versioned_calldata(V1_2_3, &inner), Some(&state));
-        mock.mock_call(IMPL_2, Ok(vec![0x42]));
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-
-        // The implementation sees ONLY the inner calldata — prefix stripped.
-        assert_eq!(mock.take_recorded_calls(), vec![(IMPL_2, inner)]);
-        assert_eq!(
-            mock.take_return_value(),
-            Some(ReturnValue {
-                flags: ReturnFlags::empty(),
-                data: vec![0x42],
-            })
-        );
-    }
-
-    #[test]
-    fn versioned_call_unknown_key_reverts() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        let (result, _mock) = run(STRANGER, versioned_calldata(V1_2_3, &[0x01]), Some(&state));
-        assert!(matches!(result, Err(Error::UnknownVersion(_))));
-    }
-
-    #[test]
-    fn versioned_call_below_min_supported_reverts() {
-        let state = published(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2)]);
-        let (result, state) = run(
-            REGISTRY,
-            meta_calldata(meta::SET_MIN_SUPPORTED, &word_u128(V1_2_3)),
-            Some(&state),
-        );
-        assert_eq!(result, Ok(()));
-
-        let (result, _mock) = run(STRANGER, versioned_calldata(V1_0_0, &[0x01]), Some(&state));
-        match result {
-            Err(Error::UnsupportedVersion(e)) => {
-                assert_eq!(e.requested, V1_0_0);
-                assert_eq!(e.min_supported, V1_2_3);
-            }
-            other => panic!("expected UnsupportedVersion, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn versioned_call_at_or_above_min_supported_works() {
-        let state = published(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2)]);
-        let (result, state) = run(
-            REGISTRY,
-            meta_calldata(meta::SET_MIN_SUPPORTED, &word_u128(V1_2_3)),
-            Some(&state),
-        );
-        assert_eq!(result, Ok(()));
-
-        let (_proxy, mock) =
-            proxy_call(STRANGER, versioned_calldata(V1_2_3, &[0x01]), Some(&state));
-        mock.mock_call(IMPL_2, Ok(vec![]));
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-        assert_eq!(mock.take_recorded_calls(), vec![(IMPL_2, vec![0x01])]);
-    }
-
-    #[test]
-    fn versioned_call_bubbles_callee_revert() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        let (_proxy, mock) =
-            proxy_call(STRANGER, versioned_calldata(V1_0_0, &[0x09]), Some(&state));
-        mock.mock_call(IMPL_1, Err(()));
-        let mut proxy = ContractProxy::with_host(mock.clone());
-
+    fn implementation_revert_bubbles() {
+        let (mut shim, mock) =
+            deployed(&CALLDATA, 0, resolution(resolve::DELEGATE, TARGET, 0, &[]));
+        mock.mock_call(TARGET, Err(()));
         let rv = mock.expect_revert(|| {
-            let _ = proxy.fallback();
-        });
-        assert_eq!(rv.flags, ReturnFlags::REVERT);
-    }
-
-    // ─── Publish rules ───────────────────────────────────────────────────
-
-    #[test]
-    fn publish_appends_updates_latest_and_emits_upgraded() {
-        let (_proxy, mock) = proxy_call(REGISTRY, vec![], None);
-        let (result, mock) = run(
-            REGISTRY,
-            meta_calldata(meta::PUBLISH, &publish_args(V1_0_0, IMPL_1)),
-            Some(&mock),
-        );
-        assert_eq!(result, Ok(()));
-
-        // EIP-1967 implementation slot now carries the latest impl.
-        assert_eq!(
-            mock.get_raw_storage(&IMPLEMENTATION_SLOT),
-            Some(word_addr(IMPL_1).to_vec())
-        );
-        // Standard Upgraded(address) event, implementation indexed.
-        let events = mock.events();
-        assert_eq!(events.len(), 1);
-        let (topics, data) = &events[0];
-        assert_eq!(topics[0], keccak256(b"Upgraded(address)"));
-        assert_eq!(topics[1], word_addr(IMPL_1));
-        assert!(data.is_empty());
-    }
-
-    #[test]
-    fn publish_requires_strictly_increasing_keys() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-
-        // Re-publish of the same key: rejected forever.
-        let (result, _mock) = run(
-            REGISTRY,
-            meta_calldata(meta::PUBLISH, &publish_args(V1_0_0, IMPL_2)),
-            Some(&state),
-        );
-        match result {
-            Err(Error::VersionNotMonotonic(e)) => {
-                assert_eq!(e.attempted, V1_0_0);
-                assert_eq!(e.latest, V1_0_0);
-            }
-            other => panic!("expected VersionNotMonotonic, got {other:?}"),
-        }
-
-        // Lower than latest: rejected.
-        let (result, _mock) = run(
-            REGISTRY,
-            meta_calldata(meta::PUBLISH, &publish_args(V0_1_0, IMPL_2)),
-            Some(&state),
-        );
-        assert!(matches!(result, Err(Error::VersionNotMonotonic(_))));
-    }
-
-    #[test]
-    fn publish_rejects_invalid_keys_and_zero_impl() {
-        let (_proxy, mock) = proxy_call(REGISTRY, vec![], None);
-
-        // Key 0 routes as a meta call, so a high-bits key is the reachable
-        // invalid key.
-        let bad_key = 1u128 << 96;
-        let (result, _m) = run(
-            REGISTRY,
-            meta_calldata(meta::PUBLISH, &publish_args(bad_key, IMPL_1)),
-            Some(&mock),
-        );
-        assert!(matches!(result, Err(Error::InvalidVersionKey(_))));
-
-        let (result, _m) = run(
-            REGISTRY,
-            meta_calldata(meta::PUBLISH, &publish_args(V1_0_0, [0u8; 20])),
-            Some(&mock),
-        );
-        assert!(matches!(result, Err(Error::InvalidImplementation(_))));
-    }
-
-    #[test]
-    fn admin_ops_require_registry_caller() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        for calldata in [
-            meta_calldata(meta::PUBLISH, &publish_args(V2_0_0, IMPL_2)),
-            meta_calldata(meta::SET_MIN_SUPPORTED, &word_u128(V1_0_0)),
-            meta_calldata(meta::SET_ADMIN, &word_addr(STRANGER)),
-        ] {
-            let (result, _mock) = run(STRANGER, calldata, Some(&state));
-            assert!(matches!(result, Err(Error::UnauthorizedAdmin(_))));
-        }
-    }
-
-    // ─── Min-supported ratchet ───────────────────────────────────────────
-
-    #[test]
-    fn min_supported_only_ratchets_up_and_stays_at_or_below_latest() {
-        let state = published(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2)]);
-
-        let (result, state) = run(
-            REGISTRY,
-            meta_calldata(meta::SET_MIN_SUPPORTED, &word_u128(V1_2_3)),
-            Some(&state),
-        );
-        assert_eq!(result, Ok(()));
-        assert_eq!(
-            state.get_raw_storage(&MIN_SUPPORTED_SLOT),
-            Some(word_u128(V1_2_3).to_vec())
-        );
-
-        // Lowering the floor is refused.
-        let (result, state) = run(
-            REGISTRY,
-            meta_calldata(meta::SET_MIN_SUPPORTED, &word_u128(V1_0_0)),
-            Some(&state),
-        );
-        match result {
-            Err(Error::MinNotMonotonic(e)) => {
-                assert_eq!(e.requested, V1_0_0);
-                assert_eq!(e.current, V1_2_3);
-            }
-            other => panic!("expected MinNotMonotonic, got {other:?}"),
-        }
-
-        // A floor above the latest published version is refused.
-        let (result, _state) = run(
-            REGISTRY,
-            meta_calldata(meta::SET_MIN_SUPPORTED, &word_u128(V2_0_0)),
-            Some(&state),
-        );
-        assert!(matches!(result, Err(Error::MinAboveLatest(_))));
-    }
-
-    // ─── Meta queries ────────────────────────────────────────────────────
-
-    #[test]
-    fn meta_queries_return_abi_words() {
-        let state = published(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2)]);
-
-        // Point lookup of a non-latest version — the routing table.
-        let (_proxy, mock) = proxy_call(
-            STRANGER,
-            meta_calldata(meta::IMPL_OF, &word_u128(V1_0_0)),
-            Some(&state),
-        );
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-        assert_eq!(
-            mock.take_return_value().unwrap().data,
-            word_addr(IMPL_1).to_vec()
-        );
-
-        let (_proxy, mock) = proxy_call(
-            STRANGER,
-            meta_calldata(meta::IMPL_OF, &word_u128(V1_2_3)),
-            Some(&state),
-        );
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-        assert_eq!(
-            mock.take_return_value().unwrap().data,
-            word_addr(IMPL_2).to_vec()
-        );
-
-        let (_proxy, mock) = proxy_call(STRANGER, meta_calldata(meta::LATEST, &[]), Some(&state));
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-        let mut expected = word_u128(V1_2_3).to_vec();
-        expected.extend_from_slice(&word_addr(IMPL_2));
-        assert_eq!(mock.take_return_value().unwrap().data, expected);
-
-        let (_proxy, mock) = proxy_call(STRANGER, meta_calldata(meta::ADMIN, &[]), Some(&state));
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-        assert_eq!(
-            mock.take_return_value().unwrap().data,
-            word_addr(REGISTRY).to_vec()
-        );
-
-        let (_proxy, mock) = proxy_call(
-            STRANGER,
-            meta_calldata(meta::MIN_SUPPORTED, &[]),
-            Some(&state),
-        );
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-        assert_eq!(
-            mock.take_return_value().unwrap().data,
-            word_u128(0).to_vec()
-        );
-    }
-
-    // ─── Admin transfer ──────────────────────────────────────────────────
-
-    #[test]
-    fn set_admin_transfers_control() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        let (result, state) = run(
-            REGISTRY,
-            meta_calldata(meta::SET_ADMIN, &word_addr(STRANGER)),
-            Some(&state),
-        );
-        assert_eq!(result, Ok(()));
-        assert_eq!(
-            state.get_raw_storage(&ADMIN_SLOT),
-            Some(word_addr(STRANGER).to_vec())
-        );
-
-        // Old admin is locked out; new admin can publish.
-        let (result, state) = run(
-            REGISTRY,
-            meta_calldata(meta::PUBLISH, &publish_args(V2_0_0, IMPL_2)),
-            Some(&state),
-        );
-        assert!(matches!(result, Err(Error::UnauthorizedAdmin(_))));
-        let (result, _state) = run(
-            STRANGER,
-            meta_calldata(meta::PUBLISH, &publish_args(V2_0_0, IMPL_2)),
-            Some(&state),
-        );
-        assert_eq!(result, Ok(()));
-    }
-
-    // ─── Freeze ──────────────────────────────────────────────────────────
-
-    #[test]
-    fn freeze_blocks_delegation_but_not_the_meta_plane() {
-        let state = published(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2)]);
-        let (result, state) = run(REGISTRY, meta_calldata(meta::FREEZE, &[]), Some(&state));
-        assert_eq!(result, Ok(()));
-
-        // Plain and versioned calls both refuse to delegate.
-        let (result, state) = run(STRANGER, vec![0xAA, 0xBB, 0xCC, 0xDD], Some(&state));
-        assert!(matches!(result, Err(Error::ContractFrozen(_))));
-        let (result, state) = run(STRANGER, versioned_calldata(V1_0_0, &[0x01]), Some(&state));
-        assert!(matches!(result, Err(Error::ContractFrozen(_))));
-
-        // The meta plane keeps answering...
-        let (_proxy, mock) = proxy_call(STRANGER, meta_calldata(meta::FROZEN, &[]), Some(&state));
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-        let mut frozen_word = [0u8; 32];
-        frozen_word[31] = 1;
-        assert_eq!(mock.take_return_value().unwrap().data, frozen_word.to_vec());
-
-        // ... and admin operations still work: publish while frozen, unfreeze.
-        let (result, state) = run(
-            REGISTRY,
-            meta_calldata(meta::PUBLISH, &publish_args(V2_0_0, IMPL_3)),
-            Some(&mock),
-        );
-        assert_eq!(result, Ok(()));
-        let (result, state) = run(REGISTRY, meta_calldata(meta::UNFREEZE, &[]), Some(&state));
-        assert_eq!(result, Ok(()));
-
-        // Delegation resumes at the new latest.
-        let (_proxy, mock) = proxy_call(STRANGER, vec![0x01, 0x02, 0x03, 0x04], Some(&state));
-        mock.mock_call(IMPL_3, Ok(vec![]));
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-        assert_eq!(
-            mock.take_recorded_calls(),
-            vec![(IMPL_3, vec![0x01, 0x02, 0x03, 0x04])]
-        );
-    }
-
-    #[test]
-    fn freeze_requires_admin() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        for calldata in [
-            meta_calldata(meta::FREEZE, &[]),
-            meta_calldata(meta::UNFREEZE, &[]),
-        ] {
-            let (result, _mock) = run(STRANGER, calldata, Some(&state));
-            assert!(matches!(result, Err(Error::UnauthorizedAdmin(_))));
-        }
-    }
-
-    // ─── callCode (the initializations primitive) ────────────────────────
-
-    /// A stand-in initialization contract address.
-    const INIT_1: [u8; 20] = [0x44; 20];
-
-    #[test]
-    fn call_code_delegates_and_bubbles_return() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        let inner: Vec<u8> = [0x3a, 0x67, 0xc2, 0xf8]
-            .into_iter()
-            .chain([0x01; 64])
-            .collect();
-        let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &inner));
-
-        let (_proxy, mock) = proxy_call(REGISTRY, calldata, Some(&state));
-        mock.mock_call(INIT_1, Ok(vec![0x99; 32]));
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-
-        // The target sees EXACTLY the inner payload — no ABI framing.
-        assert_eq!(mock.take_recorded_calls(), vec![(INIT_1, inner)]);
-        assert_eq!(
-            mock.take_return_value(),
-            Some(ReturnValue {
-                flags: ReturnFlags::empty(),
-                data: vec![0x99; 32],
-            })
-        );
-    }
-
-    #[test]
-    fn call_code_bubbles_callee_revert() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &[0x01, 0x02]));
-        let (_proxy, mock) = proxy_call(REGISTRY, calldata, Some(&state));
-        mock.mock_call(INIT_1, Err(()));
-        let mut proxy = ContractProxy::with_host(mock.clone());
-
-        let rv = mock.expect_revert(|| {
-            let _ = proxy.fallback();
+            let _ = shim.fallback();
         });
         assert_eq!(rv.flags, ReturnFlags::REVERT);
     }
 
     #[test]
-    fn call_code_requires_admin() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &[0x01]));
-        let (result, _mock) = run(STRANGER, calldata, Some(&state));
-        assert!(matches!(result, Err(Error::UnauthorizedAdmin(_))));
-    }
-
-    #[test]
-    fn call_code_works_while_frozen() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        let (result, state) = run(REGISTRY, meta_calldata(meta::FREEZE, &[]), Some(&state));
-        assert_eq!(result, Ok(()));
-
-        let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &[0x0a, 0x0b]));
-        let (_proxy, mock) = proxy_call(REGISTRY, calldata, Some(&state));
-        mock.mock_call(INIT_1, Ok(vec![]));
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        assert!(proxy.fallback().is_ok());
-        assert_eq!(mock.take_recorded_calls(), vec![(INIT_1, vec![0x0a, 0x0b])]);
-    }
-
-    #[test]
-    fn call_code_works_before_first_publish() {
-        let state = published(&[]);
-        let calldata = meta_calldata(meta::CALL_CODE, &call_code_args(INIT_1, &[0x01]));
-        let (mut proxy, mock) = proxy_call(REGISTRY, calldata, Some(&state));
-        mock.mock_call(INIT_1, Ok(vec![]));
-        assert!(proxy.fallback().is_ok());
-        assert_eq!(mock.take_recorded_calls(), vec![(INIT_1, vec![0x01])]);
-    }
-
-    #[test]
-    fn call_code_rejects_zero_target_and_malformed_args() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-
-        let calldata = meta_calldata(meta::CALL_CODE, &call_code_args([0u8; 20], &[0x01]));
-        let (result, _mock) = run(REGISTRY, calldata, Some(&state));
-        assert!(matches!(result, Err(Error::InvalidImplementation(_))));
-
-        // Offset word pointing past the end of the args.
-        let mut args = word_addr(INIT_1).to_vec();
-        let mut offset = [0u8; 32];
-        offset[31] = 0xFF;
-        args.extend_from_slice(&offset);
-        let (result, _mock) = run(
-            REGISTRY,
-            meta_calldata(meta::CALL_CODE, &args),
-            Some(&state),
-        );
-        assert!(matches!(result, Err(Error::MalformedCall(_))));
-
-        // Length word longer than the actual payload.
-        let mut args = word_addr(INIT_1).to_vec();
-        let mut offset = [0u8; 32];
-        offset[31] = 0x40;
-        args.extend_from_slice(&offset);
-        let mut len = [0u8; 32];
-        len[31] = 64;
-        args.extend_from_slice(&len);
-        args.extend_from_slice(&[0u8; 32]);
-        let (result, _mock) = run(
-            REGISTRY,
-            meta_calldata(meta::CALL_CODE, &args),
-            Some(&state),
-        );
-        assert!(matches!(result, Err(Error::MalformedCall(_))));
-    }
-
-    // ─── Malformed input ─────────────────────────────────────────────────
-
-    #[test]
-    fn magic_prefixed_garbage_reverts_malformed() {
-        let state = published(&[(V1_0_0, IMPL_1)]);
-        // Magic + truncated key.
-        let mut truncated = MAGIC.to_vec();
-        truncated.extend_from_slice(&[0u8; 7]);
-        let (result, _m) = run(STRANGER, truncated, Some(&state));
-        assert!(matches!(result, Err(Error::MalformedCall(_))));
-
-        // Meta header + selector, but args word has dirty high bytes.
-        let mut dirty = word_u128(V1_0_0);
-        dirty[0] = 0xFF;
-        let (result, _m) = run(STRANGER, meta_calldata(meta::IMPL_OF, &dirty), Some(&state));
-        assert!(matches!(result, Err(Error::MalformedCall(_))));
-
-        // Unknown meta selector.
-        let (result, _m) = run(
-            STRANGER,
-            meta_calldata([0xDE, 0xAD, 0xBE, 0xEF], &[]),
-            Some(&state),
-        );
-        assert!(matches!(result, Err(Error::UnknownMetaSelector(_))));
-    }
-
-    // ─── Error selectors (TS mirrors these signatures) ───────────────────
-
-    #[test]
-    fn error_selectors_derive_from_signatures() {
-        use super::contract_proxy::{UnknownVersion, UnsupportedVersion};
-        fn sel(signature: &str) -> [u8; 4] {
-            let hash = keccak256(signature.as_bytes());
-            [hash[0], hash[1], hash[2], hash[3]]
+    fn malformed_answers_revert_malformed_resolution() {
+        let short = Ok(vec![0u8; resolve::RESPONSE_HEAD_LEN - 1]);
+        let unknown_kind = resolution(2, TARGET, 0, &[]);
+        let strip_past_end = resolution(resolve::DELEGATE, TARGET, CALLDATA.len() as u32 + 1, &[]);
+        for answer in [short, unknown_kind, strip_past_end] {
+            let (mut shim, mock) = deployed(&CALLDATA, 0, answer);
+            assert!(matches!(
+                shim.fallback(),
+                Err(Error::MalformedResolution(_))
+            ));
+            assert_eq!(mock.take_recorded_calls().len(), 1);
         }
-        assert_eq!(UnknownVersion::SELECTOR, sel("UnknownVersion()"));
-        assert_eq!(
-            UnsupportedVersion::SELECTOR,
-            sel("UnsupportedVersion(uint128,uint128)")
-        );
     }
 }
