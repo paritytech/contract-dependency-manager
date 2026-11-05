@@ -1,11 +1,11 @@
-//! EIP-1967 proxy for the CDM ContractRegistry.
+//! EIP-1967 proxy: the stable on-chain address of an upgradeable CDM
+//! contract. The registry and the resolver are each deployed behind one.
 //!
-//! This contract owns the registry's stable on-chain address. It holds no
-//! logic of its own: every call is forwarded via `delegate_call` to the
-//! implementation address stored at the EIP-1967 implementation slot, so the
-//! implementation's methods run against this proxy's storage. Upgrades go
-//! through the implementation's `setCode`, which rewrites that slot — the
-//! proxy itself never needs to change.
+//! It holds no logic of its own: every call is forwarded via `delegate_call`
+//! to the implementation address stored at the EIP-1967 implementation slot,
+//! so the implementation's methods run against this proxy's storage.
+//! Upgrades go through the implementation's `setCode`, which rewrites that
+//! slot — the proxy itself never needs to change.
 
 #![cfg_attr(all(not(feature = "abi-gen"), not(test)), no_main, no_std)]
 
@@ -15,12 +15,12 @@
 polkavm_derive::min_stack_size!(131072);
 
 #[pvm_contract_sdk::contract(allocator = "bump", allocator_size = 262144)]
-mod registry_proxy {
+mod eip1967_proxy {
     use alloc::vec;
     use contract_registry_core::slots::{ADMIN_SLOT, IMPLEMENTATION_SLOT};
     use pvm_contract_sdk::{Address, CallFlags, EmptyError, HostApi, Lazy};
 
-    pub struct RegistryProxy {
+    pub struct Eip1967Proxy {
         /// No ordinary fields: slots 0.. belong to the implementation's
         /// storage, reached through `delegate_call`.
         #[slot(raw = IMPLEMENTATION_SLOT)]
@@ -29,12 +29,12 @@ mod registry_proxy {
         admin: Lazy<Address>,
     }
 
-    impl RegistryProxy {
+    impl Eip1967Proxy {
         /// `admin` is an explicit argument, NOT `caller()`: deployed through
         /// the CREATE3 factory, this constructor's caller is the single-use
-        /// child deployer — pinning admin to it would lock the registry's
-        /// admin surface to a dead contract forever. CREATE3 addresses don't
-        /// commit to constructor input, so passing the admin is free.
+        /// child deployer — pinning admin to it would lock the admin surface
+        /// to a dead contract forever. CREATE3 addresses don't commit to
+        /// constructor input, so passing the admin is free.
         #[pvm_contract_sdk::constructor]
         pub fn new(&mut self, implementation: Address, admin: Address) {
             self.implementation.set(&implementation);
@@ -54,8 +54,10 @@ mod registry_proxy {
 
             let target = self.implementation.get();
             let result =
-                host.delegate_call_evm(CallFlags::empty(), &target.0, u64::MAX, &input, None);
+                host.delegate_call_evm(CallFlags::TAIL_CALL, &target.0, u64::MAX, &input, None);
 
+            // On-chain a successful tail call never returns here; a revert
+            // does, with the callee's return data staged.
             let output_len = host.return_data_size() as usize;
             let mut output = vec![0u8; output_len];
             let mut output_ref: &mut [u8] = &mut output;
@@ -74,15 +76,13 @@ mod registry_proxy {
     }
 }
 
-/// Host-side unit tests for the EIP-1967 registry proxy.
-///
 /// The proxy has exactly two behaviors: the constructor pins the
 /// implementation and admin into their EIP-1967 slots, and the fallback
 /// forwards any calldata to the implementation via delegate-call, bubbling
 /// the return or revert data unchanged.
 #[cfg(test)]
 mod tests {
-    use super::registry_proxy::RegistryProxy;
+    use super::eip1967_proxy::Eip1967Proxy;
     use contract_registry_core::slots::{ADMIN_SLOT, IMPLEMENTATION_SLOT};
     use pvm_contract_sdk::{Address, MockHost, MockHostBuilder, ReturnFlags, types::ReturnValue};
 
@@ -99,12 +99,12 @@ mod tests {
 
     /// Deploy the proxy pointing at `IMPL`, with `calldata` staged for the
     /// fallback to forward.
-    fn deployed_proxy(calldata: Vec<u8>) -> (RegistryProxy, MockHost) {
+    fn deployed_proxy(calldata: Vec<u8>) -> (Eip1967Proxy, MockHost) {
         let mock = MockHostBuilder::new()
             .caller(DEPLOYER)
             .calldata(calldata)
             .build();
-        let mut proxy = RegistryProxy::with_host(mock.clone());
+        let mut proxy = Eip1967Proxy::with_host(mock.clone());
         proxy.new(Address(IMPL), Address(DEPLOYER));
         (proxy, mock)
     }

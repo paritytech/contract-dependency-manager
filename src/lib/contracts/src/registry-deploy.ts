@@ -4,6 +4,8 @@ import { fileURLToPath } from "url";
 import {
     CONTRACTS_REGISTRY_IMPL_PACKAGE,
     CONTRACTS_REGISTRY_PACKAGE,
+    CONTRACTS_RESOLVER_IMPL_PACKAGE,
+    CONTRACTS_RESOLVER_PACKAGE,
     CREATE3_FACTORY_PACKAGE,
     stringifyBigInt,
 } from "@parity/cdm-utils";
@@ -26,19 +28,27 @@ import { loadContractProxyArtifact } from "./proxy-artifacts";
 import { hexToBytes } from "./solidity";
 
 /**
- * ContractRegistry deployment via the CREATE3 factory:
+ * CDM's on-chain bootstrap via the CREATE3 factory:
  *
  * 1. CREATE3 factory (frozen artifact) — plain CREATE2 from the operator's
  *    EOA with the committed child code hash as constructor arg and the
  *    `CREATE3_FACTORY_PACKAGE` salt.
  * 2. Registry implementation — plain CREATE2 (`CONTRACTS_REGISTRY_IMPL_PACKAGE`);
  *    its address is irrelevant, upgrades go through `setCode`.
- * 3. EIP-1967 proxy — through the factory, so the registry address is a pure
- *    function of `(factory, salt)` and survives proxy bytecode or constructor
- *    changes.
- * 4. Per-name proxy blob (frozen artifact) — uploaded and handed to the
+ * 3. Registry proxy (EIP-1967) — through the factory, so the registry address
+ *    is a pure function of `(factory, salt)` and survives proxy bytecode or
+ *    constructor changes.
+ * 4. Resolver implementation — plain CREATE2 (`CONTRACTS_RESOLVER_IMPL_PACKAGE`).
+ * 5. Resolver proxy (the same EIP-1967 blob) — through the factory with the
+ *    registry as admin, then handed to the registry via `setResolver`.
+ * 6. Per-name shim blob (frozen artifact) — uploaded and handed to the
  *    registry via `setProxyCodeHash`; never instantiated here.
  */
+
+type ContractHandle = (address: string) => Contract<ContractDef> | Promise<Contract<ContractDef>>;
+type Log = (message: string) => void;
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 /**
  * `(address implementation, address admin)` as two left-padded words. `admin`
@@ -64,7 +74,56 @@ function encodeAddressWord(address: string, what: string): Uint8Array {
     return word;
 }
 
-export interface RegistryDeployPrediction {
+function readBlob(path: string): Uint8Array {
+    return new Uint8Array(readFileSync(path));
+}
+
+function predictImplAddress(
+    deployer: ContractDeployer,
+    implCode: Uint8Array,
+    implPackage: string,
+): string {
+    return predictReviveCreate2Address(
+        eoaH160FromPublicKey(deployer.signer.publicKey),
+        implCode,
+        new Uint8Array(0),
+        hexToBytes(computeDeploySalt(implPackage)),
+    );
+}
+
+export interface ResolverDeployPrediction {
+    /** CREATE2 address of the resolver implementation blob. */
+    resolverImplAddress: string;
+    /** CREATE3 address of the resolver proxy; depends ONLY on (factoryAddress, resolver salt). */
+    resolverAddress: string;
+    /** ABI-encoded proxy constructor args (resolver implementation, admin = the registry). */
+    resolverConstructorData: Uint8Array;
+}
+
+/** Offline prediction of the resolver pair behind `registryAddress`. */
+export function predictResolverDeploy(
+    deployer: ContractDeployer,
+    factoryAddress: string,
+    registryAddress: string,
+    resolverImplPvmPath: string,
+): ResolverDeployPrediction {
+    const resolverImplAddress = predictImplAddress(
+        deployer,
+        readBlob(resolverImplPvmPath),
+        CONTRACTS_RESOLVER_IMPL_PACKAGE,
+    );
+    const resolverAddress = predictCreate3Address(
+        factoryAddress,
+        hexToBytes(computeDeploySalt(CONTRACTS_RESOLVER_PACKAGE)),
+    );
+    return {
+        resolverImplAddress,
+        resolverAddress,
+        resolverConstructorData: encodeProxyConstructorArgs(resolverImplAddress, registryAddress),
+    };
+}
+
+export interface RegistryDeployPrediction extends ResolverDeployPrediction {
     /** CREATE2 address of the CREATE3 factory (frozen blob, fixed salt). */
     factoryAddress: string;
     /** CREATE2 address of the registry implementation blob. */
@@ -79,7 +138,7 @@ export interface RegistryDeployPrediction {
 }
 
 /**
- * Predict every address of the registry deployment fully offline — no chain
+ * Predict every address of the deployment fully offline — no chain
  * round-trips, so this also works when (some of) the contracts already exist
  * on-chain, where an instantiate dry-run would fail with `DuplicateContract`.
  *
@@ -91,6 +150,7 @@ export function predictRegistryDeploy(
     deployer: ContractDeployer,
     rootDir: string,
     implPvmPath: string,
+    resolverImplPvmPath: string,
 ): RegistryDeployPrediction {
     const factoryArtifact = loadCreate3FactoryArtifact(rootDir);
     const childArtifact = loadCreate3ChildArtifact(rootDir);
@@ -102,11 +162,10 @@ export function predictRegistryDeploy(
         hexToBytes(childArtifact.codeHash), // constructor arg: 32 raw bytes
         hexToBytes(computeDeploySalt(CREATE3_FACTORY_PACKAGE)),
     );
-    const implAddress = predictReviveCreate2Address(
-        eoa,
-        new Uint8Array(readFileSync(implPvmPath)),
-        new Uint8Array(0),
-        hexToBytes(computeDeploySalt(CONTRACTS_REGISTRY_IMPL_PACKAGE)),
+    const implAddress = predictImplAddress(
+        deployer,
+        readBlob(implPvmPath),
+        CONTRACTS_REGISTRY_IMPL_PACKAGE,
     );
     const registryAddress = predictCreate3Address(
         factoryAddress,
@@ -117,33 +176,36 @@ export function predictRegistryDeploy(
         implAddress,
         registryAddress,
         constructorData: encodeProxyConstructorArgs(implAddress, eoa),
+        ...predictResolverDeploy(deployer, factoryAddress, registryAddress, resolverImplPvmPath),
     };
 }
 
-export interface DeployRegistryOptions {
+/** The blobs and handles every resolver step needs. */
+interface ResolverSetup {
     /** contract-dependency-manager checkout root (for the frozen artifacts). */
     rootDir: string;
-    implPvmPath: string;
-    proxyPvmPath: string;
+    /** The EIP-1967 proxy blob, shared by the registry and the resolver. */
+    eip1967ProxyPvmPath: string;
+    resolverImplPvmPath: string;
     /**
      * Build a product-sdk contract handle for the CREATE3 factory at the
      * given address (`CREATE3_FACTORY_ABI`); registry-deploy stays free of
      * chain-descriptor knowledge this way.
      */
-    factoryContract: (
-        factoryAddress: string,
-    ) => Contract<ContractDef> | Promise<Contract<ContractDef>>;
+    factoryContract: ContractHandle;
+}
+
+export interface DeployRegistryOptions extends ResolverSetup {
+    implPvmPath: string;
     /**
      * Registry handle (`CONTRACTS_REGISTRY_ABI` at the proxy address) with the
-     * admin signer, for `setProxyCodeHash`. When omitted, first publishes fail
-     * with `ProxyCodeHashUnset()` until a later run sets it.
+     * admin signer, for `setResolver` / `setProxyCodeHash`. When omitted, the
+     * resolver is not deployed and first publishes fail until a later run.
      */
-    registryContract?: (
-        registryAddress: string,
-    ) => Contract<ContractDef> | Promise<Contract<ContractDef>>;
+    registryContract?: ContractHandle;
     /** Reuse a prior {@link predictRegistryDeploy} result. */
     prediction?: RegistryDeployPrediction;
-    log?: (message: string) => void;
+    log?: Log;
 }
 
 /** `decodedErrorSignature` with a stringified fallback, for query failures. */
@@ -165,34 +227,173 @@ function hashHex(value: unknown): string | undefined {
     return undefined;
 }
 
-/** Upload the frozen per-name proxy blob and set `proxyCodeHash`; idempotent. */
+/** The value of a successful query, or a thrown error naming `what`. */
+async function expectQuery(
+    query: Promise<{ success: boolean; value: unknown }>,
+    what: string,
+): Promise<unknown> {
+    const result = await query;
+    if (!result.success) {
+        throw new Error(`${what} failed: ${queryErrorDetail(result.value)}`);
+    }
+    return result.value;
+}
+
+async function submit(tx: Promise<{ ok: boolean; error?: unknown }>, what: string): Promise<void> {
+    const result = await tx;
+    if (!result.ok) {
+        throw new Error(`${what} failed: ${describeContractError(result.error)}`, {
+            cause: result.error,
+        });
+    }
+}
+
+/** Re-read an address through `query` after a write and require `expected`. */
+async function verifyAddress(
+    query: Promise<{ success: boolean; value: unknown }>,
+    expected: string,
+    what: string,
+): Promise<void> {
+    const result = await query;
+    const actual = result.success ? String(result.value) : undefined;
+    if (actual?.toLowerCase() !== expected.toLowerCase()) {
+        throw new Error(
+            `${what} verification failed: read back ${
+                result.success ? actual : queryErrorDetail(result.value)
+            }, expected ${expected}`,
+        );
+    }
+}
+
+/** CREATE2-deploy `code` under `implPackage` unless its address already holds code. */
+async function ensureImplementation(
+    deployer: ContractDeployer,
+    code: Uint8Array,
+    implPackage: string,
+    log: Log,
+): Promise<string> {
+    const address = predictImplAddress(deployer, code, implPackage);
+    if ((await deployer.getOnChainCode(address)) !== null) {
+        log(`Implementation already deployed at ${address} (salt "${implPackage}")`);
+        return address;
+    }
+    const deployed = await deployer.deploy(code, implPackage);
+    if (deployed.address.toLowerCase() !== address.toLowerCase()) {
+        throw new Error(
+            `Implementation address mismatch: deployed ${deployed.address}, offline prediction says ${address}`,
+        );
+    }
+    log(`Implementation deployed at ${address} (salt "${implPackage}")`);
+    return address;
+}
+
+/** Deploy the EIP-1967 proxy blob through the factory at `expected` unless code is there. */
+async function ensureProxyViaFactory(
+    deployer: ContractDeployer,
+    setup: ResolverSetup,
+    factoryAddress: string,
+    pkg: string,
+    constructorData: Uint8Array,
+    expected: string,
+    what: string,
+    log: Log,
+): Promise<void> {
+    if ((await deployer.getOnChainCode(expected)) !== null) {
+        log(`${what} already deployed at ${expected}`);
+        return;
+    }
+    const { codeHash } = await deployer.uploadCode(readBlob(setup.eip1967ProxyPvmPath));
+    const factory = await setup.factoryContract(factoryAddress);
+    await deployer.deployViaCreate3Factory(
+        factory,
+        factoryAddress,
+        computeDeploySalt(pkg),
+        codeHash,
+        constructorData,
+    );
+    // The block that included the deploy can still be reorged out.
+    if ((await deployer.getOnChainCode(expected)) === null) {
+        throw new Error(`${what} not found at ${expected} after its deploy was included`);
+    }
+    log(`${what} deployed at ${expected}`);
+}
+
+/**
+ * Deploy the resolver pair behind `registryAddress` and hand it to the
+ * registry; idempotent, so a run cut short after `setResolver` still lands
+ * the proxy. A registry already pointing at a different resolver is an
+ * error: shims bake the address in, so it can never change.
+ */
+async function ensureResolver(
+    deployer: ContractDeployer,
+    registry: Contract<ContractDef>,
+    registryAddress: string,
+    factoryAddress: string,
+    setup: ResolverSetup,
+    log: Log,
+): Promise<string> {
+    const plan = predictResolverDeploy(
+        deployer,
+        factoryAddress,
+        registryAddress,
+        setup.resolverImplPvmPath,
+    );
+    const live = String(
+        await expectQuery(
+            registry.getResolver.query(),
+            "getResolver() (the live implementation may predate the resolver; upgrade it first)",
+        ),
+    ).toLowerCase();
+    if (live !== ZERO_ADDRESS && live !== plan.resolverAddress.toLowerCase()) {
+        throw new Error(
+            `Registry ${registryAddress} already uses resolver ${live}, not the predicted ${plan.resolverAddress}`,
+        );
+    }
+
+    await ensureImplementation(
+        deployer,
+        readBlob(setup.resolverImplPvmPath),
+        CONTRACTS_RESOLVER_IMPL_PACKAGE,
+        log,
+    );
+    await ensureProxyViaFactory(
+        deployer,
+        setup,
+        factoryAddress,
+        CONTRACTS_RESOLVER_PACKAGE,
+        plan.resolverConstructorData,
+        plan.resolverAddress,
+        "Resolver",
+        log,
+    );
+    if (live === ZERO_ADDRESS) {
+        await submit(registry.setResolver.tx(plan.resolverAddress), "setResolver");
+        await verifyAddress(registry.getResolver.query(), plan.resolverAddress, "setResolver");
+    }
+    log(`Resolver set to ${plan.resolverAddress}`);
+    return plan.resolverAddress;
+}
+
+/** Upload the frozen per-name shim blob and set `proxyCodeHash`; idempotent. */
 async function ensureProxyCodeHash(
     deployer: ContractDeployer,
     registry: Contract<ContractDef>,
     rootDir: string,
-    log: (message: string) => void,
+    log: Log,
 ): Promise<`0x${string}`> {
     const artifact = loadContractProxyArtifact(rootDir);
     await deployer.uploadCode(artifact.bytes);
 
-    const current = await registry.getProxyCodeHash.query();
-    if (!current.success) {
-        throw new Error(
-            `getProxyCodeHash() failed: ${queryErrorDetail(current.value)} — ` +
-                "the live implementation may be a pre-versioning build; upgrade it first.",
-        );
-    }
-    if (hashHex(current.value) === artifact.codeHash) {
+    const current = await expectQuery(
+        registry.getProxyCodeHash.query(),
+        "getProxyCodeHash() (the live implementation may be a pre-versioning build; upgrade it first)",
+    );
+    if (hashHex(current) === artifact.codeHash) {
         log(`Per-name proxy code hash already set to ${artifact.codeHash}`);
         return artifact.codeHash;
     }
 
-    const result = await registry.setProxyCodeHash.tx(artifact.codeHash);
-    if (!result.ok) {
-        throw new Error(`setProxyCodeHash failed: ${describeContractError(result.error)}`, {
-            cause: result.error,
-        });
-    }
+    await submit(registry.setProxyCodeHash.tx(artifact.codeHash), "setProxyCodeHash");
     const verify = await registry.getProxyCodeHash.query();
     const verified = verify.success ? hashHex(verify.value) : undefined;
     if (verified !== artifact.codeHash) {
@@ -207,10 +408,10 @@ async function ensureProxyCodeHash(
 }
 
 /**
- * Deploy the registry behind its proxy (factory first if missing), then set
- * `proxyCodeHash` when `registryContract` is provided. Every step is
- * idempotent, so a partial run can be re-run. `proxyAddress` is the registry
- * address.
+ * Deploy the registry behind its proxy (factory first if missing), then the
+ * resolver and `proxyCodeHash` when `registryContract` is provided. Every
+ * step is idempotent, so a partial run can be re-run. `proxyAddress` is the
+ * registry address.
  */
 export async function deployRegistryWithProxy(
     deployer: ContractDeployer,
@@ -219,26 +420,39 @@ export async function deployRegistryWithProxy(
     factoryAddress: string;
     implAddress: string;
     proxyAddress: string;
-    /** Frozen per-name proxy code hash; undefined when the setup was skipped. */
+    /** The resolver proxy; undefined when the registry setup was skipped. */
+    resolverAddress?: string;
+    /** Frozen per-name shim code hash; undefined when the registry setup was skipped. */
     proxyCodeHash?: `0x${string}`;
 }> {
     const log = opts.log ?? (() => {});
-    const plan = opts.prediction ?? predictRegistryDeploy(deployer, opts.rootDir, opts.implPvmPath);
+    const plan =
+        opts.prediction ??
+        predictRegistryDeploy(deployer, opts.rootDir, opts.implPvmPath, opts.resolverImplPvmPath);
     const done = {
         factoryAddress: plan.factoryAddress,
         implAddress: plan.implAddress,
         proxyAddress: plan.registryAddress,
     };
-    const finishProxyCodeHash = async (): Promise<`0x${string}` | undefined> => {
-        if (!opts.registryContract) return undefined;
+    const finish = async () => {
+        if (!opts.registryContract) return done;
         const registry = await opts.registryContract(plan.registryAddress);
-        return ensureProxyCodeHash(deployer, registry, opts.rootDir, log);
+        const resolverAddress = await ensureResolver(
+            deployer,
+            registry,
+            plan.registryAddress,
+            plan.factoryAddress,
+            opts,
+            log,
+        );
+        const proxyCodeHash = await ensureProxyCodeHash(deployer, registry, opts.rootDir, log);
+        return { ...done, resolverAddress, proxyCodeHash };
     };
 
     // Code at the CREATE3 address means the deployment already happened.
     if ((await deployer.getOnChainCode(plan.registryAddress)) !== null) {
         log(`Registry already deployed at ${plan.registryAddress}`);
-        return { ...done, proxyCodeHash: await finishProxyCodeHash() };
+        return finish();
     }
 
     // (i) CREATE3 factory: upload the child blob, then CREATE2 the factory
@@ -276,32 +490,27 @@ export async function deployRegistryWithProxy(
     }
 
     // (ii) Registry implementation — plain CREATE2.
-    if ((await deployer.getOnChainCode(plan.implAddress)) === null) {
-        const { address } = await deployer.deploy(
-            opts.implPvmPath,
-            CONTRACTS_REGISTRY_IMPL_PACKAGE,
-        );
-        if (address.toLowerCase() !== plan.implAddress.toLowerCase()) {
-            throw new Error(
-                `Registry implementation address mismatch: deployed ${address}, offline prediction says ${plan.implAddress}`,
-            );
-        }
-    }
-
-    // (iii) The proxy, through the factory.
-    const proxyCode = new Uint8Array(readFileSync(opts.proxyPvmPath));
-    const { codeHash: registryProxyCodeHash } = await deployer.uploadCode(proxyCode);
-    const factory = await opts.factoryContract(plan.factoryAddress);
-    await deployer.deployViaCreate3Factory(
-        factory,
-        plan.factoryAddress,
-        computeDeploySalt(CONTRACTS_REGISTRY_PACKAGE),
-        registryProxyCodeHash,
-        plan.constructorData,
+    await ensureImplementation(
+        deployer,
+        readBlob(opts.implPvmPath),
+        CONTRACTS_REGISTRY_IMPL_PACKAGE,
+        log,
     );
 
-    // (iv) Per-name proxy code hash.
-    return { ...done, proxyCodeHash: await finishProxyCodeHash() };
+    // (iii) The registry proxy, through the factory.
+    await ensureProxyViaFactory(
+        deployer,
+        opts,
+        plan.factoryAddress,
+        CONTRACTS_REGISTRY_PACKAGE,
+        plan.constructorData,
+        plan.registryAddress,
+        "Registry",
+        log,
+    );
+
+    // (iv) Resolver and per-name shim code hash.
+    return finish();
 }
 
 /** `"@cdm/registry-impl.1"` → `"@cdm/registry-impl.2"`. */
@@ -316,60 +525,68 @@ export function bumpPackageSuffix(pkg: string): string {
 /** Paranoia guard for the salt probe loop, not a capacity limit. */
 const MAX_IMPL_SALT_PROBES = 100;
 
-function predictImplAddress(
+/**
+ * Deploy `code` under `implPackage`, or under the first suffix bump of
+ * `basePackage` whose predicted address holds no code.
+ */
+async function deployAtFreeSalt(
     deployer: ContractDeployer,
-    implCode: Uint8Array,
-    implPackage: string,
-): string {
-    return predictReviveCreate2Address(
-        eoaH160FromPublicKey(deployer.signer.publicKey),
-        implCode,
-        new Uint8Array(0),
-        hexToBytes(computeDeploySalt(implPackage)),
-    );
-}
-
-/** First suffix bump of `CONTRACTS_REGISTRY_IMPL_PACKAGE` whose predicted address holds no code. */
-async function resolveFreeImplPackage(
-    deployer: ContractDeployer,
-    implCode: Uint8Array,
-    log: (message: string) => void,
-): Promise<{ implPackage: string; address: string }> {
-    let implPackage = CONTRACTS_REGISTRY_IMPL_PACKAGE;
+    code: Uint8Array,
+    basePackage: string,
+    implPackage: string | undefined,
+    log: Log,
+): Promise<{ implAddress: string; implPackage: string }> {
+    if (implPackage !== undefined) {
+        // CREATE2 commits to the code, so code at this address is this blob.
+        return {
+            implAddress: await ensureImplementation(deployer, code, implPackage, log),
+            implPackage,
+        };
+    }
+    let candidate = basePackage;
     for (let probes = 0; probes < MAX_IMPL_SALT_PROBES; probes++) {
-        const address = predictImplAddress(deployer, implCode, implPackage);
+        const address = predictImplAddress(deployer, code, candidate);
         if ((await deployer.getOnChainCode(address)) === null) {
-            return { implPackage, address };
+            return {
+                implAddress: await ensureImplementation(deployer, code, candidate, log),
+                implPackage: candidate,
+            };
         }
-        log(`Implementation salt "${implPackage}" already consumed at ${address} — bumping`);
-        implPackage = bumpPackageSuffix(implPackage);
+        log(`Implementation salt "${candidate}" already consumed at ${address} — bumping`);
+        candidate = bumpPackageSuffix(candidate);
     }
     throw new Error(
-        `No free implementation salt within ${MAX_IMPL_SALT_PROBES} bumps of ` +
-            `"${CONTRACTS_REGISTRY_IMPL_PACKAGE}"`,
+        `No free implementation salt within ${MAX_IMPL_SALT_PROBES} bumps of "${basePackage}"`,
     );
 }
 
-export interface UpgradeRegistryOptions {
-    /** contract-dependency-manager checkout root (for the frozen artifacts). */
-    rootDir: string;
+/** Whether the contract at `address` runs exactly `code`. */
+async function liveCodeMatches(
+    deployer: ContractDeployer,
+    address: string,
+    code: Uint8Array,
+): Promise<boolean> {
+    const live = await deployer.getOnChainCode(address);
+    return live !== null && keccakCodeHash(live) === keccakCodeHash(code);
+}
+
+export interface UpgradeRegistryOptions extends ResolverSetup {
     /** The NEW implementation blob to upgrade to. */
     implPvmPath: string;
     /** Address of the live registry proxy being upgraded. */
     registryAddress: string;
-    /** Registry handle with the admin signer (`setCode`/`setProxyCodeHash` are admin-only). */
-    registryContract: (
-        registryAddress: string,
-    ) => Contract<ContractDef> | Promise<Contract<ContractDef>>;
+    /** Registry handle with the admin signer (`setCode` and the setup writes are admin-only). */
+    registryContract: ContractHandle;
     /** Salt package for the new blob; default: first free suffix bump of `CONTRACTS_REGISTRY_IMPL_PACKAGE`. */
     implPackage?: string;
-    log?: (message: string) => void;
+    log?: Log;
 }
 
 /**
  * Upgrade a live registry in place: new implementation at a fresh CREATE2
- * salt, `setCode`, then `proxyCodeHash`. Idempotent — a matching live
- * implementation skips the deploy and `setCode` (`upgraded: false`).
+ * salt, `setCode`, then the resolver and `proxyCodeHash` are ensured.
+ * Idempotent — a matching live implementation skips the deploy and `setCode`
+ * (`upgraded: false`).
  */
 export async function upgradeRegistryImplementation(
     deployer: ContractDeployer,
@@ -378,71 +595,112 @@ export async function upgradeRegistryImplementation(
     implAddress: string;
     /** Salt package the new blob was deployed under; undefined when skipped. */
     implPackage?: string;
+    resolverAddress: string;
     proxyCodeHash: `0x${string}`;
     upgraded: boolean;
 }> {
     const log = opts.log ?? (() => {});
     const registry = await opts.registryContract(opts.registryAddress);
-    const implCode = new Uint8Array(readFileSync(opts.implPvmPath));
+    const implCode = readBlob(opts.implPvmPath);
 
-    const live = await registry.getCode.query();
-    if (!live.success) {
-        throw new Error(`getCode() failed: ${queryErrorDetail(live.value)}`);
-    }
-    const liveAddress = String(live.value);
-    const liveCode = await deployer.getOnChainCode(liveAddress);
-    if (liveCode !== null && keccakCodeHash(liveCode) === keccakCodeHash(implCode)) {
-        log(`Implementation at ${liveAddress} already matches ${opts.implPvmPath}`);
-        const proxyCodeHash = await ensureProxyCodeHash(deployer, registry, opts.rootDir, log);
-        return { implAddress: liveAddress, proxyCodeHash, upgraded: false };
-    }
-
-    let implPackage: string;
-    let implAddress: string;
-    let alreadyDeployed = false;
-    if (opts.implPackage !== undefined) {
-        implPackage = opts.implPackage;
-        implAddress = predictImplAddress(deployer, implCode, implPackage);
-        // CREATE2 commits to the code, so code at this address is this blob.
-        alreadyDeployed = (await deployer.getOnChainCode(implAddress)) !== null;
-    } else {
-        ({ implPackage, address: implAddress } = await resolveFreeImplPackage(
+    const finish = async (implAddress: string, implPackage?: string, upgraded = false) => {
+        const factoryAddress = predictRegistryDeploy(
             deployer,
-            implCode,
+            opts.rootDir,
+            opts.implPvmPath,
+            opts.resolverImplPvmPath,
+        ).factoryAddress;
+        const resolverAddress = await ensureResolver(
+            deployer,
+            registry,
+            opts.registryAddress,
+            factoryAddress,
+            opts,
             log,
-        ));
+        );
+        const proxyCodeHash = await ensureProxyCodeHash(deployer, registry, opts.rootDir, log);
+        return { implAddress, implPackage, resolverAddress, proxyCodeHash, upgraded };
+    };
+
+    const liveAddress = String(await expectQuery(registry.getCode.query(), "getCode()"));
+    if (await liveCodeMatches(deployer, liveAddress, implCode)) {
+        log(`Implementation at ${liveAddress} already matches ${opts.implPvmPath}`);
+        return finish(liveAddress);
     }
 
-    if (alreadyDeployed) {
-        log(`Implementation already deployed at ${implAddress} (salt "${implPackage}")`);
-    } else {
-        const { address } = await deployer.deploy(implCode, implPackage);
-        if (address.toLowerCase() !== implAddress.toLowerCase()) {
-            throw new Error(
-                `Implementation address mismatch: deployed ${address}, offline prediction says ${implAddress}`,
-            );
-        }
-        log(`New implementation deployed at ${implAddress} (salt "${implPackage}")`);
-    }
+    const { implAddress, implPackage } = await deployAtFreeSalt(
+        deployer,
+        implCode,
+        CONTRACTS_REGISTRY_IMPL_PACKAGE,
+        opts.implPackage,
+        log,
+    );
+    await submit(registry.setCode.tx(implAddress), "setCode");
+    await verifyAddress(registry.getCode.query(), implAddress, "setCode");
+    log(`Registry ${opts.registryAddress} now delegates to ${implAddress}`);
+    return finish(implAddress, implPackage, true);
+}
 
-    const setResult = await registry.setCode.tx(implAddress);
-    if (!setResult.ok) {
-        throw new Error(`setCode failed: ${describeContractError(setResult.error)}`, {
-            cause: setResult.error,
-        });
-    }
-    const verify = await registry.getCode.query();
-    if (!verify.success || String(verify.value).toLowerCase() !== implAddress.toLowerCase()) {
+export interface UpgradeResolverOptions {
+    /** The NEW resolver implementation blob to upgrade to. */
+    resolverImplPvmPath: string;
+    /** Address of the live registry proxy, the resolver's admin. */
+    registryAddress: string;
+    /** Registry handle with the admin signer (`upgradeResolver` is admin-only). */
+    registryContract: ContractHandle;
+    /** Resolver handle (`CONTRACT_RESOLVER_ABI`) for the verifying reads. */
+    resolverContract: ContractHandle;
+    /** Salt package for the new blob; default: first free suffix bump of `CONTRACTS_RESOLVER_IMPL_PACKAGE`. */
+    implPackage?: string;
+    log?: Log;
+}
+
+/**
+ * Upgrade the live resolver in place through the registry: new implementation
+ * at a fresh CREATE2 salt, then `upgradeResolver`. One upgrade reaches every
+ * name ever published. Idempotent like {@link upgradeRegistryImplementation}.
+ */
+export async function upgradeResolverImplementation(
+    deployer: ContractDeployer,
+    opts: UpgradeResolverOptions,
+): Promise<{
+    resolverAddress: string;
+    implAddress: string;
+    implPackage?: string;
+    upgraded: boolean;
+}> {
+    const log = opts.log ?? (() => {});
+    const registry = await opts.registryContract(opts.registryAddress);
+    const resolverAddress = String(
+        await expectQuery(registry.getResolver.query(), "getResolver()"),
+    );
+    if (resolverAddress.toLowerCase() === ZERO_ADDRESS) {
         throw new Error(
-            `setCode verification failed: getCode() returned ${
-                verify.success ? String(verify.value) : queryErrorDetail(verify.value)
-            }, expected ${implAddress}`,
+            `Registry ${opts.registryAddress} has no resolver yet — run the deploy first.`,
         );
     }
-    log(`Registry ${opts.registryAddress} now delegates to ${implAddress}`);
+    const resolver = await opts.resolverContract(resolverAddress);
+    const implCode = readBlob(opts.resolverImplPvmPath);
 
-    const proxyCodeHash = await ensureProxyCodeHash(deployer, registry, opts.rootDir, log);
-    return { implAddress, implPackage, proxyCodeHash, upgraded: true };
+    const liveAddress = String(await expectQuery(resolver.getCode.query(), "getCode()"));
+    if (await liveCodeMatches(deployer, liveAddress, implCode)) {
+        log(
+            `Resolver implementation at ${liveAddress} already matches ${opts.resolverImplPvmPath}`,
+        );
+        return { resolverAddress, implAddress: liveAddress, upgraded: false };
+    }
+
+    const { implAddress, implPackage } = await deployAtFreeSalt(
+        deployer,
+        implCode,
+        CONTRACTS_RESOLVER_IMPL_PACKAGE,
+        opts.implPackage,
+        log,
+    );
+    await submit(registry.upgradeResolver.tx(implAddress), "upgradeResolver");
+    await verifyAddress(resolver.getCode.query(), implAddress, "upgradeResolver");
+    log(`Resolver ${resolverAddress} now delegates to ${implAddress}`);
+    return { resolverAddress, implAddress, implPackage, upgraded: true };
 }
 
 if (import.meta.vitest) {
@@ -492,7 +750,7 @@ if (import.meta.vitest) {
     });
 
     describe("predictRegistryDeploy", () => {
-        // The committed child blob doubles as a stand-in implementation blob.
+        // The committed CREATE3 blobs double as stand-in implementation blobs.
         const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
         const fakeDeployer = {
             signer: { publicKey: new Uint8Array(32).fill(0x11) },
@@ -501,10 +759,14 @@ if (import.meta.vitest) {
             repoRoot,
             "src/contract/create3/artifacts/create3-child.polkavm",
         );
+        const otherPvmPath = resolve(
+            repoRoot,
+            "src/contract/create3/artifacts/create3-factory.polkavm",
+        );
 
         test("is deterministic and internally consistent", () => {
-            const a = predictRegistryDeploy(fakeDeployer, repoRoot, implPvmPath);
-            const b = predictRegistryDeploy(fakeDeployer, repoRoot, implPvmPath);
+            const a = predictRegistryDeploy(fakeDeployer, repoRoot, implPvmPath, otherPvmPath);
+            const b = predictRegistryDeploy(fakeDeployer, repoRoot, implPvmPath, otherPvmPath);
             expect(a).toEqual(b);
             expect(a.registryAddress).toBe(
                 predictCreate3Address(
@@ -512,7 +774,13 @@ if (import.meta.vitest) {
                     hexToBytes(computeDeploySalt(CONTRACTS_REGISTRY_PACKAGE)),
                 ),
             );
-            // word 0 = implementation, word 1 = admin (the deployer EOA).
+            expect(a.resolverAddress).toBe(
+                predictCreate3Address(
+                    a.factoryAddress,
+                    hexToBytes(computeDeploySalt(CONTRACTS_RESOLVER_PACKAGE)),
+                ),
+            );
+            // Registry proxy: word 0 = implementation, word 1 = the deployer EOA.
             expect(a.constructorData.length).toBe(64);
             expect(Array.from(a.constructorData.slice(12, 32))).toEqual(
                 Array.from(hexToBytes(a.implAddress)),
@@ -520,18 +788,23 @@ if (import.meta.vitest) {
             expect(Array.from(a.constructorData.slice(44))).toEqual(
                 Array.from(hexToBytes(eoaH160FromPublicKey(fakeDeployer.signer.publicKey))),
             );
+            // Resolver proxy: word 0 = resolver implementation, word 1 = the registry.
+            expect(Array.from(a.resolverConstructorData.slice(12, 32))).toEqual(
+                Array.from(hexToBytes(a.resolverImplAddress)),
+            );
+            expect(Array.from(a.resolverConstructorData.slice(44))).toEqual(
+                Array.from(hexToBytes(a.registryAddress)),
+            );
         });
 
-        test("factory (and thus registry) address is bytecode-independent of the impl", () => {
-            const otherImplPath = resolve(
-                repoRoot,
-                "src/contract/create3/artifacts/create3-factory.polkavm",
-            );
-            const a = predictRegistryDeploy(fakeDeployer, repoRoot, implPvmPath);
-            const b = predictRegistryDeploy(fakeDeployer, repoRoot, otherImplPath);
+        test("proxy addresses are bytecode-independent of the implementations", () => {
+            const a = predictRegistryDeploy(fakeDeployer, repoRoot, implPvmPath, otherPvmPath);
+            const b = predictRegistryDeploy(fakeDeployer, repoRoot, otherPvmPath, implPvmPath);
             expect(b.factoryAddress).toBe(a.factoryAddress);
             expect(b.registryAddress).toBe(a.registryAddress);
+            expect(b.resolverAddress).toBe(a.resolverAddress);
             expect(b.implAddress).not.toBe(a.implAddress);
+            expect(b.resolverImplAddress).not.toBe(a.resolverImplAddress);
         });
     });
 }

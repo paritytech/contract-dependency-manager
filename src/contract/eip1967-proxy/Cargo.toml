@@ -1,6 +1,6 @@
 [package]
-name = "contract-registry-proxy"
-description = "EIP-1967 proxy holding the registry's stable address; delegates every call to the current contract-registry implementation"
+name = "contract-eip1967-proxy"
+description = "EIP-1967 proxy: a stable address that delegates every call to an upgradeable implementation; fronts the CDM registry and resolver"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

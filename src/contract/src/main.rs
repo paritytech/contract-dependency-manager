@@ -1,13 +1,15 @@
 //! CDM ContractRegistry — implementation contract.
 //!
-//! Deployed behind `contract-registry-proxy` (EIP-1967), which delegate-calls
-//! every method here against the proxy's storage. Upgrades therefore keep the
+//! Deployed behind `contract-eip1967-proxy`, which delegate-calls every
+//! method here against the proxy's storage. Upgrades therefore keep the
 //! registry's address: `setCode` points the proxy at a new implementation.
 //!
 //! The registry is also a factory: the first publish of a name instantiates
-//! that name's per-name proxy (`contract-proxy`) at a deterministic CREATE2
-//! address (`salt = keccak256(name)`, empty constructor input), then every
-//! version publish registers `(version key, implementation)` with it.
+//! that name's shim (`contract-proxy`) at a deterministic CREATE2 address
+//! (`salt = keccak256(name)`, the resolver address as constructor input).
+//! Every publish, floor change, and freeze is then written to the resolver —
+//! the one contract every shim asks how to route — keyed by shim address.
+//! The registry is the resolver's admin and its only writer.
 //!
 //! The admin, implementation, and frozen flags live at fixed pseudo-random
 //! slots (see `contract_registry_core::slots`) so future implementations can
@@ -39,7 +41,9 @@ mod contract_registry {
     use contract_registry_core::versioning::{
         INITIALIZE_SELECTOR, MAGIC, META_KEY, is_publishable_key, meta,
     };
-    use pvm_contract_sdk::{Address, CallFlags, HostApi, Lazy, Mapping, StorageVec};
+    use pvm_contract_sdk::{
+        Address, CallFlags, HostApi, Lazy, Mapping, SolEncode, StorageVec, const_selector,
+    };
 
     #[derive(pvm_contract_sdk::SolEvent)]
     pub struct Published {
@@ -111,8 +115,9 @@ mod contract_registry {
         versions: Mapping<String, Mapping<u32, VersionRecord>>,
         /// name → version index → metadata URI (Bulletin/IPFS).
         metadata_uri_of: Mapping<String, Mapping<u32, String>>,
-        /// Mirror of each proxy's min-supported floor.
-        min_supported_of: Mapping<String, u128>,
+        /// The resolver proxy: every shim is constructed with it and every
+        /// routing change is written to it.
+        resolver: Lazy<Address>,
         /// Code hash of the (pre-uploaded) per-name proxy blob.
         proxy_code_hash: Lazy<[u8; 32]>,
         /// Fixed-slot admin state, shared with the registry proxy.
@@ -192,6 +197,34 @@ mod contract_registry {
         #[pvm_contract_sdk::method]
         pub fn get_proxy_code_hash(&self) -> [u8; 32] {
             self.proxy_code_hash.get()
+        }
+
+        /// Set once: every shim bakes the resolver address into its CREATE2
+        /// address, so it can never move afterwards.
+        #[pvm_contract_sdk::method]
+        pub fn set_resolver(&mut self, resolver: Address) -> Result<(), Error> {
+            self.require_admin()?;
+            if resolver == Address::ZERO {
+                return Err(InvalidResolver.into());
+            }
+            if self.resolver.get() != Address::ZERO {
+                return Err(ResolverAlreadySet.into());
+            }
+            self.resolver.set(&resolver);
+            Ok(())
+        }
+
+        #[pvm_contract_sdk::method]
+        pub fn get_resolver(&self) -> Address {
+            self.resolver.get()
+        }
+
+        /// Point the resolver proxy at a new implementation: one upgrade
+        /// reaches every name ever published. The resolver's errors bubble.
+        #[pvm_contract_sdk::method]
+        pub fn upgrade_resolver(&mut self, new_implementation: Address) -> Result<(), Error> {
+            self.require_admin()?;
+            self.call_resolver(RESOLVER_SET_CODE, &new_implementation)
         }
 
         /// Freeze the registry: every state-changing call except the admin's
@@ -315,7 +348,7 @@ mod contract_registry {
                 }
                 .emit(self.host());
             }
-            self.call_proxy_publish(&info.proxy, version_key, &target);
+            self.call_resolver(RESOLVER_PUBLISH, &(info.proxy, version_key, target))?;
 
             let index = info.version_count;
             info.version_count = index.checked_add(1).ok_or(VersionOverflow)?;
@@ -354,7 +387,7 @@ mod contract_registry {
         }
 
         /// Raise the name's min-supported floor. Owner-only; monotonic and
-        /// capped at the latest key by the proxy, whose errors bubble.
+        /// capped at the latest key by the resolver, whose errors bubble.
         #[pvm_contract_sdk::method]
         pub fn set_min_supported(
             &mut self,
@@ -367,11 +400,7 @@ mod contract_registry {
                 return Err(Unauthorized.into());
             }
 
-            let mut calldata = meta_header(meta::SET_MIN_SUPPORTED);
-            calldata.extend_from_slice(&word_u128(version_key));
-            self.call_proxy(&info.proxy, &calldata);
-
-            self.min_supported_of.insert(&contract_name, &version_key);
+            self.call_resolver(RESOLVER_SET_MIN_SUPPORTED, &(info.proxy, version_key))?;
             MinSupportedSet {
                 name: contract_name,
                 version_key,
@@ -422,12 +451,6 @@ mod contract_registry {
         pub fn get_latest_key(&self, contract_name: String) -> u128 {
             let info = self.info.get(&contract_name);
             self.latest_key(&contract_name, &info).unwrap_or(0)
-        }
-
-        /// The name's min-supported floor (registry mirror); zero = none.
-        #[pvm_contract_sdk::method]
-        pub fn get_min_supported(&self, contract_name: String) -> u128 {
-            self.min_supported_of.get(&contract_name)
         }
 
         /// Version row by index: `(isSome, versionKey, target, metadataUri)`.
@@ -537,13 +560,16 @@ mod contract_registry {
             })
         }
 
-        /// CREATE2 with `salt = keccak256(name)` and empty input: the address
-        /// is a pure function of (registry, name, proxy blob).
+        /// CREATE2 with `salt = keccak256(name)` and the resolver as the one
+        /// constructor argument: the address is a pure function of
+        /// (registry, proxy blob, resolver address, name).
         fn instantiate_proxy(&mut self, contract_name: &String) -> Result<Address, Error> {
             let code_hash = self.proxy_code_hash.get();
             if code_hash == [0u8; 32] {
                 return Err(ProxyCodeHashUnset.into());
             }
+            let mut input = code_hash.to_vec();
+            input.extend_from_slice(&encode(&self.resolver()?));
             let host = self.host();
             let mut salt = [0u8; 32];
             host.hash_keccak_256(contract_name.as_bytes(), &mut salt);
@@ -554,7 +580,7 @@ mod contract_registry {
                 u64::MAX,
                 &[0xff; 32], // deposit bounded by the publisher's frame
                 &[0u8; 32],  // zero value
-                &code_hash,  // no constructor data follows the hash
+                &input,
                 Some(&mut address),
                 None,
                 Some(&salt),
@@ -565,16 +591,8 @@ mod contract_registry {
             Ok(Address(address))
         }
 
-        /// `[MAGIC][key=0][publish][key word][impl word]`.
-        fn call_proxy_publish(&mut self, proxy: &Address, version_key: u128, target: &Address) {
-            let mut calldata = meta_header(meta::PUBLISH);
-            calldata.extend_from_slice(&word_u128(version_key));
-            calldata.extend_from_slice(&word_address(target));
-            self.call_proxy(proxy, &calldata);
-        }
-
-        /// `callCode(init_target, [initialize selector][from word][owner word])`
-        /// with canonical ABI `bytes` framing (offset 0x40, length, zero-padded).
+        /// `[MAGIC][0][callCode][init target word][initialize(from, owner)]`:
+        /// the shim delegate-calls `init_target` with the trailing calldata.
         fn call_proxy_init(
             &mut self,
             proxy: &Address,
@@ -582,19 +600,11 @@ mod contract_registry {
             from: u128,
             owner: &Address,
         ) {
-            let mut inner = Vec::with_capacity(4 + 64);
-            inner.extend_from_slice(&INITIALIZE_SELECTOR);
-            inner.extend_from_slice(&word_u128(from));
-            inner.extend_from_slice(&word_address(owner));
-            let padded_len = inner.len().div_ceil(32) * 32;
-
             let mut calldata = meta_header(meta::CALL_CODE);
-            calldata.extend_from_slice(&word_address(init_target));
-            calldata.extend_from_slice(&word_usize(0x40));
-            calldata.extend_from_slice(&word_usize(inner.len()));
-            calldata.extend_from_slice(&inner);
-            calldata.resize(calldata.len() + padded_len - inner.len(), 0);
-            self.call_proxy(proxy, &calldata);
+            calldata.extend_from_slice(&encode(init_target));
+            calldata.extend_from_slice(&INITIALIZE_SELECTOR);
+            calldata.extend_from_slice(&encode(&(from, *owner)));
+            self.call(proxy, &calldata);
         }
 
         fn set_contract_frozen(
@@ -608,10 +618,7 @@ mod contract_registry {
                 return Err(Unauthorized.into());
             }
 
-            let selector = if frozen { meta::FREEZE } else { meta::UNFREEZE };
-            let calldata = meta_header(selector);
-            self.call_proxy(&info.proxy, &calldata);
-
+            self.call_resolver(RESOLVER_SET_FROZEN, &(info.proxy, frozen))?;
             ContractFrozenSet {
                 name: contract_name,
                 frozen,
@@ -620,12 +627,29 @@ mod contract_registry {
             Ok(())
         }
 
-        /// Call the proxy, bubbling its revert unchanged.
-        fn call_proxy(&mut self, proxy: &Address, calldata: &[u8]) {
+        fn resolver(&self) -> Result<Address, Error> {
+            let resolver = self.resolver.get();
+            if resolver == Address::ZERO {
+                return Err(ResolverUnset.into());
+            }
+            Ok(resolver)
+        }
+
+        /// `selector(args)` on the resolver, bubbling its revert unchanged.
+        fn call_resolver(&mut self, selector: [u8; 4], args: &impl SolEncode) -> Result<(), Error> {
+            let resolver = self.resolver()?;
+            let mut calldata = selector.to_vec();
+            calldata.extend_from_slice(&encode(args));
+            self.call(&resolver, &calldata);
+            Ok(())
+        }
+
+        /// Call `callee`, bubbling its revert unchanged.
+        fn call(&mut self, callee: &Address, calldata: &[u8]) {
             let host = self.host();
             let result = host.call_evm(
                 CallFlags::empty(),
-                &proxy.0,
+                &callee.0,
                 u64::MAX,
                 &[0u8; 32],
                 calldata,
@@ -700,32 +724,26 @@ mod contract_registry {
         }
     }
 
-    // ─── CDM meta wire helpers ────────────────────────────────────────────
+    // ─── Wire helpers ─────────────────────────────────────────────────────
 
+    const RESOLVER_PUBLISH: [u8; 4] = const_selector("publish(address,uint128,address)");
+    const RESOLVER_SET_MIN_SUPPORTED: [u8; 4] = const_selector("setMinSupported(address,uint128)");
+    const RESOLVER_SET_FROZEN: [u8; 4] = const_selector("setFrozen(address,bool)");
+    const RESOLVER_SET_CODE: [u8; 4] = const_selector("setCode(address)");
+
+    /// `[MAGIC][0][selector]`: a CDM meta call to a shim.
     fn meta_header(selector: [u8; 4]) -> Vec<u8> {
-        let mut calldata = Vec::with_capacity(24 + 64);
+        let mut calldata = Vec::with_capacity(24 + 32 + 68);
         calldata.extend_from_slice(&MAGIC);
         calldata.extend_from_slice(&META_KEY.to_be_bytes());
         calldata.extend_from_slice(&selector);
         calldata
     }
 
-    fn word_u128(value: u128) -> [u8; 32] {
-        let mut word = [0u8; 32];
-        word[16..].copy_from_slice(&value.to_be_bytes());
-        word
-    }
-
-    fn word_usize(value: usize) -> [u8; 32] {
-        let mut word = [0u8; 32];
-        word[24..].copy_from_slice(&(value as u64).to_be_bytes());
-        word
-    }
-
-    fn word_address(address: &Address) -> [u8; 32] {
-        let mut word = [0u8; 32];
-        word[12..].copy_from_slice(&address.0);
-        word
+    fn encode<T: SolEncode>(value: &T) -> Vec<u8> {
+        let mut out = vec![0u8; value.encode_len()];
+        value.encode_to(&mut out);
+        out
     }
 }
 
@@ -737,9 +755,9 @@ mod tests {
     use super::types::{
         ContractEntry, ContractFrozen, ContractNameEmpty, ContractNameInvalid, ContractNameTooLong,
         ContractPage, ImportContract, ImportContractExists, ImportContractVersion,
-        ImportVersionsEmpty, InvalidInitTarget, InvalidVersionKey, NoProxy, OptionalAddress,
-        OptionalString, OptionalVersionEntry, ProxyCodeHashUnset, Unauthorized, UnauthorizedAdmin,
-        VersionNotMonotonic,
+        ImportVersionsEmpty, InvalidInitTarget, InvalidResolver, InvalidVersionKey, NoProxy,
+        OptionalAddress, OptionalString, OptionalVersionEntry, ProxyCodeHashUnset,
+        ResolverAlreadySet, ResolverUnset, Unauthorized, UnauthorizedAdmin, VersionNotMonotonic,
     };
     use contract_registry_core::versioning::{
         INITIALIZE_SELECTOR, MAGIC, META_KEY, meta, pack_version,
@@ -758,6 +776,8 @@ mod tests {
     /// supports exactly one global instantiate address).
     const PROXY: [u8; 20] = [0x99; 20];
     const PROXY_CODE_HASH: [u8; 32] = [0xC4; 32];
+    /// The resolver proxy the registry writes routing to.
+    const RESOLVER: [u8; 20] = [0x5E; 20];
     const NAME: &str = "@cdm/registry";
     const URI_1: &str = "ipfs://one";
     const URI_2: &str = "ipfs://two";
@@ -777,13 +797,20 @@ mod tests {
     }
 
     /// Constructed by `caller` (the admin), instantiate mock staged, proxy
-    /// code hash set.
-    fn deployed(caller: [u8; 20]) -> (ContractRegistry, MockHost) {
+    /// code hash set, resolver unset.
+    fn deployed_without_resolver(caller: [u8; 20]) -> (ContractRegistry, MockHost) {
         let mock = host_with_caller(caller);
         mock.mock_instantiate(PROXY, vec![]);
         let mut contract = registry(&mock);
         contract.new();
         contract.set_proxy_code_hash(PROXY_CODE_HASH).unwrap();
+        (contract, mock)
+    }
+
+    /// `deployed_without_resolver` plus the resolver: ready to publish.
+    fn deployed(caller: [u8; 20]) -> (ContractRegistry, MockHost) {
+        let (mut contract, mock) = deployed_without_resolver(caller);
+        contract.set_resolver(Address(RESOLVER)).unwrap();
         (contract, mock)
     }
 
@@ -890,30 +917,36 @@ mod tests {
         ContractPage { total, entries }
     }
 
-    /// The exact meta calldata the registry must send a proxy.
-    fn meta_calldata(selector: [u8; 4], args: &[&[u8; 32]]) -> Vec<u8> {
-        let mut data = MAGIC.to_vec();
-        data.extend_from_slice(&META_KEY.to_be_bytes());
-        data.extend_from_slice(&selector);
+    /// The exact calldata the registry must send the resolver.
+    fn resolver_calldata(signature: &str, args: &[&[u8; 32]]) -> Vec<u8> {
+        let mut data = const_selector(signature).to_vec();
         for arg in args {
             data.extend_from_slice(&arg[..]);
         }
         data
     }
 
-    /// The exact callCode calldata a publish-with-initialization must send:
-    /// `[MAGIC][0][callCode][init word][offset 0x40][len 68]` followed by
-    /// `[initialize selector][from word][owner word]` zero-padded to 96 bytes.
+    fn resolver_publish(key: u128, target: [u8; 20]) -> ([u8; 20], Vec<u8>) {
+        (
+            RESOLVER,
+            resolver_calldata(
+                "publish(address,uint128,address)",
+                &[&word_addr(PROXY), &word_u128(key), &word_addr(target)],
+            ),
+        )
+    }
+
+    /// The exact callCode calldata a publish-with-initialization must send
+    /// the shim: `[MAGIC][0][callCode][init word]` followed by
+    /// `[initialize selector][from word][owner word]`, unpadded.
     fn init_calldata(init_target: [u8; 20], from: u128, owner: [u8; 20]) -> Vec<u8> {
-        let mut offset = [0u8; 32];
-        offset[31] = 0x40;
-        let mut len = [0u8; 32];
-        len[31] = 68;
-        let mut data = meta_calldata(meta::CALL_CODE, &[&word_addr(init_target), &offset, &len]);
+        let mut data = MAGIC.to_vec();
+        data.extend_from_slice(&META_KEY.to_be_bytes());
+        data.extend_from_slice(&meta::CALL_CODE);
+        data.extend_from_slice(&word_addr(init_target));
         data.extend_from_slice(&INITIALIZE_SELECTOR);
         data.extend_from_slice(&word_u128(from));
         data.extend_from_slice(&word_addr(owner));
-        data.extend_from_slice(&[0u8; 28]);
         data
     }
 
@@ -953,13 +986,10 @@ mod tests {
         assert_eq!(contract.get_contract_count(), 1);
         assert_eq!(contract.get_contract_name_at(0), NAME);
 
-        // The proxy was told about the version over the meta wire format.
+        // The resolver was told about the version.
         assert_eq!(
             mock.take_recorded_calls(),
-            vec![(
-                PROXY,
-                meta_calldata(meta::PUBLISH, &[&word_u128(V1_0_0), &word_addr(ADDR_1)]),
-            )]
+            vec![resolver_publish(V1_0_0, ADDR_1)]
         );
     }
 
@@ -1013,14 +1043,10 @@ mod tests {
             }
         );
 
-        // Only the version registration went to the proxy — no second
-        // instantiation.
+        // Only the version registration went out — no second instantiation.
         assert_eq!(
             mock.take_recorded_calls(),
-            vec![(
-                PROXY,
-                meta_calldata(meta::PUBLISH, &[&word_u128(V1_1_0), &word_addr(ADDR_2)]),
-            )]
+            vec![resolver_publish(V1_1_0, ADDR_2)]
         );
     }
 
@@ -1063,10 +1089,21 @@ mod tests {
         mock.mock_instantiate(PROXY, vec![]);
         let mut contract = registry(&mock);
         contract.new();
+        contract.set_resolver(Address(RESOLVER)).unwrap();
 
         assert_eq!(
             contract.publish(NAME.into(), V1_0_0, Address(ADDR_1), URI_1.into()),
             Err(ProxyCodeHashUnset.into())
+        );
+        assert_eq!(contract.get_contract_count(), 0);
+    }
+
+    #[test]
+    fn publish_without_resolver_fails() {
+        let (mut contract, _mock) = deployed_without_resolver(ALICE);
+        assert_eq!(
+            contract.publish(NAME.into(), V1_0_0, Address(ADDR_1), URI_1.into()),
+            Err(ResolverUnset.into())
         );
         assert_eq!(contract.get_contract_count(), 0);
     }
@@ -1139,10 +1176,7 @@ mod tests {
         assert_eq!(
             mock.take_recorded_calls(),
             vec![
-                (
-                    PROXY,
-                    meta_calldata(meta::PUBLISH, &[&word_u128(V1_0_0), &word_addr(ADDR_1)]),
-                ),
+                resolver_publish(V1_0_0, ADDR_1),
                 // First publish: from = 0, owner = the TOFU owner (ALICE).
                 (PROXY, init_calldata(INIT_1, 0, ALICE)),
             ]
@@ -1185,10 +1219,7 @@ mod tests {
         assert_eq!(
             mock.take_recorded_calls(),
             vec![
-                (
-                    PROXY,
-                    meta_calldata(meta::PUBLISH, &[&word_u128(V2_0_0), &word_addr(ADDR_2)]),
-                ),
+                resolver_publish(V2_0_0, ADDR_2),
                 // Upgrade: from = the latest key BEFORE this publish.
                 (PROXY, init_calldata(INIT_1, V1_0_0, ALICE)),
             ]
@@ -1250,23 +1281,32 @@ mod tests {
     // ─── setMinSupported ─────────────────────────────────────────────────────
 
     #[test]
-    fn set_min_supported_forwards_mirrors_and_emits() {
+    fn set_min_supported_forwards_to_the_resolver_and_emits() {
         let (mut contract, mock) = deployed(ALICE);
         publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
         publish(&mut contract, NAME, V1_1_0, ADDR_2, URI_2);
         mock.take_recorded_calls();
 
-        assert_eq!(contract.get_min_supported(NAME.into()), 0);
         assert_eq!(contract.set_min_supported(NAME.into(), V1_1_0), Ok(()));
-        assert_eq!(contract.get_min_supported(NAME.into()), V1_1_0);
-
-        // Forwarded to the proxy over the meta wire format.
         assert_eq!(
             mock.take_recorded_calls(),
             vec![(
-                PROXY,
-                meta_calldata(meta::SET_MIN_SUPPORTED, &[&word_u128(V1_1_0)]),
+                RESOLVER,
+                resolver_calldata(
+                    "setMinSupported(address,uint128)",
+                    &[&word_addr(PROXY), &word_u128(V1_1_0)],
+                ),
             )]
+        );
+        assert_eq!(
+            mock.events().last(),
+            Some(&(
+                vec![
+                    topic0("MinSupportedSet(string,uint128)"),
+                    keccak256(NAME.as_bytes()),
+                ],
+                word_u128(V1_1_0).to_vec(),
+            ))
         );
     }
 
@@ -1295,12 +1335,18 @@ mod tests {
 
         assert_eq!(contract.freeze_contract(NAME.into()), Ok(()));
         assert_eq!(contract.unfreeze_contract(NAME.into()), Ok(()));
+        let set_frozen = |frozen: bool| {
+            (
+                RESOLVER,
+                resolver_calldata(
+                    "setFrozen(address,bool)",
+                    &[&word_addr(PROXY), &word_bool(frozen)],
+                ),
+            )
+        };
         assert_eq!(
             mock.take_recorded_calls(),
-            vec![
-                (PROXY, meta_calldata(meta::FREEZE, &[])),
-                (PROXY, meta_calldata(meta::UNFREEZE, &[])),
-            ]
+            vec![set_frozen(true), set_frozen(false)]
         );
 
         let (mut as_bob, _) = fork_with_caller(&mock, BOB);
@@ -1324,7 +1370,6 @@ mod tests {
         assert_eq!(contract.get_metadata_uri(NAME.into()), none_uri());
         assert_eq!(contract.get_proxy(NAME.into()), none_addr());
         assert_eq!(contract.get_latest_key(NAME.into()), 0);
-        assert_eq!(contract.get_min_supported(NAME.into()), 0);
         assert!(!contract.get_version_at(NAME.into(), 0).is_some);
         assert_eq!(contract.get_owner(NAME.into()), Address::ZERO);
         assert_eq!(contract.get_version_count(NAME.into()), 0);
@@ -1761,6 +1806,55 @@ mod tests {
         assert_eq!(as_alice.get_proxy_code_hash(), PROXY_CODE_HASH);
     }
 
+    // ─── Resolver ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn set_resolver_is_admin_only_non_zero_and_write_once() {
+        let (mut contract, mock) = deployed_without_resolver(ADMIN);
+        assert_eq!(contract.get_resolver(), Address::ZERO);
+
+        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
+        assert_eq!(
+            as_alice.set_resolver(Address(RESOLVER)),
+            Err(UnauthorizedAdmin.into())
+        );
+        assert_eq!(
+            contract.set_resolver(Address::ZERO),
+            Err(InvalidResolver.into())
+        );
+
+        assert_eq!(contract.set_resolver(Address(RESOLVER)), Ok(()));
+        assert_eq!(contract.get_resolver(), Address(RESOLVER));
+        assert_eq!(
+            contract.set_resolver(Address(ADDR_1)),
+            Err(ResolverAlreadySet.into())
+        );
+    }
+
+    #[test]
+    fn upgrade_resolver_forwards_set_code_to_the_resolver() {
+        let (mut contract, mock) = deployed(ADMIN);
+        assert_eq!(contract.upgrade_resolver(Address(NEW_IMPL)), Ok(()));
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(
+                RESOLVER,
+                resolver_calldata("setCode(address)", &[&word_addr(NEW_IMPL)]),
+            )]
+        );
+
+        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
+        assert_eq!(
+            as_alice.upgrade_resolver(Address(NEW_IMPL)),
+            Err(UnauthorizedAdmin.into())
+        );
+        let (mut unset, _) = deployed_without_resolver(ADMIN);
+        assert_eq!(
+            unset.upgrade_resolver(Address(NEW_IMPL)),
+            Err(ResolverUnset.into())
+        );
+    }
+
     // ─── Events ──────────────────────────────────────────────────────────────
 
     #[test]
@@ -1912,10 +2006,11 @@ mod tests {
 
     #[test]
     fn every_abi_selector_dispatches() {
-        let (mut contract, _mock) = deployed(ADMIN);
+        let (mut contract, _mock) = deployed_without_resolver(ADMIN);
         let name = String::from(NAME);
 
         let cases: Vec<(&str, Vec<u8>)> = vec![
+            ("setResolver(address)", encode(&Address(RESOLVER))),
             (
                 "publish(string,uint128,address,string)",
                 encode(&(name.clone(), V1_0_0, Address(ADDR_1), String::from(URI_1))),
@@ -1941,7 +2036,8 @@ mod tests {
             ("getMetadataUri(string)", encode(&name)),
             ("getProxy(string)", encode(&name)),
             ("getLatestKey(string)", encode(&name)),
-            ("getMinSupported(string)", encode(&name)),
+            ("getResolver()", vec![]),
+            ("upgradeResolver(address)", encode(&Address(NEW_IMPL))),
             ("getVersionAt(string,uint32)", encode(&(name.clone(), 0u32))),
             ("getOwner(string)", encode(&name)),
             ("getVersionCount(string)", encode(&name)),

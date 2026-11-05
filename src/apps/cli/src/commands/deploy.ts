@@ -15,8 +15,10 @@ import { getAccount } from "@parity/cdm-utils/accounts";
 import { ALICE_SS58 } from "@parity/cdm-utils";
 import {
     ContractDeployer,
+    CONTRACTS_REGISTRY_ABI,
     CONTRACTS_REGISTRY_CRATE,
-    CONTRACTS_REGISTRY_PROXY_CRATE,
+    CONTRACTS_EIP1967_PROXY_CRATE,
+    CONTRACTS_RESOLVER_CRATE,
     CREATE3_FACTORY_ABI,
     predictRegistryDeploy,
     deployRegistryWithProxy,
@@ -191,14 +193,14 @@ async function deployWithRegistry(
 async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<void> {
     console.log("=== CDM Bootstrap Deploy ===\n");
 
-    const implPvmPath = resolve(rootDir, `target/release/${CONTRACTS_REGISTRY_CRATE}.polkavm`);
-    const proxyPvmPath = resolve(
-        rootDir,
-        `target/release/${CONTRACTS_REGISTRY_PROXY_CRATE}.polkavm`,
-    );
+    const blobPath = (crate: string) => resolve(rootDir, `target/release/${crate}.polkavm`);
+    const implPvmPath = blobPath(CONTRACTS_REGISTRY_CRATE);
+    const eip1967ProxyPvmPath = blobPath(CONTRACTS_EIP1967_PROXY_CRATE);
+    const resolverImplPvmPath = blobPath(CONTRACTS_RESOLVER_CRATE);
     for (const [crate, path] of [
         [CONTRACTS_REGISTRY_CRATE, implPvmPath],
-        [CONTRACTS_REGISTRY_PROXY_CRATE, proxyPvmPath],
+        [CONTRACTS_EIP1967_PROXY_CRATE, eip1967ProxyPvmPath],
+        [CONTRACTS_RESOLVER_CRATE, resolverImplPvmPath],
     ]) {
         if (!existsSync(path)) {
             console.error(`ERROR: ContractRegistry not built: ${path}`);
@@ -257,7 +259,12 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     // The registry address is CREATE3-derived — a pure function of the
     // factory address and the registry salt, independent of any bytecode.
     const registryAddress = resolveRegistryAddress(opts);
-    const expectedRegistry = predictRegistryDeploy(deployer, rootDir, implPvmPath);
+    const expectedRegistry = predictRegistryDeploy(
+        deployer,
+        rootDir,
+        implPvmPath,
+        resolverImplPvmPath,
+    );
     if (expectedRegistry.registryAddress.toLowerCase() !== registryAddress.toLowerCase()) {
         console.error(
             `ERROR: ContractRegistry bootstrap would deploy ${expectedRegistry.registryAddress}, but the selected target uses ${registryAddress}.`,
@@ -270,31 +277,40 @@ async function bootstrapDeploy(rootDir: string, opts: DeployOptions): Promise<vo
     }
 
     // Phase 1: Deploy ContractRegistry — CREATE3 factory bootstrap (if this
-    // network lacks it), the implementation blob (plain CREATE2), then the
-    // EIP-1967 proxy THROUGH the factory. The proxy address is the registry
-    // address everything else uses.
-    console.log("Deploying ContractRegistry (CREATE3 factory + implementation + proxy)...");
-    const {
-        factoryAddress,
-        implAddress,
-        proxyAddress: registryAddr,
-    } = await deployRegistryWithProxy(deployer, {
-        rootDir,
-        implPvmPath,
-        proxyPvmPath,
-        factoryContract: (address) =>
+    // network lacks it), the implementation blob (plain CREATE2), the
+    // EIP-1967 proxy THROUGH the factory, then the resolver pair and the
+    // per-name shim code hash. The proxy address is the registry address
+    // everything else uses.
+    console.log(
+        "Deploying ContractRegistry (CREATE3 factory + implementation + proxy + resolver)...",
+    );
+    const adminContract =
+        (abi: Parameters<typeof createContractFromClient>[3]) => (address: string) =>
             createContractFromClient(
                 chainClient.raw.assetHub,
                 chainClient.descriptors.assetHub,
                 address as HexString,
-                CREATE3_FACTORY_ABI,
+                abi,
                 { defaultSigner: signer, defaultOrigin: origin },
-            ),
+            );
+    const {
+        factoryAddress,
+        implAddress,
+        proxyAddress: registryAddr,
+        resolverAddress,
+    } = await deployRegistryWithProxy(deployer, {
+        rootDir,
+        implPvmPath,
+        eip1967ProxyPvmPath,
+        resolverImplPvmPath,
+        factoryContract: adminContract(CREATE3_FACTORY_ABI),
+        registryContract: adminContract(CONTRACTS_REGISTRY_ABI),
         prediction: expectedRegistry,
     });
     console.log(`  CREATE3 factory: ${factoryAddress}`);
     console.log(`  ContractRegistry implementation: ${implAddress}`);
-    console.log(`  ContractRegistry (proxy): ${registryAddr}\n`);
+    console.log(`  ContractRegistry (proxy): ${registryAddr}`);
+    console.log(`  Resolver (proxy): ${resolverAddress}\n`);
     opts.registryAddress = registryAddr;
 
     // Phase 2+3: Build and deploy all CDM contracts (reuses the existing chain client)

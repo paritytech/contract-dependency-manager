@@ -38,7 +38,7 @@ writeFileSync(
     `${JSON.stringify(
         {
             comment:
-                "FROZEN per-name proxy artifact. The registry CREATE2-instantiates one proxy per contract name from this blob's code hash (salt = keccak256(name), empty constructor input, deployer = the registry proxy), so these exact bytes are part of every FUTURE per-name address. Never rebuild or replace casually — regenerate deliberately with src/lib/scripts/freeze-proxy-artifact.ts and see src/contract/proxy/src/main.rs.",
+                "FROZEN per-name shim artifact. The registry CREATE2-instantiates one shim per contract name from this blob's code hash (salt = keccak256(name), constructor input = the resolver address, deployer = the registry proxy), so these exact bytes are part of every FUTURE per-name address. Never rebuild or replace casually — regenerate deliberately with src/lib/scripts/freeze-proxy-artifact.ts and see src/contract/proxy/src/main.rs.",
             "contract-proxy.polkavm": { codeHash, bytes: bytes.length },
         },
         null,

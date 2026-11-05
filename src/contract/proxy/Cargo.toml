@@ -1,6 +1,6 @@
 [package]
 name = "contract-proxy"
-description = "Per-name CDM proxy: owns a contract name's stable address and storage, routing calls to any published implementation version"
+description = "Per-name CDM shim: owns a contract name's permanent address and storage; every call is routed by the shared resolver"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

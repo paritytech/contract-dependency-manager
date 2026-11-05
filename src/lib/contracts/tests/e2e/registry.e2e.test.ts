@@ -4,8 +4,8 @@
 // (`beforeAll`) —
 // the harness shells out to `deploy-registry.ts`, which bootstraps the
 // CREATE3 factory, deploys the implementation blob, deploys the EIP-1967
-// proxy through the factory, uploads the per-name proxy blob, and hands
-// back the proxy address. All calls below go through the proxy with
+// proxy through the factory, deploys the resolver pair, uploads the
+// per-name shim blob, and hands back the proxy address. All calls below go through the proxy with
 // the implementation's ABI, via the same code path CDM's TS pipeline uses
 // (`createContractFromClient` + the embedded `CONTRACTS_REGISTRY_ABI`).
 // Each assertion is its own `test()` for granular failure attribution.
@@ -25,7 +25,7 @@ import { ALICE_SS58 } from "@parity/cdm-utils";
 // Vite resolver tree-shakes the package's `dist/index.js` (re-exports +
 // Node-only deps in adjacent modules) and CONTRACTS_REGISTRY_ABI comes back
 // undefined. The dedicated subpath maps straight to `dist/abi.js`.
-import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder/abi";
+import { CONTRACTS_REGISTRY_ABI, CONTRACT_RESOLVER_ABI } from "@parity/cdm-builder/abi";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
 import { connectPpn, deployRegistry, type PpnHandle } from "./harness";
 
@@ -46,8 +46,11 @@ let chainClient: CdmAssetHubClient;
 let baselineCount: number;
 // The implementation blob's address — the proxy delegates every call to it.
 let implAddress: string;
+let resolverAddress: string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let registry: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let resolver: any;
 
 function lc(v: unknown): string {
     return String(v).toLowerCase();
@@ -70,17 +73,21 @@ beforeAll(async () => {
     ppn = await connectPpn();
     const deployed = await deployRegistry(ppn.wsUrl);
     implAddress = deployed.implAddress;
+    resolverAddress = deployed.resolverAddress;
 
     const signer = prepareSigner("Alice");
     chainClient = await createCdmAssetHubClient(ppn.wsUrl, "local");
     await chainClient.raw.assetHub.getChainSpecData();
-    registry = await createContractFromClient(
-        chainClient.raw.assetHub,
-        chainClient.descriptors.assetHub,
-        deployed.address,
-        CONTRACTS_REGISTRY_ABI,
-        { defaultSigner: signer, defaultOrigin: ALICE_SS58 },
-    );
+    const contractAt = (address: HexString, abi: typeof CONTRACTS_REGISTRY_ABI) =>
+        createContractFromClient(
+            chainClient.raw.assetHub,
+            chainClient.descriptors.assetHub,
+            address,
+            abi,
+            { defaultSigner: signer, defaultOrigin: ALICE_SS58 },
+        );
+    registry = await contractAt(deployed.address, CONTRACTS_REGISTRY_ABI);
+    resolver = await contractAt(deployed.resolverAddress, CONTRACT_RESOLVER_ABI);
 
     const count = await registry.getContractCount.query();
     baselineCount = Number(count.value ?? 0);
@@ -124,6 +131,12 @@ describe("registry pre-publish (this run's name unseen)", () => {
         const r = await registry.getCode.query();
         expect(r.success).toBe(true);
         expect(lc(r.value)).toBe(lc(implAddress));
+    });
+
+    test("getResolver is configured by the deploy flow", async () => {
+        const r = await registry.getResolver.query();
+        expect(r.success).toBe(true);
+        expect(lc(r.value)).toBe(lc(resolverAddress));
     });
 
     test("getProxyCodeHash is configured by the deploy flow", async () => {
@@ -221,12 +234,16 @@ describe("registry publish + post-publish queries", () => {
         expect(count.value).toBe(2);
     });
 
-    test("setMinSupported forwards to the proxy and mirrors in the registry", async () => {
+    test("setMinSupported writes the floor to the resolver", async () => {
         const r = await registry.setMinSupported.tx(NAME, KEY_1_1_0);
         expect(r.ok).toBe(true);
 
-        const min = await registry.getMinSupported.query(NAME);
-        expect(BigInt(min.value)).toBe(KEY_1_1_0);
+        const proxy = unwrapOption<string>((await registry.getProxy.query(NAME)).value).value;
+        const routing = await resolver.routingOf.query(proxy);
+        expect(routing.success).toBe(true);
+        expect(BigInt(String((routing.value as { min_supported: unknown }).min_supported))).toBe(
+            KEY_1_1_0,
+        );
     });
 
     test("getContracts returns latest package details in one page", async () => {

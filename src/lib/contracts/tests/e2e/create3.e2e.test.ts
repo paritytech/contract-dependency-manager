@@ -1,15 +1,20 @@
 // End-to-end validation of the CREATE3 address derivation against a local
 // PPN (product-preview-net) — the ground truth for the whole scheme: after the
-// harness deploys the registry through the factory, the factory's on-chain
-// `predict(salt)`, the offline TS mirror (`predictCreate3Address`), and the
-// address the registry actually landed at must all agree.
+// harness deploys the registry and the resolver through the factory, the
+// factory's on-chain `predict(salt)`, the offline TS mirror
+// (`predictCreate3Address`), and the addresses they actually landed at must
+// all agree.
 //
 // Gated to the `e2e/` directory by `vitest.e2e.config.ts` so `pnpm test`
 // (unit only) stays fast; run this suite via `pnpm test:e2e`.
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import { createCdmAssetHubClient, prepareSigner, type CdmAssetHubClient } from "@parity/cdm-env";
-import { ALICE_SS58, CONTRACTS_REGISTRY_PACKAGE } from "@parity/cdm-utils";
+import {
+    ALICE_SS58,
+    CONTRACTS_REGISTRY_PACKAGE,
+    CONTRACTS_RESOLVER_PACKAGE,
+} from "@parity/cdm-utils";
 import {
     createContractFromClient,
     type Contract,
@@ -30,6 +35,7 @@ let deployed: DeployedRegistry;
 let factory: Contract<ContractDef>;
 
 const REGISTRY_SALT = computeDeploySalt(CONTRACTS_REGISTRY_PACKAGE);
+const RESOLVER_SALT = computeDeploySalt(CONTRACTS_RESOLVER_PACKAGE);
 
 function lc(v: unknown): string {
     return String(v).toLowerCase();
@@ -56,16 +62,25 @@ afterAll(async () => {
 });
 
 describe("CREATE3 address derivation", () => {
-    test("on-chain predict(salt) returns the deployed registry address", async () => {
-        const r = await factory.predict.query(REGISTRY_SALT);
-        expect(r.success).toBe(true);
-        expect(lc(r.value)).toBe(lc(deployed.address));
+    const deployments = () => [
+        { what: "registry", salt: REGISTRY_SALT, address: deployed.address },
+        { what: "resolver", salt: RESOLVER_SALT, address: deployed.resolverAddress },
+    ];
+
+    test("on-chain predict(salt) returns the deployed registry and resolver addresses", async () => {
+        for (const { what, salt, address } of deployments()) {
+            const r = await factory.predict.query(salt);
+            expect(r.success, what).toBe(true);
+            expect(lc(r.value), what).toBe(lc(address));
+        }
     });
 
-    test("offline predictCreate3Address agrees with the deployed registry address", () => {
-        expect(lc(predictCreate3Address(deployed.factoryAddress, hexToBytes(REGISTRY_SALT)))).toBe(
-            lc(deployed.address),
-        );
+    test("offline predictCreate3Address agrees with the deployed addresses", () => {
+        for (const { what, salt, address } of deployments()) {
+            expect(lc(predictCreate3Address(deployed.factoryAddress, hexToBytes(salt))), what).toBe(
+                lc(address),
+            );
+        }
     });
 
     test("the factory was constructed with the committed child code hash", async () => {
