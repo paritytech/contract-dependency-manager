@@ -157,17 +157,28 @@ describe("one resolver upgrade reaches an already-published name", () => {
 });
 
 describe("routing overhead", () => {
-    test("a plain call through the shim vs. the implementation directly", async () => {
-        const viaShim = await dryRunCall(api, proxyAddress, GET_COUNT);
-        const direct = await dryRunCall(api, impl, GET_COUNT);
-        for (const r of [viaShim, direct]) {
+    test("each frame a routed call adds, in both weight dimensions", async () => {
+        const routingOf = `${selector("routingOf(address)")}${addressWord(proxyAddress)}`;
+        const calls: [string, string, string][] = [
+            ["implementation directly", impl, GET_COUNT],
+            ["resolver implementation routingOf directly", await resolverCode(), routingOf],
+            ["resolver routingOf through its proxy", deployed.resolverAddress, routingOf],
+            ["shim meta latest() (no delegate)", proxyAddress, encodeProxyLatest()],
+            ["shim plain call", proxyAddress, GET_COUNT],
+        ];
+        const measured = [];
+        for (const [label, dest, input] of calls) {
+            const r = await dryRunCall(api, dest, input);
             expect(r.success).toBe(true);
             expect(r.reverted).toBe(false);
+            measured.push({ label, refTime: r.refTime, proofSize: r.proofSize });
+            console.log(
+                `routing overhead: ${label}: ${r.refTime} ref_time, ${r.proofSize} proof_size`,
+            );
         }
-        console.log(
-            `routing overhead: shim ${viaShim.refTime} ref_time, direct ${direct.refTime} ref_time, ` +
-                `delta ${viaShim.refTime - direct.refTime} ref_time`,
-        );
+        const direct = measured[0];
+        const viaShim = measured[measured.length - 1];
         expect(viaShim.refTime).toBeGreaterThan(direct.refTime);
+        expect(viaShim.proofSize).toBeGreaterThan(direct.proofSize);
     });
 });

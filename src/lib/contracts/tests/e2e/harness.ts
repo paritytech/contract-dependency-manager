@@ -253,14 +253,20 @@ export function hexBytes(hex: string): Uint8Array {
  * Argument types mirror product-sdk's own `dryRunCall` exactly — a hex
  * string `dest` and `Uint8Array` calldata — which is the combination PPN's
  * runtime metadata encodes without an `Incompatible runtime entry` error.
- * `refTime` is the weight the dry-run consumed. */
+ * `refTime` and `proofSize` are the two weight dimensions the dry-run consumed. */
 export async function dryRunCall(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     api: any,
     dest: string,
     input: string,
     origin: string = ALICE_SS58,
-): Promise<{ success: boolean; reverted: boolean; data: string; refTime: bigint }> {
+): Promise<{
+    success: boolean;
+    reverted: boolean;
+    data: string;
+    refTime: bigint;
+    proofSize: bigint;
+}> {
     const r = await api.apis.ReviveApi.call(
         origin,
         dest,
@@ -271,8 +277,9 @@ export async function dryRunCall(
         { at: "best" },
     );
     const refTime = BigInt(r.weight_consumed?.ref_time ?? 0);
+    const proofSize = BigInt(r.weight_consumed?.proof_size ?? 0);
     if (!r.result.success) {
-        return { success: false, reverted: false, data: "0x", refTime };
+        return { success: false, reverted: false, data: "0x", refTime, proofSize };
     }
     const flags = Number(r.result.value.flags);
     const raw = r.result.value.data;
@@ -289,6 +296,7 @@ export async function dryRunCall(
         reverted: (flags & 1) === 1,
         data: String(data).toLowerCase(),
         refTime,
+        proofSize,
     };
 }
 
