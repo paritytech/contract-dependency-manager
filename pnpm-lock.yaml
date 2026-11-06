@@ -44,7 +44,7 @@ catalogs:
       version: 0.0.34
     '@types/bun':
       specifier: latest
-      version: 1.3.14
+      version: 1.4.4
     '@types/node':
       specifier: ^24.10.1
       version: 24.10.15
@@ -118,8 +118,8 @@ catalogs:
       specifier: ^8.48.0
       version: 8.56.1
     vite:
-      specifier: ^7.3.1
-      version: 7.3.1
+      specifier: ^7.3.7
+      version: 7.3.7
     vitest:
       specifier: ^3.1.4
       version: 3.2.4
@@ -187,7 +187,7 @@ importers:
     devDependencies:
       '@types/bun':
         specifier: 'catalog:'
-        version: 1.3.14
+        version: 1.4.4
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.14
@@ -251,7 +251,7 @@ importers:
         version: 19.2.3(@types/react@19.2.14)
       '@vitejs/plugin-react':
         specifier: 'catalog:'
-        version: 5.1.4(vite@7.3.1(@types/node@24.10.15))
+        version: 5.1.4(vite@7.3.7(@types/node@24.10.15))
       esbuild:
         specifier: 'catalog:'
         version: 0.28.0
@@ -275,7 +275,7 @@ importers:
         version: 8.56.1(eslint@9.39.3)(typescript@5.9.3)
       vite:
         specifier: 'catalog:'
-        version: 7.3.1(@types/node@24.10.15)
+        version: 7.3.7(@types/node@24.10.15)
 
   src/lib/cdm/typescript:
     dependencies:
@@ -405,7 +405,7 @@ importers:
     devDependencies:
       '@types/bun':
         specifier: 'catalog:'
-        version: 1.3.14
+        version: 1.4.4
       '@types/node':
         specifier: 'catalog:'
         version: 24.10.15
@@ -452,7 +452,7 @@ importers:
     devDependencies:
       '@types/bun':
         specifier: 'catalog:'
-        version: 1.3.14
+        version: 1.4.4
       '@types/node':
         specifier: 'catalog:'
         version: 24.10.15
@@ -1747,8 +1747,8 @@ packages:
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
 
-  '@types/bun@1.3.14':
-    resolution: {integrity: sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw==}
+  '@types/bun@1.4.4':
+    resolution: {integrity: sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ==}
 
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
@@ -1770,9 +1770,6 @@ packages:
 
   '@types/node@24.10.15':
     resolution: {integrity: sha512-BgjLoRuSr0MTI5wA6gMw9Xy0sFudAaUuvrnjgGx9wZ522fYYLA5SYJ+1Y30vTcJEG+DRCyDHx/gzQVfofYzSdg==}
-
-  '@types/node@25.9.1':
-    resolution: {integrity: sha512-xfrlY7UD5rMJk3ZVJP8BNzS28J36YJg+xp+LPXV1TdWxr8uMH5A860QNxYDGQe/ylDSgjxE52Q9VnO7p75tJxg==}
 
   '@types/node@26.6.5':
     resolution: {integrity: sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==}
@@ -1986,8 +1983,8 @@ packages:
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
 
-  bun-types@1.3.14:
-    resolution: {integrity: sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ==}
+  bun-types@1.4.4:
+    resolution: {integrity: sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ==}
 
   bundle-require@5.1.0:
     resolution: {integrity: sha512-3WrrOuZiyaaZPWiEt4G3+IffISVC9HYlWueJEBWED4ZH4aIAC2PnkdnuRrR94M+w6yGWn4AglWtJtBI8YqvgoA==}
@@ -2216,6 +2213,7 @@ packages:
   eslint@9.39.3:
     resolution: {integrity: sha512-VmQ+sifHUbI/IcSopBCF/HO3YiHQx/AVd3UVyYL6weuwW+HvON9VYn5l6Zl1WZzPWXPNZrSQpxwkkZ/VuvJZzg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -3266,9 +3264,6 @@ packages:
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
-  undici-types@7.24.6:
-    resolution: {integrity: sha512-WRNW+sJgj5OBN4/0JpHFqtqzhpbnV0GuB+OozA9gCL7a993SmU+1JBZCzLNxYsbMfIeDL+lTsphD5jN5N+n0zg==}
-
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
@@ -3319,6 +3314,46 @@ packages:
 
   vite@7.3.1:
     resolution: {integrity: sha512-w+N7Hifpc3gRjZ63vYBXA56dvvRlNWRczTdmCBBa+CotUzAPf5b7YMdMR/8CQoeYE5LX3W4wj6RYTgonm1b9DA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    hasBin: true
+    peerDependencies:
+      '@types/node': ^20.19.0 || >=22.12.0
+      jiti: '>=1.21.0'
+      less: ^4.0.0
+      lightningcss: ^1.21.0
+      sass: ^1.70.0
+      sass-embedded: ^1.70.0
+      stylus: '>=0.54.8'
+      sugarss: ^5.0.0
+      terser: ^5.16.0
+      tsx: ^4.8.1
+      yaml: ^2.4.2
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+      jiti:
+        optional: true
+      less:
+        optional: true
+      lightningcss:
+        optional: true
+      sass:
+        optional: true
+      sass-embedded:
+        optional: true
+      stylus:
+        optional: true
+      sugarss:
+        optional: true
+      terser:
+        optional: true
+      tsx:
+        optional: true
+      yaml:
+        optional: true
+
+  vite@7.3.7:
+    resolution: {integrity: sha512-AHEzTORMbi7/7aXp7w7KZ5+DCUdSeLsJz0grY8xHpc9DHdYb0vQu6DqJfm2tOw3gDExNgPgnJTXxM6syYFHaCA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
@@ -4752,9 +4787,9 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.0
 
-  '@types/bun@1.3.14':
+  '@types/bun@1.4.4':
     dependencies:
-      bun-types: 1.3.14
+      bun-types: 1.4.4
 
   '@types/chai@5.2.3':
     dependencies:
@@ -4774,10 +4809,6 @@ snapshots:
   '@types/node@24.10.15':
     dependencies:
       undici-types: 7.16.0
-
-  '@types/node@25.9.1':
-    dependencies:
-      undici-types: 7.24.6
 
   '@types/node@26.6.5':
     dependencies:
@@ -4887,7 +4918,7 @@ snapshots:
       '@typescript-eslint/types': 8.56.1
       eslint-visitor-keys: 5.0.1
 
-  '@vitejs/plugin-react@5.1.4(vite@7.3.1(@types/node@24.10.15))':
+  '@vitejs/plugin-react@5.1.4(vite@7.3.7(@types/node@24.10.15))':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.29.0)
@@ -4895,7 +4926,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-rc.3
       '@types/babel__core': 7.20.5
       react-refresh: 0.18.0
-      vite: 7.3.1(@types/node@24.10.15)
+      vite: 7.3.7(@types/node@24.10.15)
     transitivePeerDependencies:
       - supports-color
 
@@ -5020,9 +5051,10 @@ snapshots:
       node-releases: 2.0.27
       update-browserslist-db: 1.2.3(browserslist@4.28.1)
 
-  bun-types@1.3.14:
+  bun-types@1.4.4:
     dependencies:
-      '@types/node': 25.9.1
+      '@types/node': 26.6.5
+      undici-types: 8.9.0
 
   bundle-require@5.1.0(esbuild@0.25.12):
     dependencies:
@@ -5328,7 +5360,7 @@ snapshots:
 
   estree-walker@3.0.3:
     dependencies:
-      '@types/estree': 1.0.8
+      '@types/estree': 1.0.9
 
   esutils@2.0.3: {}
 
@@ -5401,7 +5433,7 @@ snapshots:
     dependencies:
       magic-string: 0.30.21
       mlly: 1.8.0
-      rollup: 4.59.0
+      rollup: 4.65.0
 
   flat-cache@4.0.1:
     dependencies:
@@ -6341,8 +6373,6 @@ snapshots:
 
   undici-types@7.16.0: {}
 
-  undici-types@7.24.6: {}
-
   undici-types@8.9.0: {}
 
   unicorn-magic@0.1.0: {}
@@ -6411,28 +6441,28 @@ snapshots:
       - tsx
       - yaml
 
-  vite@7.3.1(@types/node@24.10.15):
-    dependencies:
-      esbuild: 0.27.3
-      fdir: 6.5.0(picomatch@4.0.3)
-      picomatch: 4.0.3
-      postcss: 8.5.6
-      rollup: 4.59.0
-      tinyglobby: 0.2.15
-    optionalDependencies:
-      '@types/node': 24.10.15
-      fsevents: 2.3.3
-
   vite@7.3.1(@types/node@26.6.5):
     dependencies:
       esbuild: 0.27.3
       fdir: 6.5.0(picomatch@4.0.3)
       picomatch: 4.0.3
       postcss: 8.5.6
-      rollup: 4.59.0
+      rollup: 4.65.0
       tinyglobby: 0.2.15
     optionalDependencies:
       '@types/node': 26.6.5
+      fsevents: 2.3.3
+
+  vite@7.3.7(@types/node@24.10.15):
+    dependencies:
+      esbuild: 0.28.0
+      fdir: 6.5.0(picomatch@4.0.3)
+      picomatch: 4.0.3
+      postcss: 8.5.6
+      rollup: 4.65.0
+      tinyglobby: 0.2.15
+    optionalDependencies:
+      '@types/node': 24.10.15
       fsevents: 2.3.3
 
   vitest@3.2.4(@types/node@26.6.5):
