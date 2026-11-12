@@ -28,8 +28,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import type { HexString } from "polkadot-api";
-import { submitAndWatch, type SubmittableTransaction } from "@parity/product-sdk-tx";
+import { AccountId, type HexString, type TxEvent, type TxInBestBlock } from "polkadot-api";
+import { formatDispatchError } from "@parity/product-sdk-tx";
 import { ALICE_SS58, GAS_LIMIT, STORAGE_DEPOSIT_LIMIT } from "@parity/cdm-utils";
 
 // Deploy via `bun run src/lib/scripts/deploy-registry.ts` rather than
@@ -207,6 +207,62 @@ export async function ensureTemplateBuilt(): Promise<void> {
     }
 }
 
+/** How long a transaction may stay unincluded before it is sent again, and how
+ * many copies go out in total. Inclusion normally takes one or two 2s blocks. */
+const RESUBMIT_AFTER_MS = 20_000;
+const MAX_SUBMISSIONS = 3;
+
+/**
+ * Submit `tx` and resolve once it is in a best block. PPN's Asset Hub collator
+ * re-authors its last three blocks at every relay session change, once a
+ * minute, and a transaction sent in that window can leave the pool without the
+ * client hearing about it. A transaction still unincluded after
+ * RESUBMIT_AFTER_MS is signed and sent again under the same nonce, so at most
+ * one copy can execute.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function submitInBestBlock(api: any, tx: any, signer: any): Promise<TxInBestBlock> {
+    const nonce: number = await api.apis.AccountNonceApi.account_nonce(
+        AccountId().dec(signer.publicKey),
+        { at: "best" },
+    );
+    return new Promise((resolve, reject) => {
+        const copies: { unsubscribe(): void }[] = [];
+        let watching = 0;
+        let retry: ReturnType<typeof setTimeout> | undefined;
+        const settle = (finish: () => void) => {
+            clearTimeout(retry);
+            for (const copy of copies) copy.unsubscribe();
+            finish();
+        };
+        const send = () => {
+            watching++;
+            copies.push(
+                tx.createSubmitAndWatch(signer, { nonce }).subscribe({
+                    next: (event: TxEvent) => {
+                        if (event.type === "inBestBlock") settle(() => resolve(event));
+                    },
+                    // A copy turns invalid once another one is included, so
+                    // only the last copy standing decides the outcome.
+                    error: (err: unknown) => {
+                        if (--watching === 0) settle(() => reject(err));
+                    },
+                }),
+            );
+            retry = setTimeout(() => {
+                if (copies.length === MAX_SUBMISSIONS) {
+                    const reason = `nonce ${nonce} not included after ${MAX_SUBMISSIONS} submissions`;
+                    settle(() => reject(new Error(reason)));
+                    return;
+                }
+                console.warn(`[e2e] nonce ${nonce} not included yet, sending it again`);
+                send();
+            }, RESUBMIT_AFTER_MS);
+        };
+        send();
+    });
+}
+
 /**
  * Deploy a blob with fixed, generous limits — deliberately NO dry-run: the
  * `ReviveApi.instantiate` dry-run diverges under Node (see the module note),
@@ -226,13 +282,11 @@ export async function deployBlob(api: any, signer: any, pvmPath: string): Promis
         data: new Uint8Array(0),
         salt: undefined,
     });
-    const result = await submitAndWatch(tx as unknown as SubmittableTransaction, signer, {
-        waitFor: "best-block",
-    });
-    if (!result.ok) {
-        throw new Error(`deployBlob(${pvmPath}) failed: ${JSON.stringify(result.error)}`);
+    const included = await submitInBestBlock(api, tx, signer);
+    if (!included.ok) {
+        throw new Error(`deployBlob(${pvmPath}) failed: ${formatDispatchError(included)}`);
     }
-    const instantiated = api.event.Revive.Instantiated.filter(result.value.events);
+    const instantiated = api.event.Revive.Instantiated.filter(included.events);
     if (instantiated.length === 0) {
         throw new Error(`deployBlob(${pvmPath}): no Instantiated event`);
     }
@@ -310,11 +364,9 @@ export async function rawCallTx(api: any, signer: any, dest: string, input: stri
         storage_deposit_limit: STORAGE_DEPOSIT_LIMIT,
         data: hexBytes(input),
     });
-    const result = await submitAndWatch(tx as unknown as SubmittableTransaction, signer, {
-        waitFor: "best-block",
-    });
-    if (!result.ok) {
-        throw new Error(`rawCallTx failed: ${JSON.stringify(result.error)}`);
+    const included = await submitInBestBlock(api, tx, signer);
+    if (!included.ok) {
+        throw new Error(`rawCallTx failed: ${formatDispatchError(included)}`);
     }
 }
 
