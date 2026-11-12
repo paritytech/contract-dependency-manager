@@ -1,6 +1,6 @@
 [package]
 name = "contract-registry-core"
-description = "Host-independent registry logic shared by the registry implementation and its proxy"
+description = "Host-independent logic shared by the registry, the resolver, and the per-name shim"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

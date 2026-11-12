@@ -1,19 +1,20 @@
-//! The versioned-call wire format shared by the per-name proxy, the registry
-//! implementation, and (via mirrored constants) the TypeScript tooling.
+//! The versioned-call wire format shared by the resolver, the registry
+//! implementation, and (via mirrored constants) the TypeScript tooling, plus
+//! the protocol between a per-name shim and the resolver.
 //!
-//! A per-name proxy splits raw calldata into three subspaces:
+//! The resolver splits a shim's raw calldata into three subspaces:
 //!
 //! - **plain**: anything not starting with [`MAGIC`] — delegated to the
-//!   latest implementation untouched, so the proxy reserves zero selectors
-//!   in the contract's own ABI space;
+//!   latest implementation untouched, so a name reserves zero selectors in
+//!   its own ABI space;
 //! - **versioned**: `[MAGIC][16-byte version key BE][inner calldata]` —
 //!   delegated to that exact version's implementation;
 //! - **meta**: `[MAGIC][key = 0][4-byte meta selector][ABI args]` — the CDM
-//!   control plane (queries + registry-only admin operations). Key 0 is
+//!   control plane: queries, plus the registry-only `callCode`. Key 0 is
 //!   `0.0.0`, which is therefore unpublishable.
 //!
 //! A version key packs a semver triple as `major << 64 | minor << 32 | patch`
-//! (each a `u32`), so integer order equals semver order and the proxy's
+//! (each a `u32`), so integer order equals semver order and a name's
 //! append-only version list is sorted by construction.
 
 /// First 4 calldata bytes marking a CDM versioned or meta call.
@@ -94,44 +95,119 @@ pub const fn route_calldata(input: &[u8]) -> CallRoute {
     CallRoute::Meta([input[20], input[21], input[22], input[23]])
 }
 
-/// `keccak256(signature)[..4]`, the meta-selector derivation.
-const fn meta_selector(signature: &[u8]) -> [u8; 4] {
+/// `keccak256(signature)[..4]`.
+const fn selector(signature: &[u8]) -> [u8; 4] {
     let hash = keccak_const::Keccak256::new().update(signature).finalize();
     [hash[0], hash[1], hash[2], hash[3]]
 }
 
 /// `initialize(uint128,address)` = `0x3a67c2f8`, the entry point `callCode`
 /// delivers to every initialization contract.
-pub const INITIALIZE_SELECTOR: [u8; 4] = meta_selector(b"initialize(uint128,address)");
+pub const INITIALIZE_SELECTOR: [u8; 4] = selector(b"initialize(uint128,address)");
 
-/// Meta-call selectors. Queries are open; `publish`, `setMinSupported`,
-/// `setAdmin`, and `callCode` require the caller to be the proxy's admin
-/// (the registry).
+/// Meta-call selectors: queries, plus `callCode`, which the resolver only
+/// honors when the shim's caller is the registry.
 pub mod meta {
-    use super::meta_selector;
+    use super::selector;
 
-    /// `publish(uint128,address)` = `0xc3853395` (admin).
-    pub const PUBLISH: [u8; 4] = meta_selector(b"publish(uint128,address)");
-    /// `callCode(address,bytes)` = `0xd74c1f04` (admin; live while frozen).
-    pub const CALL_CODE: [u8; 4] = meta_selector(b"callCode(address,bytes)");
-    /// `setMinSupported(uint128)` = `0xe84411e5` (admin).
-    pub const SET_MIN_SUPPORTED: [u8; 4] = meta_selector(b"setMinSupported(uint128)");
-    /// `setAdmin(address)` = `0x704b6c02` (admin).
-    pub const SET_ADMIN: [u8; 4] = meta_selector(b"setAdmin(address)");
-    /// `freeze()` = `0x62a5af3b` (admin).
-    pub const FREEZE: [u8; 4] = meta_selector(b"freeze()");
-    /// `unfreeze()` = `0x6a28f000` (admin).
-    pub const UNFREEZE: [u8; 4] = meta_selector(b"unfreeze()");
+    /// `callCode(address,bytes)` = `0xd74c1f04`: `[target word][raw calldata]`
+    /// delegate-called by the shim against its own storage; live while frozen.
+    pub const CALL_CODE: [u8; 4] = selector(b"callCode(address,bytes)");
     /// `frozen()` = `0x054f7d9c`.
-    pub const FROZEN: [u8; 4] = meta_selector(b"frozen()");
+    pub const FROZEN: [u8; 4] = selector(b"frozen()");
     /// `implOf(uint128)` = `0xdf379e50`.
-    pub const IMPL_OF: [u8; 4] = meta_selector(b"implOf(uint128)");
+    pub const IMPL_OF: [u8; 4] = selector(b"implOf(uint128)");
     /// `latest()` = `0x52bfe789`.
-    pub const LATEST: [u8; 4] = meta_selector(b"latest()");
+    pub const LATEST: [u8; 4] = selector(b"latest()");
     /// `minSupported()` = `0x900fc468`.
-    pub const MIN_SUPPORTED: [u8; 4] = meta_selector(b"minSupported()");
+    pub const MIN_SUPPORTED: [u8; 4] = selector(b"minSupported()");
     /// `admin()` = `0xf851a440`.
-    pub const ADMIN: [u8; 4] = meta_selector(b"admin()");
+    pub const ADMIN: [u8; 4] = selector(b"admin()");
+}
+
+/// The shim ↔ resolver protocol. A shim forwards every call it receives as
+/// one read-only `resolve` request and acts on the `Resolution` it gets back;
+/// the shim blob is frozen, so this layout is permanent.
+pub mod resolve {
+    use super::selector;
+
+    /// `resolve(address caller, uint256 value, bytes data)` = `0x6a418533`.
+    pub const SELECTOR: [u8; 4] = selector(b"resolve(address,uint256,bytes)");
+
+    /// Request: `[SELECTOR][caller word][value word][offset 0x60][length
+    /// word]` followed by the shim's raw calldata zero-padded to 32 bytes.
+    pub const REQUEST_HEADER_LEN: usize = 4 + 4 * 32;
+
+    /// `Resolution.kind`: the shim returns `payload`.
+    pub const RETURN: u8 = 0;
+    /// `Resolution.kind`: the shim delegate-calls `target` with
+    /// `payload ++ data[strip..]`.
+    pub const DELEGATE: u8 = 1;
+
+    /// Response: the ABI encoding of `Resolution { uint8 kind, address
+    /// target, uint32 strip, bytes payload }` — `[offset 0x20][kind word]
+    /// [target word][strip word][offset 0x80][length word]` followed by the
+    /// payload zero-padded to 32 bytes.
+    pub const RESPONSE_HEAD_LEN: usize = 6 * 32;
+
+    /// The request header for `data_len` bytes of calldata; `value` is the
+    /// big-endian `uint256` word.
+    pub fn request_header(
+        caller: &[u8; 20],
+        value: &[u8; 32],
+        data_len: usize,
+    ) -> [u8; REQUEST_HEADER_LEN] {
+        let mut header = [0u8; REQUEST_HEADER_LEN];
+        header[..4].copy_from_slice(&SELECTOR);
+        header[16..36].copy_from_slice(caller);
+        header[36..68].copy_from_slice(value);
+        header[99] = 0x60;
+        header[124..132].copy_from_slice(&(data_len as u64).to_be_bytes());
+        header
+    }
+
+    /// A decoded response.
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct Resolved<'a> {
+        pub kind: u8,
+        pub target: [u8; 20],
+        pub strip: usize,
+        pub payload: &'a [u8],
+    }
+
+    /// Decode a response; `None` for anything but the exact layout above.
+    pub fn decode_response(response: &[u8]) -> Option<Resolved<'_>> {
+        if response.len() < RESPONSE_HEAD_LEN
+            || !word_is(&response[..32], 0x20)
+            || !zeroed(&response[32..63])
+            || !zeroed(&response[64..76])
+            || !zeroed(&response[96..124])
+            || !word_is(&response[128..160], 0x80)
+            || !zeroed(&response[160..188])
+        {
+            return None;
+        }
+        let mut target = [0u8; 20];
+        target.copy_from_slice(&response[76..96]);
+        let strip =
+            u32::from_be_bytes([response[124], response[125], response[126], response[127]]);
+        let len = u32::from_be_bytes([response[188], response[189], response[190], response[191]]);
+        let payload = response.get(RESPONSE_HEAD_LEN..RESPONSE_HEAD_LEN + len as usize)?;
+        Some(Resolved {
+            kind: response[63],
+            target,
+            strip: strip as usize,
+            payload,
+        })
+    }
+
+    fn zeroed(bytes: &[u8]) -> bool {
+        bytes.iter().all(|b| *b == 0)
+    }
+
+    fn word_is(word: &[u8], value: u8) -> bool {
+        zeroed(&word[..31]) && word[31] == value
+    }
 }
 
 #[cfg(test)]
@@ -145,7 +221,7 @@ mod tests {
     #[test]
     fn magic_is_pinned() {
         // Mirrored in src/lib/contracts/src/proxy.ts; changing it strands
-        // every proxy.
+        // every name.
         assert_eq!(hex4(MAGIC), "a2264d53");
     }
 
@@ -156,17 +232,17 @@ mod tests {
 
     #[test]
     fn meta_selectors_are_pinned() {
-        assert_eq!(hex4(meta::PUBLISH), "c3853395");
         assert_eq!(hex4(meta::CALL_CODE), "d74c1f04");
-        assert_eq!(hex4(meta::SET_MIN_SUPPORTED), "e84411e5");
-        assert_eq!(hex4(meta::SET_ADMIN), "704b6c02");
-        assert_eq!(hex4(meta::FREEZE), "62a5af3b");
-        assert_eq!(hex4(meta::UNFREEZE), "6a28f000");
         assert_eq!(hex4(meta::FROZEN), "054f7d9c");
         assert_eq!(hex4(meta::IMPL_OF), "df379e50");
         assert_eq!(hex4(meta::LATEST), "52bfe789");
         assert_eq!(hex4(meta::MIN_SUPPORTED), "900fc468");
         assert_eq!(hex4(meta::ADMIN), "f851a440");
+    }
+
+    #[test]
+    fn resolve_selector_is_pinned() {
+        assert_eq!(hex4(resolve::SELECTOR), "6a418533");
     }
 
     #[test]
@@ -255,5 +331,90 @@ mod tests {
         data.extend_from_slice(&META_KEY.to_be_bytes());
         data.extend_from_slice(&[0xc3, 0x85]);
         assert_eq!(route_calldata(&data), CallRoute::Malformed);
+    }
+
+    // ─── Shim ↔ resolver protocol ────────────────────────────────────────
+
+    #[test]
+    fn request_header_is_the_abi_head_of_resolve() {
+        let mut value = [0u8; 32];
+        value[31] = 7;
+        let header = resolve::request_header(&[0xCA; 20], &value, 70);
+
+        let mut expected = vec![0x6a, 0x41, 0x85, 0x33];
+        expected.extend_from_slice(&[0u8; 12]);
+        expected.extend_from_slice(&[0xCA; 20]);
+        expected.extend_from_slice(&value);
+        expected.extend_from_slice(&[0u8; 31]);
+        expected.push(0x60);
+        expected.extend_from_slice(&[0u8; 31]);
+        expected.push(70);
+        assert_eq!(header.to_vec(), expected);
+    }
+
+    /// The canonical response bytes for a `Resolution`.
+    fn response(kind: u8, target: [u8; 20], strip: u32, payload: &[u8]) -> Vec<u8> {
+        let mut out = vec![0u8; resolve::RESPONSE_HEAD_LEN];
+        out[31] = 0x20;
+        out[63] = kind;
+        out[76..96].copy_from_slice(&target);
+        out[124..128].copy_from_slice(&strip.to_be_bytes());
+        out[159] = 0x80;
+        out[188..192].copy_from_slice(&(payload.len() as u32).to_be_bytes());
+        out.extend_from_slice(payload);
+        out.resize(
+            resolve::RESPONSE_HEAD_LEN + payload.len().div_ceil(32) * 32,
+            0,
+        );
+        out
+    }
+
+    #[test]
+    fn decodes_canonical_responses() {
+        let payload = [0xEE; 40];
+        assert_eq!(
+            resolve::decode_response(&response(resolve::DELEGATE, [0x11; 20], 20, &payload)),
+            Some(resolve::Resolved {
+                kind: resolve::DELEGATE,
+                target: [0x11; 20],
+                strip: 20,
+                payload: &payload,
+            })
+        );
+        // An empty payload is the common delegate answer.
+        assert_eq!(
+            resolve::decode_response(&response(resolve::RETURN, [0u8; 20], 0, &[])),
+            Some(resolve::Resolved {
+                kind: resolve::RETURN,
+                target: [0u8; 20],
+                strip: 0,
+                payload: &[],
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_anything_but_the_canonical_layout() {
+        let good = response(resolve::DELEGATE, [0x11; 20], 0, &[0xAA; 3]);
+        assert!(resolve::decode_response(&good).is_some());
+
+        assert!(resolve::decode_response(&good[..resolve::RESPONSE_HEAD_LEN - 1]).is_none());
+        assert!(resolve::decode_response(&[]).is_none());
+
+        // Wrong struct offset, wrong payload offset, dirty high bytes in the
+        // kind / target / strip / length words, and a length past the end.
+        for (index, byte) in [
+            (31, 0x40),
+            (159, 0xA0),
+            (40, 1),
+            (70, 1),
+            (100, 1),
+            (170, 1),
+            (191, 33),
+        ] {
+            let mut bad = good.clone();
+            bad[index] = byte;
+            assert!(resolve::decode_response(&bad).is_none(), "byte {index}");
+        }
     }
 }

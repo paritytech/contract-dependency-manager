@@ -154,6 +154,18 @@ pub struct VersionNotMonotonic {
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct ProxyCodeHashUnset;
 
+/// First publish needs the resolver address configured.
+#[derive(Debug, PartialEq, Eq, SolError)]
+pub struct ResolverUnset;
+
+/// The resolver address is written once; every shim bakes it in.
+#[derive(Debug, PartialEq, Eq, SolError)]
+pub struct ResolverAlreadySet;
+
+/// `setResolver` target is the zero address.
+#[derive(Debug, PartialEq, Eq, SolError)]
+pub struct InvalidResolver;
+
 /// Import payload carries a zero proxy address; every name has a proxy.
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct NoProxy;
@@ -177,6 +189,9 @@ pub enum Error {
     InvalidVersionKey(InvalidVersionKey),
     VersionNotMonotonic(VersionNotMonotonic),
     ProxyCodeHashUnset(ProxyCodeHashUnset),
+    ResolverUnset(ResolverUnset),
+    ResolverAlreadySet(ResolverAlreadySet),
+    InvalidResolver(InvalidResolver),
     NoProxy(NoProxy),
     InvalidInitTarget(InvalidInitTarget),
 }

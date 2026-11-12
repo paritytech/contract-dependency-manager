@@ -1,14 +1,14 @@
 import type { AbiEntry, AbiParam } from "@parity/product-sdk-contracts";
 
 /**
- * Hand-mirrored ABIs of `src/contract` (implementation) and
- * `src/contract/registry-proxy`, matching `target/release/*.abi.json` from
+ * Hand-mirrored ABIs of `src/contract` (the registry implementation) and
+ * `src/contract/eip1967-proxy`, matching `target/release/*.abi.json` from
  * `cargo pvm-contract build`; `tests/registry-abi-sync.test.ts` diffs them
  * against the built artifacts when those exist.
  *
- * `CONTRACTS_REGISTRY_ABI` is used at the proxy address; the proxy's own ABI
- * is only needed to deploy it (`constructor(address implementation, address
- * admin)`).
+ * `CONTRACTS_REGISTRY_ABI` is used at the registry proxy address; the EIP-1967
+ * proxy's own ABI is only needed to deploy one (`constructor(address
+ * implementation, address admin)`), in front of the registry or the resolver.
  *
  * Multi-value returns are ONE unnamed tuple output with named components.
  * Where the generated JSON says `is_some`, this file keeps `isSome` —
@@ -74,6 +74,27 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
         inputs: [],
         outputs: [{ name: "", type: "bytes32" }],
         stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "setResolver",
+        inputs: [{ name: "resolver", type: "address" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "getResolver",
+        inputs: [],
+        outputs: [{ name: "", type: "address" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "upgradeResolver",
+        inputs: [{ name: "new_implementation", type: "address" }],
+        outputs: [],
+        stateMutability: "nonpayable",
     },
     {
         type: "function",
@@ -228,13 +249,6 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
-        name: "getMinSupported",
-        inputs: [{ name: "contract_name", type: "string" }],
-        outputs: [{ name: "", type: "uint128" }],
-        stateMutability: "view",
-    },
-    {
-        type: "function",
         name: "getVersionAt",
         inputs: [
             { name: "contract_name", type: "string" },
@@ -377,6 +391,21 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     {
         type: "error",
         name: "ProxyCodeHashUnset",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "ResolverUnset",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "ResolverAlreadySet",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "InvalidResolver",
         inputs: [],
     },
     {
@@ -554,7 +583,7 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
 
 export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = REGISTRY_ABI;
 
-const REGISTRY_PROXY_ABI: RegistryAbiEntry[] = [
+const EIP1967_PROXY_ABI: RegistryAbiEntry[] = [
     {
         type: "constructor",
         inputs: [
@@ -571,4 +600,4 @@ const REGISTRY_PROXY_ABI: RegistryAbiEntry[] = [
 ];
 
 /** Deploy-time only: the proxy exposes no methods of its own. */
-export const CONTRACTS_REGISTRY_PROXY_ABI: AbiEntry[] = REGISTRY_PROXY_ABI;
+export const CONTRACTS_EIP1967_PROXY_ABI: AbiEntry[] = EIP1967_PROXY_ABI;

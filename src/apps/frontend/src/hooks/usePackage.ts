@@ -32,9 +32,9 @@ export function usePackage(name: string | undefined) {
         let cancelled = false;
         (async () => {
             try {
-                const { registry } = await getRegistryConnection(networkConfig);
+                const { registry, resolver } = await getRegistryConnection(networkConfig);
                 const result = await withTimeout(
-                    queryContractByName(registry, name),
+                    queryContractByName(registry, resolver, name),
                     `Registry package query timed out for ${name}.`,
                 );
                 if (cancelled) return;
