@@ -11,9 +11,10 @@
 //! the one contract every shim asks how to route — keyed by shim address.
 //! The registry is the resolver's admin and its only writer.
 //!
-//! The admin, implementation, and frozen flags live at fixed pseudo-random
-//! slots (see `contract_registry_core::slots`) so future implementations can
-//! reshape the ordinary storage fields without touching them.
+//! The admin, pending admin, implementation, and frozen flags live at fixed
+//! pseudo-random slots (see `contract_registry_core::slots`) so future
+//! implementations can reshape the ordinary storage fields without touching
+//! them.
 
 #![cfg_attr(all(not(feature = "abi-gen"), not(test)), no_main, no_std)]
 
@@ -37,7 +38,9 @@ mod contract_registry {
     use alloc::vec::Vec;
     use contract_registry_core::MAX_PAGE_LIMIT;
     use contract_registry_core::naming::validate_contract_name;
-    use contract_registry_core::slots::{ADMIN_SLOT, FROZEN_SLOT, IMPLEMENTATION_SLOT};
+    use contract_registry_core::slots::{
+        ADMIN_SLOT, FROZEN_SLOT, IMPLEMENTATION_SLOT, PENDING_ADMIN_SLOT,
+    };
     use contract_registry_core::versioning::{
         INITIALIZE_SELECTOR, MAGIC, META_KEY, is_publishable_key, meta,
     };
@@ -101,6 +104,13 @@ mod contract_registry {
         pub new_admin: Address,
     }
 
+    /// The admin nominated a successor; the zero address means the pending
+    /// proposal was cancelled.
+    #[derive(pvm_contract_sdk::SolEvent)]
+    pub struct AdminProposed {
+        pub pending_admin: Address,
+    }
+
     #[derive(pvm_contract_sdk::SolEvent)]
     pub struct FrozenSet {
         pub frozen: bool,
@@ -127,6 +137,8 @@ mod contract_registry {
         admin: Lazy<Address>,
         #[slot(raw = FROZEN_SLOT)]
         frozen: Lazy<bool>,
+        #[slot(raw = PENDING_ADMIN_SLOT)]
+        pending_admin: Lazy<Address>,
     }
 
     impl ContractRegistry {
@@ -146,18 +158,45 @@ mod contract_registry {
             self.admin.get()
         }
 
-        /// Transfer admin permissions.
+        /// Nominate the next admin, who takes the role by calling
+        /// `acceptAdmin`; the current admin keeps every power until then.
+        /// The zero address cancels a pending proposal.
         #[pvm_contract_sdk::method]
-        pub fn set_admin(&mut self, new_admin: Address) -> Result<(), Error> {
+        pub fn propose_admin(&mut self, new_admin: Address) -> Result<(), Error> {
             self.require_admin()?;
+            self.pending_admin.set(&new_admin);
+            AdminProposed {
+                pending_admin: new_admin,
+            }
+            .emit(self.host());
+            Ok(())
+        }
+
+        /// Take the admin role as the proposed admin. The successor's own
+        /// call proves the address can act before the role moves. It ignores
+        /// the freeze, like the admin's own calls, so a frozen registry can
+        /// still change hands.
+        #[pvm_contract_sdk::method]
+        pub fn accept_admin(&mut self) -> Result<(), Error> {
+            let new_admin = self.pending_admin.get();
+            if new_admin == Address::ZERO || self.caller() != new_admin {
+                return Err(UnauthorizedAdmin.into());
+            }
             let previous_admin = self.admin.get();
             self.admin.set(&new_admin);
+            self.pending_admin.set(&Address::ZERO);
             AdminChanged {
                 previous_admin,
                 new_admin,
             }
             .emit(self.host());
             Ok(())
+        }
+
+        /// The proposed next admin; zero when no proposal is pending.
+        #[pvm_contract_sdk::method]
+        pub fn get_pending_admin(&self) -> Address {
+            self.pending_admin.get()
         }
 
         /// Upgrade in place: point the proxy at a new implementation while
@@ -228,7 +267,8 @@ mod contract_registry {
         }
 
         /// Freeze the registry: every state-changing call except the admin's
-        /// fails with `ContractFrozen()` until `unfreeze`. Reads always work.
+        /// and a pending admin's `acceptAdmin` fails with `ContractFrozen()`
+        /// until `unfreeze`. Reads always work.
         #[pvm_contract_sdk::method]
         pub fn freeze(&mut self) -> Result<(), Error> {
             self.require_admin()?;
@@ -1648,44 +1688,127 @@ mod tests {
         assert_eq!(contract.get_contract_count(), 0);
     }
 
-    // ─── setAdmin ────────────────────────────────────────────────────────────
+    // ─── proposeAdmin / acceptAdmin ──────────────────────────────────────────
 
     #[test]
-    fn set_admin_transfers_admin_rights() {
+    fn admin_moves_only_when_the_proposed_admin_accepts() {
         let (mut contract, mock) = deployed(ADMIN);
 
-        assert_eq!(contract.set_admin(Address(BOB)), Ok(()));
-        assert_eq!(contract.get_admin(), Address(BOB));
+        assert_eq!(contract.propose_admin(Address(BOB)), Ok(()));
+        assert_eq!(contract.get_pending_admin(), Address(BOB));
+        assert_eq!(contract.get_admin(), Address(ADMIN));
         assert_eq!(
             mock.events(),
+            vec![(
+                vec![topic0("AdminProposed(address)")],
+                word_addr(BOB).to_vec(),
+            )]
+        );
+
+        let (mut as_bob, bob_mock) = fork_with_caller(&mock, BOB);
+        assert_eq!(as_bob.accept_admin(), Ok(()));
+        assert_eq!(as_bob.get_admin(), Address(BOB));
+        assert_eq!(as_bob.get_pending_admin(), Address::ZERO);
+        assert_eq!(
+            bob_mock.events(),
             vec![(
                 vec![topic0("AdminChanged(address,address)")],
                 [word_addr(ADMIN), word_addr(BOB)].concat(),
             )]
         );
 
-        // The old admin is just a regular account now.
-        assert_eq!(contract.freeze(), Err(UnauthorizedAdmin.into()));
-        assert_eq!(
-            contract.set_admin(Address(ADMIN)),
-            Err(UnauthorizedAdmin.into())
-        );
-
-        // The new admin holds the permissions.
-        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        // The new admin holds the permissions; the old one is a regular
+        // account now.
         assert_eq!(as_bob.freeze(), Ok(()));
+        let (mut as_old_admin, _) = fork_with_caller(&bob_mock, ADMIN);
+        assert_eq!(as_old_admin.unfreeze(), Err(UnauthorizedAdmin.into()));
     }
 
     #[test]
-    fn set_admin_rejects_non_admin() {
+    fn propose_admin_rejects_non_admin() {
         let (_contract, mock) = deployed(ADMIN);
         let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
 
         assert_eq!(
-            as_alice.set_admin(Address(ALICE)),
+            as_alice.propose_admin(Address(ALICE)),
             Err(UnauthorizedAdmin.into())
         );
-        assert_eq!(as_alice.get_admin(), Address(ADMIN));
+        assert_eq!(as_alice.get_pending_admin(), Address::ZERO);
+    }
+
+    #[test]
+    fn accept_admin_rejects_everyone_but_the_pending_admin() {
+        let (mut contract, mock) = deployed(ADMIN);
+
+        // Nothing pending: the zero address is not a pending admin.
+        let (mut as_zero, _) = fork_with_caller(&mock, [0u8; 20]);
+        assert_eq!(as_zero.accept_admin(), Err(UnauthorizedAdmin.into()));
+
+        contract.propose_admin(Address(BOB)).unwrap();
+        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
+        assert_eq!(as_alice.accept_admin(), Err(UnauthorizedAdmin.into()));
+        assert_eq!(contract.accept_admin(), Err(UnauthorizedAdmin.into()));
+
+        assert_eq!(contract.get_admin(), Address(ADMIN));
+        assert_eq!(contract.get_pending_admin(), Address(BOB));
+    }
+
+    #[test]
+    fn proposing_the_zero_address_cancels_the_proposal() {
+        let (mut contract, mock) = deployed(ADMIN);
+        contract.propose_admin(Address(BOB)).unwrap();
+
+        assert_eq!(contract.propose_admin(Address::ZERO), Ok(()));
+        assert_eq!(contract.get_pending_admin(), Address::ZERO);
+        assert_eq!(
+            mock.events(),
+            vec![
+                (
+                    vec![topic0("AdminProposed(address)")],
+                    word_addr(BOB).to_vec(),
+                ),
+                (
+                    vec![topic0("AdminProposed(address)")],
+                    word_addr([0u8; 20]).to_vec(),
+                ),
+            ]
+        );
+
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(as_bob.accept_admin(), Err(UnauthorizedAdmin.into()));
+        assert_eq!(as_bob.get_admin(), Address(ADMIN));
+    }
+
+    #[test]
+    fn admin_keeps_its_powers_while_a_proposal_is_pending() {
+        let (mut contract, mock) = deployed(ADMIN);
+        contract.propose_admin(Address(BOB)).unwrap();
+
+        assert_eq!(contract.set_code(Address(NEW_IMPL)), Ok(()));
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(
+            as_bob.set_code(Address(ADDR_1)),
+            Err(UnauthorizedAdmin.into())
+        );
+
+        // A new proposal replaces the pending one.
+        assert_eq!(contract.propose_admin(Address(ALICE)), Ok(()));
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(as_bob.accept_admin(), Err(UnauthorizedAdmin.into()));
+        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
+        assert_eq!(as_alice.accept_admin(), Ok(()));
+        assert_eq!(as_alice.get_admin(), Address(ALICE));
+    }
+
+    #[test]
+    fn admin_changes_hands_while_frozen() {
+        let (mut contract, mock) = deployed(ADMIN);
+        contract.freeze().unwrap();
+        contract.propose_admin(Address(BOB)).unwrap();
+
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(as_bob.accept_admin(), Ok(()));
+        assert_eq!(as_bob.get_admin(), Address(BOB));
     }
 
     // ─── freeze / unfreeze ───────────────────────────────────────────────────
@@ -2049,7 +2172,10 @@ mod tests {
             ("getProxyCodeHash()", vec![]),
             ("setProxyCodeHash(bytes32)", encode(&PROXY_CODE_HASH)),
             ("isFrozen()", vec![]),
-            ("setAdmin(address)", encode(&Address(ADMIN))),
+            // Self-proposal, so the acceptAdmin case below succeeds.
+            ("proposeAdmin(address)", encode(&Address(ADMIN))),
+            ("acceptAdmin()", vec![]),
+            ("getPendingAdmin()", vec![]),
             ("setCode(address)", encode(&Address(NEW_IMPL))),
             ("freeze()", vec![]),
             ("unfreeze()", vec![]),

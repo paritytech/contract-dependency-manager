@@ -332,16 +332,23 @@ describe("registry upgrade + admin surface", () => {
         expect(lc(code.value)).toBe(lc(implAddress));
     });
 
-    test("getAdmin/setAdmin round-trip (self-assignment)", async () => {
+    test("proposeAdmin/acceptAdmin round-trip (self-handover)", async () => {
         const before = await registry.getAdmin.query();
         expect(before.success).toBe(true);
         const admin = String(before.value);
         expect(lc(admin)).not.toBe(ZERO_ADDR);
 
-        const r = await registry.setAdmin.tx(admin);
-        expect(r.ok).toBe(true);
+        const proposed = await registry.proposeAdmin.tx(admin);
+        expect(proposed.ok).toBe(true);
+        const pending = await registry.getPendingAdmin.query();
+        expect(lc(pending.value)).toBe(lc(admin));
+
+        const accepted = await registry.acceptAdmin.tx();
+        expect(accepted.ok).toBe(true);
 
         const after = await registry.getAdmin.query();
         expect(lc(after.value)).toBe(lc(admin));
+        const cleared = await registry.getPendingAdmin.query();
+        expect(lc(cleared.value)).toBe(ZERO_ADDR);
     });
 });
