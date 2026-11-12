@@ -135,7 +135,7 @@ pub struct ImportContractExists;
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct VersionOverflow;
 
-/// `setCode` target has no code on-chain.
+/// `setCode` target or published implementation has no code on-chain.
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct BadImplementation;
 
@@ -171,6 +171,7 @@ pub struct InvalidResolver;
 pub struct NoProxy;
 
 /// `publishWithInit` initialization target is the zero address.
+/// Also returned when the target has no code on-chain.
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct InvalidInitTarget;
 

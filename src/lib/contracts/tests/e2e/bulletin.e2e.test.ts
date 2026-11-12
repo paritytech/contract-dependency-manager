@@ -18,11 +18,17 @@ import { createContractFromClient } from "@parity/product-sdk-contracts";
 // Source-module import for the same vitest tree-shaking reason as the ABI
 // subpath imports above.
 import { MetadataPublisher, type Metadata } from "../../src/publisher";
-import { connectPpn, deployRegistry, type PpnHandle } from "./harness";
+import {
+    connectPpn,
+    deployRegistry,
+    deployBlob,
+    ensureTemplateBuilt,
+    COUNTER_PVM,
+    type PpnHandle,
+} from "./harness";
 
 const RUN = Date.now().toString(36);
 const NAME = `@test/bulletin-${RUN}`;
-const ADDR = "0x4242424242424242424242424242424242424242" as HexString;
 
 const METADATA: Metadata = {
     publish_block: 0,
@@ -39,11 +45,14 @@ let ppn: PpnHandle;
 let client: CdmChainClient;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let registry: any;
+// A deployed template counter: publish only accepts targets that have code.
+let impl: HexString;
 let publishedCid: string;
 
 beforeAll(async () => {
     ppn = await connectPpn();
     const deployed = await deployRegistry(ppn.wsUrl);
+    await ensureTemplateBuilt();
 
     const signer = prepareSigner("Alice");
     client = await createCdmChainClient({
@@ -58,6 +67,7 @@ beforeAll(async () => {
         CONTRACTS_REGISTRY_ABI,
         { defaultSigner: signer, defaultOrigin: ALICE_SS58 },
     );
+    impl = await deployBlob(client.raw.assetHub.getUnsafeApi(), signer, COUNTER_PVM);
 
     // 1) Store the metadata on the Bulletin chain.
     const publisher = new MetadataPublisher(signer, client.bulletin, client.raw.bulletin);
@@ -75,7 +85,7 @@ describe("bulletin ↔ asset hub ↔ gateway alignment", () => {
     });
 
     test("the registry records that CID for the package", async () => {
-        const published = await registry.publish.tx(NAME, 1n << 64n, ADDR, publishedCid);
+        const published = await registry.publish.tx(NAME, 1n << 64n, impl, publishedCid);
         expect(published.ok).toBe(true);
 
         const uri = await registry.getMetadataUri.query(NAME);
