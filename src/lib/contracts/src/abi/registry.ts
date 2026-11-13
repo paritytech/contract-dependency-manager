@@ -42,10 +42,24 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
-        name: "setAdmin",
+        name: "proposeAdmin",
         inputs: [{ name: "new_admin", type: "address" }],
         outputs: [],
         stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "acceptAdmin",
+        inputs: [],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "getPendingAdmin",
+        inputs: [],
+        outputs: [{ name: "", type: "address" }],
+        stateMutability: "view",
     },
     {
         type: "function",
@@ -495,6 +509,18 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
             },
             {
                 name: "new_admin",
+                type: "address",
+                indexed: false,
+            },
+        ],
+        anonymous: false,
+    },
+    {
+        type: "event",
+        name: "AdminProposed",
+        inputs: [
+            {
+                name: "pending_admin",
                 type: "address",
                 indexed: false,
             },
