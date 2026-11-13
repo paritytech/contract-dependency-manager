@@ -283,6 +283,12 @@ mod contract_registry {
             if init_target == Address::ZERO {
                 return Err(InvalidInitTarget.into());
             }
+            // A codeless target has no `initialize` to run. MockHost cannot
+            // seed code sizes; the e2e suite covers this guard.
+            #[cfg(target_arch = "riscv64")]
+            if self.host().code_size(&init_target.0) == 0 {
+                return Err(InvalidInitTarget.into());
+            }
             self.publish_internal(
                 contract_name,
                 version_key,
@@ -322,6 +328,13 @@ mod contract_registry {
                     latest: previous_latest,
                 }
                 .into());
+            }
+
+            // A codeless target would become the name's latest version.
+            // MockHost cannot seed code sizes; the e2e suite covers this guard.
+            #[cfg(target_arch = "riscv64")]
+            if self.host().code_size(&target.0) == 0 {
+                return Err(BadImplementation.into());
             }
 
             if info.proxy == Address::ZERO {

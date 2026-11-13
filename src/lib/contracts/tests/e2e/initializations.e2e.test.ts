@@ -284,6 +284,19 @@ describe("structural authorization", () => {
         );
         expect(dry.success).toBe(false);
     });
+
+    test("publishWithInit rejects an initialization target with no code", async () => {
+        const dry = await registry.publishWithInit.query(
+            NAME,
+            packVersionKey(2, 0, 1),
+            implB,
+            URI,
+            "0x1111111111111111111111111111111111111111",
+            { origin: ALICE_SS58 },
+        );
+        expect(dry.success).toBe(false);
+        expect(dry.value.decoded?.errorName).toBe("InvalidInitTarget");
+    });
 });
 
 describe("the shared-counter template example", () => {
