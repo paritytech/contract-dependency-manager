@@ -28,7 +28,3 @@ cdm.local.json
 # part of every CREATE3-derived address (see src/contract/create3/).
 !src/contract/create3/artifacts/*.polkavm
 !src/contract/proxy/artifacts/*.polkavm
-
-# Working registry-migration snapshots (the deploy script writes timestamped
-# copies under dist/; the migrations export CLI defaults to this path)
-src/migrations/registry-migration*.json
