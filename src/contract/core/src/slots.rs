@@ -1,4 +1,5 @@
-//! Fixed storage slots shared by the registry implementation and its proxy.
+//! Fixed storage slots shared by the EIP-1967 proxy and the implementations
+//! it fronts (the registry and the resolver).
 //!
 //! Upgrade/admin state lives at pseudo-random slots outside the sequential
 //! slot range (the EIP-1967 scheme), so a future implementation can reshape
@@ -29,7 +30,7 @@ const fn minus_one(mut bytes: [u8; 32]) -> [u8; 32] {
 /// `0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc`
 pub const IMPLEMENTATION_SLOT: [u8; 32] = eip1967_slot(b"eip1967.proxy.implementation");
 
-/// Address allowed to upgrade, freeze, and import registry state.
+/// Address allowed to upgrade and freeze the registry.
 /// `0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103`
 pub const ADMIN_SLOT: [u8; 32] = eip1967_slot(b"eip1967.proxy.admin");
 
@@ -62,8 +63,11 @@ mod tests {
 
     #[test]
     fn slots_are_distinct() {
-        assert_ne!(IMPLEMENTATION_SLOT, ADMIN_SLOT);
-        assert_ne!(IMPLEMENTATION_SLOT, FROZEN_SLOT);
-        assert_ne!(ADMIN_SLOT, FROZEN_SLOT);
+        let all = [IMPLEMENTATION_SLOT, ADMIN_SLOT, FROZEN_SLOT];
+        for (i, a) in all.iter().enumerate() {
+            for b in &all[i + 1..] {
+                assert_ne!(a, b);
+            }
+        }
     }
 }

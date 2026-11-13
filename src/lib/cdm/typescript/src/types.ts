@@ -107,7 +107,7 @@ export interface ResolvedContract {
     address: string;
     abi: AbiEntry[];
     abiPath: string;
-    version: number;
+    version: string;
     metadataCid: string;
 }
 

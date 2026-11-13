@@ -1,30 +1,19 @@
 import type { AbiEntry, AbiParam } from "@parity/product-sdk-contracts";
 
 /**
- * ABIs for the ContractRegistry contract pair.
+ * Hand-mirrored ABIs of `src/contract` (the registry implementation) and
+ * `src/contract/eip1967-proxy`, matching `target/release/*.abi.json` from
+ * `cargo pvm-contract build`; `tests/registry-abi-sync.test.ts` diffs them
+ * against the built artifacts when those exist.
  *
- * Source of truth: `src/contract` (implementation) and `src/contract/proxy`
- * (EIP-1967 proxy) compiled to PolkaVM; these arrays mirror the Solidity-ABI
- * exports produced by `cargo pvm-contract build`
- * (`target/release/contract-registry.abi.json` and
- * `target/release/contract-registry-proxy.abi.json`). Keep them bit-for-bit
- * identical to the generated metadata — `tests/registry-abi-sync.test.ts`
- * compares them against the built artifacts when those exist.
+ * `CONTRACTS_REGISTRY_ABI` is used at the registry proxy address; the EIP-1967
+ * proxy's own ABI is only needed to deploy one (`constructor(address
+ * implementation, address admin)`), in front of the registry or the resolver.
  *
- * The proxy holds the stable registry address and delegate-forwards every
- * call to the implementation, so `CONTRACTS_REGISTRY_ABI` (the
- * implementation's ABI) is used AT THE PROXY ADDRESS. The proxy's own ABI is
- * only needed to deploy it (`constructor(address implementation)`).
- *
- * Multi-value returns use the HISTORICAL single-tuple wire encoding — each
- * such function has ONE unnamed tuple-typed output with named components —
- * matching every already-deployed registry so old CLIs keep decoding.
- *
- * Naming note: where the generated JSON names a tuple component `is_some`,
- * this file uses the historical `isSome` (product-sdk keys decoded objects by
- * component name and every consumer reads `isSome`/`value`). Names are
- * display/decode keys only — types, structure, and order are bit-exact with
- * the generated ABI.
+ * Multi-value returns are ONE unnamed tuple output with named components.
+ * Where the generated JSON says `is_some`, this file keeps `isSome` —
+ * product-sdk keys decoded objects by component name and every consumer
+ * reads `isSome`/`value`; types, structure, and order stay bit-exact.
  */
 
 /** Generated-ABI entry shape: `AbiEntry` plus the event-only fields. */
@@ -74,6 +63,41 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
+        name: "setProxyCodeHash",
+        inputs: [{ name: "code_hash", type: "bytes32" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "getProxyCodeHash",
+        inputs: [],
+        outputs: [{ name: "", type: "bytes32" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "setResolver",
+        inputs: [{ name: "resolver", type: "address" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "getResolver",
+        inputs: [],
+        outputs: [{ name: "", type: "address" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "upgradeResolver",
+        inputs: [{ name: "new_implementation", type: "address" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
         name: "freeze",
         inputs: [],
         outputs: [],
@@ -95,36 +119,50 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
-        name: "adminImportContracts",
+        name: "publish",
         inputs: [
-            {
-                name: "contracts",
-                type: "tuple[]",
-                components: [
-                    { name: "contract_name", type: "string" },
-                    { name: "owner", type: "address" },
-                    {
-                        name: "versions",
-                        type: "tuple[]",
-                        components: [
-                            { name: "address", type: "address" },
-                            { name: "metadata_uri", type: "string" },
-                        ],
-                    },
-                ],
-            },
+            { name: "contract_name", type: "string" },
+            { name: "version_key", type: "uint128" },
+            { name: "target", type: "address" },
+            { name: "metadata_uri", type: "string" },
         ],
         outputs: [],
         stateMutability: "nonpayable",
     },
     {
         type: "function",
-        name: "publishLatest",
+        name: "publishWithInit",
         inputs: [
             { name: "contract_name", type: "string" },
-            { name: "contract_address", type: "address" },
+            { name: "version_key", type: "uint128" },
+            { name: "target", type: "address" },
             { name: "metadata_uri", type: "string" },
+            { name: "init_target", type: "address" },
         ],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "setMinSupported",
+        inputs: [
+            { name: "contract_name", type: "string" },
+            { name: "version_key", type: "uint128" },
+        ],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "freezeContract",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "unfreezeContract",
+        inputs: [{ name: "contract_name", type: "string" }],
         outputs: [],
         stateMutability: "nonpayable",
     },
@@ -162,11 +200,8 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
-        name: "getAddressAtVersion",
-        inputs: [
-            { name: "contract_name", type: "string" },
-            { name: "version", type: "uint32" },
-        ],
+        name: "getProxy",
+        inputs: [{ name: "contract_name", type: "string" }],
         outputs: [
             {
                 name: "",
@@ -181,10 +216,17 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
-        name: "getMetadataUriAtVersion",
+        name: "getLatestKey",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [{ name: "", type: "uint128" }],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "getVersionAt",
         inputs: [
             { name: "contract_name", type: "string" },
-            { name: "version", type: "uint32" },
+            { name: "index", type: "uint32" },
         ],
         outputs: [
             {
@@ -192,7 +234,9 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
                 type: "tuple",
                 components: [
                     { name: "isSome", type: "bool" },
-                    { name: "value", type: "string" },
+                    { name: "version_key", type: "uint128" },
+                    { name: "target", type: "address" },
+                    { name: "metadata_uri", type: "string" },
                 ],
             },
         ],
@@ -223,7 +267,7 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
                         type: "tuple[]",
                         components: [
                             { name: "name", type: "string" },
-                            { name: "version", type: "uint32" },
+                            { name: "version_key", type: "uint128" },
                             { name: "address", type: "address" },
                             { name: "metadata_uri", type: "string" },
                             { name: "owner", type: "address" },
@@ -255,57 +299,250 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
         outputs: [{ name: "", type: "uint32" }],
         stateMutability: "view",
     },
-    { type: "error", name: "Unauthorized", inputs: [] },
-    { type: "error", name: "UnauthorizedAdmin", inputs: [] },
-    { type: "error", name: "ContractFrozen", inputs: [] },
-    { type: "error", name: "ContractNameEmpty", inputs: [] },
-    { type: "error", name: "ContractNameTooLong", inputs: [] },
-    { type: "error", name: "ContractNameInvalid", inputs: [] },
-    { type: "error", name: "ImportVersionsEmpty", inputs: [] },
-    { type: "error", name: "ImportContractExists", inputs: [] },
-    { type: "error", name: "VersionOverflow", inputs: [] },
-    { type: "error", name: "BadImplementation", inputs: [] },
+    {
+        type: "error",
+        name: "Unauthorized",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "UnauthorizedAdmin",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "ContractFrozen",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "ContractNameEmpty",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "ContractNameTooLong",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "ContractNameInvalid",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "VersionOverflow",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "BadImplementation",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "InvalidVersionKey",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "VersionNotMonotonic",
+        inputs: [
+            { name: "", type: "uint128" },
+            { name: "", type: "uint128" },
+        ],
+    },
+    {
+        type: "error",
+        name: "ProxyCodeHashUnset",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "ResolverUnset",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "ResolverAlreadySet",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "InvalidResolver",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "InvalidInitTarget",
+        inputs: [],
+    },
     {
         type: "event",
         name: "Published",
-        anonymous: false,
         inputs: [
-            { indexed: true, name: "name", type: "string" },
-            { indexed: false, name: "version", type: "uint32" },
-            { indexed: false, name: "address", type: "address" },
+            {
+                name: "name",
+                type: "string",
+                indexed: true,
+            },
+            {
+                name: "version_key",
+                type: "uint128",
+                indexed: false,
+            },
+            {
+                name: "target",
+                type: "address",
+                indexed: false,
+            },
         ],
+        anonymous: false,
+    },
+    {
+        type: "event",
+        name: "ProxyCreated",
+        inputs: [
+            {
+                name: "name",
+                type: "string",
+                indexed: true,
+            },
+            {
+                name: "proxy",
+                type: "address",
+                indexed: false,
+            },
+        ],
+        anonymous: false,
+    },
+    {
+        type: "event",
+        name: "Initialized",
+        inputs: [
+            {
+                name: "name",
+                type: "string",
+                indexed: true,
+            },
+            {
+                name: "version_key",
+                type: "uint128",
+                indexed: false,
+            },
+            {
+                name: "init_target",
+                type: "address",
+                indexed: false,
+            },
+        ],
+        anonymous: false,
+    },
+    {
+        type: "event",
+        name: "MinSupportedSet",
+        inputs: [
+            {
+                name: "name",
+                type: "string",
+                indexed: true,
+            },
+            {
+                name: "version_key",
+                type: "uint128",
+                indexed: false,
+            },
+        ],
+        anonymous: false,
+    },
+    {
+        type: "event",
+        name: "ContractFrozenSet",
+        inputs: [
+            {
+                name: "name",
+                type: "string",
+                indexed: true,
+            },
+            {
+                name: "frozen",
+                type: "bool",
+                indexed: false,
+            },
+        ],
+        anonymous: false,
     },
     {
         type: "event",
         name: "Upgraded",
+        inputs: [
+            {
+                name: "implementation",
+                type: "address",
+                indexed: true,
+            },
+        ],
         anonymous: false,
-        inputs: [{ indexed: true, name: "implementation", type: "address" }],
     },
     {
         type: "event",
         name: "AdminChanged",
-        anonymous: false,
         inputs: [
-            { indexed: false, name: "previous_admin", type: "address" },
-            { indexed: false, name: "new_admin", type: "address" },
+            {
+                name: "previous_admin",
+                type: "address",
+                indexed: false,
+            },
+            {
+                name: "new_admin",
+                type: "address",
+                indexed: false,
+            },
         ],
+        anonymous: false,
     },
     {
         type: "event",
         name: "FrozenSet",
+        inputs: [
+            {
+                name: "frozen",
+                type: "bool",
+                indexed: false,
+            },
+        ],
         anonymous: false,
-        inputs: [{ indexed: false, name: "frozen", type: "bool" }],
     },
-    { type: "error", name: "InvalidCalldata", inputs: [] },
-    { type: "error", name: "CalldataTooLarge", inputs: [] },
-    { type: "error", name: "NoSelector", inputs: [] },
-    { type: "error", name: "UnknownSelector", inputs: [] },
-    { type: "error", name: "NonPayableValueReceived", inputs: [] },
+    {
+        type: "error",
+        name: "InvalidCalldata",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "CalldataTooLarge",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "NoSelector",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "UnknownSelector",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "NonPayableValueReceived",
+        inputs: [],
+    },
 ];
 
 export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = REGISTRY_ABI;
 
-const REGISTRY_PROXY_ABI: RegistryAbiEntry[] = [
+const EIP1967_PROXY_ABI: RegistryAbiEntry[] = [
     {
         type: "constructor",
         inputs: [
@@ -321,9 +558,5 @@ const REGISTRY_PROXY_ABI: RegistryAbiEntry[] = [
     { type: "error", name: "NonPayableValueReceived", inputs: [] },
 ];
 
-/**
- * ABI of the EIP-1967 proxy that fronts the registry. Deploy-time only: the
- * proxy exposes no methods of its own — call the registry through
- * `CONTRACTS_REGISTRY_ABI` at the proxy address.
- */
-export const CONTRACTS_REGISTRY_PROXY_ABI: AbiEntry[] = REGISTRY_PROXY_ABI;
+/** Deploy-time only: the proxy exposes no methods of its own. */
+export const CONTRACTS_EIP1967_PROXY_ABI: AbiEntry[] = EIP1967_PROXY_ABI;

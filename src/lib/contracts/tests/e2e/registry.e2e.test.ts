@@ -4,8 +4,8 @@
 // (`beforeAll`) —
 // the harness shells out to `deploy-registry.ts`, which bootstraps the
 // CREATE3 factory, deploys the implementation blob, deploys the EIP-1967
-// proxy through the factory, and hands back the proxy address. All calls
-// below go through the proxy with
+// proxy through the factory, deploys the resolver pair, uploads the
+// per-name shim blob, and hands back the proxy address. All calls below go through the proxy with
 // the implementation's ABI, via the same code path CDM's TS pipeline uses
 // (`createContractFromClient` + the embedded `CONTRACTS_REGISTRY_ABI`).
 // Each assertion is its own `test()` for granular failure attribution.
@@ -25,16 +25,26 @@ import { ALICE_SS58 } from "@parity/cdm-utils";
 // Vite resolver tree-shakes the package's `dist/index.js` (re-exports +
 // Node-only deps in adjacent modules) and CONTRACTS_REGISTRY_ABI comes back
 // undefined. The dedicated subpath maps straight to `dist/abi.js`.
-import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder/abi";
+import { CONTRACTS_REGISTRY_ABI, CONTRACT_RESOLVER_ABI } from "@parity/cdm-builder/abi";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
-import { connectPpn, deployRegistry, type PpnHandle } from "./harness";
+import {
+    connectPpn,
+    deployRegistry,
+    deployBlob,
+    ensureTemplateBuilt,
+    COUNTER_PVM,
+    type PpnHandle,
+} from "./harness";
 
 // Unique per run so the suite holds on networks with prior registry state.
 const RUN = Date.now().toString(36);
 const NAME = `@test/rt-${RUN}`;
-const ADDR = "0x1111111111111111111111111111111111111111" as HexString;
 // 59-byte URI exercises the spilled-chunks (long-form) Solidity string layout.
 const URI = "ipfs://bafy2bzaceblahblahQmExampleLongCidExercisingSpilledChunks";
+// Packed semver keys: major<<64 | minor<<32 | patch.
+const KEY_1_0_0 = 1n << 64n;
+const KEY_1_1_0 = (1n << 64n) | (1n << 32n);
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
 
 let ppn: PpnHandle;
 let chainClient: CdmAssetHubClient;
@@ -42,8 +52,13 @@ let chainClient: CdmAssetHubClient;
 let baselineCount: number;
 // The implementation blob's address — the proxy delegates every call to it.
 let implAddress: string;
+let resolverAddress: string;
+// A deployed template counter: publish only accepts targets that have code.
+let target: HexString;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let registry: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let resolver: any;
 
 function lc(v: unknown): string {
     return String(v).toLowerCase();
@@ -66,17 +81,23 @@ beforeAll(async () => {
     ppn = await connectPpn();
     const deployed = await deployRegistry(ppn.wsUrl);
     implAddress = deployed.implAddress;
+    resolverAddress = deployed.resolverAddress;
+    await ensureTemplateBuilt();
 
     const signer = prepareSigner("Alice");
     chainClient = await createCdmAssetHubClient(ppn.wsUrl, "local");
     await chainClient.raw.assetHub.getChainSpecData();
-    registry = await createContractFromClient(
-        chainClient.raw.assetHub,
-        chainClient.descriptors.assetHub,
-        deployed.address,
-        CONTRACTS_REGISTRY_ABI,
-        { defaultSigner: signer, defaultOrigin: ALICE_SS58 },
-    );
+    const contractAt = (address: HexString, abi: typeof CONTRACTS_REGISTRY_ABI) =>
+        createContractFromClient(
+            chainClient.raw.assetHub,
+            chainClient.descriptors.assetHub,
+            address,
+            abi,
+            { defaultSigner: signer, defaultOrigin: ALICE_SS58 },
+        );
+    registry = await contractAt(deployed.address, CONTRACTS_REGISTRY_ABI);
+    resolver = await contractAt(deployed.resolverAddress, CONTRACT_RESOLVER_ABI);
+    target = await deployBlob(chainClient.raw.assetHub.getUnsafeApi(), signer, COUNTER_PVM);
 
     const count = await registry.getContractCount.query();
     baselineCount = Number(count.value ?? 0);
@@ -121,11 +142,26 @@ describe("registry pre-publish (this run's name unseen)", () => {
         expect(r.success).toBe(true);
         expect(lc(r.value)).toBe(lc(implAddress));
     });
+
+    test("getResolver is configured by the deploy flow", async () => {
+        const r = await registry.getResolver.query();
+        expect(r.success).toBe(true);
+        expect(lc(r.value)).toBe(lc(resolverAddress));
+    });
+
+    test("getProxyCodeHash is configured by the deploy flow", async () => {
+        const r = await registry.getProxyCodeHash.query();
+        expect(r.success).toBe(true);
+        // papi decodes bytes32 as Binary; a zero hash would mean publish
+        // can't instantiate per-name proxies.
+        const hex = typeof r.value === "string" ? r.value : (r.value?.asHex?.() ?? "");
+        expect(lc(hex)).not.toBe(`0x${"0".repeat(64)}`);
+    });
 });
 
-describe("registry publishLatest + post-publish queries", () => {
-    test("publishLatest tx finalizes", async () => {
-        const r = await registry.publishLatest.tx(NAME, ADDR, URI);
+describe("registry publish + post-publish queries", () => {
+    test("publish tx finalizes (first publish instantiates the name's proxy)", async () => {
+        const r = await registry.publish.tx(NAME, KEY_1_0_0, target, URI);
         expect(r.ok).toBe(true);
     });
 
@@ -134,29 +170,44 @@ describe("registry publishLatest + post-publish queries", () => {
         expect(r.value).toBe(1);
     });
 
-    test("getAddress returns the published address", async () => {
+    test("getAddress returns the per-name proxy — not the published target", async () => {
         const r = await registry.getAddress.query(NAME);
         const opt = unwrapOption<string>(r.value);
         expect(opt.isSome).toBe(true);
-        expect(lc(opt.value)).toBe(lc(ADDR));
+        expect(lc(opt.value)).not.toBe(lc(target));
+        expect(lc(opt.value)).not.toBe(ZERO_ADDR);
+
+        // ... and it is exactly what getProxy reports.
+        const p = await registry.getProxy.query(NAME);
+        const proxy = unwrapOption<string>(p.value);
+        expect(proxy.isSome).toBe(true);
+        expect(lc(proxy.value)).toBe(lc(opt.value));
+    });
+
+    test("getLatestKey returns the packed semver key", async () => {
+        const r = await registry.getLatestKey.query(NAME);
+        expect(BigInt(r.value)).toBe(KEY_1_0_0);
+    });
+
+    test("getVersionAt(0) returns key, target, and URI", async () => {
+        const r = await registry.getVersionAt.query(NAME, 0);
+        expect(r.success).toBe(true);
+        const row = r.value as {
+            isSome?: boolean;
+            version_key?: unknown;
+            versionKey?: unknown;
+            target?: unknown;
+            metadata_uri?: unknown;
+            metadataUri?: unknown;
+        };
+        expect(row.isSome).toBe(true);
+        expect(BigInt(String(row.version_key ?? row.versionKey))).toBe(KEY_1_0_0);
+        expect(lc(row.target)).toBe(lc(target));
+        expect(row.metadata_uri ?? row.metadataUri).toBe(URI);
     });
 
     test("getMetadataUri returns the long-form URI (exercises spilled chunks)", async () => {
         const r = await registry.getMetadataUri.query(NAME);
-        const opt = unwrapOption<string>(r.value);
-        expect(opt.isSome).toBe(true);
-        expect(opt.value).toBe(URI);
-    });
-
-    test("getAddressAtVersion(0) matches the latest address", async () => {
-        const r = await registry.getAddressAtVersion.query(NAME, 0);
-        const opt = unwrapOption<string>(r.value);
-        expect(opt.isSome).toBe(true);
-        expect(lc(opt.value)).toBe(lc(ADDR));
-    });
-
-    test("getMetadataUriAtVersion(0) matches the latest URI", async () => {
-        const r = await registry.getMetadataUriAtVersion.query(NAME, 0);
         const opt = unwrapOption<string>(r.value);
         expect(opt.isSome).toBe(true);
         expect(opt.value).toBe(URI);
@@ -168,7 +219,6 @@ describe("registry publishLatest + post-publish queries", () => {
     });
 
     test("getOwner returns a non-zero address (the signer's mapped EVM addr)", async () => {
-        const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
         const r = await registry.getOwner.query(NAME);
         expect(typeof r.value).toBe("string");
         expect(lc(r.value)).not.toBe(ZERO_ADDR);
@@ -177,6 +227,33 @@ describe("registry publishLatest + post-publish queries", () => {
     test("getContractCount grew by exactly one", async () => {
         const r = await registry.getContractCount.query();
         expect(Number(r.value)).toBe(baselineCount + 1);
+    });
+
+    test("second publish keeps the address stable and bumps the latest key", async () => {
+        const r = await registry.publish.tx(NAME, KEY_1_1_0, target, URI);
+        expect(r.ok).toBe(true);
+
+        const addr = await registry.getAddress.query(NAME);
+        const proxy = await registry.getProxy.query(NAME);
+        expect(lc(unwrapOption(addr.value).value)).toBe(lc(unwrapOption(proxy.value).value));
+
+        const key = await registry.getLatestKey.query(NAME);
+        expect(BigInt(key.value)).toBe(KEY_1_1_0);
+
+        const count = await registry.getVersionCount.query(NAME);
+        expect(count.value).toBe(2);
+    });
+
+    test("setMinSupported writes the floor to the resolver", async () => {
+        const r = await registry.setMinSupported.tx(NAME, KEY_1_1_0);
+        expect(r.ok).toBe(true);
+
+        const proxy = unwrapOption<string>((await registry.getProxy.query(NAME)).value).value;
+        const routing = await resolver.routingOf.query(proxy);
+        expect(routing.success).toBe(true);
+        expect(BigInt(String((routing.value as { min_supported: unknown }).min_supported))).toBe(
+            KEY_1_1_0,
+        );
     });
 
     test("getContracts returns latest package details in one page", async () => {
@@ -195,19 +272,24 @@ describe("registry publishLatest + post-publish queries", () => {
         });
         expect(entry).toBeDefined();
 
+        // The entry carries the latest packed key and the STABLE address (the
+        // per-name proxy — so anything but the raw target we published).
+        const proxyQuery = await registry.getProxy.query(NAME);
+        const proxyAddr = unwrapOption<string>(proxyQuery.value).value;
         if (Array.isArray(entry)) {
-            expect(entry[1]).toBe(0);
-            expect(lc(entry[2])).toBe(lc(ADDR));
+            expect(BigInt(String(entry[1]))).toBe(KEY_1_1_0);
+            expect(lc(entry[2])).toBe(lc(proxyAddr));
             expect(entry[3]).toBe(URI);
         } else {
             const row = entry as {
-                version?: unknown;
+                version_key?: unknown;
+                versionKey?: unknown;
                 address?: unknown;
                 metadata_uri?: unknown;
                 metadataUri?: unknown;
             };
-            expect(Number(row.version)).toBe(0);
-            expect(lc(row.address)).toBe(lc(ADDR));
+            expect(BigInt(String(row.version_key ?? row.versionKey))).toBe(KEY_1_1_0);
+            expect(lc(row.address)).toBe(lc(proxyAddr));
             expect(row.metadata_uri ?? row.metadataUri).toBe(URI);
         }
     });
@@ -228,7 +310,7 @@ describe("registry freeze / unfreeze", () => {
 
     test("the admin can still publish while frozen", async () => {
         const FROZEN_NAME = `@test/frozen-${RUN}`;
-        const r = await registry.publishLatest.tx(FROZEN_NAME, ADDR, URI);
+        const r = await registry.publish.tx(FROZEN_NAME, KEY_1_0_0, target, URI);
         expect(r.ok).toBe(true);
 
         const count = await registry.getVersionCount.query(FROZEN_NAME);
@@ -264,7 +346,7 @@ describe("registry upgrade + admin surface", () => {
         const before = await registry.getAdmin.query();
         expect(before.success).toBe(true);
         const admin = String(before.value);
-        expect(lc(admin)).not.toBe("0x0000000000000000000000000000000000000000");
+        expect(lc(admin)).not.toBe(ZERO_ADDR);
 
         const r = await registry.setAdmin.tx(admin);
         expect(r.ok).toBe(true);

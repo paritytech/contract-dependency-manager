@@ -1,10 +1,10 @@
 {
     "dependencies": {
-        "@test/sample": 1
+        "@test/sample": "^1.0.0"
     },
     "contracts": {
         "@test/sample": {
-            "version": 1,
+            "version": "1.0.0",
             "abi": [
                 {
                     "type": "constructor",

@@ -1,0 +1,25 @@
+# E2E fixture crate for the resolver suite: a resolver implementation that
+# answers every `resolve` with a marker and carries the EIP-1967 admin
+# surface, so the registry can upgrade to it and back.
+[workspace]
+
+[package]
+name = "resolver-fixture"
+version = "1.0.0"
+edition = "2024"
+publish = false
+
+[features]
+abi-gen = ["pvm-contract-sdk/abi-gen"]
+
+[[bin]]
+name = "resolver-fix"
+path = "src/main.rs"
+
+[dependencies]
+contract-registry-core = { path = "../../../../../../contract/core" }
+pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "main", features = [
+    "alloc",
+] }
+polkavm-derive = "0.35"
+picoalloc = "5.2"

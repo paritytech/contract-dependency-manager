@@ -321,6 +321,12 @@
   height: 12px;
 }
 
+.sidebar-address-note {
+  color: var(--color-text-quaternary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
 .sidebar-keywords {
   display: flex;
   flex-wrap: wrap;
@@ -482,6 +488,15 @@
   border: 1px solid rgba(34, 197, 94, 0.45);
   border-radius: 999px;
   color: rgba(34, 197, 94, 0.85);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.package-version-unsupported {
+  padding: 2px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  color: var(--color-text-tertiary);
   font-size: 11px;
   letter-spacing: 0.02em;
 }

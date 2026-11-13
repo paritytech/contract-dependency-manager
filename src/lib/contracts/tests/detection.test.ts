@@ -30,6 +30,16 @@ describe("detection via cargo metadata", () => {
         expect(order.crateNames.length).toBe(3);
     });
 
+    test("crate versions come from Cargo.toml [package].version", () => {
+        // The workspace-inherited `version.workspace = true` in the template
+        // resolves to the root `[workspace.package]` version via cargo
+        // metadata, so every contract carries an exact semver string.
+        const contracts = detectContracts(TEMPLATE_DIR);
+        for (const contract of contracts) {
+            expect(contract.version).toBe("0.1.0");
+        }
+    });
+
     test("CDM package names come from [package.metadata.cdm] in Cargo.toml", () => {
         // After the new SDK migration, cdmPackage is resolved at detection
         // time from `[package.metadata.cdm]` (surfaced by `cargo metadata`),

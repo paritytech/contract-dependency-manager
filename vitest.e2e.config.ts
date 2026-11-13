@@ -16,5 +16,11 @@ export default defineConfig({
         testTimeout: 60_000,
         hookTimeout: 300_000,
         fileParallelism: false,
+        server: {
+            deps: {
+                // Same as vitest.config.ts.
+                external: [/src\/lib\/(contracts|env|utils)\/dist\//],
+            },
+        },
     },
 });

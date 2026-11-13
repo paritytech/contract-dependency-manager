@@ -1,11 +1,37 @@
-//! EIP-1967 proxy for the CDM ContractRegistry.
+//! Per-name CDM shim: the frozen blob behind every published contract name.
+//! One instance per name owns the name's permanent address, storage, and
+//! balance, and holds no policy at all: every call is answered by asking the
+//! shared resolver what to do and then doing exactly that. The blob can never
+//! change on-chain, so the protocol below is permanent.
 //!
-//! This contract owns the registry's stable on-chain address. It holds no
-//! logic of its own: every call is forwarded via `delegate_call` to the
-//! implementation address stored at the EIP-1967 implementation slot, so the
-//! implementation's methods run against this proxy's storage. Upgrades go
-//! through the implementation's `setCode`, which rewrites that slot — the
-//! proxy itself never needs to change.
+//! **Resolver address** — pallet immutable data, 20 bytes, written by the
+//! constructor `new(address resolver)`. pallet-revive accepts
+//! `set_immutable_data` only from a constructor, so no delegated code can ever
+//! redirect a shim.
+//!
+//! **Request** — one read-only call to the resolver:
+//! `resolve(address caller, uint256 value, bytes data)`, i.e. the selector
+//! `0x6a418533`, the caller word, the value word, the offset word `0x60`, the
+//! length word, then the shim's raw calldata zero-padded to 32 bytes
+//! (`contract_registry_core::versioning::resolve::request_header`).
+//!
+//! **Response** — the ABI encoding of
+//! `Resolution { uint8 kind, address target, uint32 strip, bytes payload }`:
+//! the offset word `0x20`, the kind word, the target word, the strip word, the
+//! offset word `0x80`, the length word, then the payload zero-padded.
+//!
+//! - kind `0` (Return): the call returns `payload`.
+//! - kind `1` (Delegate): the shim delegate-calls `target` with
+//!   `payload ++ data[strip..]` and bubbles the result unchanged, so every
+//!   version of the name runs against this storage.
+//!
+//! A resolver revert bubbles byte-for-byte: the resolver's typed errors are
+//! what callers see. Any other answer reverts `MalformedResolution()`, the
+//! shim's only own error.
+//!
+//! Instantiated by the registry via CREATE2 with the resolver as the one
+//! constructor argument, so a name's address is a pure function of
+//! (registry, this blob, resolver address, name).
 
 #![cfg_attr(all(not(feature = "abi-gen"), not(test)), no_main, no_std)]
 
@@ -14,153 +40,291 @@
 #[cfg(target_arch = "riscv64")]
 polkavm_derive::min_stack_size!(131072);
 
-#[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 262144)]
-mod registry_proxy {
+// Calldata and return data are each capped at 128 KiB: the SDK dispatcher
+// copies the calldata once, the request holds it again, and a bubbled revert
+// payload is copied once more.
+#[pvm_contract_sdk::contract(allocator = "bump", allocator_size = 524288)]
+mod contract_proxy {
     use alloc::vec;
-    use contract_registry_core::slots::{ADMIN_SLOT, IMPLEMENTATION_SLOT};
-    use pvm_contract_sdk::{Address, CallFlags, EmptyError, HostApi, Lazy};
+    use alloc::vec::Vec;
+    use contract_registry_core::versioning::resolve;
+    use pvm_contract_sdk::{Address, CallFlags, HostApi, SolError};
 
-    pub struct RegistryProxy {
-        /// No ordinary fields: slots 0.. belong to the implementation's
-        /// storage, reached through `delegate_call`.
-        #[slot(raw = IMPLEMENTATION_SLOT)]
-        implementation: Lazy<Address>,
-        #[slot(raw = ADMIN_SLOT)]
-        admin: Lazy<Address>,
+    /// The resolver answered with something other than a `Resolution`.
+    #[derive(Debug, PartialEq, Eq, SolError)]
+    pub struct MalformedResolution;
+
+    #[derive(Debug, PartialEq, Eq, SolError)]
+    pub enum Error {
+        MalformedResolution(MalformedResolution),
     }
 
-    impl RegistryProxy {
-        /// `admin` is an explicit argument, NOT `caller()`: deployed through
-        /// the CREATE3 factory, this constructor's caller is the single-use
-        /// child deployer — pinning admin to it would lock the registry's
-        /// admin surface to a dead contract forever. CREATE3 addresses don't
-        /// commit to constructor input, so passing the admin is free.
+    /// No fields: every storage slot belongs to the name's implementations.
+    pub struct ContractProxy {}
+
+    impl ContractProxy {
         #[pvm_contract_sdk::constructor]
-        pub fn new(&mut self, implementation: Address, admin: Address) {
-            self.implementation.set(&implementation);
-            self.admin.set(&admin);
+        pub fn new(&mut self, resolver: Address) {
+            self.host().set_immutable_data(&resolver.0);
         }
 
-        /// Forward any call — the proxy declares no methods, so every
-        /// selector lands here — and bubble the implementation's return or
-        /// revert data unchanged.
+        /// Every call lands here. Payable: value accrues to this address.
         #[pvm_contract_sdk::fallback]
-        pub fn fallback(&mut self) -> Result<(), EmptyError> {
+        #[pvm_contract_sdk::payable]
+        pub fn fallback(&mut self) -> Result<(), Error> {
             let host = self.host();
 
-            let input_len = host.call_data_size() as usize;
-            let mut input = vec![0u8; input_len];
-            host.call_data_copy(&mut input, 0);
+            let data_len = host.call_data_size() as usize;
+            let data_end = resolve::REQUEST_HEADER_LEN + data_len;
+            let mut request = vec![0u8; resolve::REQUEST_HEADER_LEN + data_len.div_ceil(32) * 32];
+            let mut caller = [0u8; 20];
+            host.caller(&mut caller);
+            let mut value = [0u8; 32];
+            host.value_transferred(&mut value);
+            value.reverse();
+            request[..resolve::REQUEST_HEADER_LEN]
+                .copy_from_slice(&resolve::request_header(&caller, &value, data_len));
+            host.call_data_copy(&mut request[resolve::REQUEST_HEADER_LEN..data_end], 0);
 
-            let target = self.implementation.get();
-            let result =
-                host.delegate_call_evm(CallFlags::empty(), &target.0, u64::MAX, &input, None);
-
-            let output_len = host.return_data_size() as usize;
-            let mut output = vec![0u8; output_len];
-            let mut output_ref: &mut [u8] = &mut output;
-            host.return_data_copy(&mut output_ref, 0);
-
-            if result.is_err() {
-                host.revert(&output);
+            let mut resolver = [0u8; 20];
+            let mut resolver_ref: &mut [u8] = &mut resolver;
+            host.get_immutable_data(&mut resolver_ref);
+            let asked = host.call_evm(
+                CallFlags::READ_ONLY,
+                &resolver,
+                u64::MAX,
+                &[0u8; 32],
+                &request,
+                None,
+            );
+            let response = self.return_data();
+            if asked.is_err() {
+                host.revert(&response);
             }
-            host.return_value(&output);
 
-            // `return_value` diverges on-chain; on host targets (unit tests)
-            // it records the payload and control returns here.
+            let resolved = resolve::decode_response(&response).ok_or(MalformedResolution)?;
+            let start = resolve::REQUEST_HEADER_LEN + resolved.strip;
+            if start > data_end {
+                return Err(MalformedResolution.into());
+            }
+            match resolved.kind {
+                resolve::RETURN => host.return_value(resolved.payload),
+                resolve::DELEGATE => {
+                    // The header and the stripped prefix are dead once the
+                    // resolver has answered, so a payload that fits there is
+                    // prepended in place.
+                    let owned;
+                    let input = if resolved.payload.len() <= start {
+                        let from = start - resolved.payload.len();
+                        request[from..start].copy_from_slice(resolved.payload);
+                        &request[from..data_end]
+                    } else {
+                        owned = [resolved.payload, &request[start..data_end]].concat();
+                        &owned
+                    };
+                    let result = host.delegate_call_evm(
+                        CallFlags::TAIL_CALL,
+                        &resolved.target,
+                        u64::MAX,
+                        input,
+                        None,
+                    );
+                    // On-chain a successful tail call never returns here.
+                    let output = self.return_data();
+                    if result.is_err() {
+                        host.revert(&output);
+                    }
+                    host.return_value(&output);
+                }
+                _ => return Err(MalformedResolution.into()),
+            }
+
             #[cfg(not(target_arch = "riscv64"))]
             Ok(())
+        }
+
+        fn return_data(&self) -> Vec<u8> {
+            let host = self.host();
+            let mut data = vec![0u8; host.return_data_size() as usize];
+            let mut data_ref: &mut [u8] = &mut data;
+            host.return_data_copy(&mut data_ref, 0);
+            data
         }
     }
 }
 
-/// Host-side unit tests for the EIP-1967 registry proxy.
-///
-/// The proxy has exactly two behaviors: the constructor pins the
-/// implementation and admin into their EIP-1967 slots, and the fallback
-/// forwards any calldata to the implementation via delegate-call, bubbling
-/// the return or revert data unchanged.
+/// Everything goes through `fallback()` with staged calldata and a mocked
+/// resolver, so these lock the protocol bytes as well as the behavior.
 #[cfg(test)]
 mod tests {
-    use super::registry_proxy::RegistryProxy;
-    use contract_registry_core::slots::{ADMIN_SLOT, IMPLEMENTATION_SLOT};
-    use pvm_contract_sdk::{Address, MockHost, MockHostBuilder, ReturnFlags, types::ReturnValue};
+    use super::contract_proxy::{ContractProxy, Error};
+    use contract_registry_core::versioning::resolve;
+    use pvm_contract_sdk::{
+        Address, Bytes, HostApi, MockHost, MockHostBuilder, ReturnFlags, SolEncode, U256,
+        types::ReturnValue,
+    };
 
-    const DEPLOYER: [u8; 20] = [0xAA; 20];
-    const IMPL: [u8; 20] = [0x1C; 20];
+    const RESOLVER: [u8; 20] = [0x5E; 20];
+    const TARGET: [u8; 20] = [0x11; 20];
+    const CALLER: [u8; 20] = [0xCA; 20];
+    const CALLDATA: [u8; 36] = [0x77; 36];
 
-    /// A 20-byte address right-aligned in a 32-byte storage word, the layout
-    /// `Lazy<Address>` uses for raw slots (and solc uses for EIP-1967 slots).
-    fn word_addr(address: [u8; 20]) -> [u8; 32] {
-        let mut word = [0u8; 32];
-        word[12..].copy_from_slice(&address);
-        word
+    /// The resolver's return type, encoded here exactly as the SDK encodes
+    /// it on-chain.
+    #[derive(pvm_contract_sdk::SolType)]
+    struct Resolution {
+        kind: u8,
+        target: Address,
+        strip: u32,
+        payload: Bytes,
     }
 
-    /// Deploy the proxy pointing at `IMPL`, with `calldata` staged for the
-    /// fallback to forward.
-    fn deployed_proxy(calldata: Vec<u8>) -> (RegistryProxy, MockHost) {
+    /// The resolver's answer, as `MockHost::mock_call` takes it.
+    type Answer = Result<Vec<u8>, ()>;
+
+    fn resolution(kind: u8, target: [u8; 20], strip: u32, payload: &[u8]) -> Answer {
+        let value = Resolution {
+            kind,
+            target: Address(target),
+            strip,
+            payload: Bytes(payload.to_vec()),
+        };
+        let mut encoded = vec![0u8; value.encode_len()];
+        value.encode_to(&mut encoded);
+        Ok(encoded)
+    }
+
+    /// A shim pointed at `RESOLVER` with `calldata` and `value` staged, the
+    /// resolver answering `response`.
+    fn deployed(calldata: &[u8], value: u64, response: Answer) -> (ContractProxy, MockHost) {
         let mock = MockHostBuilder::new()
-            .caller(DEPLOYER)
-            .calldata(calldata)
+            .caller(CALLER)
+            .calldata(calldata.to_vec())
+            .value_transferred(U256::from(value))
+            .mock_call(RESOLVER, response)
             .build();
-        let mut proxy = RegistryProxy::with_host(mock.clone());
-        proxy.new(Address(IMPL), Address(DEPLOYER));
+        let mut proxy = ContractProxy::with_host(mock.clone());
+        proxy.new(Address(RESOLVER));
         (proxy, mock)
     }
 
-    #[test]
-    fn constructor_pins_implementation_and_admin_slots() {
-        let (_proxy, mock) = deployed_proxy(vec![]);
-
-        assert_eq!(
-            mock.get_raw_storage(&IMPLEMENTATION_SLOT),
-            Some(word_addr(IMPL).to_vec())
+    /// The exact bytes the shim must send the resolver.
+    fn request(calldata: &[u8], value: u64) -> Vec<u8> {
+        let mut value_word = [0u8; 32];
+        value_word[24..].copy_from_slice(&value.to_be_bytes());
+        let mut out = resolve::request_header(&CALLER, &value_word, calldata.len()).to_vec();
+        out.extend_from_slice(calldata);
+        out.resize(
+            resolve::REQUEST_HEADER_LEN + calldata.len().div_ceil(32) * 32,
+            0,
         );
-        assert_eq!(
-            mock.get_raw_storage(&ADMIN_SLOT),
-            Some(word_addr(DEPLOYER).to_vec())
-        );
+        out
     }
 
     #[test]
-    fn fallback_forwards_calldata_and_returns_success_payload() {
-        // Arbitrary selector-shaped calldata; the proxy must not interpret it.
-        let calldata: Vec<u8> = [0xbf, 0x40, 0xfa, 0xc1]
-            .into_iter()
-            .chain([0x11; 64])
-            .collect();
-        let (mut proxy, mock) = deployed_proxy(calldata.clone());
-        let payload = vec![0xEE; 96];
-        mock.mock_call(IMPL, Ok(payload.clone()));
+    fn constructor_pins_the_resolver_as_immutable_data() {
+        let (_shim, mock) = deployed(&[], 0, Ok(vec![]));
+        let mut immutable = [0u8; 32];
+        let mut immutable_ref: &mut [u8] = &mut immutable;
+        mock.get_immutable_data(&mut immutable_ref);
+        assert_eq!(*immutable_ref, RESOLVER);
+    }
 
-        assert!(proxy.fallback().is_ok());
+    #[test]
+    fn return_answers_with_the_payload_after_one_resolver_call() {
+        let payload = [0xEE; 64];
+        let (mut shim, mock) = deployed(
+            &CALLDATA,
+            7,
+            resolution(resolve::RETURN, [0u8; 20], 0, &payload),
+        );
+        assert!(shim.fallback().is_ok());
 
-        // Exactly one delegate-call, to the implementation, with the calldata
-        // byte-for-byte.
-        assert_eq!(mock.take_recorded_calls(), vec![(IMPL, calldata)]);
-        // The callee's success payload is returned unchanged.
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(RESOLVER, request(&CALLDATA, 7))]
+        );
         assert_eq!(
             mock.take_return_value(),
             Some(ReturnValue {
                 flags: ReturnFlags::empty(),
-                data: payload,
+                data: payload.to_vec(),
             })
         );
     }
 
     #[test]
-    fn fallback_bubbles_callee_revert() {
-        let calldata = vec![1, 2, 3, 4];
-        let (mut proxy, mock) = deployed_proxy(calldata.clone());
-        // MockHost's `Err(())` models a revert with no payload, so the bubbled
-        // revert data must be empty.
-        mock.mock_call(IMPL, Err(()));
+    fn delegate_forwards_calldata_from_strip_and_bubbles_the_return() {
+        let (mut shim, mock) =
+            deployed(&CALLDATA, 0, resolution(resolve::DELEGATE, TARGET, 20, &[]));
+        mock.mock_call(TARGET, Ok(vec![0x42; 32]));
+        assert!(shim.fallback().is_ok());
 
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![
+                (RESOLVER, request(&CALLDATA, 0)),
+                (TARGET, CALLDATA[20..].to_vec()),
+            ]
+        );
+        assert_eq!(
+            mock.take_return_value(),
+            Some(ReturnValue {
+                flags: ReturnFlags::empty(),
+                data: vec![0x42; 32],
+            })
+        );
+    }
+
+    #[test]
+    fn delegate_with_strip_zero_forwards_calldata_unchanged() {
+        let (mut shim, mock) =
+            deployed(&CALLDATA, 0, resolution(resolve::DELEGATE, TARGET, 0, &[]));
+        assert!(shim.fallback().is_ok());
+        assert_eq!(mock.take_recorded_calls()[1], (TARGET, CALLDATA.to_vec()));
+    }
+
+    #[test]
+    fn delegate_prepends_the_payload() {
+        // Fits in the dead prefix (header + stripped bytes) ...
+        let (mut shim, mock) = deployed(
+            &CALLDATA,
+            0,
+            resolution(resolve::DELEGATE, TARGET, 4, &[0xAB; 8]),
+        );
+        assert!(shim.fallback().is_ok());
+        assert_eq!(
+            mock.take_recorded_calls()[1],
+            (TARGET, [&[0xAB; 8][..], &CALLDATA[4..]].concat())
+        );
+
+        // ... and larger than it.
+        let big = [0xCD; 200];
+        let (mut shim, mock) =
+            deployed(&CALLDATA, 0, resolution(resolve::DELEGATE, TARGET, 0, &big));
+        assert!(shim.fallback().is_ok());
+        assert_eq!(
+            mock.take_recorded_calls()[1],
+            (TARGET, [&big[..], &CALLDATA[..]].concat())
+        );
+    }
+
+    #[test]
+    fn empty_calldata_is_forwarded_as_an_empty_request_body() {
+        let (mut shim, mock) = deployed(&[], 0, resolution(resolve::DELEGATE, TARGET, 0, &[]));
+        assert!(shim.fallback().is_ok());
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(RESOLVER, request(&[], 0)), (TARGET, vec![])]
+        );
+    }
+
+    #[test]
+    fn resolver_revert_bubbles_and_nothing_is_delegated() {
+        let (mut shim, mock) = deployed(&CALLDATA, 0, Err(()));
         let rv = mock.expect_revert(|| {
-            let _ = proxy.fallback();
+            let _ = shim.fallback();
         });
-
         assert_eq!(
             rv,
             ReturnValue {
@@ -168,44 +332,32 @@ mod tests {
                 data: vec![],
             }
         );
-        assert_eq!(mock.take_recorded_calls(), vec![(IMPL, calldata)]);
+        assert_eq!(mock.take_recorded_calls().len(), 1);
     }
 
     #[test]
-    fn fallback_forwards_empty_calldata() {
-        let (mut proxy, mock) = deployed_proxy(vec![]);
-        mock.mock_call(IMPL, Ok(vec![]));
-
-        assert!(proxy.fallback().is_ok());
-
-        assert_eq!(mock.take_recorded_calls(), vec![(IMPL, vec![])]);
-        assert_eq!(
-            mock.take_return_value(),
-            Some(ReturnValue {
-                flags: ReturnFlags::empty(),
-                data: vec![],
-            })
-        );
+    fn implementation_revert_bubbles() {
+        let (mut shim, mock) =
+            deployed(&CALLDATA, 0, resolution(resolve::DELEGATE, TARGET, 0, &[]));
+        mock.mock_call(TARGET, Err(()));
+        let rv = mock.expect_revert(|| {
+            let _ = shim.fallback();
+        });
+        assert_eq!(rv.flags, ReturnFlags::REVERT);
     }
 
     #[test]
-    fn fallback_delegates_to_current_implementation_slot() {
-        // After an upgrade rewrites the implementation slot, the fallback must
-        // target the new address.
-        const NEW_IMPL: [u8; 20] = [0x2D; 20];
-        let (mut proxy, mock) = deployed_proxy(vec![0xAB]);
-        mock.set_raw_storage(IMPLEMENTATION_SLOT.to_vec(), word_addr(NEW_IMPL).to_vec());
-        mock.mock_call(NEW_IMPL, Ok(vec![0x01]));
-
-        assert!(proxy.fallback().is_ok());
-
-        assert_eq!(mock.take_recorded_calls(), vec![(NEW_IMPL, vec![0xAB])]);
-        assert_eq!(
-            mock.take_return_value(),
-            Some(ReturnValue {
-                flags: ReturnFlags::empty(),
-                data: vec![0x01],
-            })
-        );
+    fn malformed_answers_revert_malformed_resolution() {
+        let short = Ok(vec![0u8; resolve::RESPONSE_HEAD_LEN - 1]);
+        let unknown_kind = resolution(2, TARGET, 0, &[]);
+        let strip_past_end = resolution(resolve::DELEGATE, TARGET, CALLDATA.len() as u32 + 1, &[]);
+        for answer in [short, unknown_kind, strip_past_end] {
+            let (mut shim, mock) = deployed(&CALLDATA, 0, answer);
+            assert!(matches!(
+                shim.fallback(),
+                Err(Error::MalformedResolution(_))
+            ));
+            assert_eq!(mock.take_recorded_calls().len(), 1);
+        }
     }
 }
