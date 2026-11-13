@@ -140,7 +140,7 @@ mod contract_registry {
 
         // ─── Admin & longevity ───────────────────────────────────────────
 
-        /// The address allowed to upgrade, freeze, and import registry state.
+        /// The address allowed to upgrade and freeze the registry.
         #[pvm_contract_sdk::method]
         pub fn get_admin(&self) -> Address {
             self.admin.get()
@@ -248,21 +248,6 @@ mod contract_registry {
         #[pvm_contract_sdk::method]
         pub fn is_frozen(&self) -> bool {
             self.frozen.get()
-        }
-
-        /// Import registry data into a fresh deployment. Records state only
-        /// — never instantiates proxies; every entry must carry the name's
-        /// live proxy.
-        #[pvm_contract_sdk::method]
-        pub fn admin_import_contracts(
-            &mut self,
-            contracts: Vec<ImportContract>,
-        ) -> Result<(), Error> {
-            self.require_admin()?;
-            for contract in contracts {
-                self.import_contract(contract)?;
-            }
-            Ok(())
         }
 
         // ─── Publishing ──────────────────────────────────────────────────
@@ -669,59 +654,6 @@ mod contract_registry {
             host.return_data_copy(&mut data_ref, 0);
             host.revert(&data)
         }
-
-        fn import_contract(&mut self, contract: ImportContract) -> Result<(), Error> {
-            let contract_name = contract.contract_name;
-            validate_contract_name(&contract_name)?;
-            if contract.versions.is_empty() {
-                return Err(ImportVersionsEmpty.into());
-            }
-            if self.info.get(&contract_name).version_count != 0 {
-                return Err(ImportContractExists.into());
-            }
-
-            if contract.proxy == Address::ZERO {
-                return Err(NoProxy.into());
-            }
-
-            let mut versions = self.versions.entry(&contract_name);
-            let mut metadata_uris = self.metadata_uri_of.entry(&contract_name);
-            let mut version_count: u32 = 0;
-            let mut last_key: u128 = 0;
-            for version in contract.versions {
-                if !is_publishable_key(version.version_key) {
-                    return Err(InvalidVersionKey.into());
-                }
-                if version.version_key <= last_key {
-                    return Err(VersionNotMonotonic {
-                        attempted: version.version_key,
-                        latest: last_key,
-                    }
-                    .into());
-                }
-                last_key = version.version_key;
-                versions.insert(
-                    &version_count,
-                    &VersionRecord {
-                        version_key: version.version_key,
-                        target: version.target,
-                    },
-                );
-                metadata_uris.insert(&version_count, &version.metadata_uri);
-                version_count = version_count.checked_add(1).ok_or(VersionOverflow)?;
-            }
-
-            self.names.push(&contract_name);
-            self.info.insert(
-                &contract_name,
-                &NamedContractInfo {
-                    owner: contract.owner,
-                    version_count,
-                    proxy: contract.proxy,
-                },
-            );
-            Ok(())
-        }
     }
 
     // ─── Wire helpers ─────────────────────────────────────────────────────
@@ -754,10 +686,9 @@ mod tests {
     use super::contract_registry::{self, ContractRegistry};
     use super::types::{
         ContractEntry, ContractFrozen, ContractNameEmpty, ContractNameInvalid, ContractNameTooLong,
-        ContractPage, ImportContract, ImportContractExists, ImportContractVersion,
-        ImportVersionsEmpty, InvalidInitTarget, InvalidResolver, InvalidVersionKey, NoProxy,
-        OptionalAddress, OptionalString, OptionalVersionEntry, ProxyCodeHashUnset,
-        ResolverAlreadySet, ResolverUnset, Unauthorized, UnauthorizedAdmin, VersionNotMonotonic,
+        ContractPage, InvalidInitTarget, InvalidResolver, InvalidVersionKey, OptionalAddress,
+        OptionalString, OptionalVersionEntry, ProxyCodeHashUnset, ResolverAlreadySet,
+        ResolverUnset, Unauthorized, UnauthorizedAdmin, VersionNotMonotonic,
     };
     use contract_registry_core::versioning::{
         INITIALIZE_SELECTOR, MAGIC, META_KEY, meta, pack_version,
@@ -834,27 +765,6 @@ mod tests {
         contract
             .publish(name.into(), key, Address(target), uri.into())
             .unwrap();
-    }
-
-    fn import(
-        name: &str,
-        owner: [u8; 20],
-        proxy: [u8; 20],
-        versions: &[(u128, [u8; 20], &str)],
-    ) -> ImportContract {
-        ImportContract {
-            contract_name: name.into(),
-            owner: Address(owner),
-            proxy: Address(proxy),
-            versions: versions
-                .iter()
-                .map(|(key, target, uri)| ImportContractVersion {
-                    version_key: *key,
-                    target: Address(*target),
-                    metadata_uri: (*uri).into(),
-                })
-                .collect(),
-        }
     }
 
     fn word_addr(address: [u8; 20]) -> [u8; 32] {
@@ -1382,29 +1292,14 @@ mod tests {
 
     #[test]
     fn get_contracts_pages_latest_entries_by_registration_order() {
-        // Two imported histories plus one live publish; every entry resolves
-        // to its proxy (all the same address under MockHost's single global
-        // instantiate mock).
+        // Every entry resolves to its proxy (all the same address under
+        // MockHost's single global instantiate mock).
         let (mut contract, _mock) = deployed(ALICE);
-        contract
-            .admin_import_contracts(vec![
-                import(
-                    "@cdm/alpha",
-                    ALICE,
-                    PROXY,
-                    &[(pack_version(0, 0, 1), ADDR_1, "ipfs://alpha")],
-                ),
-                import(
-                    "@cdm/beta",
-                    ALICE,
-                    PROXY,
-                    &[
-                        (pack_version(0, 0, 1), ADDR_1, "ipfs://beta-v0"),
-                        (pack_version(0, 0, 2), ADDR_2, "ipfs://beta-v1"),
-                    ],
-                ),
-            ])
-            .unwrap();
+        let v0_0_1 = pack_version(0, 0, 1);
+        let v0_0_2 = pack_version(0, 0, 2);
+        publish(&mut contract, "@cdm/alpha", v0_0_1, ADDR_1, "ipfs://alpha");
+        publish(&mut contract, "@cdm/beta", v0_0_1, ADDR_1, "ipfs://beta-v0");
+        publish(&mut contract, "@cdm/beta", v0_0_2, ADDR_2, "ipfs://beta-v1");
         publish(&mut contract, "@cdm/gamma", V1_0_0, ADDR_2, "ipfs://gamma");
 
         let entry = |name: &str, key: u128, address: [u8; 20], uri: &str| ContractEntry {
@@ -1438,17 +1333,15 @@ mod tests {
     #[test]
     fn get_contracts_clamps_count_to_max_page_limit() {
         let (mut contract, _mock) = deployed(ADMIN);
-        let imports: Vec<ImportContract> = (0..101u32)
-            .map(|i| {
-                import(
-                    &format!("@scope/pkg{i}"),
-                    ALICE,
-                    PROXY,
-                    &[(pack_version(0, 0, 1), ADDR_1, URI_1)],
-                )
-            })
-            .collect();
-        contract.admin_import_contracts(imports).unwrap();
+        for i in 0..101u32 {
+            publish(
+                &mut contract,
+                &format!("@scope/pkg{i}"),
+                V1_0_0,
+                ADDR_1,
+                URI_1,
+            );
+        }
 
         // Count above MAX_PAGE_LIMIT clamps to 100 entries; total is unaffected.
         let head = contract.get_contracts(0, 200);
@@ -1461,191 +1354,6 @@ mod tests {
         assert_eq!(tail.total, 101);
         assert_eq!(tail.entries.len(), 1);
         assert_eq!(tail.entries[0].name, "@scope/pkg100");
-    }
-
-    // ─── adminImportContracts ────────────────────────────────────────────────
-
-    #[test]
-    fn admin_import_contracts_imports_multi_version_history() {
-        let (mut contract, _mock) = deployed(ADMIN);
-
-        let result = contract.admin_import_contracts(vec![
-            import(
-                "@cdm/alpha",
-                ALICE,
-                PROXY,
-                &[
-                    (pack_version(0, 0, 1), ADDR_1, "ipfs://a0"),
-                    (pack_version(0, 0, 2), ADDR_2, "ipfs://a1"),
-                ],
-            ),
-            import("@cdm/beta", BOB, PROXY, &[(V1_0_0, ADDR_2, "ipfs://b0")]),
-        ]);
-        assert_eq!(result, Ok(()));
-
-        assert_eq!(contract.get_contract_count(), 2);
-        assert_eq!(contract.get_contract_name_at(0), "@cdm/alpha");
-        assert_eq!(contract.get_contract_name_at(1), "@cdm/beta");
-
-        // Versions land in payload order; the latest resolves.
-        assert_eq!(contract.get_version_count("@cdm/alpha".into()), 2);
-        assert_eq!(contract.get_owner("@cdm/alpha".into()), Address(ALICE));
-        assert_eq!(contract.get_address("@cdm/alpha".into()), some_addr(PROXY));
-        let first = contract.get_version_at("@cdm/alpha".into(), 0);
-        assert_eq!(first.version_key, pack_version(0, 0, 1));
-        assert_eq!(first.target, Address(ADDR_1));
-        assert_eq!(first.metadata_uri, "ipfs://a0");
-        assert_eq!(
-            contract.get_metadata_uri("@cdm/alpha".into()),
-            some_uri("ipfs://a1")
-        );
-
-        // Every import resolves to its recorded proxy.
-        assert_eq!(contract.get_version_count("@cdm/beta".into()), 1);
-        assert_eq!(contract.get_owner("@cdm/beta".into()), Address(BOB));
-        assert_eq!(contract.get_address("@cdm/beta".into()), some_addr(PROXY));
-        assert_eq!(contract.get_proxy("@cdm/beta".into()), some_addr(PROXY));
-    }
-
-    #[test]
-    fn imported_owner_can_publish_next_version() {
-        let (mut contract, mock) = deployed(ADMIN);
-        contract
-            .admin_import_contracts(vec![import(
-                "@cdm/alpha",
-                ALICE,
-                PROXY,
-                &[(pack_version(0, 0, 1), ADDR_1, URI_1)],
-            )])
-            .unwrap();
-
-        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
-        assert_eq!(
-            as_alice.publish("@cdm/alpha".into(), V1_0_0, Address(ADDR_2), URI_2.into()),
-            Ok(())
-        );
-        assert_eq!(as_alice.get_version_count("@cdm/alpha".into()), 2);
-        assert_eq!(as_alice.get_address("@cdm/alpha".into()), some_addr(PROXY));
-    }
-
-    #[test]
-    fn admin_import_contracts_rejects_non_admin() {
-        let (_contract, mock) = deployed(ADMIN);
-        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
-
-        assert_eq!(
-            as_alice.admin_import_contracts(vec![import(
-                "@cdm/alpha",
-                ALICE,
-                PROXY,
-                &[(pack_version(0, 0, 1), ADDR_1, URI_1)]
-            )]),
-            Err(UnauthorizedAdmin.into())
-        );
-        assert_eq!(as_alice.get_contract_count(), 0);
-    }
-
-    #[test]
-    fn admin_import_contracts_rejects_empty_versions() {
-        let (mut contract, _mock) = deployed(ADMIN);
-
-        assert_eq!(
-            contract.admin_import_contracts(vec![import("@cdm/alpha", ALICE, PROXY, &[])]),
-            Err(ImportVersionsEmpty.into())
-        );
-        assert_eq!(contract.get_contract_count(), 0);
-    }
-
-    #[test]
-    fn admin_import_contracts_rejects_existing_name() {
-        let (mut contract, _mock) = deployed(ADMIN);
-
-        // Already published.
-        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
-        assert_eq!(
-            contract.admin_import_contracts(vec![import(
-                NAME,
-                ALICE,
-                PROXY,
-                &[(V2_0_0, ADDR_2, URI_2)]
-            )]),
-            Err(ImportContractExists.into())
-        );
-        assert_eq!(contract.get_version_count(NAME.into()), 1);
-
-        // Already imported.
-        contract
-            .admin_import_contracts(vec![import(
-                "@cdm/alpha",
-                ALICE,
-                PROXY,
-                &[(pack_version(0, 0, 1), ADDR_1, URI_1)],
-            )])
-            .unwrap();
-        assert_eq!(
-            contract.admin_import_contracts(vec![import(
-                "@cdm/alpha",
-                BOB,
-                PROXY,
-                &[(pack_version(0, 0, 2), ADDR_2, URI_2)]
-            )]),
-            Err(ImportContractExists.into())
-        );
-        assert_eq!(contract.get_owner("@cdm/alpha".into()), Address(ALICE));
-    }
-
-    #[test]
-    fn admin_import_contracts_rejects_invalid_payloads() {
-        let (mut contract, _mock) = deployed(ADMIN);
-
-        assert_eq!(
-            contract.admin_import_contracts(vec![import(
-                "cdm/alpha",
-                ALICE,
-                PROXY,
-                &[(pack_version(0, 0, 1), ADDR_1, URI_1)]
-            )]),
-            Err(ContractNameInvalid.into())
-        );
-
-        // Every name has a proxy; a zero proxy is not importable.
-        assert_eq!(
-            contract.admin_import_contracts(vec![import(
-                "@cdm/alpha",
-                ALICE,
-                [0u8; 20],
-                &[(pack_version(0, 0, 1), ADDR_1, URI_1)]
-            )]),
-            Err(NoProxy.into())
-        );
-
-        // Keys must be publishable and strictly increasing within an entry.
-        assert_eq!(
-            contract.admin_import_contracts(vec![import(
-                "@cdm/alpha",
-                ALICE,
-                PROXY,
-                &[(0, ADDR_1, URI_1)]
-            )]),
-            Err(InvalidVersionKey.into())
-        );
-        assert_eq!(
-            contract.admin_import_contracts(vec![import(
-                "@cdm/alpha",
-                ALICE,
-                PROXY,
-                &[
-                    (pack_version(0, 0, 2), ADDR_1, URI_1),
-                    (pack_version(0, 0, 2), ADDR_2, URI_2),
-                ]
-            )]),
-            Err(VersionNotMonotonic {
-                attempted: pack_version(0, 0, 2),
-                latest: pack_version(0, 0, 2),
-            }
-            .into())
-        );
-        assert_eq!(contract.get_contract_count(), 0);
     }
 
     // ─── setAdmin ────────────────────────────────────────────────────────────
@@ -1730,16 +1438,7 @@ mod tests {
             contract.publish(NAME.into(), V1_0_0, Address(ADDR_1), URI_1.into()),
             Ok(())
         );
-        assert_eq!(
-            contract.admin_import_contracts(vec![import(
-                "@cdm/alpha",
-                ALICE,
-                PROXY,
-                &[(pack_version(0, 0, 1), ADDR_2, URI_2)]
-            )]),
-            Ok(())
-        );
-        assert_eq!(contract.get_contract_count(), 2);
+        assert_eq!(contract.get_contract_count(), 1);
     }
 
     #[test]
@@ -2053,15 +1752,6 @@ mod tests {
             ("setCode(address)", encode(&Address(NEW_IMPL))),
             ("freeze()", vec![]),
             ("unfreeze()", vec![]),
-            (
-                "adminImportContracts((string,address,address,(uint128,address,string)[])[])",
-                encode(&vec![import(
-                    "@cdm/imported",
-                    ALICE,
-                    PROXY,
-                    &[(V2_0_0, ADDR_2, URI_2)],
-                )]),
-            ),
         ];
 
         for (signature, input) in cases {

@@ -23,14 +23,13 @@
  *   bun run src/lib/scripts/deploy-registry.ts --name local
  *   bun run src/lib/scripts/deploy-registry.ts --assethub-url ws://127.0.0.1:10020
  *   bun run src/lib/scripts/deploy-registry.ts --assethub-url wss://... --registry-address 0x...
- *   bun run src/lib/scripts/deploy-registry.ts -n paseo --migrate-from-registry 0x...
  *   bun run src/lib/scripts/deploy-registry.ts -n paseo --upgrade
  *   bun run src/lib/scripts/deploy-registry.ts -n paseo --upgrade --impl-package "@cdm/registry-impl.2"
  *   bun run src/lib/scripts/deploy-registry.ts -n paseo --upgrade-resolver
  *   bun run src/lib/scripts/deploy-registry.ts -n paseo --upgrade-resolver --impl-package "@cdm/resolver-impl.2"
  */
-import { dirname, resolve } from "path";
-import { existsSync, mkdirSync } from "fs";
+import { resolve } from "path";
+import { existsSync } from "fs";
 import { parseArgs } from "util";
 import {
     createCdmAssetHubClient,
@@ -63,11 +62,6 @@ import {
     upgradeRegistryImplementation,
     upgradeResolverImplementation,
 } from "@parity/cdm-builder";
-import {
-    exportRegistrySnapshot,
-    importRegistrySnapshot,
-    writeRegistrySnapshot,
-} from "@parity/cdm-migrations/registry";
 
 const { values: opts } = parseArgs({
     args: process.argv.slice(2),
@@ -75,9 +69,6 @@ const { values: opts } = parseArgs({
         name: { type: "string", short: "n" },
         "assethub-url": { type: "string" },
         "registry-address": { type: "string" },
-        "migrate-from-registry": { type: "string" },
-        "migration-json": { type: "string" },
-        "migration-batch-size": { type: "string" },
         upgrade: { type: "boolean" },
         "upgrade-resolver": { type: "boolean" },
         "impl-package": { type: "string" },
@@ -96,16 +87,8 @@ if (!assethubUrl) {
     console.error("Error: --assethub-url or --name is required");
     process.exit(1);
 }
-const exclusiveModes = [
-    opts.upgrade,
-    opts["upgrade-resolver"],
-    opts["migrate-from-registry"],
-].filter(Boolean);
-if (exclusiveModes.length > 1) {
-    console.error(
-        "Error: --upgrade, --upgrade-resolver, and --migrate-from-registry are mutually exclusive",
-    );
-    console.error("An in-place upgrade keeps all registry state — there is nothing to migrate.");
+if (opts.upgrade && opts["upgrade-resolver"]) {
+    console.error("Error: --upgrade and --upgrade-resolver are mutually exclusive");
     process.exit(1);
 }
 
@@ -116,22 +99,6 @@ const eip1967ProxyPvmPath = resolve(
     `target/release/${CONTRACTS_EIP1967_PROXY_CRATE}.polkavm`,
 );
 const resolverImplPvmPath = resolve(rootDir, `target/release/${CONTRACTS_RESOLVER_CRATE}.polkavm`);
-const migrationBatchSize = opts["migration-batch-size"] ? Number(opts["migration-batch-size"]) : 10;
-
-function timestampForFileName(): string {
-    return new Date().toISOString().replace(/[:.]/g, "-");
-}
-
-function resolveMigrationJsonPath(): string {
-    return (
-        opts["migration-json"] ??
-        resolve(
-            rootDir,
-            "dist",
-            `registry-migration-${opts.name ?? "custom"}-${timestampForFileName()}.json`,
-        )
-    );
-}
 
 for (const path of [implPvmPath, eip1967ProxyPvmPath, resolverImplPvmPath]) {
     if (!existsSync(path)) {
@@ -149,34 +116,6 @@ function resolveSigner() {
     }
     return prepareSigner("Alice");
 }
-
-const migrationSnapshotPath = opts["migrate-from-registry"]
-    ? resolveMigrationJsonPath()
-    : undefined;
-const migrationSourceRegistryAddress = opts["migrate-from-registry"];
-const migrationSnapshot = opts["migrate-from-registry"]
-    ? await (async () => {
-          if (!Number.isInteger(migrationBatchSize) || migrationBatchSize <= 0) {
-              console.error(
-                  `Error: invalid --migration-batch-size ${opts["migration-batch-size"]}`,
-              );
-              process.exit(1);
-          }
-
-          console.log(`Exporting registry data from ${opts["migrate-from-registry"]}...`);
-          const snapshot = await exportRegistrySnapshot({
-              name: opts.name,
-              assethubUrl,
-              registryAddress: opts["migrate-from-registry"],
-          });
-          mkdirSync(dirname(migrationSnapshotPath!), { recursive: true });
-          await writeRegistrySnapshot(migrationSnapshotPath!, snapshot);
-          console.log(
-              `Exported ${snapshot.contracts.length} contracts to ${migrationSnapshotPath}`,
-          );
-          return snapshot;
-      })()
-    : undefined;
 
 // Connect
 console.log(`Connecting to ${assethubUrl}...`);
@@ -330,33 +269,6 @@ async function finishWithRegistry(
     resolverAddress?: string,
 ): Promise<void> {
     try {
-        if (migrationSnapshot) {
-            if (migrationSourceRegistryAddress?.toLowerCase() === address.toLowerCase()) {
-                throw new Error(
-                    `Refusing to import migration snapshot back into its source registry ${address}`,
-                );
-            }
-
-            console.log(
-                `${alreadyDeployed ? "Importing" : "Uploading"} migrated registry data into ${address}...`,
-            );
-            await importRegistrySnapshot(
-                migrationSnapshot,
-                {
-                    name: opts.name,
-                    assethubUrl,
-                    registryAddress: address,
-                    suri: opts.suri,
-                    batchSize: migrationBatchSize,
-                },
-                ({ imported, total, batchIndex, totalBatches }) => {
-                    console.log(
-                        `  Imported ${imported}/${total} contracts (${batchIndex}/${totalBatches})`,
-                    );
-                },
-            );
-        }
-
         // For an already-deployed registry the predicted addresses are wrong
         // after any upgrade — ask the proxy for the live ones.
         const live = alreadyDeployed

@@ -74,24 +74,6 @@ pub struct OptionalVersionEntry {
     pub metadata_uri: String,
 }
 
-/// One version of a contract in an `adminImportContracts` payload.
-#[derive(Debug, PartialEq, Eq, SolType)]
-pub struct ImportContractVersion {
-    pub version_key: u128,
-    pub target: Address,
-    pub metadata_uri: String,
-}
-
-/// A full contract history in an `adminImportContracts` payload; `proxy` is
-/// the name's live per-name proxy.
-#[derive(Debug, PartialEq, Eq, SolType)]
-pub struct ImportContract {
-    pub contract_name: String,
-    pub owner: Address,
-    pub proxy: Address,
-    pub versions: Vec<ImportContractVersion>,
-}
-
 /// One published version: the packed semver key and the implementation
 /// contract the name's proxy delegate-calls for it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, SolType, SolStorage)]
@@ -127,12 +109,6 @@ pub struct ContractNameTooLong;
 pub struct ContractNameInvalid;
 
 #[derive(Debug, PartialEq, Eq, SolError)]
-pub struct ImportVersionsEmpty;
-
-#[derive(Debug, PartialEq, Eq, SolError)]
-pub struct ImportContractExists;
-
-#[derive(Debug, PartialEq, Eq, SolError)]
 pub struct VersionOverflow;
 
 /// `setCode` target has no code on-chain.
@@ -166,10 +142,6 @@ pub struct ResolverAlreadySet;
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct InvalidResolver;
 
-/// Import payload carries a zero proxy address; every name has a proxy.
-#[derive(Debug, PartialEq, Eq, SolError)]
-pub struct NoProxy;
-
 /// `publishWithInit` initialization target is the zero address.
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct InvalidInitTarget;
@@ -182,8 +154,6 @@ pub enum Error {
     ContractNameEmpty(ContractNameEmpty),
     ContractNameTooLong(ContractNameTooLong),
     ContractNameInvalid(ContractNameInvalid),
-    ImportVersionsEmpty(ImportVersionsEmpty),
-    ImportContractExists(ImportContractExists),
     VersionOverflow(VersionOverflow),
     BadImplementation(BadImplementation),
     InvalidVersionKey(InvalidVersionKey),
@@ -192,7 +162,6 @@ pub enum Error {
     ResolverUnset(ResolverUnset),
     ResolverAlreadySet(ResolverAlreadySet),
     InvalidResolver(InvalidResolver),
-    NoProxy(NoProxy),
     InvalidInitTarget(InvalidInitTarget),
 }
 
