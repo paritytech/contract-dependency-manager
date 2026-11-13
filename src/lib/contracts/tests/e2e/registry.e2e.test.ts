@@ -27,12 +27,18 @@ import { ALICE_SS58 } from "@parity/cdm-utils";
 // undefined. The dedicated subpath maps straight to `dist/abi.js`.
 import { CONTRACTS_REGISTRY_ABI, CONTRACT_RESOLVER_ABI } from "@parity/cdm-builder/abi";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
-import { connectPpn, deployRegistry, type PpnHandle } from "./harness";
+import {
+    connectPpn,
+    deployRegistry,
+    deployBlob,
+    ensureTemplateBuilt,
+    COUNTER_PVM,
+    type PpnHandle,
+} from "./harness";
 
 // Unique per run so the suite holds on networks with prior registry state.
 const RUN = Date.now().toString(36);
 const NAME = `@test/rt-${RUN}`;
-const ADDR = "0x1111111111111111111111111111111111111111" as HexString;
 // 59-byte URI exercises the spilled-chunks (long-form) Solidity string layout.
 const URI = "ipfs://bafy2bzaceblahblahQmExampleLongCidExercisingSpilledChunks";
 // Packed semver keys: major<<64 | minor<<32 | patch.
@@ -47,6 +53,8 @@ let baselineCount: number;
 // The implementation blob's address — the proxy delegates every call to it.
 let implAddress: string;
 let resolverAddress: string;
+// A deployed template counter: publish only accepts targets that have code.
+let target: HexString;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let registry: any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -74,6 +82,7 @@ beforeAll(async () => {
     const deployed = await deployRegistry(ppn.wsUrl);
     implAddress = deployed.implAddress;
     resolverAddress = deployed.resolverAddress;
+    await ensureTemplateBuilt();
 
     const signer = prepareSigner("Alice");
     chainClient = await createCdmAssetHubClient(ppn.wsUrl, "local");
@@ -88,6 +97,7 @@ beforeAll(async () => {
         );
     registry = await contractAt(deployed.address, CONTRACTS_REGISTRY_ABI);
     resolver = await contractAt(deployed.resolverAddress, CONTRACT_RESOLVER_ABI);
+    target = await deployBlob(chainClient.raw.assetHub.getUnsafeApi(), signer, COUNTER_PVM);
 
     const count = await registry.getContractCount.query();
     baselineCount = Number(count.value ?? 0);
@@ -151,7 +161,7 @@ describe("registry pre-publish (this run's name unseen)", () => {
 
 describe("registry publish + post-publish queries", () => {
     test("publish tx finalizes (first publish instantiates the name's proxy)", async () => {
-        const r = await registry.publish.tx(NAME, KEY_1_0_0, ADDR, URI);
+        const r = await registry.publish.tx(NAME, KEY_1_0_0, target, URI);
         expect(r.ok).toBe(true);
     });
 
@@ -164,7 +174,7 @@ describe("registry publish + post-publish queries", () => {
         const r = await registry.getAddress.query(NAME);
         const opt = unwrapOption<string>(r.value);
         expect(opt.isSome).toBe(true);
-        expect(lc(opt.value)).not.toBe(lc(ADDR));
+        expect(lc(opt.value)).not.toBe(lc(target));
         expect(lc(opt.value)).not.toBe(ZERO_ADDR);
 
         // ... and it is exactly what getProxy reports.
@@ -192,7 +202,7 @@ describe("registry publish + post-publish queries", () => {
         };
         expect(row.isSome).toBe(true);
         expect(BigInt(String(row.version_key ?? row.versionKey))).toBe(KEY_1_0_0);
-        expect(lc(row.target)).toBe(lc(ADDR));
+        expect(lc(row.target)).toBe(lc(target));
         expect(row.metadata_uri ?? row.metadataUri).toBe(URI);
     });
 
@@ -220,7 +230,7 @@ describe("registry publish + post-publish queries", () => {
     });
 
     test("second publish keeps the address stable and bumps the latest key", async () => {
-        const r = await registry.publish.tx(NAME, KEY_1_1_0, ADDR, URI);
+        const r = await registry.publish.tx(NAME, KEY_1_1_0, target, URI);
         expect(r.ok).toBe(true);
 
         const addr = await registry.getAddress.query(NAME);
@@ -300,7 +310,7 @@ describe("registry freeze / unfreeze", () => {
 
     test("the admin can still publish while frozen", async () => {
         const FROZEN_NAME = `@test/frozen-${RUN}`;
-        const r = await registry.publish.tx(FROZEN_NAME, KEY_1_0_0, ADDR, URI);
+        const r = await registry.publish.tx(FROZEN_NAME, KEY_1_0_0, target, URI);
         expect(r.ok).toBe(true);
 
         const count = await registry.getVersionCount.query(FROZEN_NAME);

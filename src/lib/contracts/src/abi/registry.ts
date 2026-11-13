@@ -133,32 +133,6 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
-        name: "adminImportContracts",
-        inputs: [
-            {
-                name: "contracts",
-                type: "tuple[]",
-                components: [
-                    { name: "contract_name", type: "string" },
-                    { name: "owner", type: "address" },
-                    { name: "proxy", type: "address" },
-                    {
-                        name: "versions",
-                        type: "tuple[]",
-                        components: [
-                            { name: "version_key", type: "uint128" },
-                            { name: "target", type: "address" },
-                            { name: "metadata_uri", type: "string" },
-                        ],
-                    },
-                ],
-            },
-        ],
-        outputs: [],
-        stateMutability: "nonpayable",
-    },
-    {
-        type: "function",
         name: "publish",
         inputs: [
             { name: "contract_name", type: "string" },
@@ -371,16 +345,6 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "error",
-        name: "ImportVersionsEmpty",
-        inputs: [],
-    },
-    {
-        type: "error",
-        name: "ImportContractExists",
-        inputs: [],
-    },
-    {
-        type: "error",
         name: "VersionOverflow",
         inputs: [],
     },
@@ -420,11 +384,6 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     {
         type: "error",
         name: "InvalidResolver",
-        inputs: [],
-    },
-    {
-        type: "error",
-        name: "NoProxy",
         inputs: [],
     },
     {

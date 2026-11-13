@@ -311,4 +311,16 @@ describe("publish rules", () => {
         const r = await registry.publish.tx(NAME, packVersionKey(1, 0, 5), implA, URI);
         expect(r.ok).toBe(false);
     });
+
+    test("an implementation with no code is rejected", async () => {
+        const dry = await registry.publish.query(
+            NAME,
+            packVersionKey(1, 2, 0),
+            "0x1111111111111111111111111111111111111111",
+            URI,
+            { origin: ALICE_SS58 },
+        );
+        expect(dry.success).toBe(false);
+        expect(dry.value.decoded?.errorName).toBe("BadImplementation");
+    });
 });
