@@ -111,8 +111,9 @@ mod contract_registry {
         names: StorageVec<String>,
         /// Name → owner, version count, per-name proxy.
         info: Mapping<String, NamedContractInfo>,
-        /// name → version index → (packed semver key, implementation).
-        versions: Mapping<String, Mapping<u32, VersionRecord>>,
+        /// name → version index → packed semver key. Implementation
+        /// addresses live in the resolver alone.
+        versions: Mapping<String, Mapping<u32, u128>>,
         /// name → version index → metadata URI (Bulletin/IPFS).
         metadata_uri_of: Mapping<String, Mapping<u32, String>>,
         /// The resolver proxy: every shim is constructed with it and every
@@ -354,13 +355,9 @@ mod contract_registry {
                 self.names.push(&contract_name);
             }
             self.info.insert(&contract_name, &info);
-            self.versions.entry(&contract_name).insert(
-                &index,
-                &VersionRecord {
-                    version_key,
-                    target,
-                },
-            );
+            self.versions
+                .entry(&contract_name)
+                .insert(&index, &version_key);
             self.metadata_uri_of
                 .entry(&contract_name)
                 .insert(&index, &metadata_uri);
@@ -451,22 +448,19 @@ mod contract_registry {
             self.latest_key(&contract_name, &info).unwrap_or(0)
         }
 
-        /// Version row by index: `(isSome, versionKey, target, metadataUri)`.
+        /// Version row by index: `(isSome, versionKey, metadataUri)`.
         #[pvm_contract_sdk::method]
         pub fn get_version_at(&self, contract_name: String, index: u32) -> OptionalVersionEntry {
             if !self.version_exists(&contract_name, index) {
                 return OptionalVersionEntry {
                     is_some: false,
                     version_key: 0,
-                    target: Address::ZERO,
                     metadata_uri: String::new(),
                 };
             }
-            let record = self.versions.get(&contract_name).get(&index);
             OptionalVersionEntry {
                 is_some: true,
-                version_key: record.version_key,
-                target: record.target,
+                version_key: self.versions.get(&contract_name).get(&index),
                 metadata_uri: self.metadata_uri_of.get(&contract_name).get(&index),
             }
         }
@@ -543,14 +537,14 @@ mod contract_registry {
         fn latest_key(&self, contract_name: &String, info: &NamedContractInfo) -> Option<u128> {
             info.version_count
                 .checked_sub(1)
-                .map(|index| self.versions.get(contract_name).get(&index).version_key)
+                .map(|index| self.versions.get(contract_name).get(&index))
         }
 
         fn latest_entry(&self, name: String) -> Option<ContractEntry> {
             let info = self.info.get(&name);
             let index = info.version_count.checked_sub(1)?;
             Some(ContractEntry {
-                version_key: self.versions.get(&name).get(&index).version_key,
+                version_key: self.versions.get(&name).get(&index),
                 address: info.proxy,
                 metadata_uri: self.metadata_uri_of.get(&name).get(&index),
                 owner: info.owner,
@@ -901,11 +895,6 @@ mod tests {
         assert_eq!(contract.get_proxy(NAME.into()), some_addr(PROXY));
         assert_eq!(contract.get_latest_key(NAME.into()), V1_0_0);
         assert_eq!(contract.get_metadata_uri(NAME.into()), some_uri(URI_1));
-        // The implementation is recorded per version.
-        assert_eq!(
-            contract.get_version_at(NAME.into(), 0).target,
-            Address(ADDR_1)
-        );
         assert_eq!(contract.get_contract_count(), 1);
         assert_eq!(contract.get_contract_name_at(0), NAME);
 
@@ -936,13 +925,12 @@ mod tests {
         assert_eq!(contract.get_latest_key(NAME.into()), V1_1_0);
         assert_eq!(contract.get_metadata_uri(NAME.into()), some_uri(URI_2));
 
-        // Both versions are recorded with their keys and targets.
+        // Both versions are recorded with their keys and metadata URIs.
         assert_eq!(
             contract.get_version_at(NAME.into(), 0),
             OptionalVersionEntry {
                 is_some: true,
                 version_key: V1_0_0,
-                target: Address(ADDR_1),
                 metadata_uri: URI_1.into(),
             }
         );
@@ -951,7 +939,6 @@ mod tests {
             OptionalVersionEntry {
                 is_some: true,
                 version_key: V1_1_0,
-                target: Address(ADDR_2),
                 metadata_uri: URI_2.into(),
             }
         );
@@ -961,7 +948,6 @@ mod tests {
             OptionalVersionEntry {
                 is_some: false,
                 version_key: 0,
-                target: Address::ZERO,
                 metadata_uri: String::new(),
             }
         );
