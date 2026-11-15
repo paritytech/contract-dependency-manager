@@ -39,11 +39,18 @@ impl Resolution {
 /// means nothing published yet; zero `min_supported` means no floor.
 /// `fast_path_off` is the owner's opt-out from the shim's shortcut; a
 /// `sealed` name is pinned to `latest_impl` and takes no further changes.
+///
+/// The field order packs this into two storage slots, the keys and then
+/// `latest_impl` with the flags. A published name's `latest_impl` is never
+/// zero, so flipping a flag never creates or removes a storage item: a freeze
+/// or opt-out whose only deposit change is the shim's refund is submitted
+/// with a zero deposit limit, which a charge here ahead of the shim call
+/// would exhaust.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, SolType, SolStorage)]
 pub struct Routing {
     pub latest_key: u128,
-    pub latest_impl: Address,
     pub min_supported: u128,
+    pub latest_impl: Address,
     pub frozen: bool,
     pub fast_path_off: bool,
     pub sealed: bool,

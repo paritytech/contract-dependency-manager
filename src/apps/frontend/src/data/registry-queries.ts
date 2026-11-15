@@ -58,7 +58,7 @@ export async function queryContractByName(
     }
 
     // The resolver keys routing state by the name's proxy: `(latest_key,
-    // latest_impl, min_supported, frozen, fast_path_off, sealed)`.
+    // min_supported, latest_impl, frozen, fast_path_off, sealed)`.
     // `min_supported` is 0 when no support floor has been set.
     const proxyAddress = unwrapOption<string>(proxyResult.value);
     const routingResult = await resolver.routingOf.query(proxyAddress);

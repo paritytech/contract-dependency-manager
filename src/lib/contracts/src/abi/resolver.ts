@@ -131,8 +131,8 @@ const RESOLVER_ABI: ResolverAbiEntry[] = [
                 type: "tuple",
                 components: [
                     { name: "latest_key", type: "uint128" },
-                    { name: "latest_impl", type: "address" },
                     { name: "min_supported", type: "uint128" },
+                    { name: "latest_impl", type: "address" },
                     { name: "frozen", type: "bool" },
                     { name: "fast_path_off", type: "bool" },
                     { name: "sealed", type: "bool" },

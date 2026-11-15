@@ -321,7 +321,7 @@ mod contract_resolver {
             self.admin.get()
         }
 
-        /// The name's routing state: `(latestKey, latestImpl, minSupported,
+        /// The name's routing state: `(latestKey, minSupported, latestImpl,
         /// frozen, fastPathOff, sealed)`.
         #[pvm_contract_sdk::method]
         pub fn routing_of(&self, proxy: Address) -> Routing {
@@ -816,6 +816,21 @@ mod tests {
             mock.take_recorded_calls(),
             vec![shim_set_fast_path(V1_2_3, IMPL_2)]
         );
+    }
+
+    #[test]
+    fn flag_changes_on_a_published_name_keep_the_same_storage_items() {
+        let (mut resolver, mock) = deployed(&[(V1_0_0, IMPL_1)]);
+        let items = mock.storage_dump().len();
+
+        resolver.set_frozen(Address(SHIM), true).unwrap();
+        assert_eq!(mock.storage_dump().len(), items);
+        resolver.set_frozen(Address(SHIM), false).unwrap();
+        assert_eq!(mock.storage_dump().len(), items);
+        resolver.set_fast_path(Address(SHIM), false).unwrap();
+        assert_eq!(mock.storage_dump().len(), items);
+        resolver.set_fast_path(Address(SHIM), true).unwrap();
+        assert_eq!(mock.storage_dump().len(), items);
     }
 
     #[test]
