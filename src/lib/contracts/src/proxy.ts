@@ -2,12 +2,17 @@ import { keccak_256 } from "@noble/hashes/sha3.js";
 
 /**
  * Mirror of the per-name wire format in `contract_registry_core::versioning`
- * (src/contract/core/src/versioning.rs), which the resolver applies to every
- * call a shim forwards to it:
+ * (src/contract/core/src/versioning.rs):
  *
  *   - plain calldata             → latest implementation;
  *   - [MAGIC][key BE][inner]     → that exact version;
- *   - [MAGIC][0][selector][args] → CDM meta queries, plus the registry-only `callCode`.
+ *   - [MAGIC][0][selector][args] → the CDM meta plane: the shim answers the
+ *     `SHIM_META` selectors itself, the resolver serves the `PROXY_META`
+ *     queries plus the registry-only `callCode`.
+ *
+ * A shim that holds the latest version in its fast-path slot serves plain
+ * calls and calls pinned to that version from it; every other call it does
+ * not answer itself goes to the resolver, or reverts once the shim is sealed.
  *
  * Every constant is pinned against the Rust side by the in-source tests.
  */
@@ -27,7 +32,11 @@ export const META_HEADER_LEN = VERSIONED_HEADER_LEN + 4;
 /** `keccak256("initialize(uint128,address)")[..4]`. */
 export const INITIALIZE_SELECTOR = "0x3a67c2f8" as const;
 
-/** Meta-call selectors (`keccak256(signature)[..4]`); `callCode` is honored for the registry only. */
+/**
+ * Meta-call selectors the resolver serves (`keccak256(signature)[..4]`);
+ * `callCode` is honored for the registry only. A sealed shim reverts
+ * `Sealed()` on all of them.
+ */
 export const PROXY_META = {
     callCode: "0xd74c1f04",
     frozen: "0x054f7d9c",
@@ -35,6 +44,26 @@ export const PROXY_META = {
     latest: "0x52bfe789",
     minSupported: "0x900fc468",
     admin: "0xf851a440",
+} as const;
+
+/**
+ * Meta-call selectors the shim answers itself, sealed or not: three getters,
+ * plus `setFastPath` and `seal`, which it accepts from the resolver only.
+ */
+export const SHIM_META = {
+    fastPath: "0x786d06e5",
+    sealed: "0xe4b203ef",
+    resolver: "0x04f3bcec",
+    setFastPath: "0x8682471f",
+    seal: "0xe2e33028",
+} as const;
+
+/** The shim's own storage slots (`keccak256(label) - 1`); every other slot belongs to the name's implementations. */
+export const SHIM_SLOTS = {
+    /** `cdm.shim.fast`: the latest version as one `packFastPath` word; all zero when the shim has no shortcut. */
+    fast: "0xf0a018d1f0a0c89702867d3b938e95b2525db0fc04b1c93fdac5127d62eef3a2",
+    /** `cdm.shim.sealed`: non-zero once the shim is sealed. */
+    sealed: "0x7ae89d045ec485b4c2afaca0f585635101dbf8f05b43a137d6f198bfa339400d",
 } as const;
 
 /** `resolve(address,uint256,bytes)`: the one request every shim makes to the resolver. */
@@ -241,6 +270,18 @@ export function encodeProxyAdmin(): Hex {
     return encodeProxyMetaCall(PROXY_META.admin);
 }
 
+export function encodeProxyFastPath(): Hex {
+    return encodeProxyMetaCall(SHIM_META.fastPath);
+}
+
+export function encodeProxySealed(): Hex {
+    return encodeProxyMetaCall(SHIM_META.sealed);
+}
+
+export function encodeProxyResolver(): Hex {
+    return encodeProxyMetaCall(SHIM_META.resolver);
+}
+
 // ─── Meta return decoders ──────────────────────────────────────────────────
 
 function toBytesInput(data: Hex | Uint8Array): Uint8Array {
@@ -252,18 +293,58 @@ export function decodeU128Word(data: Hex | Uint8Array): bigint {
     return wordToU128(readWord(toBytesInput(data), 0, "u128 word"), "u128 word");
 }
 
-/** Decode a single address word (`implOf`, `admin`). */
+/** Decode a single address word (`implOf`, `admin`, `resolver`). */
 export function decodeAddressWord(data: Hex | Uint8Array): Hex {
     return wordToAddress(readWord(toBytesInput(data), 0, "address word"));
 }
 
-/** Decode a `(u128 key, address)` pair (`latest`). */
+/** Decode a single bool word (`frozen`, `sealed`). */
+export function decodeBoolWord(data: Hex | Uint8Array): boolean {
+    return wordToU128(readWord(toBytesInput(data), 0, "bool word"), "bool word") !== 0n;
+}
+
+/**
+ * Decode a `(u128 key, address)` pair (`latest`, `fastPath`). `fastPath`
+ * answers all zero when the shim has no shortcut.
+ */
 export function decodeVersionPair(data: Hex | Uint8Array): { key: bigint; target: Hex } {
     const bytes = toBytesInput(data);
     return {
         key: wordToU128(readWord(bytes, 0, "version key"), "version key"),
         target: wordToAddress(readWord(bytes, 1, "target")),
     };
+}
+
+// ─── Shim fast-path word ───────────────────────────────────────────────────
+
+/**
+ * The word at `SHIM_SLOTS.fast`: `[version key: 12 bytes BE][implementation:
+ * 20 bytes]`. A publishable key has its top 32 bits clear, so 12 bytes hold
+ * all of it.
+ */
+export function packFastPath(key: bigint, implementation: string): Hex {
+    if (key < 0n || key >> 96n !== 0n) {
+        throw new Error(`Version key does not fit the fast-path word: ${key}`);
+    }
+    return bytesToHex(
+        concatBytes(
+            u128Bytes(key, "version key").subarray(4),
+            wordAddress(implementation).subarray(12),
+        ),
+    );
+}
+
+/** Split a fast-path word into its version key and implementation. */
+export function unpackFastPath(word: Hex | Uint8Array): { key: bigint; implementation: Hex } {
+    const bytes = typeof word === "string" ? hexToBytes(word, "fast-path word") : word;
+    if (bytes.length !== 32) {
+        throw new Error(`Fast-path word must be 32 bytes, got ${bytes.length}`);
+    }
+    let key = 0n;
+    for (let i = 0; i < 12; i++) {
+        key = (key << 8n) | BigInt(bytes[i]);
+    }
+    return { key, implementation: bytesToHex(bytes.subarray(12)) };
 }
 
 // ─── In-source tests ───────────────────────────────────────────────────────
@@ -291,6 +372,28 @@ if (import.meta.vitest) {
             for (const [name, selector] of Object.entries(PROXY_META)) {
                 expect(keccakSelector(signatures[name as keyof typeof PROXY_META])).toBe(selector);
             }
+        });
+
+        it("shim meta selectors derive from their signatures (pinned in Rust core)", () => {
+            const signatures: Record<keyof typeof SHIM_META, string> = {
+                fastPath: "fastPath()",
+                sealed: "sealed()",
+                resolver: "resolver()",
+                setFastPath: "setFastPath(uint128,address)",
+                seal: "seal(uint128,address)",
+            };
+            for (const [name, selector] of Object.entries(SHIM_META)) {
+                expect(keccakSelector(signatures[name as keyof typeof SHIM_META])).toBe(selector);
+            }
+        });
+
+        it("shim slots are keccak256(label) - 1 (pinned in Rust core)", () => {
+            const slot = (label: string) => {
+                const hash = BigInt(bytesToHex(keccak_256(new TextEncoder().encode(label))));
+                return `0x${(hash - 1n).toString(16).padStart(64, "0")}`;
+            };
+            expect(slot("cdm.shim.fast")).toBe(SHIM_SLOTS.fast);
+            expect(slot("cdm.shim.sealed")).toBe(SHIM_SLOTS.sealed);
         });
 
         it("initialize and resolve selectors derive from their signatures (pinned in Rust core)", () => {
@@ -378,12 +481,37 @@ if (import.meta.vitest) {
             expect(decodeAddressWord(pair.subarray(32))).toBe(
                 "0x2222222222222222222222222222222222222222",
             );
+            expect(decodeBoolWord(wordU128(1n))).toBe(true);
+            expect(decodeBoolWord(wordU128(0n))).toBe(false);
         });
 
         it("error selectors derive from their signatures", () => {
             expect(keccakSelector("UnknownVersion()")).toBe("0x8da6a6a4");
             expect(keccakSelector("UnsupportedVersion(uint128,uint128)")).toBe("0x4f95b5db");
             expect(keccakSelector("MalformedResolution()")).toBe("0xa0977a0b");
+            expect(keccakSelector("NotResolver()")).toBe("0xba2a9fc2");
+            expect(keccakSelector("Sealed()")).toBe("0x1b2d71eb");
+            expect(keccakSelector("NameSealed()")).toBe("0x60e456c9");
+        });
+    });
+
+    describe("shim fast-path word", () => {
+        it("is the key then the implementation (pinned in Rust core)", () => {
+            const key = packVersionKey(1, 2, 3);
+            const implementation = `0x${"ab".repeat(20)}`;
+            const word = packFastPath(key, implementation);
+            // Major, minor, patch as big-endian u32s, then the address.
+            expect(word).toBe(`0x000000010000000200000003${"ab".repeat(20)}`);
+            expect(unpackFastPath(word)).toEqual({ key, implementation });
+        });
+
+        it("holds the largest publishable key", () => {
+            const max = packVersionKey(0xffff_ffff, 0xffff_ffff, 0xffff_ffff);
+            const implementation = `0x${"01".repeat(20)}`;
+            expect(unpackFastPath(packFastPath(max, implementation))).toEqual({
+                key: max,
+                implementation,
+            });
         });
     });
 }

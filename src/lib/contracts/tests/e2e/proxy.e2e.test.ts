@@ -1,7 +1,8 @@
 // Per-name shim e2e against a local PPN: the shared-counter blob is
 // published twice as two versions of one name, then plain, versioned, and
 // meta calls must all read and write the same counter, with the routing
-// state readable from the resolver.
+// state readable from the resolver and the shim's fast path following every
+// publish, freeze, and opt-out. A second name is sealed.
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import { readFileSync } from "node:fs";
@@ -11,13 +12,19 @@ import { createCdmAssetHubClient, prepareSigner, type CdmAssetHubClient } from "
 import { ALICE_SS58 } from "@parity/cdm-utils";
 import { CONTRACTS_REGISTRY_ABI, CONTRACT_RESOLVER_ABI } from "@parity/cdm-builder/abi";
 import {
+    decodeAddressWord,
+    decodeBoolWord,
+    decodeVersionPair,
     encodeProxyAdmin,
     encodeProxyCallCode,
+    encodeProxyFastPath,
     encodeProxyFrozen,
     encodeProxyImplOf,
     encodeProxyLatest,
     encodeProxyMetaCall,
     encodeProxyMinSupported,
+    encodeProxyResolver,
+    encodeProxySealed,
     encodeVersionedCall,
     packVersionKey,
 } from "@parity/cdm-builder/proxy";
@@ -37,9 +44,14 @@ import {
 // Unique per run so the suite holds on networks with prior registry state.
 const RUN = Date.now().toString(36);
 const NAME = `@test/counter-${RUN}`;
+// Sealing is irreversible, so it gets a name of its own.
+const SEALED_NAME = `@test/sealed-${RUN}`;
 const URI = "ipfs://bafyproxye2e";
 const KEY_1_0_0 = packVersionKey(1, 0, 0);
 const KEY_1_1_0 = packVersionKey(1, 1, 0);
+const KEY_1_2_0 = packVersionKey(1, 2, 0);
+/** What `fastPath()` answers while the shim has no shortcut. */
+const NO_FAST_PATH = { key: 0n, target: `0x${"00".repeat(20)}` };
 
 // keccak256(signature)[..4] as calldata hex.
 function selector(signature: string): `0x${string}` {
@@ -57,10 +69,14 @@ const UNKNOWN_VERSION = selector("UnknownVersion()");
 const CONTRACT_FROZEN = selector("ContractFrozen()");
 const UNKNOWN_META_SELECTOR = selector("UnknownMetaSelector()");
 const UNAUTHORIZED_ADMIN = selector("UnauthorizedAdmin()");
+const NAME_SEALED = selector("NameSealed()");
+// The shim's own revert selector.
+const SEALED = selector("Sealed()");
 
 let ppn: PpnHandle;
 let chainClient: CdmAssetHubClient;
 let registryAddress: string;
+let resolverAddress: string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let api: any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -90,17 +106,46 @@ function addressWord(address: string): string {
 }
 
 /** `routingOf(proxy)` as the resolver reports it. */
-async function routing(): Promise<{ minSupported: bigint; frozen: boolean }> {
-    const r = await resolver.routingOf.query(proxyAddress);
+async function routing(address: string = proxyAddress): Promise<{
+    minSupported: bigint;
+    frozen: boolean;
+    fastPathOff: boolean;
+    sealed: boolean;
+}> {
+    const r = await resolver.routingOf.query(address);
     expect(r.success).toBe(true);
-    const row = r.value as { min_supported?: unknown; frozen?: unknown };
-    return { minSupported: BigInt(String(row.min_supported)), frozen: Boolean(row.frozen) };
+    const row = r.value as {
+        min_supported?: unknown;
+        frozen?: unknown;
+        fast_path_off?: unknown;
+        sealed?: unknown;
+    };
+    return {
+        minSupported: BigInt(String(row.min_supported)),
+        frozen: Boolean(row.frozen),
+        fastPathOff: Boolean(row.fast_path_off),
+        sealed: Boolean(row.sealed),
+    };
+}
+
+/** Dry-run one of the getters the shim answers itself. */
+async function shimGetter(address: string, input: string): Promise<`0x${string}`> {
+    const r = await dryRunCall(api, address, input);
+    expect(r.success).toBe(true);
+    expect(r.reverted).toBe(false);
+    return r.data as `0x${string}`;
+}
+
+/** The shim's `fastPath()`: the version it serves without asking the resolver. */
+async function fastPath(address: string = proxyAddress): Promise<{ key: bigint; target: string }> {
+    return decodeVersionPair(await shimGetter(address, encodeProxyFastPath()));
 }
 
 beforeAll(async () => {
     ppn = await connectPpn();
     const deployed = await deployRegistry(ppn.wsUrl);
     registryAddress = deployed.address;
+    resolverAddress = deployed.resolverAddress;
     await ensureTemplateBuilt();
 
     signer = prepareSigner("Alice");
@@ -153,6 +198,10 @@ describe("publish creates the per-name shim", () => {
         );
     });
 
+    test("the shim holds the published version as its fast path", async () => {
+        expect(await fastPath()).toEqual({ key: KEY_1_0_0, target: lc(implA) });
+    });
+
     test("plain calls route to the latest implementation", async () => {
         const r = await counter.increment.tx();
         expect(r.ok).toBe(true);
@@ -172,6 +221,10 @@ describe("multiple versions over one storage", () => {
         expect(lc((addr.value as { value: string }).value)).toBe(lc(proxyAddress));
     });
 
+    test("the fast path follows the publish", async () => {
+        expect(await fastPath()).toEqual({ key: KEY_1_1_0, target: lc(implB) });
+    });
+
     test("plain call now routes to the new implementation — same state", async () => {
         const r = await counter.increment.tx();
         expect(r.ok).toBe(true);
@@ -187,12 +240,19 @@ describe("multiple versions over one storage", () => {
         expect(Number(count.value)).toBe(3);
     });
 
+    test("a versioned call for the latest version executes on the same state", async () => {
+        await rawCallTx(api, signer, proxyAddress, encodeVersionedCall(KEY_1_1_0, INCREMENT));
+
+        const count = await counter.getCount.query();
+        expect(Number(count.value)).toBe(4);
+    });
+
     test("versioned reads through both versions see the same value", async () => {
         for (const key of [KEY_1_0_0, KEY_1_1_0]) {
             const r = await dryRunCall(api, proxyAddress, encodeVersionedCall(key, GET_COUNT));
             expect(r.success).toBe(true);
             expect(r.reverted).toBe(false);
-            expect(BigInt(`0x${r.data.replace(/^0x/, "")}`)).toBe(3n);
+            expect(BigInt(`0x${r.data.replace(/^0x/, "")}`)).toBe(4n);
         }
     });
 
@@ -267,7 +327,7 @@ describe("min-supported ratchet", () => {
         const r = await counter.increment.tx();
         expect(r.ok).toBe(true);
         const count = await counter.getCount.query();
-        expect(Number(count.value)).toBe(4);
+        expect(Number(count.value)).toBe(5);
     });
 });
 
@@ -295,14 +355,22 @@ describe("freeze / unfreeze", () => {
         expect((await routing()).frozen).toBe(true);
     });
 
+    test("freezing empties the shim's fast path", async () => {
+        expect(await fastPath()).toEqual(NO_FAST_PATH);
+    });
+
     test("unfreeze restores delegation", async () => {
         const r = await registry.unfreezeContract.tx(NAME);
         expect(r.ok).toBe(true);
 
         const count = await counter.getCount.query();
         expect(count.success).toBe(true);
-        expect(Number(count.value)).toBe(4);
+        expect(Number(count.value)).toBe(5);
         expect((await routing()).frozen).toBe(false);
+    });
+
+    test("unfreezing hands the latest version back to the shim", async () => {
+        expect(await fastPath()).toEqual({ key: KEY_1_1_0, target: lc(implB) });
     });
 });
 
@@ -322,5 +390,97 @@ describe("publish rules", () => {
         );
         expect(dry.success).toBe(false);
         expect(dry.value.decoded?.errorName).toBe("BadImplementation");
+    });
+});
+
+describe("fast path opt-out", () => {
+    test("the owner turns the fast path off; plain calls keep working", async () => {
+        const r = await registry.setFastPath.tx(NAME, false);
+        expect(r.ok).toBe(true);
+        expect(await fastPath()).toEqual(NO_FAST_PATH);
+        expect((await routing()).fastPathOff).toBe(true);
+
+        const increment = await counter.increment.tx();
+        expect(increment.ok).toBe(true);
+        const count = await counter.getCount.query();
+        expect(Number(count.value)).toBe(6);
+    });
+
+    test("a publish leaves the fast path empty", async () => {
+        const r = await registry.publish.tx(NAME, KEY_1_2_0, implA, URI);
+        expect(r.ok).toBe(true);
+        expect(await fastPath()).toEqual(NO_FAST_PATH);
+    });
+
+    test("turning it back on hands the shim the latest version", async () => {
+        const r = await registry.setFastPath.tx(NAME, true);
+        expect(r.ok).toBe(true);
+        expect(await fastPath()).toEqual({ key: KEY_1_2_0, target: lc(implA) });
+        expect((await routing()).fastPathOff).toBe(false);
+    });
+});
+
+describe("seal", () => {
+    let sealedProxy: string;
+
+    beforeAll(async () => {
+        for (const [key, impl] of [
+            [KEY_1_0_0, implA],
+            [KEY_1_1_0, implB],
+        ] as const) {
+            const r = await registry.publish.tx(SEALED_NAME, key, impl, URI);
+            expect(r.ok).toBe(true);
+        }
+        const proxy = await registry.getProxy.query(SEALED_NAME);
+        sealedProxy = String((proxy.value as { value: string }).value);
+    });
+
+    test("the owner seals the name on its latest version", async () => {
+        const r = await registry.sealContract.tx(SEALED_NAME);
+        expect(r.ok).toBe(true);
+        expect((await routing(sealedProxy)).sealed).toBe(true);
+    });
+
+    test("the shim's own getters answer on a sealed name", async () => {
+        expect(decodeBoolWord(await shimGetter(sealedProxy, encodeProxySealed()))).toBe(true);
+        expect(await fastPath(sealedProxy)).toEqual({ key: KEY_1_1_0, target: lc(implB) });
+        expect(decodeAddressWord(await shimGetter(sealedProxy, encodeProxyResolver()))).toBe(
+            lc(resolverAddress),
+        );
+    });
+
+    test("plain calls and calls pinned to the sealed version keep working", async () => {
+        await rawCallTx(api, signer, sealedProxy, INCREMENT);
+
+        for (const input of [GET_COUNT, encodeVersionedCall(KEY_1_1_0, GET_COUNT)]) {
+            const r = await dryRunCall(api, sealedProxy, input);
+            expect(r.success).toBe(true);
+            expect(r.reverted).toBe(false);
+            expect(BigInt(r.data)).toBe(1n);
+        }
+    });
+
+    test("another version and the resolver's meta queries revert Sealed", async () => {
+        for (const input of [encodeVersionedCall(KEY_1_0_0, GET_COUNT), encodeProxyLatest()]) {
+            const r = await dryRunCall(api, sealedProxy, input);
+            expect(r.success).toBe(true);
+            expect(r.reverted).toBe(true);
+            expect(r.data.startsWith(SEALED)).toBe(true);
+        }
+    });
+
+    test("publish, freezeContract and setFastPath revert NameSealed", async () => {
+        const attempts = [
+            registry.publish.query(SEALED_NAME, KEY_1_2_0, implA, URI, { origin: ALICE_SS58 }),
+            registry.freezeContract.query(SEALED_NAME, { origin: ALICE_SS58 }),
+            registry.setFastPath.query(SEALED_NAME, false, { origin: ALICE_SS58 }),
+        ];
+        for (const attempt of attempts) {
+            const dry = await attempt;
+            expect(dry.success).toBe(false);
+            // The resolver's error bubbles through the registry, whose ABI
+            // does not list it, so it arrives undecoded.
+            expect(lc(dry.value.data).startsWith(NAME_SEALED)).toBe(true);
+        }
     });
 });

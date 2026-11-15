@@ -492,7 +492,8 @@
   letter-spacing: 0.02em;
 }
 
-.package-version-unsupported {
+.package-version-unsupported,
+.package-version-flag {
   padding: 2px 8px;
   border: 1px solid var(--color-border-strong);
   border-radius: 999px;

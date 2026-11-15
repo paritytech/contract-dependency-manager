@@ -1,17 +1,25 @@
-//! The versioned-call wire format shared by the resolver, the registry
-//! implementation, and (via mirrored constants) the TypeScript tooling, plus
-//! the protocol between a per-name shim and the resolver.
+//! The versioned-call wire format shared by the per-name shim, the resolver,
+//! the registry implementation, and (via mirrored constants) the TypeScript
+//! tooling, plus the shim's own state and the protocol between a shim and
+//! the resolver.
 //!
-//! The resolver splits a shim's raw calldata into three subspaces:
+//! A shim's raw calldata splits into three subspaces:
 //!
 //! - **plain**: anything not starting with [`MAGIC`] — delegated to the
 //!   latest implementation untouched, so a name reserves zero selectors in
 //!   its own ABI space;
-//! - **versioned**: `[MAGIC][16-byte version key BE][inner calldata]` —
-//!   delegated to that exact version's implementation;
+//! - **versioned**: `[MAGIC][16-byte version key BE][inner calldata]` — the
+//!   inner calldata is delegated to that exact version's implementation;
 //! - **meta**: `[MAGIC][key = 0][4-byte meta selector][ABI args]` — the CDM
-//!   control plane: queries, plus the registry-only `callCode`. Key 0 is
-//!   `0.0.0`, which is therefore unpublishable.
+//!   control plane. The shim answers the selectors in [`shim`] itself; every
+//!   other one goes to the resolver, which serves the queries in [`meta`]
+//!   plus the registry-only `callCode`. Key 0 is `0.0.0`, which is therefore
+//!   unpublishable.
+//!
+//! A shim that holds the latest version in [`shim::FAST_SLOT`] serves plain
+//! calls and versioned calls for that key from it. Every other call it does
+//! not answer itself goes to the resolver as a [`resolve`] request — or, once
+//! the shim is sealed, reverts.
 //!
 //! A version key packs a semver triple as `major << 64 | minor << 32 | patch`
 //! (each a `u32`), so integer order equals semver order and a name's
@@ -105,8 +113,8 @@ const fn selector(signature: &[u8]) -> [u8; 4] {
 /// delivers to every initialization contract.
 pub const INITIALIZE_SELECTOR: [u8; 4] = selector(b"initialize(uint128,address)");
 
-/// Meta-call selectors: queries, plus `callCode`, which the resolver only
-/// honors when the shim's caller is the registry.
+/// Meta-call selectors the resolver serves: queries, plus `callCode`, which
+/// it only honors when the shim's caller is the registry.
 pub mod meta {
     use super::selector;
 
@@ -125,9 +133,84 @@ pub mod meta {
     pub const ADMIN: [u8; 4] = selector(b"admin()");
 }
 
-/// The shim ↔ resolver protocol. A shim forwards every call it receives as
-/// one read-only `resolve` request and acts on the `Resolution` it gets back;
-/// the shim blob is frozen, so this layout is permanent.
+/// The shim's own state and the meta calls it answers without the resolver.
+/// The shim blob is frozen, so the slots, the word layout, and the selectors
+/// are permanent.
+pub mod shim {
+    use super::selector;
+
+    /// `keccak256(label) - 1`, the EIP-1967 slot derivation: no known keccak
+    /// preimage maps to the slot, so an implementation's ordinary storage
+    /// never lands on it.
+    const fn slot(label: &[u8]) -> [u8; 32] {
+        let mut bytes = keccak_const::Keccak256::new().update(label).finalize();
+        let mut i = 31;
+        loop {
+            let (byte, borrow) = bytes[i].overflowing_sub(1);
+            bytes[i] = byte;
+            if !borrow || i == 0 {
+                break;
+            }
+            i -= 1;
+        }
+        bytes
+    }
+
+    /// The latest version the shim serves without asking the resolver, as
+    /// one [`pack_fast_path`] word; all zero when it has no shortcut.
+    /// `0xf0a018d1f0a0c89702867d3b938e95b2525db0fc04b1c93fdac5127d62eef3a2`
+    pub const FAST_SLOT: [u8; 32] = slot(b"cdm.shim.fast");
+
+    /// Non-zero once the shim is sealed.
+    /// `0x7ae89d045ec485b4c2afaca0f585635101dbf8f05b43a137d6f198bfa339400d`
+    pub const SEALED_SLOT: [u8; 32] = slot(b"cdm.shim.sealed");
+
+    /// `fastPath()` = `0x786d06e5`: the [`FAST_SLOT`] word as
+    /// `(uint128 key, address implementation)`.
+    pub const FAST_PATH: [u8; 4] = selector(b"fastPath()");
+    /// `sealed()` = `0xe4b203ef`: `bool`.
+    pub const SEALED: [u8; 4] = selector(b"sealed()");
+    /// `resolver()` = `0x04f3bcec`: the shim's immutable resolver `address`.
+    pub const RESOLVER: [u8; 4] = selector(b"resolver()");
+    /// `setFastPath(uint128,address)` = `0x8682471f`: resolver-only; stores
+    /// `(key, implementation)` in [`FAST_SLOT`], or clears it when
+    /// `implementation` is zero.
+    pub const SET_FAST_PATH: [u8; 4] = selector(b"setFastPath(uint128,address)");
+    /// `seal(uint128,address)` = `0xe2e33028`: resolver-only; stores
+    /// `(key, implementation)` in [`FAST_SLOT`] and sets [`SEALED_SLOT`].
+    pub const SEAL: [u8; 4] = selector(b"seal(uint128,address)");
+
+    /// The [`FAST_SLOT`] word: `[version key: 12 bytes big-endian]
+    /// [implementation: 20 bytes]`. A publishable key has its top 32 bits
+    /// clear, so its low 96 bits are the whole key.
+    #[inline]
+    pub fn pack_fast_path(key: u128, implementation: &[u8; 20]) -> [u8; 32] {
+        let mut word = [0u8; 32];
+        // Major and minor, then patch.
+        word[..8].copy_from_slice(&((key >> 32) as u64).to_be_bytes());
+        word[8..12].copy_from_slice(&(key as u32).to_be_bytes());
+        word[12..].copy_from_slice(implementation);
+        word
+    }
+
+    /// Split a [`FAST_SLOT`] word into `(version key, implementation)`.
+    #[inline]
+    pub fn unpack_fast_path(word: &[u8; 32]) -> (u128, [u8; 20]) {
+        let mut high = [0u8; 8];
+        high.copy_from_slice(&word[..8]);
+        let mut low = [0u8; 4];
+        low.copy_from_slice(&word[8..12]);
+        let key = ((u64::from_be_bytes(high) as u128) << 32) | u32::from_be_bytes(low) as u128;
+        let mut implementation = [0u8; 20];
+        implementation.copy_from_slice(&word[12..]);
+        (key, implementation)
+    }
+}
+
+/// The shim ↔ resolver protocol. A shim forwards every call it does not
+/// serve itself as one read-only `resolve` request and acts on the
+/// `Resolution` it gets back; the shim blob is frozen, so this layout is
+/// permanent.
 pub mod resolve {
     use super::selector;
 
@@ -218,6 +301,10 @@ mod tests {
         bytes.iter().map(|b| format!("{b:02x}")).collect()
     }
 
+    fn hex32(bytes: [u8; 32]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
     #[test]
     fn magic_is_pinned() {
         // Mirrored in src/lib/contracts/src/proxy.ts; changing it strands
@@ -243,6 +330,47 @@ mod tests {
     #[test]
     fn resolve_selector_is_pinned() {
         assert_eq!(hex4(resolve::SELECTOR), "6a418533");
+    }
+
+    #[test]
+    fn shim_slots_are_pinned() {
+        // Every shim ever created keeps its state at these two slots.
+        assert_eq!(
+            hex32(shim::FAST_SLOT),
+            "f0a018d1f0a0c89702867d3b938e95b2525db0fc04b1c93fdac5127d62eef3a2"
+        );
+        assert_eq!(
+            hex32(shim::SEALED_SLOT),
+            "7ae89d045ec485b4c2afaca0f585635101dbf8f05b43a137d6f198bfa339400d"
+        );
+    }
+
+    #[test]
+    fn shim_selectors_are_pinned() {
+        assert_eq!(hex4(shim::FAST_PATH), "786d06e5");
+        assert_eq!(hex4(shim::SEALED), "e4b203ef");
+        assert_eq!(hex4(shim::RESOLVER), "04f3bcec");
+        assert_eq!(hex4(shim::SET_FAST_PATH), "8682471f");
+        assert_eq!(hex4(shim::SEAL), "e2e33028");
+    }
+
+    #[test]
+    fn fast_path_word_is_the_key_then_the_implementation() {
+        let key = pack_version(1, 2, 3);
+        let word = shim::pack_fast_path(key, &[0xAB; 20]);
+
+        // Major, minor, patch as big-endian u32s, then the address.
+        let mut expected = vec![0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3];
+        expected.extend_from_slice(&[0xAB; 20]);
+        assert_eq!(word.to_vec(), expected);
+        assert_eq!(shim::unpack_fast_path(&word), (key, [0xAB; 20]));
+
+        // The largest publishable key survives the 12-byte field.
+        let max = pack_version(u32::MAX, u32::MAX, u32::MAX);
+        assert_eq!(
+            shim::unpack_fast_path(&shim::pack_fast_path(max, &[0x01; 20])),
+            (max, [0x01; 20])
+        );
     }
 
     #[test]

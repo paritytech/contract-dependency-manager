@@ -37,12 +37,16 @@ impl Resolution {
 
 /// A name's routing state, keyed by its shim address. Zero `latest_key`
 /// means nothing published yet; zero `min_supported` means no floor.
+/// `fast_path_off` is the owner's opt-out from the shim's shortcut; a
+/// `sealed` name is pinned to `latest_impl` and takes no further changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, SolType, SolStorage)]
 pub struct Routing {
     pub latest_key: u128,
     pub latest_impl: Address,
     pub min_supported: u128,
     pub frozen: bool,
+    pub fast_path_off: bool,
+    pub sealed: bool,
 }
 
 /// Versioned call for a key that was never published.
@@ -110,6 +114,10 @@ pub struct ContractFrozen;
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct BadImplementation;
 
+/// Sealed: the name's routing state never changes again.
+#[derive(Debug, PartialEq, Eq, SolError)]
+pub struct NameSealed;
+
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub enum Error {
     UnknownVersion(UnknownVersion),
@@ -125,4 +133,5 @@ pub enum Error {
     NoVersions(NoVersions),
     ContractFrozen(ContractFrozen),
     BadImplementation(BadImplementation),
+    NameSealed(NameSealed),
 }

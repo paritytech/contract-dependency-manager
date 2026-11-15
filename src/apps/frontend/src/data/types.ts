@@ -35,6 +35,10 @@ export interface Package {
     proxyAddress?: string;
     /** Lowest still-supported semver version; unset when no floor is set. */
     minSupportedVersion?: string;
+    /** The name is pinned to its latest version for good. */
+    sealed?: boolean;
+    /** The owner opted out of the proxy serving the latest version from its own storage. */
+    fastPathOff?: boolean;
     metadataUri?: string;
     metadataLoaded?: boolean;
 }

@@ -57,15 +57,23 @@ export async function queryContractByName(
         throw registryQueryError(`Failed to query proxy for ${name}`, proxyResult.value);
     }
 
-    // The resolver keys routing state by the name's proxy; `min_supported`
-    // is 0 when no support floor has been set.
+    // The resolver keys routing state by the name's proxy: `(latest_key,
+    // latest_impl, min_supported, frozen, fast_path_off, sealed)`.
+    // `min_supported` is 0 when no support floor has been set.
     const proxyAddress = unwrapOption<string>(proxyResult.value);
     const routingResult = await resolver.routingOf.query(proxyAddress);
     if (!routingResult.success) {
         throw registryQueryError(`Failed to query routing for ${name}`, routingResult.value);
     }
-    const routing = routingResult.value as { min_supported?: unknown; minSupported?: unknown };
+    const routing = routingResult.value as {
+        min_supported?: unknown;
+        minSupported?: unknown;
+        fast_path_off?: unknown;
+        fastPathOff?: unknown;
+        sealed?: unknown;
+    };
     const minSupportedKey = toVersionKey(routing.min_supported ?? routing.minSupported);
+    const sealed = routing.sealed === true;
 
     return {
         name,
@@ -74,6 +82,9 @@ export async function queryContractByName(
         address: unwrapOption<string>(addressResult.value),
         proxyAddress,
         minSupportedVersion: minSupportedKey === 0n ? undefined : keyToSemver(minSupportedKey),
+        sealed,
+        // Sealing hands the proxy its latest version whatever the opt-out says.
+        fastPathOff: !sealed && (routing.fast_path_off ?? routing.fastPathOff) === true,
         metadataUri: unwrapOption<string>(metadataResult.value),
         metadataLoaded: false,
     };

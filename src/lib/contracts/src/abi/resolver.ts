@@ -7,9 +7,10 @@ import type { AbiEntry, AbiParam } from "@parity/product-sdk-contracts";
  * artifact when that exists. Used at the resolver proxy address, which the
  * registry reports through `getResolver()`.
  *
- * `resolve` is what every per-name shim calls; the rest is the registry's
- * write surface (`publish`, `setMinSupported`, `setFrozen`, `setCode`) and
- * the open routing queries (`routingOf`, `implOf`).
+ * `resolve` is what a per-name shim calls for everything it does not serve
+ * itself; the rest is the registry's write surface (`publish`,
+ * `setMinSupported`, `setFrozen`, `setFastPath`, `seal`, `setCode`) and the
+ * open routing queries (`routingOf`, `implOf`).
  */
 
 /** Generated-ABI entry shape: `AbiEntry` plus the event-only fields. */
@@ -84,6 +85,23 @@ const RESOLVER_ABI: ResolverAbiEntry[] = [
     },
     {
         type: "function",
+        name: "setFastPath",
+        inputs: [
+            { name: "proxy", type: "address" },
+            { name: "enabled", type: "bool" },
+        ],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "seal",
+        inputs: [{ name: "proxy", type: "address" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
         name: "setCode",
         inputs: [{ name: "new_implementation", type: "address" }],
         outputs: [],
@@ -116,6 +134,8 @@ const RESOLVER_ABI: ResolverAbiEntry[] = [
                     { name: "latest_impl", type: "address" },
                     { name: "min_supported", type: "uint128" },
                     { name: "frozen", type: "bool" },
+                    { name: "fast_path_off", type: "bool" },
+                    { name: "sealed", type: "bool" },
                 ],
             },
         ],
@@ -172,6 +192,7 @@ const RESOLVER_ABI: ResolverAbiEntry[] = [
     { type: "error", name: "NoVersions", inputs: [] },
     { type: "error", name: "ContractFrozen", inputs: [] },
     { type: "error", name: "BadImplementation", inputs: [] },
+    { type: "error", name: "NameSealed", inputs: [] },
     { type: "error", name: "InvalidCalldata", inputs: [] },
     { type: "error", name: "CalldataTooLarge", inputs: [] },
     { type: "error", name: "NoSelector", inputs: [] },

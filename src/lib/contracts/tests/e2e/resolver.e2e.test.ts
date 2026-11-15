@@ -1,6 +1,7 @@
 // Resolver e2e against a local PPN: the registry owns the resolver, one
-// resolver upgrade reaches a name published before it, and routing through
-// a shim costs a measured amount over calling the implementation directly.
+// resolver upgrade reaches every call that asks the resolver while a shim's
+// fast path keeps serving the latest version, and each route through a shim
+// costs a measured amount over calling the implementation directly.
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import { keccak_256 } from "@noble/hashes/sha3.js";
@@ -8,7 +9,7 @@ import type { HexString } from "polkadot-api";
 import { createCdmAssetHubClient, prepareSigner, type CdmAssetHubClient } from "@parity/cdm-env";
 import { ALICE_SS58 } from "@parity/cdm-utils";
 import { CONTRACTS_REGISTRY_ABI, CONTRACT_RESOLVER_ABI } from "@parity/cdm-builder/abi";
-import { encodeProxyLatest, packVersionKey } from "@parity/cdm-builder/proxy";
+import { encodeProxyLatest, encodeVersionedCall, packVersionKey } from "@parity/cdm-builder/proxy";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
 import {
     connectPpn,
@@ -26,8 +27,11 @@ import {
 // Unique per run so the suite holds on networks with prior registry state.
 const RUN = Date.now().toString(36);
 const NAME = `@test/resolver-${RUN}`;
+/** A name whose owner turned the fast path off: its shim asks about every call. */
+const OFF_NAME = `@test/resolver-off-${RUN}`;
 const URI = "ipfs://bafyresolvere2e";
 const KEY_1_0_0 = packVersionKey(1, 0, 0);
+const KEY_1_1_0 = packVersionKey(1, 1, 0);
 /** What the fixture resolver answers to every call. */
 const MARKER = `0x${"f1".repeat(32)}`;
 
@@ -53,6 +57,7 @@ let impl: HexString;
 let fixture: HexString;
 let realImpl: string;
 let proxyAddress: string;
+let offProxyAddress: string;
 
 function lc(v: unknown): string {
     return String(v).toLowerCase();
@@ -66,6 +71,19 @@ async function resolverCode(): Promise<string> {
     const r = await resolver.getCode.query();
     expect(r.success).toBe(true);
     return lc(r.value);
+}
+
+async function proxyOf(name: string): Promise<string> {
+    const proxy = await registry.getProxy.query(name);
+    return String((proxy.value as { value: string }).value);
+}
+
+/** Calls that ask the resolver: an older version, and a plain call with the fast path off. */
+function routedCounts(): [string, string][] {
+    return [
+        [proxyAddress, encodeVersionedCall(KEY_1_0_0, GET_COUNT)],
+        [offProxyAddress, GET_COUNT],
+    ];
 }
 
 beforeAll(async () => {
@@ -93,10 +111,20 @@ beforeAll(async () => {
     impl = await deployBlob(api, signer, COUNTER_PVM);
     fixture = await deployBlob(api, signer, FIXTURE_RESOLVER_PVM);
 
-    const published = await registry.publish.tx(NAME, KEY_1_0_0, impl, URI);
-    expect(published.ok).toBe(true);
-    const proxy = await registry.getProxy.query(NAME);
-    proxyAddress = String((proxy.value as { value: string }).value);
+    // Every version is the same counter instance, so calls through the two
+    // names differ only in how they are routed.
+    for (const [name, key] of [
+        [NAME, KEY_1_0_0],
+        [NAME, KEY_1_1_0],
+        [OFF_NAME, KEY_1_0_0],
+    ] as const) {
+        const published = await registry.publish.tx(name, key, impl, URI);
+        expect(published.ok).toBe(true);
+    }
+    const off = await registry.setFastPath.tx(OFF_NAME, false);
+    expect(off.ok).toBe(true);
+    proxyAddress = await proxyOf(NAME);
+    offProxyAddress = await proxyOf(OFF_NAME);
 }, 300_000);
 
 afterAll(async () => {
@@ -113,11 +141,11 @@ describe("resolver wiring", () => {
         expect(lc(admin.value)).toBe(lc(deployed.address));
     });
 
-    test("routingOf reflects the publish", async () => {
+    test("routingOf reflects the latest publish", async () => {
         const r = await resolver.routingOf.query(proxyAddress);
         expect(r.success).toBe(true);
         const row = r.value as { latest_key: unknown; latest_impl: unknown };
-        expect(BigInt(String(row.latest_key))).toBe(KEY_1_0_0);
+        expect(BigInt(String(row.latest_key))).toBe(KEY_1_1_0);
         expect(lc(row.latest_impl)).toBe(lc(impl));
     });
 
@@ -127,17 +155,27 @@ describe("resolver wiring", () => {
     });
 });
 
-describe("one resolver upgrade reaches an already-published name", () => {
-    test("upgradeResolver to the fixture: the name now answers the marker", async () => {
+describe("one resolver upgrade reaches every call that asks the resolver", () => {
+    test("upgradeResolver to the fixture: those calls now answer the marker", async () => {
         realImpl = await resolverCode();
         const r = await registry.upgradeResolver.tx(fixture);
         expect(r.ok).toBe(true);
         expect(await resolverCode()).toBe(lc(fixture));
 
-        for (const input of [encodeProxyLatest(), GET_COUNT]) {
-            const answer = await dryRunCall(api, proxyAddress, input);
+        // A meta query, then an older version and a name with its fast path off.
+        const asked: [string, string][] = [[proxyAddress, encodeProxyLatest()], ...routedCounts()];
+        for (const [dest, input] of asked) {
+            const answer = await dryRunCall(api, dest, input);
             expect(answer.reverted).toBe(false);
             expect(answer.data).toBe(MARKER);
+        }
+    });
+
+    test("the shim's fast path keeps serving the latest version through the upgrade", async () => {
+        for (const input of [GET_COUNT, encodeVersionedCall(KEY_1_1_0, GET_COUNT)]) {
+            const count = await dryRunCall(api, proxyAddress, input);
+            expect(count.reverted).toBe(false);
+            expect(BigInt(count.data)).toBe(0n);
         }
     });
 
@@ -148,37 +186,57 @@ describe("one resolver upgrade reaches an already-published name", () => {
 
         const latest = await dryRunCall(api, proxyAddress, encodeProxyLatest());
         expect(latest.data).toBe(
-            `0x${KEY_1_0_0.toString(16).padStart(64, "0")}${addressWord(impl)}`,
+            `0x${KEY_1_1_0.toString(16).padStart(64, "0")}${addressWord(impl)}`,
         );
-        const count = await dryRunCall(api, proxyAddress, GET_COUNT);
-        expect(count.reverted).toBe(false);
-        expect(BigInt(count.data)).toBe(0n);
+        for (const [dest, input] of routedCounts()) {
+            const count = await dryRunCall(api, dest, input);
+            expect(count.reverted).toBe(false);
+            expect(BigInt(count.data)).toBe(0n);
+        }
     });
 });
 
 describe("routing overhead", () => {
     test("each frame a routed call adds, in both weight dimensions", async () => {
-        const routingOf = `${selector("routingOf(address)")}${addressWord(proxyAddress)}`;
-        const calls: [string, string, string][] = [
-            ["implementation directly", impl, GET_COUNT],
-            ["resolver implementation routingOf directly", await resolverCode(), routingOf],
-            ["resolver routingOf through its proxy", deployed.resolverAddress, routingOf],
-            ["shim meta latest() (no delegate)", proxyAddress, encodeProxyLatest()],
-            ["shim plain call", proxyAddress, GET_COUNT],
-        ];
-        const measured = [];
-        for (const [label, dest, input] of calls) {
+        const measure = async (label: string, dest: string, input: string) => {
             const r = await dryRunCall(api, dest, input);
             expect(r.success).toBe(true);
             expect(r.reverted).toBe(false);
-            measured.push({ label, refTime: r.refTime, proofSize: r.proofSize });
             console.log(
                 `routing overhead: ${label}: ${r.refTime} ref_time, ${r.proofSize} proof_size`,
             );
+            return r;
+        };
+        const routingOf = `${selector("routingOf(address)")}${addressWord(proxyAddress)}`;
+        const [pinnedOlder, plainOff] = routedCounts();
+
+        const direct = await measure("implementation directly", impl, GET_COUNT);
+        await measure(
+            "resolver implementation routingOf directly",
+            await resolverCode(),
+            routingOf,
+        );
+        await measure("resolver routingOf through its proxy", deployed.resolverAddress, routingOf);
+        await measure("shim meta latest() (no delegate)", proxyAddress, encodeProxyLatest());
+        const fast = await measure("shim plain call (fast path)", proxyAddress, GET_COUNT);
+        await measure(
+            "shim call pinned to the latest version (fast path)",
+            proxyAddress,
+            encodeVersionedCall(KEY_1_1_0, GET_COUNT),
+        );
+        const routed = await measure(
+            "shim plain call, fast path off (through the resolver)",
+            ...plainOff,
+        );
+        await measure(
+            "shim call pinned to an older version (through the resolver)",
+            ...pinnedOlder,
+        );
+
+        // The shim's own frame costs something; asking the resolver costs more.
+        for (const dimension of ["refTime", "proofSize"] as const) {
+            expect(fast[dimension]).toBeGreaterThan(direct[dimension]);
+            expect(routed[dimension]).toBeGreaterThan(fast[dimension]);
         }
-        const direct = measured[0];
-        const viaShim = measured[measured.length - 1];
-        expect(viaShim.refTime).toBeGreaterThan(direct.refTime);
-        expect(viaShim.proofSize).toBeGreaterThan(direct.proofSize);
     });
 });

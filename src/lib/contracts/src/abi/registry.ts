@@ -168,6 +168,23 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
+        name: "setFastPath",
+        inputs: [
+            { name: "contract_name", type: "string" },
+            { name: "enabled", type: "bool" },
+        ],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "sealContract",
+        inputs: [{ name: "contract_name", type: "string" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
         name: "getAddress",
         inputs: [{ name: "contract_name", type: "string" }],
         outputs: [
@@ -467,6 +484,35 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
                 name: "frozen",
                 type: "bool",
                 indexed: false,
+            },
+        ],
+        anonymous: false,
+    },
+    {
+        type: "event",
+        name: "FastPathSet",
+        inputs: [
+            {
+                name: "name",
+                type: "string",
+                indexed: true,
+            },
+            {
+                name: "enabled",
+                type: "bool",
+                indexed: false,
+            },
+        ],
+        anonymous: false,
+    },
+    {
+        type: "event",
+        name: "ContractSealed",
+        inputs: [
+            {
+                name: "name",
+                type: "string",
+                indexed: true,
             },
         ],
         anonymous: false,
