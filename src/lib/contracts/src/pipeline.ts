@@ -980,6 +980,29 @@ function findProxyMagicCollisions(abi: AbiEntry[], magic: string = PROXY_MAGIC):
 }
 
 /**
+ * Refuse CDM packages that declare a method whose selector is the proxy
+ * magic, naming every such method in one error. Contracts without a package
+ * are never published behind a proxy, so they are not checked.
+ */
+function assertNoProxyMagicCollisions(
+    contracts: { cdmPackage?: string | null; abiPath?: string }[],
+): void {
+    const collisions = contracts.flatMap(({ cdmPackage, abiPath }) =>
+        cdmPackage
+            ? findProxyMagicCollisions(readAbiEntries(abiPath)).map(
+                  (signature) => `${cdmPackage}: ${signature}`,
+              )
+            : [],
+    );
+    if (collisions.length === 0) return;
+    throw new Error(
+        `Method selector collides with the CDM proxy call prefix ${PROXY_MAGIC}: the name's ` +
+            `proxy parses every call starting with it as a versioned or meta call, so the ` +
+            `method can never be reached. Rename:\n  ${collisions.join("\n  ")}`,
+    );
+}
+
+/**
  * Build (Rust) or select (Solidity) the initialization artifact, then run the
  * storage-layout guard: mismatch refuses the deploy, missing data warns.
  */
@@ -1062,6 +1085,8 @@ function writeSolidityImportForDeployable(
 /**
  * Build all (or a filtered subset of) PVM contracts in a workspace.
  * Emits detect + per-crate build events; does not touch the chain.
+ * Rejects when a built CDM package declares a method whose selector is the
+ * proxy magic.
  */
 export async function buildContracts(opts: BuildContractsOptions): Promise<BuildSummary> {
     const t0 = Date.now();
@@ -1079,6 +1104,7 @@ export async function buildContracts(opts: BuildContractsOptions): Promise<Build
             opts.registryAddress,
         );
         const contracts = summarizeBuildContracts(detected, build, crates);
+        assertNoProxyMagicCollisions(contracts);
         const manifestPath = writeManifestFromBuildSummary(opts.rootDir, contracts);
 
         const summary: BuildSummary = {
@@ -1312,6 +1338,9 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                 const deployables = layerDeployable.map((crate) =>
                     getDeployableContract(build, contractMap, crate),
                 );
+                // First thing after the layer builds: nothing is planned or
+                // submitted yet.
+                assertNoProxyMagicCollisions(deployables);
                 const deployableCrates = deployables.map((contract) => contract.crate);
                 const deployablePackages = deployables.map((contract) => contract.cdmPackage);
 
@@ -1338,16 +1367,6 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
                     const readmeContent = readReadmeContent(contract.readmePath);
                     const repository = contract.repository ?? getGitRemoteUrl(opts.rootDir) ?? "";
                     const abi = readAbiEntries(deployable.abiPath);
-                    for (const signature of findProxyMagicCollisions(abi)) {
-                        emit({
-                            type: "log",
-                            source: "publish",
-                            line:
-                                `warning: ${deployable.cdmPackage} function ${signature} has ` +
-                                `selector ${PROXY_MAGIC}, the CDM proxy call prefix — plain calls ` +
-                                `through the name's proxy will never reach it`,
-                        });
-                    }
                     const storageLayout = readStorageLayout(deployable.abiPath);
                     const meta: Metadata = {
                         publish_block: 0,
@@ -1622,7 +1641,7 @@ export async function deployContracts(opts: DeployContractsOptions): Promise<Dep
 // ---------- inline tests ----------
 
 if (import.meta.vitest) {
-    const { describe, test, expect, vi, beforeEach } = import.meta.vitest;
+    const { describe, test, expect, vi, beforeEach, onTestFinished } = import.meta.vitest;
 
     vi.mock("./builder", () => ({
         pvmContractBuildAsync: vi.fn(
@@ -1736,6 +1755,7 @@ if (import.meta.vitest) {
     const { createContractFromClient: mockCreateContract } = await import(
         "@parity/product-sdk-contracts"
     );
+    const proxyModule = await import("./proxy");
 
     /** Deterministic 20-byte stable address per package for the fake registry. */
     function stableAddressFor(pkg: string): string {
@@ -1821,6 +1841,29 @@ if (import.meta.vitest) {
     }
 
     const testRegistry = "0x00000000000000000000000000000000000000aa" as HexString;
+
+    /**
+     * Until the test ends, every built ABI declares transfer(address,uint256)
+     * and its selector 0xa9059cbb stands in for the proxy magic: no known
+     * signature collides with the real one.
+     */
+    function collideWithProxyMagic() {
+        const magic = vi.spyOn(proxyModule, "PROXY_MAGIC", "get");
+        magic.mockReturnValue("0xa9059cbb" as any);
+        onTestFinished(() => magic.mockRestore());
+        const transfer: AbiEntry = {
+            type: "function",
+            name: "transfer",
+            inputs: [
+                { name: "to", type: "address" },
+                { name: "amount", type: "uint256" },
+            ],
+            outputs: [],
+        };
+        (mockReadFileSync as any).mockImplementation((path: unknown) =>
+            Buffer.from(String(path).endsWith(".abi.json") ? JSON.stringify([transfer]) : "[]"),
+        );
+    }
 
     describe("buildContracts", () => {
         test("contracts in same layer build concurrently", async () => {
@@ -1933,6 +1976,14 @@ if (import.meta.vitest) {
             await expect(
                 buildContracts({ rootDir: "/fake", registryAddress: testRegistry }),
             ).rejects.toThrow('Duplicate CDM package "@example/counter"');
+        });
+
+        test("rejects a CDM package method whose selector is the proxy magic", async () => {
+            (mockDetect as any).mockReturnValue(makeOrder([["a"]], {}, { a: "@example/a" }));
+            collideWithProxyMagic();
+            await expect(
+                buildContracts({ rootDir: "/fake", registryAddress: testRegistry }),
+            ).rejects.toThrow("@example/a: transfer(address,uint256)");
         });
 
         test("features option is forwarded to pvmContractBuildAsync", async () => {
@@ -2522,6 +2573,37 @@ if (import.meta.vitest) {
             expect((errorEvent as { error: string }).error).toMatch(/storage layout/);
             expect((errorEvent as { error: string }).error).toMatch(/embedded storage struct/);
             expect(summary.contracts[0]).toMatchObject({ status: "error" });
+        });
+
+        test("refuses to deploy methods whose selector is the proxy magic", async () => {
+            (mockDetect as any).mockReturnValue(
+                makeOrder([["a", "b"]], {}, { a: "@example/a", b: "@example/b" }),
+            );
+            collideWithProxyMagic();
+
+            const events: DeployEvent[] = [];
+            const summary = await deployContracts({
+                rootDir: "/fake",
+                client: makeFakeClient(),
+                signer: makeSigner(1),
+                origin: "5GrwvaEF5zXb26Fz9rcQpDWSJm8VAz5tK7gU3QF8JKpt5M7" as SS58String,
+                registryAddress: getRegistryAddress("paseo") as HexString,
+                onEvent: (event) => events.push(event),
+            });
+
+            // The error directly follows the layer's builds: nothing is
+            // planned, signed, or submitted in between.
+            const types = events.map((event) => event.type);
+            const errorEvent = events[types.lastIndexOf("build-done") + 1];
+            expect(errorEvent).toMatchObject({ type: "deploy-register-error", crates: ["a", "b"] });
+            const { error } = errorEvent as { error: string };
+            expect(error).toContain("@example/a: transfer(address,uint256)");
+            expect(error).toContain("@example/b: transfer(address,uint256)");
+            expect(error).toMatch(/can never be reached\. Rename/);
+            expect(summary.contracts.map((contract) => contract.status)).toEqual([
+                "error",
+                "error",
+            ]);
         });
 
         test("ignores initializations for up-to-date crates", async () => {
