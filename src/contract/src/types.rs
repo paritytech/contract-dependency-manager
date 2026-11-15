@@ -65,21 +65,12 @@ pub struct ContractPage {
 }
 
 /// One version row of `getVersionAt`, option-shaped like the other getters.
-/// `target` is the implementation contract the proxy delegate-calls for it.
+/// The version's implementation address is the resolver's `implOf`.
 #[derive(Debug, PartialEq, Eq, SolType)]
 pub struct OptionalVersionEntry {
     pub is_some: bool,
     pub version_key: u128,
-    pub target: Address,
     pub metadata_uri: String,
-}
-
-/// One published version: the packed semver key and the implementation
-/// contract the name's proxy delegate-calls for it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, SolType, SolStorage)]
-pub struct VersionRecord {
-    pub version_key: u128,
-    pub target: Address,
 }
 
 /// `version_count == 0` means unregistered; every registered name has a proxy.

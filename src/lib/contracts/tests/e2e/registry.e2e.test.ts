@@ -189,20 +189,18 @@ describe("registry publish + post-publish queries", () => {
         expect(BigInt(r.value)).toBe(KEY_1_0_0);
     });
 
-    test("getVersionAt(0) returns key, target, and URI", async () => {
+    test("getVersionAt(0) returns key and URI", async () => {
         const r = await registry.getVersionAt.query(NAME, 0);
         expect(r.success).toBe(true);
         const row = r.value as {
             isSome?: boolean;
             version_key?: unknown;
             versionKey?: unknown;
-            target?: unknown;
             metadata_uri?: unknown;
             metadataUri?: unknown;
         };
         expect(row.isSome).toBe(true);
         expect(BigInt(String(row.version_key ?? row.versionKey))).toBe(KEY_1_0_0);
-        expect(lc(row.target)).toBe(lc(target));
         expect(row.metadata_uri ?? row.metadataUri).toBe(URI);
     });
 

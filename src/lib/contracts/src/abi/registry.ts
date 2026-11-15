@@ -235,7 +235,6 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
                 components: [
                     { name: "isSome", type: "bool" },
                     { name: "version_key", type: "uint128" },
-                    { name: "target", type: "address" },
                     { name: "metadata_uri", type: "string" },
                 ],
             },

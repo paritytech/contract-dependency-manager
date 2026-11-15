@@ -34,9 +34,9 @@ export function usePackageVersions(name: string | undefined, enabled: boolean) {
         setError(null);
         (async () => {
             try {
-                const { registry } = await getRegistryConnection(networkConfig);
+                const { registry, resolver } = await getRegistryConnection(networkConfig);
                 const result = await withTimeout(
-                    queryContractVersions(registry, name),
+                    queryContractVersions(registry, resolver, name),
                     `Registry versions query timed out for ${name}.`,
                 );
                 if (!cancelled) setVersions(result);

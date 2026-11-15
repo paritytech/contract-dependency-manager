@@ -149,57 +149,79 @@ export interface PackageVersionInfo {
     version: string;
     /** Packed semver key: `(major<<64)|(minor<<32)|patch`. */
     key: bigint;
-    /** The version's implementation contract. */
+    /** The version's implementation contract; empty when the resolver read fails. */
     target: string;
     metadataUri: string;
 }
 
-/** Decode a `getVersionAt` tuple: `(isSome, version_key, target, metadata_uri)`. */
-function parseVersionEntry(value: unknown): PackageVersionInfo | null {
+/** Decode a `getVersionAt` tuple: `(isSome, version_key, metadata_uri)`. */
+function parseVersionEntry(value: unknown): Omit<PackageVersionInfo, "target"> | null {
     let isSome: unknown;
     let versionKey: unknown;
-    let target: unknown;
     let metadataUri: unknown;
 
     if (Array.isArray(value)) {
-        [isSome, versionKey, target, metadataUri] = value;
+        [isSome, versionKey, metadataUri] = value;
     } else if (value && typeof value === "object") {
         const entry = value as {
             isSome?: unknown;
             is_some?: unknown;
             version_key?: unknown;
             versionKey?: unknown;
-            target?: unknown;
             metadata_uri?: unknown;
             metadataUri?: unknown;
         };
         isSome = entry.isSome ?? entry.is_some;
         versionKey = entry.version_key ?? entry.versionKey;
-        target = entry.target;
         metadataUri = entry.metadata_uri ?? entry.metadataUri;
     }
 
-    if (!isSome || typeof target !== "string") return null;
+    if (!isSome) return null;
 
     const key = toVersionKey(versionKey);
     return {
         version: keyToSemver(key),
         key,
-        target,
         metadataUri: typeof metadataUri === "string" ? metadataUri : "",
     };
 }
 
-/** Every published version, ascending (`getVersionAt` per index). */
+/** The resolver's `implOf(proxy, key)`; empty when the read fails. */
+async function queryImplementation(
+    resolver: RegistryContract,
+    proxyAddress: string | undefined,
+    key: bigint,
+): Promise<string> {
+    try {
+        const result = await resolver.implOf.query(proxyAddress, key);
+        return result.success && typeof result.value === "string" ? result.value : "";
+    } catch {
+        return "";
+    }
+}
+
+/**
+ * Every published version, ascending: the registry's `getVersionAt` per
+ * index, each paired with its implementation from the resolver.
+ */
 export async function queryContractVersions(
     registry: RegistryContract,
+    resolver: RegistryContract,
     name: string,
 ): Promise<PackageVersionInfo[]> {
-    const countResult = await registry.getVersionCount.query(name);
+    const [countResult, proxyResult] = await Promise.all([
+        registry.getVersionCount.query(name),
+        registry.getProxy.query(name),
+    ]);
     if (!countResult.success) {
         throw registryQueryError(`Failed to query version count for ${name}`, countResult.value);
     }
+    if (!proxyResult.success) {
+        throw registryQueryError(`Failed to query proxy for ${name}`, proxyResult.value);
+    }
     const count = Number(countResult.value ?? 0);
+    // The resolver keys implementations by the name's proxy.
+    const proxyAddress = unwrapOption<string>(proxyResult.value);
 
     const entries = await Promise.all(
         Array.from({ length: count }, async (_, index) => {
@@ -210,7 +232,12 @@ export async function queryContractVersions(
                     result.value,
                 );
             }
-            return parseVersionEntry(result.value);
+            const entry = parseVersionEntry(result.value);
+            if (!entry) return null;
+            return {
+                ...entry,
+                target: await queryImplementation(resolver, proxyAddress, entry.key),
+            };
         }),
     );
 

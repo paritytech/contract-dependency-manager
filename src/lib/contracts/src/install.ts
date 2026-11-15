@@ -177,10 +177,9 @@ interface ResolvedInstallVersion {
     contractAddress: string;
 }
 
-/** One `getVersionAt` row: `(version key, implementation target, metadata URI)`. */
+/** One `getVersionAt` row: `(version key, metadata URI)`. */
 interface RegistryVersionRow {
     key: bigint;
-    target: string;
     metadataUri: string;
 }
 
@@ -229,20 +228,16 @@ async function queryVersionRow(
         throw queryFailure(`Failed to query version row ${index}`, library, rowResult.value);
     }
     const row = rowResult.value as
-        | { isSome?: boolean; version_key?: bigint; target?: string; metadata_uri?: string }
+        | { isSome?: boolean; version_key?: bigint; metadata_uri?: string }
         | null
         | undefined;
     if (!row || typeof row !== "object" || !row.isSome) {
         throw new Error(`Version index ${index} of "${library}" not found in registry`);
     }
-    if (
-        typeof row.version_key !== "bigint" ||
-        typeof row.target !== "string" ||
-        typeof row.metadata_uri !== "string"
-    ) {
+    if (typeof row.version_key !== "bigint" || typeof row.metadata_uri !== "string") {
         throw generationMismatchError(registryAddress);
     }
-    return { key: row.version_key, target: row.target, metadataUri: row.metadata_uri };
+    return { key: row.version_key, metadataUri: row.metadata_uri };
 }
 
 /** Every published row, in index (= publish) order. */
@@ -471,15 +466,15 @@ if (import.meta.vitest) {
         return { success: true, value };
     }
 
-    function versionRow(key: bigint, target: string, metadataUri: string) {
-        return { isSome: true, version_key: key, target, metadata_uri: metadataUri };
+    function versionRow(key: bigint, metadataUri: string) {
+        return { isSome: true, version_key: key, metadata_uri: metadataUri };
     }
 
     /** Rows 1.0.0 and 1.1.0 behind one stable address. */
     function fakeRegistry() {
         const rows = [
-            versionRow(semverToKey("1.0.0"), "0xv0impl", "bafy-v0"),
-            versionRow(semverToKey("1.1.0"), "0xv1impl", "bafy-latest"),
+            versionRow(semverToKey("1.0.0"), "bafy-v0"),
+            versionRow(semverToKey("1.1.0"), "bafy-latest"),
         ];
         return {
             getVersionCount: { query: async () => queryResult(rows.length) },
@@ -489,7 +484,6 @@ if (import.meta.vitest) {
                         rows[index] ?? {
                             isSome: false,
                             version_key: 0n,
-                            target: "0x",
                             metadata_uri: "",
                         },
                     ),
