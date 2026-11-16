@@ -148,15 +148,6 @@ describe("registry pre-publish (this run's name unseen)", () => {
         expect(r.success).toBe(true);
         expect(lc(r.value)).toBe(lc(resolverAddress));
     });
-
-    test("getProxyCodeHash is configured by the deploy flow", async () => {
-        const r = await registry.getProxyCodeHash.query();
-        expect(r.success).toBe(true);
-        // papi decodes bytes32 as Binary; a zero hash would mean publish
-        // can't instantiate per-name proxies.
-        const hex = typeof r.value === "string" ? r.value : (r.value?.asHex?.() ?? "");
-        expect(lc(hex)).not.toBe(`0x${"0".repeat(64)}`);
-    });
 });
 
 describe("registry publish + post-publish queries", () => {

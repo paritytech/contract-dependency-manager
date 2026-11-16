@@ -117,10 +117,6 @@ pub struct VersionNotMonotonic {
     pub latest: u128,
 }
 
-/// First publish needs the per-name proxy blob's code hash configured.
-#[derive(Debug, PartialEq, Eq, SolError)]
-pub struct ProxyCodeHashUnset;
-
 /// First publish needs the resolver address configured.
 #[derive(Debug, PartialEq, Eq, SolError)]
 pub struct ResolverUnset;
@@ -150,7 +146,6 @@ pub enum Error {
     BadImplementation(BadImplementation),
     InvalidVersionKey(InvalidVersionKey),
     VersionNotMonotonic(VersionNotMonotonic),
-    ProxyCodeHashUnset(ProxyCodeHashUnset),
     ResolverUnset(ResolverUnset),
     ResolverAlreadySet(ResolverAlreadySet),
     InvalidResolver(InvalidResolver),

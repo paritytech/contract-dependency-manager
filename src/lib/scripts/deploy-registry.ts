@@ -6,8 +6,8 @@
  * proxy code and deploy the registry proxy THROUGH the factory, (iv) deploy
  * the resolver — its implementation blob plus its own EIP-1967 proxy through
  * the factory, admin = the registry — and hand it to the registry
- * (`setResolver`), (v) upload the frozen per-name shim blob and hand the
- * registry its code hash (`setProxyCodeHash`). The two proxy addresses are
+ * (`setResolver`), (v) upload the frozen per-name shim blob, whose hash is
+ * compiled into the registry. The two proxy addresses are
  * the stable registry address (CONTRACTS_REGISTRY_ADDR) and resolver address
  * (CDM_RESOLVER_ADDR) — pure functions of (factory, salt), independent of
  * any bytecode or constructor input.
@@ -15,7 +15,7 @@
  * With --upgrade, no factory or proxy is redeployed: the new registry
  * implementation blob is deployed at a fresh CREATE2 salt (numeric suffix
  * bumped past consumed ones unless --impl-package pins it), `setCode`
- * repoints the live proxy, and the resolver and shim code hash are ensured.
+ * repoints the live proxy, and the resolver and shim blob are ensured.
  * --upgrade-resolver does the same for the resolver implementation through
  * the registry's `upgradeResolver`.
  *
@@ -346,7 +346,7 @@ if (
 
 // Deploy: CREATE3 factory bootstrap (if needed), the registry implementation
 // blob (plain CREATE2, skipped when already on-chain), the registry proxy
-// THROUGH the factory, then the resolver pair and the shim code hash.
+// THROUGH the factory, then the resolver pair and the shim blob.
 console.log(
     `Deploying ContractRegistry via CREATE3 (factory salt "${CREATE3_FACTORY_PACKAGE}", registry salt "${CONTRACTS_REGISTRY_PACKAGE}")...`,
 );

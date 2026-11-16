@@ -63,13 +63,6 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
     },
     {
         type: "function",
-        name: "setProxyCodeHash",
-        inputs: [{ name: "code_hash", type: "bytes32" }],
-        outputs: [],
-        stateMutability: "nonpayable",
-    },
-    {
-        type: "function",
         name: "getProxyCodeHash",
         inputs: [],
         outputs: [{ name: "", type: "bytes32" }],
@@ -367,11 +360,6 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
             { name: "", type: "uint128" },
             { name: "", type: "uint128" },
         ],
-    },
-    {
-        type: "error",
-        name: "ProxyCodeHashUnset",
-        inputs: [],
     },
     {
         type: "error",
