@@ -37,6 +37,9 @@ pub const ADMIN_SLOT: [u8; 32] = eip1967_slot(b"eip1967.proxy.admin");
 /// Non-zero while the registry is frozen (reads only, admin exempt).
 pub const FROZEN_SLOT: [u8; 32] = eip1967_slot(b"cdm.registry.frozen");
 
+/// Address proposed as the next registry admin; zero when none is pending.
+pub const PENDING_ADMIN_SLOT: [u8; 32] = eip1967_slot(b"cdm.registry.pending_admin");
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,7 +66,12 @@ mod tests {
 
     #[test]
     fn slots_are_distinct() {
-        let all = [IMPLEMENTATION_SLOT, ADMIN_SLOT, FROZEN_SLOT];
+        let all = [
+            IMPLEMENTATION_SLOT,
+            ADMIN_SLOT,
+            FROZEN_SLOT,
+            PENDING_ADMIN_SLOT,
+        ];
         for (i, a) in all.iter().enumerate() {
             for b in &all[i + 1..] {
                 assert_ne!(a, b);
