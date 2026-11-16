@@ -33,14 +33,15 @@
 //!    - a plain call tail-delegate-calls it with the calldata unchanged;
 //!    - a versioned call whose 16-byte key equals the stored key
 //!      tail-delegate-calls it with the calldata past the 20-byte
-//!      `[MAGIC][key]` header.
+//!      `[MAGIC][key]` header;
+//!    - the meta call `latest()` `0x52bfe789` returns `(uint128 key, address
+//!      implementation)`: the two fields of `FAST_SLOT` as ABI words, which
+//!      is the resolver's answer for the same version.
 //!
 //!    Reading `FAST_SLOT` is the only storage access on this path: it neither
 //!    reads `SEALED_SLOT` nor calls the resolver.
 //! 2. *Own meta calls.* A meta call with one of these selectors is handled
 //!    here, sealed or not, and never reaches the resolver:
-//!    - `fastPath()` `0x786d06e5` returns `(uint128 key, address
-//!      implementation)`: the two fields of `FAST_SLOT` as ABI words.
 //!    - `sealed()` `0xe4b203ef` returns `bool`.
 //!    - `resolver()` `0x04f3bcec` returns `address`: the immutable resolver.
 //!    - `setFastPath(uint128 key, address implementation)` `0x8682471f`
@@ -58,16 +59,16 @@
 //!    which they read as two ABI words after the 24-byte meta header: a
 //!    missing word, or non-zero padding in either, is `MalformedCall()`. They
 //!    return nothing. Bytes past a selector's arguments are ignored.
-//! 3. *Everything else* — a plain call without a shortcut, a versioned call
-//!    for another key, any other meta selector, malformed calldata — reverts
-//!    `Sealed()` when `SEALED_SLOT` is set, and otherwise goes to the
-//!    resolver. `SEALED_SLOT` is read only when `FAST_SLOT` holds an
-//!    implementation, which a sealed shim always does.
+//! 3. *Everything else* — a plain call or `latest()` without a shortcut, a
+//!    versioned call for another key, any other meta selector, malformed
+//!    calldata — reverts `Sealed()` when `SEALED_SLOT` is set, and otherwise
+//!    goes to the resolver. `SEALED_SLOT` is read only when `FAST_SLOT` holds
+//!    an implementation, which a sealed shim always does.
 //!
 //! A sealed shim always holds an implementation, so step 1 keeps serving
-//! plain calls and calls pinned to the sealed key, and nothing else is ever
-//! served again. An unsealed shim with a zero `FAST_SLOT` sends every call
-//! but its own meta calls to the resolver.
+//! plain calls, calls pinned to the sealed key and `latest()`, and no other
+//! version is ever served again. An unsealed shim with a zero `FAST_SLOT`
+//! sends every call but its own meta calls to the resolver.
 //!
 //! **Request** — one read-only call to the resolver:
 //! `resolve(address caller, uint256 value, bytes data)`, i.e. the selector
@@ -114,7 +115,7 @@ mod contract_proxy {
     use alloc::vec;
     use alloc::vec::Vec;
     use contract_registry_core::versioning::{
-        CallRoute, META_HEADER_LEN, VERSIONED_HEADER_LEN, is_publishable_key, resolve,
+        CallRoute, META_HEADER_LEN, VERSIONED_HEADER_LEN, is_publishable_key, meta, resolve,
         route_calldata, shim,
     };
     use pvm_contract_sdk::{Address, CallFlags, HostApi, SolError, StorageFlags};
@@ -185,7 +186,8 @@ mod contract_proxy {
             // Selectors are compared whole: an array `match` would test them
             // byte by byte, and every byte of this blob is proof size.
             if let CallRoute::Meta(selector) = route {
-                if selector == shim::FAST_PATH {
+                // The shim's copy is the pair the resolver would answer with.
+                if selector == meta::LATEST && implementation != [0u8; 20] {
                     let mut words = [0u8; 64];
                     words[20..32].copy_from_slice(&fast[..12]);
                     words[44..].copy_from_slice(&fast[12..]);
@@ -374,7 +376,7 @@ mod contract_proxy {
 mod tests {
     use super::contract_proxy::{ContractProxy, Error};
     use contract_registry_core::versioning::shim::{
-        FAST_PATH, FAST_SLOT, SEAL, SEALED, SEALED_SLOT, SET_FAST_PATH, pack_fast_path,
+        FAST_SLOT, SEAL, SEALED, SEALED_SLOT, SET_FAST_PATH, pack_fast_path,
     };
     use contract_registry_core::versioning::{self, MAGIC, META_KEY, meta, pack_version, resolve};
     use pvm_contract_sdk::{
@@ -707,10 +709,35 @@ mod tests {
     }
 
     #[test]
-    fn meta_and_malformed_calls_never_take_the_shortcut() {
+    fn latest_with_a_shortcut_answers_the_stored_pair() {
+        let set = |mock: &MockHost| store_fast_path(mock, V1_2_3, TARGET);
+        assert_eq!(
+            query(meta::LATEST, &[], set),
+            returns(&[word_u128(V1_2_3), word_addr(TARGET)].concat())
+        );
+    }
+
+    #[test]
+    fn latest_without_a_shortcut_asks_the_resolver() {
+        let calldata = meta_call(meta::LATEST, &[]);
+        let (mut shim, mock) = deployed(
+            &calldata,
+            0,
+            resolution(resolve::RETURN, [0u8; 20], 0, &[0xEE; 64]),
+        );
+        assert!(shim.fallback().is_ok());
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(RESOLVER, request(&calldata, 0))]
+        );
+        assert_eq!(mock.take_return_value(), returns(&[0xEE; 64]));
+    }
+
+    #[test]
+    fn other_meta_and_malformed_calls_ask_the_resolver_despite_a_shortcut() {
         let truncated_selector = [&MAGIC[..], &[0u8; 18]].concat();
         for calldata in [
-            meta_call(meta::LATEST, &[]),
+            meta_call(meta::FROZEN, &[]),
             MAGIC.to_vec(),
             truncated_selector,
         ] {
@@ -760,11 +787,6 @@ mod tests {
         let unset = |_: &MockHost| {};
         let set = |mock: &MockHost| store_fast_path(mock, V1_2_3, TARGET);
 
-        assert_eq!(query(FAST_PATH, &[], unset), returns(&[0u8; 64]));
-        assert_eq!(
-            query(FAST_PATH, &[], set),
-            returns(&[word_u128(V1_2_3), word_addr(TARGET)].concat())
-        );
         assert_eq!(query(SEALED, &[], set), returns(&word_u128(0)));
         assert_eq!(
             query(versioning::shim::RESOLVER, &[], unset),
@@ -796,7 +818,7 @@ mod tests {
     fn sealed_shim_reverts_everything_else_without_asking_the_resolver() {
         for calldata in [
             versioned(V2_0_0, &INNER),
-            meta_call(meta::LATEST, &[]),
+            meta_call(meta::FROZEN, &[]),
             meta_call(meta::CALL_CODE, &word_addr(OTHER_TARGET)),
             MAGIC.to_vec(),
         ] {
@@ -813,7 +835,7 @@ mod tests {
         let sealed = |mock: &MockHost| store_sealed(mock, V1_2_3, TARGET);
 
         assert_eq!(
-            query(FAST_PATH, &[], sealed),
+            query(meta::LATEST, &[], sealed),
             returns(&[word_u128(V1_2_3), word_addr(TARGET)].concat())
         );
         assert_eq!(query(SEALED, &[], sealed), returns(&word_u128(1)));

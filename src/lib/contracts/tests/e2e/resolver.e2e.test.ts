@@ -67,6 +67,11 @@ function addressWord(address: string): string {
     return address.toLowerCase().replace(/^0x/, "").padStart(64, "0");
 }
 
+/** What `latest()` answers for a version of the counter: the key word, then the implementation word. */
+function versionPair(key: bigint): string {
+    return `0x${key.toString(16).padStart(64, "0")}${addressWord(impl)}`;
+}
+
 async function resolverCode(): Promise<string> {
     const r = await resolver.getCode.query();
     expect(r.success).toBe(true);
@@ -162,8 +167,11 @@ describe("one resolver upgrade reaches every call that asks the resolver", () =>
         expect(r.ok).toBe(true);
         expect(await resolverCode()).toBe(lc(fixture));
 
-        // A meta query, then an older version and a name with its fast path off.
-        const asked: [string, string][] = [[proxyAddress, encodeProxyLatest()], ...routedCounts()];
+        // A latest() query on a name with its fast path off, then the routed calls.
+        const asked: [string, string][] = [
+            [offProxyAddress, encodeProxyLatest()],
+            ...routedCounts(),
+        ];
         for (const [dest, input] of asked) {
             const answer = await dryRunCall(api, dest, input);
             expect(answer.reverted).toBe(false);
@@ -177,6 +185,8 @@ describe("one resolver upgrade reaches every call that asks the resolver", () =>
             expect(count.reverted).toBe(false);
             expect(BigInt(count.data)).toBe(0n);
         }
+        const latest = await dryRunCall(api, proxyAddress, encodeProxyLatest());
+        expect(latest.data).toBe(versionPair(KEY_1_1_0));
     });
 
     test("upgrading back restores normal routing", async () => {
@@ -184,10 +194,8 @@ describe("one resolver upgrade reaches every call that asks the resolver", () =>
         expect(r.ok).toBe(true);
         expect(await resolverCode()).toBe(realImpl);
 
-        const latest = await dryRunCall(api, proxyAddress, encodeProxyLatest());
-        expect(latest.data).toBe(
-            `0x${KEY_1_1_0.toString(16).padStart(64, "0")}${addressWord(impl)}`,
-        );
+        const latest = await dryRunCall(api, offProxyAddress, encodeProxyLatest());
+        expect(latest.data).toBe(versionPair(KEY_1_0_0));
         for (const [dest, input] of routedCounts()) {
             const count = await dryRunCall(api, dest, input);
             expect(count.reverted).toBe(false);
@@ -217,7 +225,12 @@ describe("routing overhead", () => {
             routingOf,
         );
         await measure("resolver routingOf through its proxy", deployed.resolverAddress, routingOf);
-        await measure("shim meta latest() (no delegate)", proxyAddress, encodeProxyLatest());
+        await measure("shim latest() (from its own slot)", proxyAddress, encodeProxyLatest());
+        await measure(
+            "shim latest(), fast path off (through the resolver)",
+            offProxyAddress,
+            encodeProxyLatest(),
+        );
         const fast = await measure("shim plain call (fast path)", proxyAddress, GET_COUNT);
         await measure(
             "shim call pinned to the latest version (fast path)",

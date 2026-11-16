@@ -155,7 +155,6 @@ export {
     encodeInitialize,
     encodeProxyAdmin,
     encodeProxyCallCode,
-    encodeProxyFastPath,
     encodeProxyFrozen,
     encodeProxyImplOf,
     encodeProxyLatest,

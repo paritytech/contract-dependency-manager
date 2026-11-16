@@ -11,8 +11,9 @@ import { keccak_256 } from "@noble/hashes/sha3.js";
  *     queries plus the registry-only `callCode`.
  *
  * A shim that holds the latest version in its fast-path slot serves plain
- * calls and calls pinned to that version from it; every other call it does
- * not answer itself goes to the resolver, or reverts once the shim is sealed.
+ * calls, calls pinned to that version and the `latest` query from it; every
+ * other call it does not answer itself goes to the resolver, or reverts once
+ * the shim is sealed.
  *
  * Every constant is pinned against the Rust side by the in-source tests.
  */
@@ -34,8 +35,9 @@ export const INITIALIZE_SELECTOR = "0x3a67c2f8" as const;
 
 /**
  * Meta-call selectors the resolver serves (`keccak256(signature)[..4]`);
- * `callCode` is honored for the registry only. A sealed shim reverts
- * `Sealed()` on all of them.
+ * `callCode` is honored for the registry only. A shim that holds the latest
+ * version answers `latest` itself; a sealed shim reverts `Sealed()` on all
+ * the others.
  */
 export const PROXY_META = {
     callCode: "0xd74c1f04",
@@ -47,11 +49,10 @@ export const PROXY_META = {
 } as const;
 
 /**
- * Meta-call selectors the shim answers itself, sealed or not: three getters,
+ * Meta-call selectors the shim answers itself, sealed or not: two getters,
  * plus `setFastPath` and `seal`, which it accepts from the resolver only.
  */
 export const SHIM_META = {
-    fastPath: "0x786d06e5",
     sealed: "0xe4b203ef",
     resolver: "0x04f3bcec",
     setFastPath: "0x8682471f",
@@ -270,10 +271,6 @@ export function encodeProxyAdmin(): Hex {
     return encodeProxyMetaCall(PROXY_META.admin);
 }
 
-export function encodeProxyFastPath(): Hex {
-    return encodeProxyMetaCall(SHIM_META.fastPath);
-}
-
 export function encodeProxySealed(): Hex {
     return encodeProxyMetaCall(SHIM_META.sealed);
 }
@@ -303,10 +300,7 @@ export function decodeBoolWord(data: Hex | Uint8Array): boolean {
     return wordToU128(readWord(toBytesInput(data), 0, "bool word"), "bool word") !== 0n;
 }
 
-/**
- * Decode a `(u128 key, address)` pair (`latest`, `fastPath`). `fastPath`
- * answers all zero when the shim has no shortcut.
- */
+/** Decode a `(u128 key, address)` pair (`latest`). */
 export function decodeVersionPair(data: Hex | Uint8Array): { key: bigint; target: Hex } {
     const bytes = toBytesInput(data);
     return {
@@ -376,7 +370,6 @@ if (import.meta.vitest) {
 
         it("shim meta selectors derive from their signatures (pinned in Rust core)", () => {
             const signatures: Record<keyof typeof SHIM_META, string> = {
-                fastPath: "fastPath()",
                 sealed: "sealed()",
                 resolver: "resolver()",
                 setFastPath: "setFastPath(uint128,address)",

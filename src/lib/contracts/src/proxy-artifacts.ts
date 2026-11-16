@@ -14,7 +14,7 @@ export const CONTRACT_PROXY_ARTIFACTS_DIR = "src/contract/proxy/artifacts";
 
 /** keccak-256 of the committed blob; the tests pin it to the manifest and the bytes. */
 export const CONTRACT_PROXY_CODE_HASH =
-    "0x34b3abce10fa2095629d15f963b108f82d088e0753eafa010b7eb0b9c55a332e";
+    "0xcea55f4a8dad5cd1f605da4541acaf063aa906e73e39ae46269abe950875b9c3";
 
 export interface FrozenContractProxyArtifact {
     bytes: Uint8Array;

@@ -17,7 +17,6 @@ import {
     decodeVersionPair,
     encodeProxyAdmin,
     encodeProxyCallCode,
-    encodeProxyFastPath,
     encodeProxyFrozen,
     encodeProxyImplOf,
     encodeProxyLatest,
@@ -27,6 +26,8 @@ import {
     encodeProxySealed,
     encodeVersionedCall,
     packVersionKey,
+    SHIM_SLOTS,
+    unpackFastPath,
 } from "@parity/cdm-builder/proxy";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
 import {
@@ -50,7 +51,7 @@ const URI = "ipfs://bafyproxye2e";
 const KEY_1_0_0 = packVersionKey(1, 0, 0);
 const KEY_1_1_0 = packVersionKey(1, 1, 0);
 const KEY_1_2_0 = packVersionKey(1, 2, 0);
-/** What `fastPath()` answers while the shim has no shortcut. */
+/** The fast path of a shim that has no shortcut. */
 const NO_FAST_PATH = { key: 0n, target: `0x${"00".repeat(20)}` };
 
 // keccak256(signature)[..4] as calldata hex.
@@ -136,9 +137,13 @@ async function shimGetter(address: string, input: string): Promise<`0x${string}`
     return r.data as `0x${string}`;
 }
 
-/** The shim's `fastPath()`: the version it serves without asking the resolver. */
+/** The shim's fast-path slot, read from chain state: the version it serves without asking the resolver. */
 async function fastPath(address: string = proxyAddress): Promise<{ key: bigint; target: string }> {
-    return decodeVersionPair(await shimGetter(address, encodeProxyFastPath()));
+    const r = await api.apis.ReviveApi.get_storage(address, SHIM_SLOTS.fast, { at: "best" });
+    expect(r.success).toBe(true);
+    if (r.value === undefined) return NO_FAST_PATH;
+    const { key, implementation } = unpackFastPath(r.value);
+    return { key, target: implementation };
 }
 
 beforeAll(async () => {
@@ -355,8 +360,10 @@ describe("freeze / unfreeze", () => {
         expect((await routing()).frozen).toBe(true);
     });
 
-    test("freezing empties the shim's fast path", async () => {
+    test("freezing empties the shim's fast path; the resolver answers latest()", async () => {
         expect(await fastPath()).toEqual(NO_FAST_PATH);
+        const latest = await dryRunCall(api, proxyAddress, encodeProxyLatest());
+        expect(latest.data).toBe(`0x${u128Word(KEY_1_1_0)}${addressWord(implB)}`);
     });
 
     test("unfreeze restores delegation", async () => {
@@ -441,9 +448,12 @@ describe("seal", () => {
         expect((await routing(sealedProxy)).sealed).toBe(true);
     });
 
-    test("the shim's own getters answer on a sealed name", async () => {
+    test("the shim's own getters and latest() answer on a sealed name", async () => {
         expect(decodeBoolWord(await shimGetter(sealedProxy, encodeProxySealed()))).toBe(true);
-        expect(await fastPath(sealedProxy)).toEqual({ key: KEY_1_1_0, target: lc(implB) });
+        expect(decodeVersionPair(await shimGetter(sealedProxy, encodeProxyLatest()))).toEqual({
+            key: KEY_1_1_0,
+            target: lc(implB),
+        });
         expect(decodeAddressWord(await shimGetter(sealedProxy, encodeProxyResolver()))).toBe(
             lc(resolverAddress),
         );
@@ -461,7 +471,7 @@ describe("seal", () => {
     });
 
     test("another version and the resolver's meta queries revert Sealed", async () => {
-        for (const input of [encodeVersionedCall(KEY_1_0_0, GET_COUNT), encodeProxyLatest()]) {
+        for (const input of [encodeVersionedCall(KEY_1_0_0, GET_COUNT), encodeProxyFrozen()]) {
             const r = await dryRunCall(api, sealedProxy, input);
             expect(r.success).toBe(true);
             expect(r.reverted).toBe(true);

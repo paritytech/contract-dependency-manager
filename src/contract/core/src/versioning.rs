@@ -125,7 +125,9 @@ pub mod meta {
     pub const FROZEN: [u8; 4] = selector(b"frozen()");
     /// `implOf(uint128)` = `0xdf379e50`.
     pub const IMPL_OF: [u8; 4] = selector(b"implOf(uint128)");
-    /// `latest()` = `0x52bfe789`.
+    /// `latest()` = `0x52bfe789`: `(uint128 key, address implementation)`. A
+    /// shim that holds the latest version answers it from its own
+    /// [`shim::FAST_SLOT`](super::shim::FAST_SLOT) without asking.
     pub const LATEST: [u8; 4] = selector(b"latest()");
     /// `minSupported()` = `0x900fc468`.
     pub const MIN_SUPPORTED: [u8; 4] = selector(b"minSupported()");
@@ -165,9 +167,6 @@ pub mod shim {
     /// `0x7ae89d045ec485b4c2afaca0f585635101dbf8f05b43a137d6f198bfa339400d`
     pub const SEALED_SLOT: [u8; 32] = slot(b"cdm.shim.sealed");
 
-    /// `fastPath()` = `0x786d06e5`: the [`FAST_SLOT`] word as
-    /// `(uint128 key, address implementation)`.
-    pub const FAST_PATH: [u8; 4] = selector(b"fastPath()");
     /// `sealed()` = `0xe4b203ef`: `bool`.
     pub const SEALED: [u8; 4] = selector(b"sealed()");
     /// `resolver()` = `0x04f3bcec`: the shim's immutable resolver `address`.
@@ -347,7 +346,6 @@ mod tests {
 
     #[test]
     fn shim_selectors_are_pinned() {
-        assert_eq!(hex4(shim::FAST_PATH), "786d06e5");
         assert_eq!(hex4(shim::SEALED), "e4b203ef");
         assert_eq!(hex4(shim::RESOLVER), "04f3bcec");
         assert_eq!(hex4(shim::SET_FAST_PATH), "8682471f");
