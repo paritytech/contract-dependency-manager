@@ -46,6 +46,15 @@ mod contract_registry {
         Address, CallFlags, HostApi, Lazy, Mapping, SolEncode, StorageVec, const_selector,
     };
 
+    /// keccak-256 of the frozen per-name shim blob
+    /// (`src/contract/proxy/artifacts/contract-proxy.polkavm`). Every name's
+    /// shim is created from it, and it is part of each new name's address.
+    pub const PROXY_CODE_HASH: [u8; 32] = [
+        0x7e, 0x5d, 0xf2, 0xe3, 0x6e, 0x06, 0xa4, 0xf7, 0x83, 0x20, 0xa5, 0xfb, 0xdb, 0x44, 0x43,
+        0xce, 0x49, 0x63, 0x85, 0x0f, 0x5d, 0x2e, 0x2b, 0x37, 0x1e, 0xa5, 0x3a, 0x63, 0x3c, 0x7c,
+        0x75, 0xec,
+    ];
+
     #[derive(pvm_contract_sdk::SolEvent)]
     pub struct Published {
         /// Indexed (topic = keccak of the name): the SDK generates no `emit`
@@ -135,8 +144,6 @@ mod contract_registry {
         /// The resolver proxy: every shim is constructed with it and every
         /// routing change is written to it.
         resolver: Lazy<Address>,
-        /// Code hash of the (pre-uploaded) per-name proxy blob.
-        proxy_code_hash: Lazy<[u8; 32]>,
         /// Fixed-slot admin state, shared with the registry proxy.
         #[slot(raw = IMPLEMENTATION_SLOT)]
         implementation: Lazy<Address>,
@@ -202,18 +209,11 @@ mod contract_registry {
             self.implementation.get()
         }
 
-        /// Per-name proxy blob for future first publishes; existing proxies
-        /// keep their code.
-        #[pvm_contract_sdk::method]
-        pub fn set_proxy_code_hash(&mut self, code_hash: [u8; 32]) -> Result<(), Error> {
-            self.require_admin()?;
-            self.proxy_code_hash.set(&code_hash);
-            Ok(())
-        }
-
+        /// Code hash of the per-name shim blob this implementation creates
+        /// shims from.
         #[pvm_contract_sdk::method]
         pub fn get_proxy_code_hash(&self) -> [u8; 32] {
-            self.proxy_code_hash.get()
+            PROXY_CODE_HASH
         }
 
         /// Set once: every shim bakes the resolver address into its CREATE2
@@ -598,11 +598,7 @@ mod contract_registry {
         /// constructor argument: the address is a pure function of
         /// (registry, proxy blob, resolver address, name).
         fn instantiate_proxy(&mut self, contract_name: &String) -> Result<Address, Error> {
-            let code_hash = self.proxy_code_hash.get();
-            if code_hash == [0u8; 32] {
-                return Err(ProxyCodeHashUnset.into());
-            }
-            let mut input = code_hash.to_vec();
+            let mut input = PROXY_CODE_HASH.to_vec();
             input.extend_from_slice(&encode(&self.resolver()?));
             let host = self.host();
             let mut salt = [0u8; 32];
@@ -740,12 +736,12 @@ mod contract_registry {
 /// tests drive `route()` with ABI calldata to lock the wire format.
 #[cfg(test)]
 mod tests {
-    use super::contract_registry::{self, ContractRegistry};
+    use super::contract_registry::{self, ContractRegistry, PROXY_CODE_HASH};
     use super::types::{
         ContractEntry, ContractFrozen, ContractNameEmpty, ContractNameInvalid, ContractNameTooLong,
         ContractPage, InvalidInitTarget, InvalidResolver, InvalidVersionKey, OptionalAddress,
-        OptionalString, OptionalVersionEntry, ProxyCodeHashUnset, ResolverAlreadySet,
-        ResolverUnset, Unauthorized, UnauthorizedAdmin, VersionNotMonotonic,
+        OptionalString, OptionalVersionEntry, ResolverAlreadySet, ResolverUnset, Unauthorized,
+        UnauthorizedAdmin, VersionNotMonotonic,
     };
     use contract_registry_core::versioning::{
         INITIALIZE_SELECTOR, MAGIC, META_KEY, meta, pack_version,
@@ -763,7 +759,6 @@ mod tests {
     /// Where the mocked `instantiate` lands every per-name proxy (MockHost
     /// supports exactly one global instantiate address).
     const PROXY: [u8; 20] = [0x99; 20];
-    const PROXY_CODE_HASH: [u8; 32] = [0xC4; 32];
     /// The resolver proxy the registry writes routing to.
     const RESOLVER: [u8; 20] = [0x5E; 20];
     const NAME: &str = "@cdm/registry";
@@ -784,14 +779,13 @@ mod tests {
         ContractRegistry::with_host(mock.clone())
     }
 
-    /// Constructed by `caller` (the admin), instantiate mock staged, proxy
-    /// code hash set, resolver unset.
+    /// Constructed by `caller` (the admin), instantiate mock staged,
+    /// resolver unset.
     fn deployed_without_resolver(caller: [u8; 20]) -> (ContractRegistry, MockHost) {
         let mock = host_with_caller(caller);
         mock.mock_instantiate(PROXY, vec![]);
         let mut contract = registry(&mock);
         contract.new();
-        contract.set_proxy_code_hash(PROXY_CODE_HASH).unwrap();
         (contract, mock)
     }
 
@@ -1039,21 +1033,6 @@ mod tests {
                 "{key:#x}"
             );
         }
-        assert_eq!(contract.get_contract_count(), 0);
-    }
-
-    #[test]
-    fn publish_without_proxy_code_hash_fails() {
-        let mock = host_with_caller(ALICE);
-        mock.mock_instantiate(PROXY, vec![]);
-        let mut contract = registry(&mock);
-        contract.new();
-        contract.set_resolver(Address(RESOLVER)).unwrap();
-
-        assert_eq!(
-            contract.publish(NAME.into(), V1_0_0, Address(ADDR_1), URI_1.into()),
-            Err(ProxyCodeHashUnset.into())
-        );
         assert_eq!(contract.get_contract_count(), 0);
     }
 
@@ -1638,16 +1617,9 @@ mod tests {
     }
 
     #[test]
-    fn set_proxy_code_hash_requires_admin() {
-        let (contract, mock) = deployed(ADMIN);
-        assert_eq!(contract.get_proxy_code_hash(), PROXY_CODE_HASH);
-
-        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
-        assert_eq!(
-            as_alice.set_proxy_code_hash([0x01; 32]),
-            Err(UnauthorizedAdmin.into())
-        );
-        assert_eq!(as_alice.get_proxy_code_hash(), PROXY_CODE_HASH);
+    fn proxy_code_hash_is_the_frozen_shim_blob() {
+        let blob = include_bytes!("../proxy/artifacts/contract-proxy.polkavm");
+        assert_eq!(PROXY_CODE_HASH, keccak256(blob));
     }
 
     // ─── Resolver ────────────────────────────────────────────────────────────
@@ -1893,7 +1865,6 @@ mod tests {
             ("getAdmin()", vec![]),
             ("getCode()", vec![]),
             ("getProxyCodeHash()", vec![]),
-            ("setProxyCodeHash(bytes32)", encode(&PROXY_CODE_HASH)),
             ("isFrozen()", vec![]),
             ("setAdmin(address)", encode(&Address(ADMIN))),
             ("setCode(address)", encode(&Address(NEW_IMPL))),

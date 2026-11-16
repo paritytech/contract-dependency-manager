@@ -41,8 +41,8 @@ import { hexToBytes } from "./solidity";
  * 4. Resolver implementation — plain CREATE2 (`CONTRACTS_RESOLVER_IMPL_PACKAGE`).
  * 5. Resolver proxy (the same EIP-1967 blob) — through the factory with the
  *    registry as admin, then handed to the registry via `setResolver`.
- * 6. Per-name shim blob (frozen artifact) — uploaded and handed to the
- *    registry via `setProxyCodeHash`; never instantiated here.
+ * 6. Per-name shim blob (frozen artifact) — uploaded once its hash matches
+ *    the one compiled into the registry; never instantiated here.
  */
 
 type ContractHandle = (address: string) => Contract<ContractDef> | Promise<Contract<ContractDef>>;
@@ -199,8 +199,8 @@ export interface DeployRegistryOptions extends ResolverSetup {
     implPvmPath: string;
     /**
      * Registry handle (`CONTRACTS_REGISTRY_ABI` at the proxy address) with the
-     * admin signer, for `setResolver` / `setProxyCodeHash`. When omitted, the
-     * resolver is not deployed and first publishes fail until a later run.
+     * admin signer, for `setResolver`. When omitted, the resolver is not
+     * deployed and first publishes fail until a later run.
      */
     registryContract?: ContractHandle;
     /** Reuse a prior {@link predictRegistryDeploy} result. */
@@ -374,42 +374,39 @@ async function ensureResolver(
     return plan.resolverAddress;
 }
 
-/** Upload the frozen per-name shim blob and set `proxyCodeHash`; idempotent. */
-async function ensureProxyCodeHash(
+/**
+ * Upload the frozen per-name shim blob. The registry creates shims from the
+ * hash compiled into its implementation, so a live implementation built for
+ * another blob is an error here; idempotent.
+ */
+async function ensureProxyCode(
     deployer: ContractDeployer,
     registry: Contract<ContractDef>,
     rootDir: string,
     log: Log,
 ): Promise<`0x${string}`> {
     const artifact = loadContractProxyArtifact(rootDir);
-    await deployer.uploadCode(artifact.bytes);
-
-    const current = await expectQuery(
-        registry.getProxyCodeHash.query(),
-        "getProxyCodeHash() (the live implementation may be a pre-versioning build; upgrade it first)",
+    const live = hashHex(
+        await expectQuery(
+            registry.getProxyCodeHash.query(),
+            "getProxyCodeHash() (the live implementation may be a pre-versioning build; upgrade it first)",
+        ),
     );
-    if (hashHex(current) === artifact.codeHash) {
-        log(`Per-name proxy code hash already set to ${artifact.codeHash}`);
-        return artifact.codeHash;
-    }
-
-    await submit(registry.setProxyCodeHash.tx(artifact.codeHash), "setProxyCodeHash");
-    const verify = await registry.getProxyCodeHash.query();
-    const verified = verify.success ? hashHex(verify.value) : undefined;
-    if (verified !== artifact.codeHash) {
+    if (live !== artifact.codeHash) {
         throw new Error(
-            `setProxyCodeHash verification failed: getProxyCodeHash() returned ${
-                verify.success ? verified : queryErrorDetail(verify.value)
-            }, expected ${artifact.codeHash}`,
+            `The live registry implementation creates shims from code hash ${live}, but the ` +
+                `frozen shim blob hashes to ${artifact.codeHash} — upgrade the registry to an ` +
+                "implementation built for this blob.",
         );
     }
-    log(`Per-name proxy code hash set to ${artifact.codeHash}`);
+    await deployer.uploadCode(artifact.bytes);
+    log(`Per-name shim blob uploaded (code hash ${artifact.codeHash})`);
     return artifact.codeHash;
 }
 
 /**
  * Deploy the registry behind its proxy (factory first if missing), then the
- * resolver and `proxyCodeHash` when `registryContract` is provided. Every
+ * resolver and the shim blob when `registryContract` is provided. Every
  * step is idempotent, so a partial run can be re-run. `proxyAddress` is the
  * registry address.
  */
@@ -445,7 +442,7 @@ export async function deployRegistryWithProxy(
             opts,
             log,
         );
-        const proxyCodeHash = await ensureProxyCodeHash(deployer, registry, opts.rootDir, log);
+        const proxyCodeHash = await ensureProxyCode(deployer, registry, opts.rootDir, log);
         return { ...done, resolverAddress, proxyCodeHash };
     };
 
@@ -584,7 +581,7 @@ export interface UpgradeRegistryOptions extends ResolverSetup {
 
 /**
  * Upgrade a live registry in place: new implementation at a fresh CREATE2
- * salt, `setCode`, then the resolver and `proxyCodeHash` are ensured.
+ * salt, `setCode`, then the resolver and the shim blob are ensured.
  * Idempotent — a matching live implementation skips the deploy and `setCode`
  * (`upgraded: false`).
  */
@@ -618,7 +615,7 @@ export async function upgradeRegistryImplementation(
             opts,
             log,
         );
-        const proxyCodeHash = await ensureProxyCodeHash(deployer, registry, opts.rootDir, log);
+        const proxyCodeHash = await ensureProxyCode(deployer, registry, opts.rootDir, log);
         return { implAddress, implPackage, resolverAddress, proxyCodeHash, upgraded };
     };
 

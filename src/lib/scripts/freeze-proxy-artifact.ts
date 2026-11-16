@@ -3,8 +3,8 @@
  * Rebuild and re-freeze src/contract/proxy/artifacts/ (blob + manifest.json).
  * The blob's code hash is part of every future per-name proxy address, so
  * this is a deliberate act: afterwards update CONTRACT_PROXY_CODE_HASH in
- * src/lib/contracts/src/proxy-artifacts.ts and run `setProxyCodeHash` on live
- * registries.
+ * src/lib/contracts/src/proxy-artifacts.ts and PROXY_CODE_HASH in
+ * src/contract/src/main.rs, then upgrade live registries.
  *
  * Run: bun run src/lib/scripts/freeze-proxy-artifact.ts
  */
@@ -50,5 +50,6 @@ console.log(`Froze ${bytes.length} bytes at ${join(ARTIFACTS_DIR, "contract-prox
 console.log(`CONTRACT_PROXY_CODE_HASH=${codeHash}`);
 console.log(
     "If the hash changed, update CONTRACT_PROXY_CODE_HASH in " +
-        "src/lib/contracts/src/proxy-artifacts.ts and run setProxyCodeHash on live registries.",
+        "src/lib/contracts/src/proxy-artifacts.ts and PROXY_CODE_HASH in " +
+        "src/contract/src/main.rs, then upgrade live registries (deploy-registry.ts --upgrade).",
 );

@@ -35,7 +35,7 @@ The deploy is idempotent and runs up to five steps, skipping any that already ha
 2. **Implementation blob** via plain CREATE2 — its address doesn't matter.
 3. **EIP-1967 proxy THROUGH the factory**: proxy code is uploaded (`upload_code`), then `factory.deploy(salt, proxyCodeHash, implAddress)` lands it at an address that is a pure function of `(factory, salt)` — independent of the proxy bytecode and the implementation address.
 4. **Resolver**: the resolver implementation via plain CREATE2, then its own EIP-1967 proxy through the factory with the registry as admin, handed to the registry with `setResolver`. Every per-name shim bakes this address in, so it is as permanent as the registry's.
-5. **Per-name shim code hash**: the frozen shim blob is uploaded and `setProxyCodeHash` points the registry at it.
+5. **Per-name shim blob**: the frozen shim blob is uploaded. Its code hash is compiled into the registry implementation (`getProxyCodeHash()`), and the deploy stops if the two differ.
 
 The **proxy address is the registry address** — it never changes, even across proxy bytecode revisions. The proxy's deployer becomes the registry admin; later implementation upgrades are done by the admin calling `setCode(<new implementation address>)` through the proxy — the proxy is never redeployed (`pnpm deploy:registry -- --name w3s --upgrade --suri "$CDM_DEPLOY_SURI"`). The resolver is upgraded the same way through the registry's `upgradeResolver` (`--upgrade-resolver`), and one upgrade reaches every call a shim still asks the resolver about, for every name that is not sealed.
 
