@@ -1,34 +1,32 @@
 // Drift guard for the hand-embedded contract ABIs.
 //
-// `CONTRACTS_REGISTRY_ABI` / `CONTRACTS_REGISTRY_PROXY_ABI` in
-// `src/abi/registry.ts` and `CREATE3_FACTORY_ABI` in
-// `src/abi/create3-factory.ts` are hand-copied mirrors of the ABI arrays that
-// `cargo pvm-contract build` writes to `target/release/*.abi.json`. This test
-// deep-compares the constructor/function entries (name, input/output types
-// and tuple structure, stateMutability) whenever the generated artifacts
-// exist, closing the historical hand-copy desync risk. Types, structure,
-// order, and stateMutability are compared strictly; parameter/component
-// NAMES are compared case-style-insensitively (snake_case normalized to
-// camelCase) because the embedded ABI keeps the historical decode keys
-// (`isSome`) where the generated JSON says `is_some`.
+// `CONTRACTS_REGISTRY_ABI` / `CONTRACTS_EIP1967_PROXY_ABI` in
+// `src/abi/registry.ts`, `CONTRACT_RESOLVER_ABI` in `src/abi/resolver.ts`,
+// and `CREATE3_FACTORY_ABI` in `src/abi/create3-factory.ts` are hand-copied
+// mirrors of the ABI arrays that `cargo pvm-contract build` writes to
+// `target/release/*.abi.json`. This test deep-compares the
+// constructor/function entries (name, input/output types and tuple
+// structure, stateMutability) whenever the generated artifacts exist. Types,
+// structure, order, and stateMutability are compared strictly;
+// parameter/component NAMES are compared case-style-insensitively
+// (snake_case normalized to camelCase) because the embedded ABI keeps the
+// historical decode keys (`isSome`) where the generated JSON says `is_some`.
 //
-// Skips cleanly when the artifacts are absent (they require the PolkaVM
-// toolchain via `pnpm build:registry`), so plain `pnpm test` stays
-// binary-independent.
+// The artifacts require the PolkaVM toolchain (`pnpm build:registry`): a
+// local run without them skips, CI (which builds them before running this
+// file) fails instead.
 
 import { describe, test, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AbiEntry, AbiParam } from "@parity/product-sdk-contracts";
-import { CONTRACTS_REGISTRY_ABI, CONTRACTS_REGISTRY_PROXY_ABI } from "../src/abi/registry";
+import { CONTRACTS_REGISTRY_ABI, CONTRACTS_EIP1967_PROXY_ABI } from "../src/abi/registry";
+import { CONTRACT_RESOLVER_ABI } from "../src/abi/resolver";
 import { CREATE3_FACTORY_ABI } from "../src/abi/create3-factory";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const RELEASE_DIR = resolve(__dirname, "../../../../target/release");
-const IMPL_ABI_JSON = resolve(RELEASE_DIR, "contract-registry.abi.json");
-const PROXY_ABI_JSON = resolve(RELEASE_DIR, "contract-registry-proxy.abi.json");
-const CREATE3_FACTORY_ABI_JSON = resolve(RELEASE_DIR, "create3-factory.abi.json");
 
 interface NormalizedParam {
     name: string;
@@ -70,6 +68,11 @@ function callableEntries(abi: AbiEntry[]): NormalizedEntry[] {
     return abi.filter((e) => e.type === "function" || e.type === "constructor").map(normalizeEntry);
 }
 
+/** Error + event entries, normalized, in ABI order. */
+function nonCallableEntries(abi: AbiEntry[]): NormalizedEntry[] {
+    return abi.filter((e) => e.type === "error" || e.type === "event").map(normalizeEntry);
+}
+
 function readGeneratedAbi(path: string): AbiEntry[] {
     // The registry artifacts wrap the array in `{ "abi": [...] }`; newer
     // cargo-pvm-contract builds (the create3 factory) emit the bare array.
@@ -77,43 +80,33 @@ function readGeneratedAbi(path: string): AbiEntry[] {
     return Array.isArray(parsed) ? parsed : parsed.abi;
 }
 
-/** Error + event entries, normalized, in ABI order. */
-function nonCallableEntries(abi: AbiEntry[]): NormalizedEntry[] {
-    return abi.filter((e) => e.type === "error" || e.type === "event").map(normalizeEntry);
-}
+const MIRRORS: { crate: string; abi: AbiEntry[]; frozen?: boolean }[] = [
+    { crate: "contract-registry", abi: CONTRACTS_REGISTRY_ABI },
+    { crate: "contract-eip1967-proxy", abi: CONTRACTS_EIP1967_PROXY_ABI },
+    { crate: "contract-resolver", abi: CONTRACT_RESOLVER_ABI },
+    // A frozen artifact `pnpm build:registry` never rebuilds, so its check
+    // stays opportunistic.
+    { crate: "create3-factory", abi: CREATE3_FACTORY_ABI, frozen: true },
+];
 
-describe.skipIf(!existsSync(IMPL_ABI_JSON))("registry ABI matches generated artifact", () => {
-    test("constructor/function entries are in sync", () => {
-        const generated = readGeneratedAbi(IMPL_ABI_JSON);
-        expect(callableEntries(CONTRACTS_REGISTRY_ABI)).toEqual(callableEntries(generated));
-    });
+for (const { crate, abi, frozen } of MIRRORS) {
+    const artifact = resolve(RELEASE_DIR, `${crate}.abi.json`);
+    const built = existsSync(artifact);
 
-    test("error and event entries are in sync", () => {
-        const generated = readGeneratedAbi(IMPL_ABI_JSON);
-        expect(nonCallableEntries(CONTRACTS_REGISTRY_ABI)).toEqual(nonCallableEntries(generated));
-    });
-});
+    describe(`${crate} ABI matches generated artifact`, () => {
+        if (!built) {
+            test.skipIf(!process.env.CI || frozen)("artifact is built", () => {
+                throw new Error(`${artifact} is missing; run pnpm build:registry`);
+            });
+            return;
+        }
 
-describe.skipIf(!existsSync(PROXY_ABI_JSON))("proxy ABI matches generated artifact", () => {
-    test("all entries are in sync", () => {
-        const generated = readGeneratedAbi(PROXY_ABI_JSON);
-        expect(CONTRACTS_REGISTRY_PROXY_ABI.map(normalizeEntry)).toEqual(
-            generated.map(normalizeEntry),
-        );
-    });
-});
-
-describe.skipIf(!existsSync(CREATE3_FACTORY_ABI_JSON))(
-    "CREATE3 factory ABI matches generated artifact",
-    () => {
         test("constructor/function entries are in sync", () => {
-            const generated = readGeneratedAbi(CREATE3_FACTORY_ABI_JSON);
-            expect(callableEntries(CREATE3_FACTORY_ABI)).toEqual(callableEntries(generated));
+            expect(callableEntries(abi)).toEqual(callableEntries(readGeneratedAbi(artifact)));
         });
 
         test("error and event entries are in sync", () => {
-            const generated = readGeneratedAbi(CREATE3_FACTORY_ABI_JSON);
-            expect(nonCallableEntries(CREATE3_FACTORY_ABI)).toEqual(nonCallableEntries(generated));
+            expect(nonCallableEntries(abi)).toEqual(nonCallableEntries(readGeneratedAbi(artifact)));
         });
-    },
-);
+    });
+}

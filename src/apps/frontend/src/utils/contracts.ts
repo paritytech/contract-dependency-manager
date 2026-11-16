@@ -7,7 +7,7 @@ import {
 } from "@parity/product-sdk-chain-client";
 import { createContract, createContractRuntimeFromClient } from "@parity/product-sdk-contracts";
 import type { Contract, ContractDef, ContractRuntime } from "@parity/product-sdk-contracts";
-import { CONTRACTS_REGISTRY_ABI } from "@parity/cdm-builder/abi";
+import { CONTRACTS_REGISTRY_ABI, CONTRACT_RESOLVER_ABI } from "@parity/cdm-builder/abi";
 import {
     DEFAULT_NETWORK,
     NETWORKS,
@@ -24,6 +24,8 @@ type ProductChainClient = ChainClient<PresetChains<ProductSdkEnvironment>>;
 export interface RegistryConnection {
     client: ProductChainClient;
     registry: RegistryContract;
+    /** The resolver the registry reports: routing state per name lives there. */
+    resolver: RegistryContract;
 }
 
 const registryConnections = new Map<NetworkKey, Promise<RegistryConnection>>();
@@ -87,8 +89,13 @@ async function createRegistryConnection(networkConfig: NetworkConfig): Promise<R
         networkConfig.assetHubDescriptor,
     );
     const registry = createContract(runtime, networkConfig.registryAddress, CONTRACTS_REGISTRY_ABI);
+    const resolverAddress = await registry.getResolver.query();
+    if (!resolverAddress.success || typeof resolverAddress.value !== "string") {
+        throw new Error(`The CDM registry on ${networkConfig.label} reports no resolver.`);
+    }
+    const resolver = createContract(runtime, resolverAddress.value, CONTRACT_RESOLVER_ABI);
 
-    return { client, registry };
+    return { client, registry, resolver };
 }
 
 export function getRegistryConnection(

@@ -110,12 +110,14 @@ other.do_something().call(self).expect("OtherCallFailed");
 
 For workspace-local packages, `cdm::import!` resolves the ABI through Cargo metadata when the provider crate declares the matching `[package.metadata.cdm] package`. For external packages, run `cdm i -n paseo @someorg/other-contract` first; the macro falls back to the flat `cdm.json` snapshot and materializes any ABI file it needs under the project-local `.cdm/` directory.
 
-Solidity contracts use NatSpec for their own CDM package name:
+Solidity contracts use NatSpec for their own CDM package name and publish version:
 
 ```solidity
-/// @custom:cdm @yourorg/mycontract
+/// @custom:cdm @yourorg/mycontract:0.1.0
 contract MyContract {}
 ```
+
+The `:X.Y.Z` suffix is the strict semver `cdm deploy` publishes (Rust crates use Cargo.toml `[package].version`); versions the registry already has are skipped.
 
 To call an installed CDM contract from Solidity, import the generated interface:
 
@@ -130,6 +132,61 @@ contract Caller {
 ```
 
 The generated file contains an interface plus a small library with `ADDRESS`, `ref()`, and `cdm()`. Running `cdm i` updates that generated file from the registry, so contract source does not need an address edit.
+
+## Initializations
+
+Constructors never run behind a per-name proxy — an implementation's constructor writes into its own throwaway storage, not the proxy's. An initialization is logic that runs **exactly once, atomically, in the transaction that publishes a version**, against the name's proxy storage — for first-publish setup and upgrade-time storage transformation alike.
+
+An initialization is addressed by **(contract, version)**. Rust: `<crate>/initializations/<version>.rs`. Solidity: `initializations/<Contract>/<version>.sol`. No manifest entries; `cdm deploy` builds it on its own.
+
+The file addressed to a version runs when exactly that version is published:
+
+- Publishing a version with no matching file is a plain publish.
+- A file for an already-published version is inert forever; deleting it is optional.
+- Only the **published** version's initialization runs. Publishing 1.2 → 1.4 (skipping 1.3) never fires `1.3.0.rs`; 1.4's initialization sees `from = 1.2`'s key and must handle the whole distance itself.
+- A file addressed to a version *higher* than the one being published earns a deploy-time warning — it usually means a forgotten version bump.
+
+Each initialization exposes one entry point, `initialize(uint128 from, address owner)`: `from` is the previously-latest version key (0 on a first publish), `owner` the name's registry owner. The registry delivers the call through the proxy's admin-only `callCode` meta operation, so nobody else can reach it. If the initialization reverts, the entire publish rolls back.
+
+A Rust initialization declares its own copy of the contract's (auto-numbered) storage fields:
+
+```rust
+// initializations/0.1.0.rs
+#[pvm_contract_sdk::contract(allocator = "pico", allocator_size = 1024)]
+mod counter_init_0_1_0 {
+    use pvm_contract_sdk::{Address, Lazy};
+
+    pub struct CounterInit {
+        count: Lazy<u32>,
+    }
+
+    impl CounterInit {
+        #[pvm_contract_sdk::method]
+        pub fn initialize(&mut self, _from: u128, _owner: Address) {
+            self.count.set(&0); // demonstrative
+        }
+    }
+}
+```
+
+In Solidity the initialization inherits the contract:
+
+```solidity
+// initializations/Counter/0.1.0.sol
+import "../../Counter.sol";
+
+contract Init_0_1_0 is Counter {
+    function initialize(uint128, address) external {
+        count = 0; // demonstrative
+    }
+}
+```
+
+At deploy time CDM compares the initialization artifact's storage layout against the implementation's and **refuses to deploy on a mismatch**. Rust artifacts always carry layouts; Foundry needs `extra_output = ["storageLayout"]`, Hardhat the equivalent `outputSelection` (the templates ship with both). Missing layout data downgrades the check to a warning.
+
+For upgrades that reshape storage incompatibly, pair an initialization with the freeze window: `freezeContract`, publish with initialization, `unfreezeContract`.
+
+The shared-counter template ships a working `initializations/0.1.0.rs`, the foundry-counter template a working `initializations/CounterA/0.1.0.sol`.
 
 ## Using Contracts From A Triangle App
 
@@ -239,7 +296,10 @@ cdm template foundry-counter
 ```
 
 `hardhat-counter` uses `@parity/hardhat-polkadot` and compiles with `pnpm build`.
-`foundry-counter` uses the Polkadot Foundry fork and compiles with `forge build --resolc`.
+`foundry-counter` uses the Polkadot Foundry fork and compiles with `forge build`.
+
+Both templates target pallet-revive's EVM backend: contracts compile to plain EVM
+bytecode with upstream solc — no resolc involved.
 
 These templates are compile-ready starter projects and can be built, deployed, published, registered, installed, and consumed through CDM.
 
@@ -284,10 +344,11 @@ Install published contracts for Rust imports, Solidity imports, and product-sdk 
 
 ```bash
 cdm i -n paseo @polkadot/contexts @polkadot/profiles
-cdm i -n paseo @yourorg/package:3
+cdm i -n paseo @yourorg/package:1.2.3
+cdm i -n paseo "@yourorg/package:^1.2"
 ```
 
-`cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates the flat `cdm.json`, installs ABI/metadata artifacts under project-local `.cdm/contracts/`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`. Use `-n devnet` to resolve packages against the Paseo testnet Asset Hub registry.
+A version spec after `:` may be an exact semver version or an npm-style range (resolved against the published versions at install time); omitting it installs `latest`. `cdm install` queries the registry, fetches metadata from the configured Bulletin IPFS gateway, updates the flat `cdm.json` (pinning the resolved version and the package's stable address), installs ABI/metadata artifacts under project-local `.cdm/contracts/`, regenerates `.cdm/contracts.d.ts`, and writes Solidity interfaces under `.cdm/solidity/`. Use `-n devnet` to resolve packages against the Paseo testnet Asset Hub registry.
 
 ### `cdm update`
 

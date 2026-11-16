@@ -1,10 +1,19 @@
 //! CDM ContractRegistry — implementation contract.
 //!
-//! Deployed behind `contract-registry-proxy` (EIP-1967), which delegate-calls
-//! every method here against the proxy's storage. Upgrades therefore keep the
-//! proxy's address: `setCode` points the proxy at a new implementation. The
-//! admin, implementation, and frozen flags live at fixed pseudo-random slots
-//! (see `contract_registry_core::slots`) so future implementations can
+//! Deployed behind `contract-eip1967-proxy`, which delegate-calls every
+//! method here against the proxy's storage. Upgrades therefore keep the
+//! registry's address: `setCode` points the proxy at a new implementation.
+//!
+//! The registry is also a factory: the first publish of a name instantiates
+//! that name's shim (`contract-proxy`) at a deterministic CREATE2 address
+//! (`salt = keccak256(name)`, the resolver address as constructor input).
+//! Every publish, floor change, freeze, fast-path choice, and seal is then
+//! written to the resolver — the one contract every shim asks how to route —
+//! keyed by shim address. The registry is the resolver's admin and its only
+//! writer.
+//!
+//! The admin, implementation, and frozen flags live at fixed pseudo-random
+//! slots (see `contract_registry_core::slots`) so future implementations can
 //! reshape the ordinary storage fields without touching them.
 
 #![cfg_attr(all(not(feature = "abi-gen"), not(test)), no_main, no_std)]
@@ -25,20 +34,82 @@ polkavm_derive::min_stack_size!(131072);
 mod contract_registry {
     use super::types::*;
     use alloc::string::String;
+    use alloc::vec;
     use alloc::vec::Vec;
     use contract_registry_core::MAX_PAGE_LIMIT;
     use contract_registry_core::naming::validate_contract_name;
     use contract_registry_core::slots::{ADMIN_SLOT, FROZEN_SLOT, IMPLEMENTATION_SLOT};
-    use pvm_contract_sdk::{Address, HostApi, Lazy, Mapping, StorageVec};
+    use contract_registry_core::versioning::{
+        INITIALIZE_SELECTOR, MAGIC, META_KEY, is_publishable_key, meta,
+    };
+    use pvm_contract_sdk::{
+        Address, CallFlags, HostApi, Lazy, Mapping, SolEncode, StorageVec, const_selector,
+    };
+
+    /// keccak-256 of the frozen per-name shim blob
+    /// (`src/contract/proxy/artifacts/contract-proxy.polkavm`). Every name's
+    /// shim is created from it, and it is part of each new name's address.
+    pub const PROXY_CODE_HASH: [u8; 32] = [
+        0x7e, 0x5d, 0xf2, 0xe3, 0x6e, 0x06, 0xa4, 0xf7, 0x83, 0x20, 0xa5, 0xfb, 0xdb, 0x44, 0x43,
+        0xce, 0x49, 0x63, 0x85, 0x0f, 0x5d, 0x2e, 0x2b, 0x37, 0x1e, 0xa5, 0x3a, 0x63, 0x3c, 0x7c,
+        0x75, 0xec,
+    ];
 
     #[derive(pvm_contract_sdk::SolEvent)]
     pub struct Published {
-        /// Indexed (so only its keccak hash lands in the topic): `emit` is
-        /// not generated for events with dynamic non-indexed fields.
+        /// Indexed (topic = keccak of the name): the SDK generates no `emit`
+        /// for dynamic non-indexed fields.
         #[indexed]
         pub name: String,
-        pub version: u32,
-        pub address: Address,
+        pub version_key: u128,
+        pub target: Address,
+    }
+
+    /// First publish of a name: its per-name proxy now owns its address.
+    #[derive(pvm_contract_sdk::SolEvent)]
+    pub struct ProxyCreated {
+        #[indexed]
+        pub name: String,
+        pub proxy: Address,
+    }
+
+    /// `init_target` was delegate-called against the name's proxy storage.
+    #[derive(pvm_contract_sdk::SolEvent)]
+    pub struct Initialized {
+        #[indexed]
+        pub name: String,
+        pub version_key: u128,
+        pub init_target: Address,
+    }
+
+    #[derive(pvm_contract_sdk::SolEvent)]
+    pub struct MinSupportedSet {
+        #[indexed]
+        pub name: String,
+        pub version_key: u128,
+    }
+
+    /// The owner froze or unfroze the name's proxy.
+    #[derive(pvm_contract_sdk::SolEvent)]
+    pub struct ContractFrozenSet {
+        #[indexed]
+        pub name: String,
+        pub frozen: bool,
+    }
+
+    /// The owner turned the name's fast path on or off.
+    #[derive(pvm_contract_sdk::SolEvent)]
+    pub struct FastPathSet {
+        #[indexed]
+        pub name: String,
+        pub enabled: bool,
+    }
+
+    /// The owner sealed the name: its latest version is its last.
+    #[derive(pvm_contract_sdk::SolEvent)]
+    pub struct ContractSealed {
+        #[indexed]
+        pub name: String,
     }
 
     /// EIP-1967 standard event, so proxy-aware tooling picks up upgrades.
@@ -63,13 +134,17 @@ mod contract_registry {
     pub struct ContractRegistry {
         /// Registered names in registration order; drives `getContracts` paging.
         names: StorageVec<String>,
-        /// Name → owner and published version count.
+        /// Name → owner, version count, per-name proxy.
         info: Mapping<String, NamedContractInfo>,
-        /// name → version → published contract address.
-        address_of: Mapping<String, Mapping<u32, Address>>,
-        /// name → version → metadata URI (Bulletin/IPFS).
+        /// name → version index → packed semver key. Implementation
+        /// addresses live in the resolver alone.
+        versions: Mapping<String, Mapping<u32, u128>>,
+        /// name → version index → metadata URI (Bulletin/IPFS).
         metadata_uri_of: Mapping<String, Mapping<u32, String>>,
-        /// Fixed-slot admin state, shared with the proxy.
+        /// The resolver proxy: every shim is constructed with it and every
+        /// routing change is written to it.
+        resolver: Lazy<Address>,
+        /// Fixed-slot admin state, shared with the registry proxy.
         #[slot(raw = IMPLEMENTATION_SLOT)]
         implementation: Lazy<Address>,
         #[slot(raw = ADMIN_SLOT)]
@@ -89,7 +164,7 @@ mod contract_registry {
 
         // ─── Admin & longevity ───────────────────────────────────────────
 
-        /// The address allowed to upgrade, freeze, and import registry state.
+        /// The address allowed to upgrade and freeze the registry.
         #[pvm_contract_sdk::method]
         pub fn get_admin(&self) -> Address {
             self.admin.get()
@@ -114,9 +189,8 @@ mod contract_registry {
         #[pvm_contract_sdk::method]
         pub fn set_code(&mut self, new_implementation: Address) -> Result<(), Error> {
             self.require_admin()?;
-            // A codeless target would brick the registry address forever.
-            // On-chain only: MockHost has no way to seed code sizes, so the
-            // guard is exercised by the e2e suite instead of unit tests.
+            // A codeless target would brick the registry. MockHost cannot
+            // seed code sizes; the e2e suite covers this guard.
             #[cfg(target_arch = "riscv64")]
             if self.host().code_size(&new_implementation.0) == 0 {
                 return Err(BadImplementation.into());
@@ -133,6 +207,42 @@ mod contract_registry {
         #[pvm_contract_sdk::method]
         pub fn get_code(&self) -> Address {
             self.implementation.get()
+        }
+
+        /// Code hash of the per-name shim blob this implementation creates
+        /// shims from.
+        #[pvm_contract_sdk::method]
+        pub fn get_proxy_code_hash(&self) -> [u8; 32] {
+            PROXY_CODE_HASH
+        }
+
+        /// Set once: every shim bakes the resolver address into its CREATE2
+        /// address, so it can never move afterwards.
+        #[pvm_contract_sdk::method]
+        pub fn set_resolver(&mut self, resolver: Address) -> Result<(), Error> {
+            self.require_admin()?;
+            if resolver == Address::ZERO {
+                return Err(InvalidResolver.into());
+            }
+            if self.resolver.get() != Address::ZERO {
+                return Err(ResolverAlreadySet.into());
+            }
+            self.resolver.set(&resolver);
+            Ok(())
+        }
+
+        #[pvm_contract_sdk::method]
+        pub fn get_resolver(&self) -> Address {
+            self.resolver.get()
+        }
+
+        /// Point the resolver proxy at a new implementation: one upgrade
+        /// reaches every call a shim still asks the resolver about, for
+        /// every name that is not sealed. The resolver's errors bubble.
+        #[pvm_contract_sdk::method]
+        pub fn upgrade_resolver(&mut self, new_implementation: Address) -> Result<(), Error> {
+            self.require_admin()?;
+            self.call_resolver(RESOLVER_SET_CODE, &new_implementation)
         }
 
         /// Freeze the registry: every state-changing call except the admin's
@@ -158,58 +268,192 @@ mod contract_registry {
             self.frozen.get()
         }
 
-        /// Import existing registry data into a fresh registry deployment.
-        #[pvm_contract_sdk::method]
-        pub fn admin_import_contracts(
-            &mut self,
-            contracts: Vec<ImportContract>,
-        ) -> Result<(), Error> {
-            self.require_admin()?;
-            for contract in contracts {
-                self.import_contract(contract)?;
-            }
-            Ok(())
-        }
-
         // ─── Publishing ──────────────────────────────────────────────────
 
-        /// Publish the next version of `contract_name`. The caller may
-        /// publish if the name is unregistered (registering it, becoming its
-        /// owner) or if they already own it.
+        /// Publish `version_key` of `contract_name`. An unregistered name is
+        /// claimed by its first publisher; afterwards only the owner may
+        /// publish. The first publish instantiates the name's proxy; keys
+        /// must strictly increase.
         #[pvm_contract_sdk::method]
-        pub fn publish_latest(
+        pub fn publish(
             &mut self,
             contract_name: String,
-            contract_address: Address,
+            version_key: u128,
+            target: Address,
             metadata_uri: String,
+        ) -> Result<(), Error> {
+            self.publish_internal(contract_name, version_key, target, metadata_uri, None)
+        }
+
+        /// `publish`, then the proxy delegate-calls `init_target` with
+        /// `initialize(from, owner)` — `from` is the previously-latest key (0
+        /// on a first publish). An initialization revert rolls back the
+        /// whole publish.
+        #[pvm_contract_sdk::method]
+        pub fn publish_with_init(
+            &mut self,
+            contract_name: String,
+            version_key: u128,
+            target: Address,
+            metadata_uri: String,
+            init_target: Address,
+        ) -> Result<(), Error> {
+            if init_target == Address::ZERO {
+                return Err(InvalidInitTarget.into());
+            }
+            // A codeless target has no `initialize` to run. MockHost cannot
+            // seed code sizes; the e2e suite covers this guard.
+            #[cfg(target_arch = "riscv64")]
+            if self.host().code_size(&init_target.0) == 0 {
+                return Err(InvalidInitTarget.into());
+            }
+            self.publish_internal(
+                contract_name,
+                version_key,
+                target,
+                metadata_uri,
+                Some(init_target),
+            )
+        }
+
+        fn publish_internal(
+            &mut self,
+            contract_name: String,
+            version_key: u128,
+            target: Address,
+            metadata_uri: String,
+            init_target: Option<Address>,
         ) -> Result<(), Error> {
             self.require_unfrozen()?;
             validate_contract_name(&contract_name)?;
+            if !is_publishable_key(version_key) {
+                return Err(InvalidVersionKey.into());
+            }
 
             let caller = self.caller();
             let mut info = self.info.get(&contract_name);
-            if info.version_count == 0 {
-                self.names.push(&contract_name);
+            let is_new_name = info.version_count == 0;
+            if is_new_name {
                 info.owner = caller;
             } else if info.owner != caller {
                 return Err(Unauthorized.into());
             }
 
-            let version = info.version_count;
-            info.version_count = version.checked_add(1).ok_or(VersionOverflow)?;
-            self.info.insert(&contract_name, &info);
+            let previous_latest = self.latest_key(&contract_name, &info).unwrap_or(0);
+            if previous_latest != 0 && version_key <= previous_latest {
+                return Err(VersionNotMonotonic {
+                    attempted: version_key,
+                    latest: previous_latest,
+                }
+                .into());
+            }
 
-            self.address_of
+            // A codeless target would become the name's latest version.
+            // MockHost cannot seed code sizes; the e2e suite covers this guard.
+            #[cfg(target_arch = "riscv64")]
+            if self.host().code_size(&target.0) == 0 {
+                return Err(BadImplementation.into());
+            }
+
+            if info.proxy == Address::ZERO {
+                let proxy = self.instantiate_proxy(&contract_name)?;
+                info.proxy = proxy;
+                ProxyCreated {
+                    name: contract_name.clone(),
+                    proxy,
+                }
+                .emit(self.host());
+            }
+            self.call_resolver(RESOLVER_PUBLISH, &(info.proxy, version_key, target))?;
+
+            let index = info.version_count;
+            info.version_count = index.checked_add(1).ok_or(VersionOverflow)?;
+            if is_new_name {
+                self.names.push(&contract_name);
+            }
+            self.info.insert(&contract_name, &info);
+            self.versions
                 .entry(&contract_name)
-                .insert(&version, &contract_address);
+                .insert(&index, &version_key);
             self.metadata_uri_of
                 .entry(&contract_name)
-                .insert(&version, &metadata_uri);
+                .insert(&index, &metadata_uri);
 
             Published {
+                name: contract_name.clone(),
+                version_key,
+                target,
+            }
+            .emit(self.host());
+
+            if let Some(init_target) = init_target {
+                self.call_proxy_init(&info.proxy, &init_target, previous_latest, &info.owner);
+                Initialized {
+                    name: contract_name,
+                    version_key,
+                    init_target,
+                }
+                .emit(self.host());
+            }
+            Ok(())
+        }
+
+        /// Raise the name's min-supported floor. Owner-only; monotonic and
+        /// capped at the latest key by the resolver, whose errors bubble.
+        #[pvm_contract_sdk::method]
+        pub fn set_min_supported(
+            &mut self,
+            contract_name: String,
+            version_key: u128,
+        ) -> Result<(), Error> {
+            let proxy = self.owned_proxy(&contract_name)?;
+            self.call_resolver(RESOLVER_SET_MIN_SUPPORTED, &(proxy, version_key))?;
+            MinSupportedSet {
                 name: contract_name,
-                version,
-                address: contract_address,
+                version_key,
+            }
+            .emit(self.host());
+            Ok(())
+        }
+
+        /// Freeze the name's proxy: plain and versioned calls revert
+        /// `ContractFrozen()` until `unfreezeContract`; publish still works.
+        /// Owner-only.
+        #[pvm_contract_sdk::method]
+        pub fn freeze_contract(&mut self, contract_name: String) -> Result<(), Error> {
+            self.set_contract_frozen(contract_name, true)
+        }
+
+        #[pvm_contract_sdk::method]
+        pub fn unfreeze_contract(&mut self, contract_name: String) -> Result<(), Error> {
+            self.set_contract_frozen(contract_name, false)
+        }
+
+        /// Choose whether the name's proxy serves the latest version from
+        /// its own storage (`enabled`, the default) or asks the resolver on
+        /// every call. Owner-only.
+        #[pvm_contract_sdk::method]
+        pub fn set_fast_path(&mut self, contract_name: String, enabled: bool) -> Result<(), Error> {
+            let proxy = self.owned_proxy(&contract_name)?;
+            self.call_resolver(RESOLVER_SET_FAST_PATH, &(proxy, enabled))?;
+            FastPathSet {
+                name: contract_name,
+                enabled,
+            }
+            .emit(self.host());
+            Ok(())
+        }
+
+        /// Seal the name: its proxy serves the latest version forever, and
+        /// every later publish, floor change, freeze, or fast-path choice
+        /// reverts with the resolver's `NameSealed()`. Irreversible.
+        /// Owner-only.
+        #[pvm_contract_sdk::method]
+        pub fn seal_contract(&mut self, contract_name: String) -> Result<(), Error> {
+            let proxy = self.owned_proxy(&contract_name)?;
+            self.call_resolver(RESOLVER_SEAL, &proxy)?;
+            ContractSealed {
+                name: contract_name,
             }
             .emit(self.host());
             Ok(())
@@ -217,44 +461,50 @@ mod contract_registry {
 
         // ─── Queries ─────────────────────────────────────────────────────
 
-        /// Latest published address for `contract_name`, as an option-shaped
-        /// `(bool isSome, address value)` tuple. This is the hot path used by
-        /// `cdm::import!` runtime lookups.
+        /// The name's stable address (its proxy) as `(bool isSome, address)`.
+        /// `cdm::import!` hardcodes this 64-byte layout.
         #[pvm_contract_sdk::method]
         pub fn get_address(&self, contract_name: String) -> OptionalAddress {
-            self.latest_version(&contract_name)
-                .map(|version| self.address_of.get(&contract_name).get(&version))
-                .into()
+            let info = self.info.get(&contract_name);
+            (info.version_count > 0).then_some(info.proxy).into()
         }
 
         /// Latest metadata URI for `contract_name`, option-shaped.
         #[pvm_contract_sdk::method]
         pub fn get_metadata_uri(&self, contract_name: String) -> OptionalString {
-            self.latest_version(&contract_name)
-                .map(|version| self.metadata_uri_of.get(&contract_name).get(&version))
+            self.latest_index(&contract_name)
+                .map(|index| self.metadata_uri_of.get(&contract_name).get(&index))
                 .into()
         }
 
+        /// Alias of `getAddress`.
         #[pvm_contract_sdk::method]
-        pub fn get_address_at_version(
-            &self,
-            contract_name: String,
-            version: u32,
-        ) -> OptionalAddress {
-            self.version_exists(&contract_name, version)
-                .then(|| self.address_of.get(&contract_name).get(&version))
-                .into()
+        pub fn get_proxy(&self, contract_name: String) -> OptionalAddress {
+            self.get_address(contract_name)
         }
 
+        /// Latest published version key; zero for unregistered names.
         #[pvm_contract_sdk::method]
-        pub fn get_metadata_uri_at_version(
-            &self,
-            contract_name: String,
-            version: u32,
-        ) -> OptionalString {
-            self.version_exists(&contract_name, version)
-                .then(|| self.metadata_uri_of.get(&contract_name).get(&version))
-                .into()
+        pub fn get_latest_key(&self, contract_name: String) -> u128 {
+            let info = self.info.get(&contract_name);
+            self.latest_key(&contract_name, &info).unwrap_or(0)
+        }
+
+        /// Version row by index: `(isSome, versionKey, metadataUri)`.
+        #[pvm_contract_sdk::method]
+        pub fn get_version_at(&self, contract_name: String, index: u32) -> OptionalVersionEntry {
+            if !self.version_exists(&contract_name, index) {
+                return OptionalVersionEntry {
+                    is_some: false,
+                    version_key: 0,
+                    metadata_uri: String::new(),
+                };
+            }
+            OptionalVersionEntry {
+                is_some: true,
+                version_key: self.versions.get(&contract_name).get(&index),
+                metadata_uri: self.metadata_uri_of.get(&contract_name).get(&index),
+            }
         }
 
         /// The contract name at a registration index; empty when out of range.
@@ -318,7 +568,7 @@ mod contract_registry {
         }
 
         /// Latest published version index, `None` for unregistered names.
-        fn latest_version(&self, contract_name: &String) -> Option<u32> {
+        fn latest_index(&self, contract_name: &String) -> Option<u32> {
             self.info.get(contract_name).version_count.checked_sub(1)
         }
 
@@ -326,63 +576,175 @@ mod contract_registry {
             version < self.info.get(contract_name).version_count
         }
 
+        fn latest_key(&self, contract_name: &String, info: &NamedContractInfo) -> Option<u128> {
+            info.version_count
+                .checked_sub(1)
+                .map(|index| self.versions.get(contract_name).get(&index))
+        }
+
         fn latest_entry(&self, name: String) -> Option<ContractEntry> {
             let info = self.info.get(&name);
-            let version = info.version_count.checked_sub(1)?;
+            let index = info.version_count.checked_sub(1)?;
             Some(ContractEntry {
-                version,
-                address: self.address_of.get(&name).get(&version),
-                metadata_uri: self.metadata_uri_of.get(&name).get(&version),
+                version_key: self.versions.get(&name).get(&index),
+                address: info.proxy,
+                metadata_uri: self.metadata_uri_of.get(&name).get(&index),
                 owner: info.owner,
                 name,
             })
         }
 
-        fn import_contract(&mut self, contract: ImportContract) -> Result<(), Error> {
-            let contract_name = contract.contract_name;
-            validate_contract_name(&contract_name)?;
-            if contract.versions.is_empty() {
-                return Err(ImportVersionsEmpty.into());
-            }
-            if self.info.get(&contract_name).version_count != 0 {
-                return Err(ImportContractExists.into());
-            }
+        /// CREATE2 with `salt = keccak256(name)` and the resolver as the one
+        /// constructor argument: the address is a pure function of
+        /// (registry, proxy blob, resolver address, name).
+        fn instantiate_proxy(&mut self, contract_name: &String) -> Result<Address, Error> {
+            let mut input = PROXY_CODE_HASH.to_vec();
+            input.extend_from_slice(&encode(&self.resolver()?));
+            let host = self.host();
+            let mut salt = [0u8; 32];
+            host.hash_keccak_256(contract_name.as_bytes(), &mut salt);
 
-            let mut addresses = self.address_of.entry(&contract_name);
-            let mut metadata_uris = self.metadata_uri_of.entry(&contract_name);
-            let mut version_count: u32 = 0;
-            for version in contract.versions {
-                addresses.insert(&version_count, &version.address);
-                metadata_uris.insert(&version_count, &version.metadata_uri);
-                version_count = version_count.checked_add(1).ok_or(VersionOverflow)?;
-            }
-
-            self.names.push(&contract_name);
-            self.info.insert(
-                &contract_name,
-                &NamedContractInfo {
-                    owner: contract.owner,
-                    version_count,
-                },
+            let mut address = [0u8; 20];
+            let result = host.instantiate(
+                u64::MAX,
+                u64::MAX,
+                &[0xff; 32], // deposit bounded by the publisher's frame
+                &[0u8; 32],  // zero value
+                &input,
+                Some(&mut address),
+                None,
+                Some(&salt),
             );
+            if result.is_err() {
+                self.bubble_revert();
+            }
+            Ok(Address(address))
+        }
+
+        /// `[MAGIC][0][callCode][init target word][initialize(from, owner)]`:
+        /// the shim delegate-calls `init_target` with the trailing calldata.
+        fn call_proxy_init(
+            &mut self,
+            proxy: &Address,
+            init_target: &Address,
+            from: u128,
+            owner: &Address,
+        ) {
+            let mut calldata = meta_header(meta::CALL_CODE);
+            calldata.extend_from_slice(&encode(init_target));
+            calldata.extend_from_slice(&INITIALIZE_SELECTOR);
+            calldata.extend_from_slice(&encode(&(from, *owner)));
+            self.call(proxy, &calldata);
+        }
+
+        fn set_contract_frozen(
+            &mut self,
+            contract_name: String,
+            frozen: bool,
+        ) -> Result<(), Error> {
+            let proxy = self.owned_proxy(&contract_name)?;
+            self.call_resolver(RESOLVER_SET_FROZEN, &(proxy, frozen))?;
+            ContractFrozenSet {
+                name: contract_name,
+                frozen,
+            }
+            .emit(self.host());
             Ok(())
         }
+
+        /// The proxy of `contract_name`, for its owner only and only while
+        /// the registry is not frozen.
+        fn owned_proxy(&self, contract_name: &String) -> Result<Address, Error> {
+            self.require_unfrozen()?;
+            let info = self.info.get(contract_name);
+            if info.version_count == 0 || info.owner != self.caller() {
+                return Err(Unauthorized.into());
+            }
+            Ok(info.proxy)
+        }
+
+        fn resolver(&self) -> Result<Address, Error> {
+            let resolver = self.resolver.get();
+            if resolver == Address::ZERO {
+                return Err(ResolverUnset.into());
+            }
+            Ok(resolver)
+        }
+
+        /// `selector(args)` on the resolver, bubbling its revert unchanged.
+        fn call_resolver(&mut self, selector: [u8; 4], args: &impl SolEncode) -> Result<(), Error> {
+            let resolver = self.resolver()?;
+            let mut calldata = selector.to_vec();
+            calldata.extend_from_slice(&encode(args));
+            self.call(&resolver, &calldata);
+            Ok(())
+        }
+
+        /// Call `callee`, bubbling its revert unchanged.
+        fn call(&mut self, callee: &Address, calldata: &[u8]) {
+            let host = self.host();
+            let result = host.call_evm(
+                CallFlags::empty(),
+                &callee.0,
+                u64::MAX,
+                &[0u8; 32],
+                calldata,
+                None,
+            );
+            if result.is_err() {
+                self.bubble_revert();
+            }
+        }
+
+        /// Bubble the callee's revert payload unchanged. Diverges.
+        fn bubble_revert(&self) -> ! {
+            let host = self.host();
+            let len = host.return_data_size() as usize;
+            let mut data = vec![0u8; len];
+            let mut data_ref: &mut [u8] = &mut data;
+            host.return_data_copy(&mut data_ref, 0);
+            host.revert(&data)
+        }
+    }
+
+    // ─── Wire helpers ─────────────────────────────────────────────────────
+
+    const RESOLVER_PUBLISH: [u8; 4] = const_selector("publish(address,uint128,address)");
+    const RESOLVER_SET_MIN_SUPPORTED: [u8; 4] = const_selector("setMinSupported(address,uint128)");
+    const RESOLVER_SET_FROZEN: [u8; 4] = const_selector("setFrozen(address,bool)");
+    const RESOLVER_SET_FAST_PATH: [u8; 4] = const_selector("setFastPath(address,bool)");
+    const RESOLVER_SEAL: [u8; 4] = const_selector("seal(address)");
+    const RESOLVER_SET_CODE: [u8; 4] = const_selector("setCode(address)");
+
+    /// `[MAGIC][0][selector]`: a CDM meta call to a shim.
+    fn meta_header(selector: [u8; 4]) -> Vec<u8> {
+        let mut calldata = Vec::with_capacity(24 + 32 + 68);
+        calldata.extend_from_slice(&MAGIC);
+        calldata.extend_from_slice(&META_KEY.to_be_bytes());
+        calldata.extend_from_slice(&selector);
+        calldata
+    }
+
+    fn encode<T: SolEncode>(value: &T) -> Vec<u8> {
+        let mut out = vec![0u8; value.encode_len()];
+        value.encode_to(&mut out);
+        out
     }
 }
 
-/// Host-side unit tests for the ContractRegistry implementation.
-///
-/// Method-level tests call the typed methods directly on a `MockHost`-backed
-/// contract; dispatch-level tests drive `route()` with ABI calldata to lock
-/// the wire format — in particular the exact `getAddress(string)` layout the
-/// `cdm::import!` macro (`pvm-cdm-macros`) hardcodes against.
+/// Method-level tests call typed methods on a `MockHost`; dispatch-level
+/// tests drive `route()` with ABI calldata to lock the wire format.
 #[cfg(test)]
 mod tests {
-    use super::contract_registry::{self, ContractRegistry};
+    use super::contract_registry::{self, ContractRegistry, PROXY_CODE_HASH};
     use super::types::{
         ContractEntry, ContractFrozen, ContractNameEmpty, ContractNameInvalid, ContractNameTooLong,
-        ContractPage, ImportContract, ImportContractExists, ImportContractVersion,
-        ImportVersionsEmpty, OptionalAddress, OptionalString, Unauthorized, UnauthorizedAdmin,
+        ContractPage, InvalidInitTarget, InvalidResolver, InvalidVersionKey, OptionalAddress,
+        OptionalString, OptionalVersionEntry, ResolverAlreadySet, ResolverUnset, Unauthorized,
+        UnauthorizedAdmin, VersionNotMonotonic,
+    };
+    use contract_registry_core::versioning::{
+        INITIALIZE_SELECTOR, MAGIC, META_KEY, meta, pack_version,
     };
     use pvm_contract_sdk::{
         Address, MockHost, MockHostBuilder, OutSink, Outcome, SolEncode, const_selector, keccak256,
@@ -394,9 +756,18 @@ mod tests {
     const ADDR_1: [u8; 20] = [0x11; 20];
     const ADDR_2: [u8; 20] = [0x22; 20];
     const NEW_IMPL: [u8; 20] = [0x1C; 20];
+    /// Where the mocked `instantiate` lands every per-name proxy (MockHost
+    /// supports exactly one global instantiate address).
+    const PROXY: [u8; 20] = [0x99; 20];
+    /// The resolver proxy the registry writes routing to.
+    const RESOLVER: [u8; 20] = [0x5E; 20];
     const NAME: &str = "@cdm/registry";
     const URI_1: &str = "ipfs://one";
     const URI_2: &str = "ipfs://two";
+
+    const V1_0_0: u128 = pack_version(1, 0, 0);
+    const V1_1_0: u128 = pack_version(1, 1, 0);
+    const V2_0_0: u128 = pack_version(2, 0, 0);
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -408,44 +779,43 @@ mod tests {
         ContractRegistry::with_host(mock.clone())
     }
 
-    /// Deploy: construct against a fresh host and run the constructor, so the
-    /// deployer becomes admin.
-    fn deployed(caller: [u8; 20]) -> (ContractRegistry, MockHost) {
+    /// Constructed by `caller` (the admin), instantiate mock staged,
+    /// resolver unset.
+    fn deployed_without_resolver(caller: [u8; 20]) -> (ContractRegistry, MockHost) {
         let mock = host_with_caller(caller);
+        mock.mock_instantiate(PROXY, vec![]);
         let mut contract = registry(&mock);
         contract.new();
         (contract, mock)
     }
 
-    /// "Next transaction from another account": `MockHost` fixes the caller at
-    /// build time, so rebuild the host with the new caller and carry the full
-    /// storage across.
+    /// `deployed_without_resolver` plus the resolver: ready to publish.
+    fn deployed(caller: [u8; 20]) -> (ContractRegistry, MockHost) {
+        let (mut contract, mock) = deployed_without_resolver(caller);
+        contract.set_resolver(Address(RESOLVER)).unwrap();
+        (contract, mock)
+    }
+
+    /// Same storage, different caller (MockHost fixes the caller at build).
     fn fork_with_caller(mock: &MockHost, caller: [u8; 20]) -> (ContractRegistry, MockHost) {
         let next = host_with_caller(caller);
+        next.mock_instantiate(PROXY, vec![]);
         for (key, value) in mock.storage_dump() {
             next.set_raw_storage(key, value);
         }
         (registry(&next), next)
     }
 
-    fn publish(contract: &mut ContractRegistry, name: &str, address: [u8; 20], uri: &str) {
+    fn publish(
+        contract: &mut ContractRegistry,
+        name: &str,
+        key: u128,
+        target: [u8; 20],
+        uri: &str,
+    ) {
         contract
-            .publish_latest(name.into(), Address(address), uri.into())
+            .publish(name.into(), key, Address(target), uri.into())
             .unwrap();
-    }
-
-    fn import(name: &str, owner: [u8; 20], versions: &[([u8; 20], &str)]) -> ImportContract {
-        ImportContract {
-            contract_name: name.into(),
-            owner: Address(owner),
-            versions: versions
-                .iter()
-                .map(|(address, uri)| ImportContractVersion {
-                    address: Address(*address),
-                    metadata_uri: (*uri).into(),
-                })
-                .collect(),
-        }
     }
 
     fn word_addr(address: [u8; 20]) -> [u8; 32] {
@@ -457,6 +827,12 @@ mod tests {
     fn word_u32(value: u32) -> [u8; 32] {
         let mut word = [0u8; 32];
         word[28..].copy_from_slice(&value.to_be_bytes());
+        word
+    }
+
+    fn word_u128(value: u128) -> [u8; 32] {
+        let mut word = [0u8; 32];
+        word[16..].copy_from_slice(&value.to_be_bytes());
         word
     }
 
@@ -502,6 +878,39 @@ mod tests {
         ContractPage { total, entries }
     }
 
+    /// The exact calldata the registry must send the resolver.
+    fn resolver_calldata(signature: &str, args: &[&[u8; 32]]) -> Vec<u8> {
+        let mut data = const_selector(signature).to_vec();
+        for arg in args {
+            data.extend_from_slice(&arg[..]);
+        }
+        data
+    }
+
+    fn resolver_publish(key: u128, target: [u8; 20]) -> ([u8; 20], Vec<u8>) {
+        (
+            RESOLVER,
+            resolver_calldata(
+                "publish(address,uint128,address)",
+                &[&word_addr(PROXY), &word_u128(key), &word_addr(target)],
+            ),
+        )
+    }
+
+    /// The exact callCode calldata a publish-with-initialization must send
+    /// the shim: `[MAGIC][0][callCode][init word]` followed by
+    /// `[initialize selector][from word][owner word]`, unpadded.
+    fn init_calldata(init_target: [u8; 20], from: u128, owner: [u8; 20]) -> Vec<u8> {
+        let mut data = MAGIC.to_vec();
+        data.extend_from_slice(&META_KEY.to_be_bytes());
+        data.extend_from_slice(&meta::CALL_CODE);
+        data.extend_from_slice(&word_addr(init_target));
+        data.extend_from_slice(&INITIALIZE_SELECTOR);
+        data.extend_from_slice(&word_u128(from));
+        data.extend_from_slice(&word_addr(owner));
+        data
+    }
+
     // ─── Constructor ─────────────────────────────────────────────────────────
 
     #[test]
@@ -515,27 +924,38 @@ mod tests {
     // ─── Publishing ──────────────────────────────────────────────────────────
 
     #[test]
-    fn publish_latest_registers_new_name() {
-        let (mut contract, _mock) = deployed(ALICE);
+    fn first_publish_registers_name_and_creates_proxy() {
+        let (mut contract, mock) = deployed(ALICE);
 
         assert_eq!(
-            contract.publish_latest(NAME.into(), Address(ADDR_1), URI_1.into()),
+            contract.publish(NAME.into(), V1_0_0, Address(ADDR_1), URI_1.into()),
             Ok(())
         );
 
         assert_eq!(contract.get_owner(NAME.into()), Address(ALICE));
         assert_eq!(contract.get_version_count(NAME.into()), 1);
-        assert_eq!(contract.get_address(NAME.into()), some_addr(ADDR_1));
+        // The name's address is its proxy — not the implementation.
+        assert_eq!(contract.get_address(NAME.into()), some_addr(PROXY));
+        assert_eq!(contract.get_proxy(NAME.into()), some_addr(PROXY));
+        assert_eq!(contract.get_latest_key(NAME.into()), V1_0_0);
         assert_eq!(contract.get_metadata_uri(NAME.into()), some_uri(URI_1));
         assert_eq!(contract.get_contract_count(), 1);
         assert_eq!(contract.get_contract_name_at(0), NAME);
+
+        // The resolver was told about the version.
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![resolver_publish(V1_0_0, ADDR_1)]
+        );
     }
 
     #[test]
-    fn second_publish_bumps_version_and_latest_resolves() {
-        let (mut contract, _mock) = deployed(ALICE);
-        publish(&mut contract, NAME, ADDR_1, URI_1);
-        publish(&mut contract, NAME, ADDR_2, URI_2);
+    fn second_publish_keeps_address_and_bumps_latest() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+        mock.take_recorded_calls();
+
+        publish(&mut contract, NAME, V1_1_0, ADDR_2, URI_2);
 
         assert_eq!(contract.get_version_count(NAME.into()), 2);
         assert_eq!(
@@ -544,50 +964,102 @@ mod tests {
             "same name, not a new entry"
         );
 
-        // Latest resolves to the second version.
-        assert_eq!(contract.get_address(NAME.into()), some_addr(ADDR_2));
+        // The stable address never moves; the latest key does.
+        assert_eq!(contract.get_address(NAME.into()), some_addr(PROXY));
+        assert_eq!(contract.get_latest_key(NAME.into()), V1_1_0);
         assert_eq!(contract.get_metadata_uri(NAME.into()), some_uri(URI_2));
 
-        // Both historical versions resolve.
+        // Both versions are recorded with their keys and metadata URIs.
         assert_eq!(
-            contract.get_address_at_version(NAME.into(), 0),
-            some_addr(ADDR_1)
+            contract.get_version_at(NAME.into(), 0),
+            OptionalVersionEntry {
+                is_some: true,
+                version_key: V1_0_0,
+                metadata_uri: URI_1.into(),
+            }
         );
         assert_eq!(
-            contract.get_address_at_version(NAME.into(), 1),
-            some_addr(ADDR_2)
+            contract.get_version_at(NAME.into(), 1),
+            OptionalVersionEntry {
+                is_some: true,
+                version_key: V1_1_0,
+                metadata_uri: URI_2.into(),
+            }
         );
+        // Beyond the count → none.
         assert_eq!(
-            contract.get_metadata_uri_at_version(NAME.into(), 0),
-            some_uri(URI_1)
-        );
-        assert_eq!(
-            contract.get_metadata_uri_at_version(NAME.into(), 1),
-            some_uri(URI_2)
+            contract.get_version_at(NAME.into(), 2),
+            OptionalVersionEntry {
+                is_some: false,
+                version_key: 0,
+                metadata_uri: String::new(),
+            }
         );
 
-        // Version beyond the count → (false, default).
-        assert_eq!(contract.get_address_at_version(NAME.into(), 2), none_addr());
+        // Only the version registration went out — no second instantiation.
         assert_eq!(
-            contract.get_metadata_uri_at_version(NAME.into(), u32::MAX),
-            none_uri()
+            mock.take_recorded_calls(),
+            vec![resolver_publish(V1_1_0, ADDR_2)]
         );
+    }
+
+    #[test]
+    fn publish_requires_strictly_increasing_keys() {
+        let (mut contract, _mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_1_0, ADDR_1, URI_1);
+
+        for key in [V1_1_0, V1_0_0] {
+            assert_eq!(
+                contract.publish(NAME.into(), key, Address(ADDR_2), URI_2.into()),
+                Err(VersionNotMonotonic {
+                    attempted: key,
+                    latest: V1_1_0,
+                }
+                .into()),
+                "{key:#x}"
+            );
+        }
+        assert_eq!(contract.get_version_count(NAME.into()), 1);
+    }
+
+    #[test]
+    fn publish_rejects_invalid_keys() {
+        let (mut contract, _mock) = deployed(ALICE);
+
+        for key in [0u128, 1u128 << 95, 1u128 << 96, u128::MAX] {
+            assert_eq!(
+                contract.publish(NAME.into(), key, Address(ADDR_1), URI_1.into()),
+                Err(InvalidVersionKey.into()),
+                "{key:#x}"
+            );
+        }
+        assert_eq!(contract.get_contract_count(), 0);
+    }
+
+    #[test]
+    fn publish_without_resolver_fails() {
+        let (mut contract, _mock) = deployed_without_resolver(ALICE);
+        assert_eq!(
+            contract.publish(NAME.into(), V1_0_0, Address(ADDR_1), URI_1.into()),
+            Err(ResolverUnset.into())
+        );
+        assert_eq!(contract.get_contract_count(), 0);
     }
 
     #[test]
     fn publish_by_non_owner_is_unauthorized() {
         let (mut contract, mock) = deployed(ALICE);
-        publish(&mut contract, NAME, ADDR_1, URI_1);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
 
         let (mut as_bob, _) = fork_with_caller(&mock, BOB);
         assert_eq!(
-            as_bob.publish_latest(NAME.into(), Address(ADDR_2), URI_2.into()),
+            as_bob.publish(NAME.into(), V1_1_0, Address(ADDR_2), URI_2.into()),
             Err(Unauthorized.into())
         );
 
         // Nothing changed.
         assert_eq!(as_bob.get_version_count(NAME.into()), 1);
-        assert_eq!(as_bob.get_address(NAME.into()), some_addr(ADDR_1));
+        assert_eq!(as_bob.get_address(NAME.into()), some_addr(PROXY));
         assert_eq!(as_bob.get_owner(NAME.into()), Address(ALICE));
     }
 
@@ -596,27 +1068,330 @@ mod tests {
         let (mut contract, _mock) = deployed(ALICE);
 
         assert_eq!(
-            contract.publish_latest(String::new(), Address(ADDR_1), URI_1.into()),
+            contract.publish(String::new(), V1_0_0, Address(ADDR_1), URI_1.into()),
             Err(ContractNameEmpty.into())
         );
 
         let too_long = format!("@scope/{}", "a".repeat(64));
         assert_eq!(
-            contract.publish_latest(too_long, Address(ADDR_1), URI_1.into()),
+            contract.publish(too_long, V1_0_0, Address(ADDR_1), URI_1.into()),
             Err(ContractNameTooLong.into())
         );
 
-        // Exhaustive name-grammar coverage lives in contract-registry-core; one
-        // case per rejection shape is enough here.
+        // Name grammar is covered in contract-registry-core.
         for name in ["cdm/registry", "@cdm"] {
             assert_eq!(
-                contract.publish_latest(name.into(), Address(ADDR_1), URI_1.into()),
+                contract.publish(name.into(), V1_0_0, Address(ADDR_1), URI_1.into()),
                 Err(ContractNameInvalid.into()),
                 "{name}"
             );
         }
 
         assert_eq!(contract.get_contract_count(), 0);
+    }
+
+    // ─── publishWithInit ─────────────────────────────────────────────────────
+
+    /// A stand-in initialization contract address.
+    const INIT_1: [u8; 20] = [0x1B; 20];
+
+    #[test]
+    fn publish_with_init_first_publish_sends_from_zero_and_owner() {
+        let (mut contract, mock) = deployed(ALICE);
+
+        assert_eq!(
+            contract.publish_with_init(
+                NAME.into(),
+                V1_0_0,
+                Address(ADDR_1),
+                URI_1.into(),
+                Address(INIT_1),
+            ),
+            Ok(())
+        );
+
+        // Version registration first, then the initialization — exact bytes.
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![
+                resolver_publish(V1_0_0, ADDR_1),
+                // First publish: from = 0, owner = the TOFU owner (ALICE).
+                (PROXY, init_calldata(INIT_1, 0, ALICE)),
+            ]
+        );
+
+        // Registry state is the same as a plain publish.
+        assert_eq!(contract.get_version_count(NAME.into()), 1);
+        assert_eq!(contract.get_latest_key(NAME.into()), V1_0_0);
+
+        // ProxyCreated, Published, then Initialized.
+        let name_topic = keccak256(NAME.as_bytes());
+        let events = mock.events();
+        assert_eq!(events.len(), 3);
+        assert_eq!(
+            events[2],
+            (
+                vec![topic0("Initialized(string,uint128,address)"), name_topic,],
+                [word_u128(V1_0_0), word_addr(INIT_1)].concat(),
+            )
+        );
+    }
+
+    #[test]
+    fn publish_with_init_upgrade_sends_previous_latest_as_from() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+        mock.take_recorded_calls();
+
+        assert_eq!(
+            contract.publish_with_init(
+                NAME.into(),
+                V2_0_0,
+                Address(ADDR_2),
+                URI_2.into(),
+                Address(INIT_1),
+            ),
+            Ok(())
+        );
+
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![
+                resolver_publish(V2_0_0, ADDR_2),
+                // Upgrade: from = the latest key BEFORE this publish.
+                (PROXY, init_calldata(INIT_1, V1_0_0, ALICE)),
+            ]
+        );
+        assert_eq!(contract.get_latest_key(NAME.into()), V2_0_0);
+    }
+
+    #[test]
+    fn publish_with_init_rejects_zero_init_target() {
+        let (mut contract, _mock) = deployed(ALICE);
+        assert_eq!(
+            contract.publish_with_init(
+                NAME.into(),
+                V1_0_0,
+                Address(ADDR_1),
+                URI_1.into(),
+                Address::ZERO,
+            ),
+            Err(InvalidInitTarget.into())
+        );
+        assert_eq!(contract.get_contract_count(), 0);
+    }
+
+    #[test]
+    fn publish_with_init_enforces_publish_rules() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_1_0, ADDR_1, URI_1);
+
+        // Same monotonic gate as plain publish.
+        assert_eq!(
+            contract.publish_with_init(
+                NAME.into(),
+                V1_0_0,
+                Address(ADDR_2),
+                URI_2.into(),
+                Address(INIT_1),
+            ),
+            Err(VersionNotMonotonic {
+                attempted: V1_0_0,
+                latest: V1_1_0,
+            }
+            .into())
+        );
+
+        // Same ownership gate.
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(
+            as_bob.publish_with_init(
+                NAME.into(),
+                V2_0_0,
+                Address(ADDR_2),
+                URI_2.into(),
+                Address(INIT_1),
+            ),
+            Err(Unauthorized.into())
+        );
+    }
+
+    // ─── setMinSupported ─────────────────────────────────────────────────────
+
+    #[test]
+    fn set_min_supported_forwards_to_the_resolver_and_emits() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+        publish(&mut contract, NAME, V1_1_0, ADDR_2, URI_2);
+        mock.take_recorded_calls();
+
+        assert_eq!(contract.set_min_supported(NAME.into(), V1_1_0), Ok(()));
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(
+                RESOLVER,
+                resolver_calldata(
+                    "setMinSupported(address,uint128)",
+                    &[&word_addr(PROXY), &word_u128(V1_1_0)],
+                ),
+            )]
+        );
+        assert_eq!(
+            mock.events().last(),
+            Some(&(
+                vec![
+                    topic0("MinSupportedSet(string,uint128)"),
+                    keccak256(NAME.as_bytes()),
+                ],
+                word_u128(V1_1_0).to_vec(),
+            ))
+        );
+    }
+
+    #[test]
+    fn set_min_supported_requires_owner() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+
+        // Not the owner (also covers unregistered names, which have no owner).
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(
+            as_bob.set_min_supported(NAME.into(), V1_0_0),
+            Err(Unauthorized.into())
+        );
+        assert_eq!(
+            as_bob.set_min_supported("@cdm/missing".into(), V1_0_0),
+            Err(Unauthorized.into())
+        );
+    }
+
+    #[test]
+    fn freeze_contract_forwards_and_requires_owner() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+        mock.take_recorded_calls();
+
+        assert_eq!(contract.freeze_contract(NAME.into()), Ok(()));
+        assert_eq!(contract.unfreeze_contract(NAME.into()), Ok(()));
+        let set_frozen = |frozen: bool| {
+            (
+                RESOLVER,
+                resolver_calldata(
+                    "setFrozen(address,bool)",
+                    &[&word_addr(PROXY), &word_bool(frozen)],
+                ),
+            )
+        };
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![set_frozen(true), set_frozen(false)]
+        );
+
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(
+            as_bob.freeze_contract(NAME.into()),
+            Err(Unauthorized.into())
+        );
+        assert_eq!(
+            as_bob.unfreeze_contract("@cdm/missing".into()),
+            Err(Unauthorized.into())
+        );
+    }
+
+    // ─── setFastPath / sealContract ──────────────────────────────────────────
+
+    #[test]
+    fn set_fast_path_forwards_to_the_resolver_and_emits() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+        mock.take_recorded_calls();
+
+        assert_eq!(contract.set_fast_path(NAME.into(), false), Ok(()));
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(
+                RESOLVER,
+                resolver_calldata(
+                    "setFastPath(address,bool)",
+                    &[&word_addr(PROXY), &word_bool(false)],
+                ),
+            )]
+        );
+        assert_eq!(
+            mock.events().last(),
+            Some(&(
+                vec![
+                    topic0("FastPathSet(string,bool)"),
+                    keccak256(NAME.as_bytes()),
+                ],
+                word_bool(false).to_vec(),
+            ))
+        );
+    }
+
+    #[test]
+    fn seal_contract_forwards_to_the_resolver_and_emits() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+        mock.take_recorded_calls();
+
+        assert_eq!(contract.seal_contract(NAME.into()), Ok(()));
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(
+                RESOLVER,
+                resolver_calldata("seal(address)", &[&word_addr(PROXY)]),
+            )]
+        );
+        assert_eq!(
+            mock.events().last(),
+            Some(&(
+                vec![topic0("ContractSealed(string)"), keccak256(NAME.as_bytes()),],
+                vec![],
+            ))
+        );
+    }
+
+    #[test]
+    fn set_fast_path_and_seal_contract_require_owner() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+
+        // Not the owner (also covers unregistered names, which have no owner).
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(
+            as_bob.set_fast_path(NAME.into(), false),
+            Err(Unauthorized.into())
+        );
+        assert_eq!(
+            as_bob.set_fast_path("@cdm/missing".into(), false),
+            Err(Unauthorized.into())
+        );
+        assert_eq!(as_bob.seal_contract(NAME.into()), Err(Unauthorized.into()));
+        assert_eq!(
+            as_bob.seal_contract("@cdm/missing".into()),
+            Err(Unauthorized.into())
+        );
+    }
+
+    #[test]
+    fn set_fast_path_and_seal_contract_stop_while_the_registry_is_frozen() {
+        // The admin is exempt from the freeze, so the name gets another owner.
+        let (_contract, mock) = deployed(ADMIN);
+        let (mut as_alice, mock) = fork_with_caller(&mock, ALICE);
+        publish(&mut as_alice, NAME, V1_0_0, ADDR_1, URI_1);
+        let (mut as_admin, mock) = fork_with_caller(&mock, ADMIN);
+        as_admin.freeze().unwrap();
+
+        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
+        assert_eq!(
+            as_alice.set_fast_path(NAME.into(), false),
+            Err(ContractFrozen.into())
+        );
+        assert_eq!(
+            as_alice.seal_contract(NAME.into()),
+            Err(ContractFrozen.into())
+        );
     }
 
     // ─── Queries on unregistered names ───────────────────────────────────────
@@ -627,11 +1402,9 @@ mod tests {
 
         assert_eq!(contract.get_address(NAME.into()), none_addr());
         assert_eq!(contract.get_metadata_uri(NAME.into()), none_uri());
-        assert_eq!(contract.get_address_at_version(NAME.into(), 0), none_addr());
-        assert_eq!(
-            contract.get_metadata_uri_at_version(NAME.into(), 0),
-            none_uri()
-        );
+        assert_eq!(contract.get_proxy(NAME.into()), none_addr());
+        assert_eq!(contract.get_latest_key(NAME.into()), 0);
+        assert!(!contract.get_version_at(NAME.into(), 0).is_some);
         assert_eq!(contract.get_owner(NAME.into()), Address::ZERO);
         assert_eq!(contract.get_version_count(NAME.into()), 0);
         assert_eq!(contract.get_contract_count(), 0);
@@ -643,22 +1416,27 @@ mod tests {
 
     #[test]
     fn get_contracts_pages_latest_entries_by_registration_order() {
+        // Every entry resolves to its proxy (all the same address under
+        // MockHost's single global instantiate mock).
         let (mut contract, _mock) = deployed(ALICE);
-        publish(&mut contract, "@cdm/alpha", ADDR_1, "ipfs://alpha");
-        publish(&mut contract, "@cdm/beta", ADDR_1, "ipfs://beta-v0");
-        publish(&mut contract, "@cdm/beta", ADDR_2, "ipfs://beta-v1");
-        publish(&mut contract, "@cdm/gamma", ADDR_2, "ipfs://gamma");
+        let v0_0_1 = pack_version(0, 0, 1);
+        let v0_0_2 = pack_version(0, 0, 2);
+        publish(&mut contract, "@cdm/alpha", v0_0_1, ADDR_1, "ipfs://alpha");
+        publish(&mut contract, "@cdm/beta", v0_0_1, ADDR_1, "ipfs://beta-v0");
+        publish(&mut contract, "@cdm/beta", v0_0_2, ADDR_2, "ipfs://beta-v1");
+        publish(&mut contract, "@cdm/gamma", V1_0_0, ADDR_2, "ipfs://gamma");
 
-        let entry = |name: &str, version: u32, address: [u8; 20], uri: &str| ContractEntry {
+        let entry = |name: &str, key: u128, address: [u8; 20], uri: &str| ContractEntry {
             name: name.into(),
-            version,
+            version_key: key,
             address: Address(address),
             metadata_uri: uri.into(),
             owner: Address(ALICE),
         };
-        let alpha = || entry("@cdm/alpha", 0, ADDR_1, "ipfs://alpha");
-        let beta = || entry("@cdm/beta", 1, ADDR_2, "ipfs://beta-v1");
-        let gamma = || entry("@cdm/gamma", 0, ADDR_2, "ipfs://gamma");
+
+        let alpha = || entry("@cdm/alpha", pack_version(0, 0, 1), PROXY, "ipfs://alpha");
+        let beta = || entry("@cdm/beta", pack_version(0, 0, 2), PROXY, "ipfs://beta-v1");
+        let gamma = || entry("@cdm/gamma", V1_0_0, PROXY, "ipfs://gamma");
 
         // Full page: every entry carries its latest version.
         assert_eq!(
@@ -678,9 +1456,15 @@ mod tests {
 
     #[test]
     fn get_contracts_clamps_count_to_max_page_limit() {
-        let (mut contract, _mock) = deployed(ALICE);
+        let (mut contract, _mock) = deployed(ADMIN);
         for i in 0..101u32 {
-            publish(&mut contract, &format!("@scope/pkg{i}"), ADDR_1, URI_1);
+            publish(
+                &mut contract,
+                &format!("@scope/pkg{i}"),
+                V1_0_0,
+                ADDR_1,
+                URI_1,
+            );
         }
 
         // Count above MAX_PAGE_LIMIT clamps to 100 entries; total is unaffected.
@@ -694,121 +1478,6 @@ mod tests {
         assert_eq!(tail.total, 101);
         assert_eq!(tail.entries.len(), 1);
         assert_eq!(tail.entries[0].name, "@scope/pkg100");
-    }
-
-    // ─── adminImportContracts ────────────────────────────────────────────────
-
-    #[test]
-    fn admin_import_contracts_imports_multi_version_history() {
-        let (mut contract, _mock) = deployed(ADMIN);
-
-        let result = contract.admin_import_contracts(vec![
-            import(
-                "@cdm/alpha",
-                ALICE,
-                &[(ADDR_1, "ipfs://a0"), (ADDR_2, "ipfs://a1")],
-            ),
-            import("@cdm/beta", BOB, &[(ADDR_2, "ipfs://b0")]),
-        ]);
-        assert_eq!(result, Ok(()));
-
-        assert_eq!(contract.get_contract_count(), 2);
-        assert_eq!(contract.get_contract_name_at(0), "@cdm/alpha");
-        assert_eq!(contract.get_contract_name_at(1), "@cdm/beta");
-
-        // Versions land in payload order; the latest resolves.
-        assert_eq!(contract.get_version_count("@cdm/alpha".into()), 2);
-        assert_eq!(contract.get_owner("@cdm/alpha".into()), Address(ALICE));
-        assert_eq!(contract.get_address("@cdm/alpha".into()), some_addr(ADDR_2));
-        assert_eq!(
-            contract.get_address_at_version("@cdm/alpha".into(), 0),
-            some_addr(ADDR_1)
-        );
-        assert_eq!(
-            contract.get_metadata_uri_at_version("@cdm/alpha".into(), 0),
-            some_uri("ipfs://a0")
-        );
-        assert_eq!(
-            contract.get_metadata_uri("@cdm/alpha".into()),
-            some_uri("ipfs://a1")
-        );
-
-        assert_eq!(contract.get_version_count("@cdm/beta".into()), 1);
-        assert_eq!(contract.get_owner("@cdm/beta".into()), Address(BOB));
-        assert_eq!(contract.get_address("@cdm/beta".into()), some_addr(ADDR_2));
-    }
-
-    #[test]
-    fn imported_owner_can_publish_next_version() {
-        let (mut contract, mock) = deployed(ADMIN);
-        contract
-            .admin_import_contracts(vec![import("@cdm/alpha", ALICE, &[(ADDR_1, URI_1)])])
-            .unwrap();
-
-        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
-        assert_eq!(
-            as_alice.publish_latest("@cdm/alpha".into(), Address(ADDR_2), URI_2.into()),
-            Ok(())
-        );
-        assert_eq!(as_alice.get_version_count("@cdm/alpha".into()), 2);
-        assert_eq!(as_alice.get_address("@cdm/alpha".into()), some_addr(ADDR_2));
-    }
-
-    #[test]
-    fn admin_import_contracts_rejects_non_admin() {
-        let (_contract, mock) = deployed(ADMIN);
-        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
-
-        assert_eq!(
-            as_alice.admin_import_contracts(vec![import("@cdm/alpha", ALICE, &[(ADDR_1, URI_1)])]),
-            Err(UnauthorizedAdmin.into())
-        );
-        assert_eq!(as_alice.get_contract_count(), 0);
-    }
-
-    #[test]
-    fn admin_import_contracts_rejects_empty_versions() {
-        let (mut contract, _mock) = deployed(ADMIN);
-
-        assert_eq!(
-            contract.admin_import_contracts(vec![import("@cdm/alpha", ALICE, &[])]),
-            Err(ImportVersionsEmpty.into())
-        );
-        assert_eq!(contract.get_contract_count(), 0);
-    }
-
-    #[test]
-    fn admin_import_contracts_rejects_existing_name() {
-        let (mut contract, _mock) = deployed(ADMIN);
-
-        // Already published.
-        publish(&mut contract, NAME, ADDR_1, URI_1);
-        assert_eq!(
-            contract.admin_import_contracts(vec![import(NAME, ALICE, &[(ADDR_2, URI_2)])]),
-            Err(ImportContractExists.into())
-        );
-        assert_eq!(contract.get_version_count(NAME.into()), 1);
-
-        // Already imported.
-        contract
-            .admin_import_contracts(vec![import("@cdm/alpha", ALICE, &[(ADDR_1, URI_1)])])
-            .unwrap();
-        assert_eq!(
-            contract.admin_import_contracts(vec![import("@cdm/alpha", BOB, &[(ADDR_2, URI_2)])]),
-            Err(ImportContractExists.into())
-        );
-        assert_eq!(contract.get_owner("@cdm/alpha".into()), Address(ALICE));
-    }
-
-    #[test]
-    fn admin_import_contracts_rejects_invalid_name() {
-        let (mut contract, _mock) = deployed(ADMIN);
-
-        assert_eq!(
-            contract.admin_import_contracts(vec![import("cdm/alpha", ALICE, &[(ADDR_1, URI_1)])]),
-            Err(ContractNameInvalid.into())
-        );
-        assert_eq!(contract.get_contract_count(), 0);
     }
 
     // ─── setAdmin ────────────────────────────────────────────────────────────
@@ -864,9 +1533,9 @@ mod tests {
     }
 
     #[test]
-    fn freeze_blocks_non_admin_publishing_but_not_reads() {
+    fn freeze_blocks_non_admin_mutations_but_not_reads() {
         let (mut contract, mock) = deployed(ADMIN);
-        publish(&mut contract, NAME, ADDR_1, URI_1);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
 
         assert_eq!(contract.freeze(), Ok(()));
         assert!(contract.is_frozen());
@@ -874,12 +1543,12 @@ mod tests {
         let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
         assert!(as_alice.is_frozen());
         assert_eq!(
-            as_alice.publish_latest("@cdm/alice".into(), Address(ADDR_2), URI_2.into()),
+            as_alice.publish("@cdm/alice".into(), V1_0_0, Address(ADDR_2), URI_2.into()),
             Err(ContractFrozen.into())
         );
 
         // Reads keep working while frozen.
-        assert_eq!(as_alice.get_address(NAME.into()), some_addr(ADDR_1));
+        assert_eq!(as_alice.get_address(NAME.into()), some_addr(PROXY));
         assert_eq!(as_alice.get_metadata_uri(NAME.into()), some_uri(URI_1));
         assert_eq!(as_alice.get_contract_count(), 1);
     }
@@ -890,14 +1559,10 @@ mod tests {
         contract.freeze().unwrap();
 
         assert_eq!(
-            contract.publish_latest(NAME.into(), Address(ADDR_1), URI_1.into()),
+            contract.publish(NAME.into(), V1_0_0, Address(ADDR_1), URI_1.into()),
             Ok(())
         );
-        assert_eq!(
-            contract.admin_import_contracts(vec![import("@cdm/alpha", ALICE, &[(ADDR_2, URI_2)])]),
-            Ok(())
-        );
-        assert_eq!(contract.get_contract_count(), 2);
+        assert_eq!(contract.get_contract_count(), 1);
     }
 
     #[test]
@@ -909,7 +1574,7 @@ mod tests {
 
         let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
         assert_eq!(
-            as_alice.publish_latest(NAME.into(), Address(ADDR_1), URI_1.into()),
+            as_alice.publish(NAME.into(), V1_0_0, Address(ADDR_1), URI_1.into()),
             Ok(())
         );
 
@@ -951,27 +1616,85 @@ mod tests {
         assert_eq!(as_alice.get_code(), Address::ZERO);
     }
 
+    #[test]
+    fn proxy_code_hash_is_the_frozen_shim_blob() {
+        let blob = include_bytes!("../proxy/artifacts/contract-proxy.polkavm");
+        assert_eq!(PROXY_CODE_HASH, keccak256(blob));
+    }
+
+    // ─── Resolver ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn set_resolver_is_admin_only_non_zero_and_write_once() {
+        let (mut contract, mock) = deployed_without_resolver(ADMIN);
+        assert_eq!(contract.get_resolver(), Address::ZERO);
+
+        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
+        assert_eq!(
+            as_alice.set_resolver(Address(RESOLVER)),
+            Err(UnauthorizedAdmin.into())
+        );
+        assert_eq!(
+            contract.set_resolver(Address::ZERO),
+            Err(InvalidResolver.into())
+        );
+
+        assert_eq!(contract.set_resolver(Address(RESOLVER)), Ok(()));
+        assert_eq!(contract.get_resolver(), Address(RESOLVER));
+        assert_eq!(
+            contract.set_resolver(Address(ADDR_1)),
+            Err(ResolverAlreadySet.into())
+        );
+    }
+
+    #[test]
+    fn upgrade_resolver_forwards_set_code_to_the_resolver() {
+        let (mut contract, mock) = deployed(ADMIN);
+        assert_eq!(contract.upgrade_resolver(Address(NEW_IMPL)), Ok(()));
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(
+                RESOLVER,
+                resolver_calldata("setCode(address)", &[&word_addr(NEW_IMPL)]),
+            )]
+        );
+
+        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
+        assert_eq!(
+            as_alice.upgrade_resolver(Address(NEW_IMPL)),
+            Err(UnauthorizedAdmin.into())
+        );
+        let (mut unset, _) = deployed_without_resolver(ADMIN);
+        assert_eq!(
+            unset.upgrade_resolver(Address(NEW_IMPL)),
+            Err(ResolverUnset.into())
+        );
+    }
+
     // ─── Events ──────────────────────────────────────────────────────────────
 
     #[test]
-    fn publish_emits_published_event_per_version() {
+    fn publish_emits_events_per_version() {
         let (mut contract, mock) = deployed(ALICE);
-        publish(&mut contract, NAME, ADDR_1, URI_1);
-        publish(&mut contract, NAME, ADDR_2, URI_2);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+        publish(&mut contract, NAME, V1_1_0, ADDR_2, URI_2);
 
         // Indexed string → the topic carries keccak256 of the name bytes.
-        let published = topic0("Published(string,uint32,address)");
         let name_topic = keccak256(NAME.as_bytes());
         assert_eq!(
             mock.events(),
             vec![
                 (
-                    vec![published, name_topic],
-                    [word_u32(0), word_addr(ADDR_1)].concat(),
+                    vec![topic0("ProxyCreated(string,address)"), name_topic],
+                    word_addr(PROXY).to_vec(),
                 ),
                 (
-                    vec![published, name_topic],
-                    [word_u32(1), word_addr(ADDR_2)].concat(),
+                    vec![topic0("Published(string,uint128,address)"), name_topic],
+                    [word_u128(V1_0_0), word_addr(ADDR_1)].concat(),
+                ),
+                (
+                    vec![topic0("Published(string,uint128,address)"), name_topic],
+                    [word_u128(V1_1_0), word_addr(ADDR_2)].concat(),
                 ),
             ]
         );
@@ -979,12 +1702,10 @@ mod tests {
 
     // ─── Dispatch-level ABI lock ─────────────────────────────────────────────
     //
-    // `cdm::import!` (src/lib/cdm/rust-macros/pvm-cdm-macros/src/lib.rs) bakes
-    // the `getAddress(string)` selector into consumer contracts and assumes the
-    // return is exactly 64 bytes: word0 = bool at byte 31, word1 = address at
-    // bytes 44..64. These tests pin that wire contract.
+    // `pvm-cdm-macros` bakes the `getAddress(string)` selector into consumer
+    // contracts and reads exactly 64 bytes back: bool at byte 31, address at
+    // bytes 44..64.
 
-    /// Output buffer for `route()`; generous so dynamic returns always fit.
     const OUT_LEN: usize = 4096;
 
     fn encode<T: SolEncode>(value: &T) -> Vec<u8> {
@@ -993,9 +1714,7 @@ mod tests {
         buf
     }
 
-    /// Full `getAddress(string)` calldata with exactly the layout `cdm_lookup`
-    /// emits: selector, 32-byte offset (0x20), 32-byte length, name bytes padded
-    /// to a 32-byte boundary.
+    /// `getAddress(string)` calldata exactly as `cdm_lookup` emits it.
     fn cdm_lookup_calldata(name: &str) -> Vec<u8> {
         let name_len = name.len();
         let padded_len = name_len.div_ceil(32) * 32;
@@ -1007,7 +1726,6 @@ mod tests {
         calldata
     }
 
-    /// Route full calldata (selector-prefixed) and return the encoded result.
     fn route_calldata(contract: &mut ContractRegistry, calldata: &[u8]) -> Vec<u8> {
         let mut selector = [0u8; 4];
         selector.copy_from_slice(&calldata[..4]);
@@ -1022,7 +1740,7 @@ mod tests {
     #[test]
     fn get_address_wire_format_matches_cdm_lookup_consumer() {
         let (mut contract, _mock) = deployed(ALICE);
-        publish(&mut contract, NAME, ADDR_1, URI_1);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
 
         let calldata = cdm_lookup_calldata(NAME);
         assert_eq!(
@@ -1035,7 +1753,7 @@ mod tests {
         assert_eq!(data.len(), 64, "cdm_lookup reads exactly 64 bytes");
         let mut expected = [0u8; 64];
         expected[31] = 1; // word0: bool isSome
-        expected[44..].copy_from_slice(&ADDR_1); // word1: left-padded address
+        expected[44..].copy_from_slice(&PROXY); // word1: the stable proxy address
         assert_eq!(data, expected);
     }
 
@@ -1047,16 +1765,13 @@ mod tests {
         assert_eq!(data, [0u8; 64], "isSome byte 31 must be 0, address zeroed");
     }
 
-    // The pre-proxy registry (old SDK line) encoded every multi-value return
-    // as ONE tuple output, which for dynamic returns carries a leading offset
-    // word. Every deployed registry and released CLI speaks that format, so
-    // these tests freeze it byte-for-byte. Do not "simplify" the return
-    // structs back to bare Rust tuples — that flattens the outputs and
-    // silently changes these bytes.
+    // Multi-value returns are ONE tuple output (a leading offset word for
+    // dynamic returns). Every deployed registry and released CLI decodes this
+    // layout; bare Rust tuples would flatten it.
     #[test]
     fn get_metadata_uri_wire_format_matches_legacy_tuple_encoding() {
         let (mut contract, _mock) = deployed(ALICE);
-        publish(&mut contract, NAME, ADDR_1, URI_1);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
 
         let mut calldata = const_selector("getMetadataUri(string)").to_vec();
         calldata.extend_from_slice(&encode(&String::from(NAME)));
@@ -1107,26 +1822,41 @@ mod tests {
 
     #[test]
     fn every_abi_selector_dispatches() {
-        // Locks the camelCase ABI renames: each canonical signature must route to
-        // a method (`Outcome::Return`), never fall through as `Unhandled`.
-        let (mut contract, _mock) = deployed(ADMIN);
+        let (mut contract, _mock) = deployed_without_resolver(ADMIN);
         let name = String::from(NAME);
 
         let cases: Vec<(&str, Vec<u8>)> = vec![
+            ("setResolver(address)", encode(&Address(RESOLVER))),
             (
-                "publishLatest(string,address,string)",
-                encode(&(name.clone(), Address(ADDR_1), String::from(URI_1))),
+                "publish(string,uint128,address,string)",
+                encode(&(name.clone(), V1_0_0, Address(ADDR_1), String::from(URI_1))),
             ),
+            (
+                // V2_0_0: must stay monotonic after the publish case above.
+                "publishWithInit(string,uint128,address,string,address)",
+                encode(&(
+                    name.clone(),
+                    V2_0_0,
+                    Address(ADDR_2),
+                    String::from(URI_2),
+                    Address(INIT_1),
+                )),
+            ),
+            (
+                "setMinSupported(string,uint128)",
+                encode(&(name.clone(), V1_0_0)),
+            ),
+            ("freezeContract(string)", encode(&name)),
+            ("unfreezeContract(string)", encode(&name)),
+            ("setFastPath(string,bool)", encode(&(name.clone(), true))),
+            ("sealContract(string)", encode(&name)),
             ("getAddress(string)", encode(&name)),
             ("getMetadataUri(string)", encode(&name)),
-            (
-                "getAddressAtVersion(string,uint32)",
-                encode(&(name.clone(), 0u32)),
-            ),
-            (
-                "getMetadataUriAtVersion(string,uint32)",
-                encode(&(name.clone(), 0u32)),
-            ),
+            ("getProxy(string)", encode(&name)),
+            ("getLatestKey(string)", encode(&name)),
+            ("getResolver()", vec![]),
+            ("upgradeResolver(address)", encode(&Address(NEW_IMPL))),
+            ("getVersionAt(string,uint32)", encode(&(name.clone(), 0u32))),
             ("getOwner(string)", encode(&name)),
             ("getVersionCount(string)", encode(&name)),
             ("getContractNameAt(uint32)", encode(&0u32)),
@@ -1134,15 +1864,12 @@ mod tests {
             ("getContractCount()", vec![]),
             ("getAdmin()", vec![]),
             ("getCode()", vec![]),
+            ("getProxyCodeHash()", vec![]),
             ("isFrozen()", vec![]),
             ("setAdmin(address)", encode(&Address(ADMIN))),
             ("setCode(address)", encode(&Address(NEW_IMPL))),
             ("freeze()", vec![]),
             ("unfreeze()", vec![]),
-            (
-                "adminImportContracts((string,address,(address,string)[])[])",
-                encode(&vec![import("@cdm/imported", ALICE, &[(ADDR_2, URI_2)])]),
-            ),
         ];
 
         for (signature, input) in cases {

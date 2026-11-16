@@ -20,6 +20,8 @@ export type ContractState =
     | "built"
     | "checking"
     | "cached"
+    /** Terminal: the declared version is already published. */
+    | "up-to-date"
     | "deploying"
     | "registering"
     | "done"
@@ -29,7 +31,12 @@ export interface ContractStatus {
     crateName: string;
     state: ContractState;
     error?: string;
+    /** Implementation address while the batch is in flight; the stable address once resolved. */
     address?: string;
+    /** The version published (or already on-chain). */
+    version?: string;
+    /** VERSION column shows "+init". */
+    hasInitialization?: boolean;
     cid?: string;
     deployTxHash?: string;
     deployBlockHash?: string;
@@ -126,15 +133,22 @@ export class PipelineStatusAdapter {
             case "log":
                 this.appendLog(e.line);
                 return;
-            case "detect":
+            case "detect": {
                 this.contracts = e.contracts;
                 this.layers = e.layers;
                 this.crates = e.layers.flat();
+                // Seed versions so the VERSION column renders before deploy events.
+                const versions = new Map<string, string>();
                 for (const c of e.contracts) {
                     if (c.cdmPackage) this.cdmPackageMap.set(c.name, c.cdmPackage);
+                    if (c.cdmPackage && c.version) versions.set(c.name, c.version);
                 }
                 for (const crate of this.crates) {
-                    this.statuses.set(crate, { crateName: crate, state: "waiting" });
+                    this.statuses.set(crate, {
+                        crateName: crate,
+                        state: "waiting",
+                        version: versions.get(crate),
+                    });
                     this.opts.onStatusChange?.(crate, this.statuses.get(crate)!);
                 }
                 for (const [crate, pkg] of this.cdmPackageMap) {
@@ -146,6 +160,7 @@ export class PipelineStatusAdapter {
                     }
                 }
                 return;
+            }
             case "build-start":
                 this.update(e.crate, "building");
                 return;
@@ -196,10 +211,21 @@ export class PipelineStatusAdapter {
             case "check-cached":
                 this.update(e.crate, "cached", { address: e.address });
                 return;
+            case "check-up-to-date":
+                this.update(e.crate, "up-to-date", { version: e.version, address: e.address });
+                return;
             case "check-needs-deploy":
                 // Address precomputed — no state change yet, deploy-register
                 // will follow.
                 return;
+            case "initialization": {
+                const existing = this.statuses.get(e.crate);
+                this.update(e.crate, existing?.state ?? "waiting", {
+                    hasInitialization: true,
+                    version: e.version,
+                });
+                return;
+            }
             case "deploy-plan":
                 // Diagnostic-only — no per-crate state change. The CLI's
                 // `runDeployWithUI` logs the event to stderr so the user can
@@ -260,6 +286,14 @@ export class PipelineStatusAdapter {
                 }
                 return;
             }
+            case "stable-addresses":
+                for (const crate of Object.keys(e.addresses)) {
+                    const address = e.addresses[crate];
+                    if (!address) continue;
+                    const existing = this.statuses.get(crate);
+                    this.update(crate, existing?.state ?? "done", { address });
+                }
+                return;
             case "publish-done":
                 for (const crate of Object.keys(e.cids)) {
                     const cid = e.cids[crate];
@@ -282,6 +316,15 @@ export class PipelineStatusAdapter {
                 }
                 return;
             case "pipeline-done":
+                // Backfill from the summary in case a mid-flight event was missed.
+                for (const contract of e.summary.contracts) {
+                    const existing = this.statuses.get(contract.crate);
+                    if (!existing || (!contract.address && !contract.version)) continue;
+                    this.update(contract.crate, existing.state, {
+                        ...(contract.address ? { address: contract.address } : {}),
+                        ...(contract.version ? { version: contract.version } : {}),
+                    });
+                }
                 if (e.summary.contracts.every((contract) => contract.status !== "error")) {
                     this.clearLogs();
                 }

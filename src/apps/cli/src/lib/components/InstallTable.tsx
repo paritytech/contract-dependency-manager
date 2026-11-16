@@ -41,7 +41,11 @@ function InstallRow({
     } else if (state === "error" && !s?.version) {
         versionCell = <Failed />;
     } else if (s?.version !== undefined) {
-        versionCell = <Text color="green">v{s.version}</Text>;
+        versionCell = (
+            <Text color="green" wrap="truncate">
+                {s.version}
+            </Text>
+        );
     } else {
         versionCell = <Idle />;
     }

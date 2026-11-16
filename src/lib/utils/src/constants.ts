@@ -9,9 +9,13 @@ export const STORAGE_DEPOSIT_LIMIT = 100_000_000_000_000n;
 // The contracts registry is the bootstrap - it's deployed first and has no CDM macro
 export const CONTRACTS_REGISTRY_CRATE = "contract-registry";
 
-// EIP-1967 proxy crate in front of the registry implementation. The proxy
-// holds the stable registry address; all calls delegate to the implementation.
-export const CONTRACTS_REGISTRY_PROXY_CRATE = "contract-registry-proxy";
+// EIP-1967 proxy crate: one instance holds the stable registry address, one
+// the stable resolver address; all calls delegate to the implementation.
+export const CONTRACTS_EIP1967_PROXY_CRATE = "contract-eip1967-proxy";
+
+// Resolver implementation crate: the routing tables and policy every
+// per-name shim asks.
+export const CONTRACTS_RESOLVER_CRATE = "contract-resolver";
 
 // Salt material for the ContractRegistry PROXY deployment — this is the
 // stable address every consumer uses. The proxy is deployed THROUGH the
@@ -31,6 +35,15 @@ export const CREATE3_FACTORY_PACKAGE = "@cdm/create3-factory.1";
 // delegates to. Bump independently when shipping a new implementation build
 // (upgrades go through `setCode`, never a proxy redeploy).
 export const CONTRACTS_REGISTRY_IMPL_PACKAGE = "@cdm/registry-impl.1";
+
+// Salt material for the resolver PROXY, deployed THROUGH the CREATE3 factory
+// with the registry as admin. Every per-name shim bakes this address in, so
+// it is as permanent as the registry's.
+export const CONTRACTS_RESOLVER_PACKAGE = "@cdm/resolver.1";
+
+// CREATE2 salt material for the resolver IMPLEMENTATION blob. Bump when
+// shipping a new build (upgrades go through the registry's `upgradeResolver`).
+export const CONTRACTS_RESOLVER_IMPL_PACKAGE = "@cdm/resolver-impl.1";
 
 // Default WebSocket URL for local development
 export const DEFAULT_NODE_URL = "ws://127.0.0.1:10020";

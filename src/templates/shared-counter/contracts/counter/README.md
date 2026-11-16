@@ -7,9 +7,9 @@ The base counter contract that owns shared on-chain state. Other contracts inter
 - **`increment()`** - Increments the counter by 1
 - **`get_count()`** - Returns the current counter value
 
-## Storage
+## Initializations
 
-- `count: u32` - The shared counter value
+`initializations/X.Y.Z.rs` runs exactly once, when version X.Y.Z is published; `cdm deploy` builds it on its own. Each file declares its own copy of the contract's storage layout, which CDM verifies at deploy time. The shipped `0.1.0.rs` just zeroes the counter to demonstrate the shape.
 
 ## CDM Package
 

@@ -1,5 +1,6 @@
 import { stringifyBigInt } from "@parity/cdm-utils";
 import type { Package, AbiEntry } from "./types";
+import { keyToSemver } from "@parity/cdm-builder/proxy";
 import type { RegistryContract } from "../utils/contracts";
 
 export interface ContractPage {
@@ -19,23 +20,32 @@ export function registryQueryError(action: string, value: unknown): Error {
     return new Error(`${action}: ${stringifyBigInt(value)}`);
 }
 
+/** Decoded uint128 → bigint without routing the key through Number. */
+function toVersionKey(value: unknown): bigint {
+    if (typeof value === "bigint") return value;
+    if (typeof value === "number" || typeof value === "string") return BigInt(value);
+    return 0n;
+}
+
 export async function queryContractByName(
     registry: RegistryContract,
+    resolver: RegistryContract,
     name: string,
 ): Promise<Package | null> {
-    const [versionResult, metadataResult, addressResult] = await Promise.all([
-        registry.getVersionCount.query(name),
+    const [latestResult, metadataResult, addressResult, proxyResult] = await Promise.all([
+        registry.getLatestKey.query(name),
         registry.getMetadataUri.query(name),
         registry.getAddress.query(name),
+        registry.getProxy.query(name),
     ]);
 
-    if (!versionResult.success) {
-        throw registryQueryError(`Failed to query version count for ${name}`, versionResult.value);
+    if (!latestResult.success) {
+        throw registryQueryError(`Failed to query latest version for ${name}`, latestResult.value);
     }
 
-    const versionCount = versionResult.value as number;
-    if (versionCount === 0) return null;
-    const latestVersion = versionCount - 1;
+    // getLatestKey returns 0 for unknown names; published keys are never 0.
+    const latestKey = toVersionKey(latestResult.value);
+    if (latestKey === 0n) return null;
 
     if (!metadataResult.success) {
         throw registryQueryError(`Failed to query metadata URI for ${name}`, metadataResult.value);
@@ -43,35 +53,63 @@ export async function queryContractByName(
     if (!addressResult.success) {
         throw registryQueryError(`Failed to query address for ${name}`, addressResult.value);
     }
+    if (!proxyResult.success) {
+        throw registryQueryError(`Failed to query proxy for ${name}`, proxyResult.value);
+    }
+
+    // The resolver keys routing state by the name's proxy: `(latest_key,
+    // min_supported, latest_impl, frozen, fast_path_off, sealed)`.
+    // `min_supported` is 0 when no support floor has been set.
+    const proxyAddress = unwrapOption<string>(proxyResult.value);
+    const routingResult = await resolver.routingOf.query(proxyAddress);
+    if (!routingResult.success) {
+        throw registryQueryError(`Failed to query routing for ${name}`, routingResult.value);
+    }
+    const routing = routingResult.value as {
+        min_supported?: unknown;
+        minSupported?: unknown;
+        fast_path_off?: unknown;
+        fastPathOff?: unknown;
+        sealed?: unknown;
+    };
+    const minSupportedKey = toVersionKey(routing.min_supported ?? routing.minSupported);
+    const sealed = routing.sealed === true;
 
     return {
         name,
-        version: String(latestVersion),
+        version: keyToSemver(latestKey),
         weeklyCalls: 0,
         address: unwrapOption<string>(addressResult.value),
+        proxyAddress,
+        minSupportedVersion: minSupportedKey === 0n ? undefined : keyToSemver(minSupportedKey),
+        sealed,
+        // Sealing hands the proxy its latest version whatever the opt-out says.
+        fastPathOff: !sealed && (routing.fast_path_off ?? routing.fastPathOff) === true,
         metadataUri: unwrapOption<string>(metadataResult.value),
         metadataLoaded: false,
     };
 }
 
+/** `(name, version_key, address, metadata_uri, owner)`; `address` is the per-name proxy. */
 function parseContractEntry(value: unknown): Package | null {
     let name: unknown;
-    let version: unknown;
+    let versionKey: unknown;
     let address: unknown;
     let metadataUri: unknown;
 
     if (Array.isArray(value)) {
-        [name, version, address, metadataUri] = value;
+        [name, versionKey, address, metadataUri] = value;
     } else if (value && typeof value === "object") {
         const entry = value as {
             name?: unknown;
-            version?: unknown;
+            version_key?: unknown;
+            versionKey?: unknown;
             address?: unknown;
             metadata_uri?: unknown;
             metadataUri?: unknown;
         };
         name = entry.name;
-        version = entry.version;
+        versionKey = entry.version_key ?? entry.versionKey;
         address = entry.address;
         metadataUri = entry.metadata_uri ?? entry.metadataUri;
     }
@@ -80,7 +118,7 @@ function parseContractEntry(value: unknown): Package | null {
 
     return {
         name,
-        version: String(Number(version ?? 0)),
+        version: keyToSemver(toVersionKey(versionKey)),
         weeklyCalls: 0,
         address: typeof address === "string" ? address : undefined,
         metadataUri: typeof metadataUri === "string" ? metadataUri : undefined,
@@ -119,51 +157,102 @@ export async function queryContractsPage(
 }
 
 export interface PackageVersionInfo {
-    version: number;
-    address?: string;
-    metadataUri?: string;
+    version: string;
+    /** Packed semver key: `(major<<64)|(minor<<32)|patch`. */
+    key: bigint;
+    /** The version's implementation contract; empty when the resolver read fails. */
+    target: string;
+    metadataUri: string;
+}
+
+/** Decode a `getVersionAt` tuple: `(isSome, version_key, metadata_uri)`. */
+function parseVersionEntry(value: unknown): Omit<PackageVersionInfo, "target"> | null {
+    let isSome: unknown;
+    let versionKey: unknown;
+    let metadataUri: unknown;
+
+    if (Array.isArray(value)) {
+        [isSome, versionKey, metadataUri] = value;
+    } else if (value && typeof value === "object") {
+        const entry = value as {
+            isSome?: unknown;
+            is_some?: unknown;
+            version_key?: unknown;
+            versionKey?: unknown;
+            metadata_uri?: unknown;
+            metadataUri?: unknown;
+        };
+        isSome = entry.isSome ?? entry.is_some;
+        versionKey = entry.version_key ?? entry.versionKey;
+        metadataUri = entry.metadata_uri ?? entry.metadataUri;
+    }
+
+    if (!isSome) return null;
+
+    const key = toVersionKey(versionKey);
+    return {
+        version: keyToSemver(key),
+        key,
+        metadataUri: typeof metadataUri === "string" ? metadataUri : "",
+    };
+}
+
+/** The resolver's `implOf(proxy, key)`; empty when the read fails. */
+async function queryImplementation(
+    resolver: RegistryContract,
+    proxyAddress: string | undefined,
+    key: bigint,
+): Promise<string> {
+    try {
+        const result = await resolver.implOf.query(proxyAddress, key);
+        return result.success && typeof result.value === "string" ? result.value : "";
+    } catch {
+        return "";
+    }
 }
 
 /**
- * Query every published version of a contract: version count first, then each
- * version's address and metadata URI in parallel. Returned in ascending
- * version order (0..count-1).
+ * Every published version, ascending: the registry's `getVersionAt` per
+ * index, each paired with its implementation from the resolver.
  */
 export async function queryContractVersions(
     registry: RegistryContract,
+    resolver: RegistryContract,
     name: string,
 ): Promise<PackageVersionInfo[]> {
-    const countResult = await registry.getVersionCount.query(name);
+    const [countResult, proxyResult] = await Promise.all([
+        registry.getVersionCount.query(name),
+        registry.getProxy.query(name),
+    ]);
     if (!countResult.success) {
         throw registryQueryError(`Failed to query version count for ${name}`, countResult.value);
     }
+    if (!proxyResult.success) {
+        throw registryQueryError(`Failed to query proxy for ${name}`, proxyResult.value);
+    }
     const count = Number(countResult.value ?? 0);
+    // The resolver keys implementations by the name's proxy.
+    const proxyAddress = unwrapOption<string>(proxyResult.value);
 
-    return Promise.all(
-        Array.from({ length: count }, async (_, version) => {
-            const [addressResult, metadataResult] = await Promise.all([
-                registry.getAddressAtVersion.query(name, version),
-                registry.getMetadataUriAtVersion.query(name, version),
-            ]);
-            if (!addressResult.success) {
+    const entries = await Promise.all(
+        Array.from({ length: count }, async (_, index) => {
+            const result = await registry.getVersionAt.query(name, index);
+            if (!result.success) {
                 throw registryQueryError(
-                    `Failed to query address for ${name} v${version}`,
-                    addressResult.value,
+                    `Failed to query version ${index} for ${name}`,
+                    result.value,
                 );
             }
-            if (!metadataResult.success) {
-                throw registryQueryError(
-                    `Failed to query metadata URI for ${name} v${version}`,
-                    metadataResult.value,
-                );
-            }
+            const entry = parseVersionEntry(result.value);
+            if (!entry) return null;
             return {
-                version,
-                address: unwrapOption<string>(addressResult.value),
-                metadataUri: unwrapOption<string>(metadataResult.value),
+                ...entry,
+                target: await queryImplementation(resolver, proxyAddress, entry.key),
             };
         }),
     );
+
+    return entries.filter((entry): entry is PackageVersionInfo => entry !== null);
 }
 
 export function metadataCidFromUri(uri: string | undefined): string | undefined {

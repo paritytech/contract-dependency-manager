@@ -1,6 +1,6 @@
 [package]
 name = "contract-registry"
-description = "On-chain CDM contract registry (implementation contract, served through contract-registry-proxy)"
+description = "On-chain CDM contract registry (implementation contract, served through contract-eip1967-proxy)"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

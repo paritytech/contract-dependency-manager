@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="510" viewBox="0 0 1240 510" role="img" aria-label="Contract lifecycle: on first deploy, cdm deploy puts the v1.0.0 implementation and its version-addressed init contract on chain and publishes to the ContractRegistry, which creates the per-name proxy and runs the initialization once on fresh storage with from = 0. On upgrade, v2.0.0 and its init deploy, latest repoints, and the initialization runs once on the live storage with from = 1.0.0. Same proxy, same address, same storage.">
+  <defs>
+    <marker id="arrowSoft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <!-- first deploy frame -->
+  <rect x="40" y="40" width="560" height="440" rx="12" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="56" y="66" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#94a3b8" letter-spacing="1.5">FIRST DEPLOY</text>
+
+  <!-- upgrade frame -->
+  <rect x="640" y="40" width="560" height="440" rx="12" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="656" y="66" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#94a3b8" letter-spacing="1.5">UPGRADE</text>
+
+  <!-- time chevron between frames -->
+  <line x1="604" y1="262" x2="634" y2="262" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+
+  <!-- ============ first deploy ============ -->
+  <!-- cdm deploy -->
+  <rect x="130" y="84" width="172" height="52" rx="10" fill="#fef3c7" stroke="#b45309" stroke-width="2.2"/>
+  <text x="216" y="117" font-family="Menlo, Consolas, monospace" font-size="17" font-weight="700" fill="#92400e" text-anchor="middle">cdm deploy</text>
+
+  <!-- 1: deploy impl + init -->
+  <path d="M 306 110 H 539 V 326" fill="none" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <line x1="433" y1="110" x2="433" y2="322" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <text x="410" y="100" font-family="Menlo, Consolas, monospace" font-size="11" fill="#64748b" text-anchor="middle">&#9312; deploy impl + init</text>
+
+  <!-- 2: publish -->
+  <line x1="216" y1="140" x2="216" y2="176" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <text x="228" y="164" font-family="Menlo, Consolas, monospace" font-size="11" fill="#64748b">&#9313; publish v1.0.0</text>
+
+  <!-- registry -->
+  <rect x="116" y="180" width="200" height="60" rx="10" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2.2"/>
+  <text x="216" y="216" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1e3a8a" text-anchor="middle">ContractRegistry</text>
+
+  <!-- 3: create proxy / 4: init hook -->
+  <line x1="166" y1="244" x2="166" y2="296" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <text x="154" y="274" font-family="Menlo, Consolas, monospace" font-size="11" fill="#64748b" text-anchor="end">&#9314; create proxy</text>
+  <line x1="266" y1="244" x2="266" y2="296" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <text x="278" y="262" font-family="Menlo, Consolas, monospace" font-size="11" fill="#64748b">&#9315; initialize</text>
+  <text x="278" y="279" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="10" fill="#94a3b8">runs once on fresh storage</text>
+  <text x="278" y="294" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="10" fill="#94a3b8">from = 0</text>
+
+  <!-- proxy with storage -->
+  <rect x="116" y="300" width="200" height="124" rx="10" fill="#eef2ff" stroke="#4f46e5" stroke-width="2.2"/>
+  <text x="216" y="328" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#3730a3" text-anchor="middle">@org/foo proxy</text>
+  <text x="216" y="347" font-family="Menlo, Consolas, monospace" font-size="10.5" fill="#475569" text-anchor="middle">0x5A31&#8230;9c4e</text>
+  <path d="M 166 366 V 400 A 50 9 0 0 0 266 400 V 366" fill="#fef3c7" stroke="#b45309" stroke-width="1.8"/>
+  <ellipse cx="216" cy="366" rx="50" ry="9" fill="#fde68a" stroke="#b45309" stroke-width="1.8"/>
+  <text x="216" y="392" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#92400e" text-anchor="middle">storage</text>
+
+  <text x="216" y="452" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">proxy address is born</text>
+
+  <!-- v1.0.0 code + init chips -->
+  <line x1="320" y1="348" x2="384" y2="348" stroke="#94a3b8" stroke-width="1.6"/>
+  <rect x="388" y="328" width="90" height="40" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="2.2"/>
+  <text x="433" y="353" font-family="Menlo, Consolas, monospace" font-size="13" font-weight="700" fill="#134e4a" text-anchor="middle">1.0.0</text>
+  <line x1="478" y1="348" x2="494" y2="348" stroke="#94a3b8" stroke-width="1.6"/>
+  <rect x="494" y="332" width="90" height="32" rx="8" fill="#fffbeb" stroke="#b45309" stroke-width="1.8"/>
+  <text x="539" y="353" font-family="Menlo, Consolas, monospace" font-size="11" fill="#92400e" text-anchor="middle">init 1.0.0</text>
+
+  <!-- ============ upgrade ============ -->
+  <!-- cdm deploy -->
+  <rect x="730" y="84" width="172" height="52" rx="10" fill="#fef3c7" stroke="#b45309" stroke-width="2.2"/>
+  <text x="816" y="117" font-family="Menlo, Consolas, monospace" font-size="17" font-weight="700" fill="#92400e" text-anchor="middle">cdm deploy</text>
+
+  <!-- 5: deploy impl + init -->
+  <path d="M 906 110 H 1141 V 326" fill="none" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <line x1="1035" y1="110" x2="1035" y2="322" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <text x="1012" y="100" font-family="Menlo, Consolas, monospace" font-size="11" fill="#64748b" text-anchor="middle">&#9316; deploy impl + init</text>
+
+  <!-- 6: publish -->
+  <line x1="816" y1="140" x2="816" y2="176" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <text x="828" y="164" font-family="Menlo, Consolas, monospace" font-size="11" fill="#64748b">&#9317; publish v2.0.0</text>
+
+  <!-- registry -->
+  <rect x="716" y="180" width="200" height="60" rx="10" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2.2"/>
+  <text x="816" y="216" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1e3a8a" text-anchor="middle">ContractRegistry</text>
+
+  <!-- 7: latest / 8: migration hook -->
+  <line x1="776" y1="244" x2="776" y2="296" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <text x="764" y="274" font-family="Menlo, Consolas, monospace" font-size="11" fill="#64748b" text-anchor="end">&#9318; latest &#8594; 2.0.0</text>
+  <line x1="866" y1="244" x2="866" y2="296" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowSoft)"/>
+  <text x="878" y="262" font-family="Menlo, Consolas, monospace" font-size="11" fill="#64748b">&#9319; initialize</text>
+  <text x="878" y="279" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="10" fill="#94a3b8">runs once on live storage</text>
+  <text x="878" y="294" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="10" fill="#94a3b8">from = 1.0.0</text>
+
+  <!-- proxy with storage (same one) -->
+  <rect x="716" y="300" width="200" height="124" rx="10" fill="#eef2ff" stroke="#4f46e5" stroke-width="2.2"/>
+  <text x="816" y="328" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#3730a3" text-anchor="middle">@org/foo proxy</text>
+  <text x="816" y="347" font-family="Menlo, Consolas, monospace" font-size="10.5" fill="#475569" text-anchor="middle">0x5A31&#8230;9c4e</text>
+  <path d="M 766 366 V 400 A 50 9 0 0 0 866 400 V 366" fill="#fef3c7" stroke="#b45309" stroke-width="1.8"/>
+  <ellipse cx="816" cy="366" rx="50" ry="9" fill="#fde68a" stroke="#b45309" stroke-width="1.8"/>
+  <text x="816" y="392" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#92400e" text-anchor="middle">storage</text>
+
+  <text x="816" y="452" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">same address &#183; same storage</text>
+
+  <!-- code + init chips -->
+  <line x1="920" y1="348" x2="986" y2="348" stroke="#94a3b8" stroke-width="1.6"/>
+  <rect x="990" y="328" width="90" height="40" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="2.2"/>
+  <text x="1035" y="353" font-family="Menlo, Consolas, monospace" font-size="13" font-weight="700" fill="#134e4a" text-anchor="middle">2.0.0</text>
+  <line x1="1080" y1="348" x2="1096" y2="348" stroke="#94a3b8" stroke-width="1.6"/>
+  <rect x="1096" y="332" width="90" height="32" rx="8" fill="#fffbeb" stroke="#b45309" stroke-width="1.8"/>
+  <text x="1141" y="353" font-family="Menlo, Consolas, monospace" font-size="11" fill="#92400e" text-anchor="middle">init 2.0.0</text>
+
+  <line x1="920" y1="372" x2="986" y2="424" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <rect x="990" y="408" width="90" height="40" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.8"/>
+  <text x="1035" y="433" font-family="Menlo, Consolas, monospace" font-size="13" fill="#64748b" text-anchor="middle">1.0.0</text>
+</svg>

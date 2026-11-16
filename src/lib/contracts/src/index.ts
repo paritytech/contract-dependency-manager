@@ -1,5 +1,6 @@
 export {
     type ContractInfo,
+    type ContractInitialization,
     type ContractToolchain,
     type DeploymentOrder,
     type DeploymentOrderLayered,
@@ -15,12 +16,25 @@ export {
 } from "./detection";
 
 export {
+    INITIALIZATIONS_DIR,
+    type InitializationFile,
+    type InitializationMatch,
+    type LayoutComparison,
+    compareStorageLayouts,
+    listInitializationFiles,
+    listVersionAddressedFiles,
+    matchInitialization,
+} from "./initializations";
+
+export {
     type BuildSolidityToolchainOptions,
     type SolidityBuildArtifact,
     type SolidityBuildTarget,
+    type SolidityInitializationArtifact,
     type SolidityToolchain,
     buildSolidityToolchain,
     detectSolidityBuildTargets,
+    findSolidityInitializationArtifact,
     extractFoundryBytecode,
     extractHardhatBytecode,
     hasBuildableSolidityProject,
@@ -55,6 +69,9 @@ export {
 export {
     type BuildResult,
     type BuildProgressCallback,
+    type RustInitializationBuild,
+    buildRustInitialization,
+    generateInitializationManifest,
     pvmContractBuild,
     pvmContractBuildAsync,
 } from "./builder";
@@ -66,6 +83,8 @@ export {
     type WeightLike,
     type DeployPlan,
     type DeploySaltVersion,
+    type InitDeployRequest,
+    type PreparedDeploy,
     ContractDeployer,
     computeDeploySalt,
     chunkByWeight,
@@ -77,10 +96,24 @@ export {
 export {
     type DeployRegistryOptions,
     type RegistryDeployPrediction,
+    type ResolverDeployPrediction,
+    type UpgradeRegistryOptions,
+    type UpgradeResolverOptions,
+    bumpPackageSuffix,
     encodeProxyConstructorArgs,
     predictRegistryDeploy,
+    predictResolverDeploy,
     deployRegistryWithProxy,
+    upgradeRegistryImplementation,
+    upgradeResolverImplementation,
 } from "./registry-deploy";
+
+export {
+    type FrozenContractProxyArtifact,
+    CONTRACT_PROXY_ARTIFACTS_DIR,
+    CONTRACT_PROXY_CODE_HASH,
+    loadContractProxyArtifact,
+} from "./proxy-artifacts";
 
 export {
     type FrozenCreate3Artifact,
@@ -101,7 +134,42 @@ export { MetadataPublisher } from "./publisher";
 
 export { computeCid } from "./cid";
 
-export { CONTRACTS_REGISTRY_ABI, CONTRACTS_REGISTRY_PROXY_ABI } from "./abi/registry";
+export { CONTRACTS_REGISTRY_ABI, CONTRACTS_EIP1967_PROXY_ABI } from "./abi/registry";
+export { CONTRACT_RESOLVER_ABI } from "./abi/resolver";
+
+export {
+    INITIALIZE_SELECTOR,
+    META_HEADER_LEN,
+    META_KEY,
+    PROXY_MAGIC,
+    PROXY_META,
+    RESOLUTION_KIND,
+    RESOLVE_SELECTOR,
+    SHIM_META,
+    SHIM_SLOTS,
+    VERSIONED_HEADER_LEN,
+    decodeAddressWord,
+    decodeBoolWord,
+    decodeU128Word,
+    decodeVersionPair,
+    encodeInitialize,
+    encodeProxyAdmin,
+    encodeProxyCallCode,
+    encodeProxyFrozen,
+    encodeProxyImplOf,
+    encodeProxyLatest,
+    encodeProxyMetaCall,
+    encodeProxyMinSupported,
+    encodeProxyResolver,
+    encodeProxySealed,
+    encodeVersionedCall,
+    isPublishableKey,
+    keyToSemver,
+    packVersionKey,
+    semverToKey,
+    unpackFastPath,
+    unpackVersionKey,
+} from "./proxy";
 
 export { CREATE3_FACTORY_ABI } from "./abi/create3-factory";
 
@@ -109,7 +177,8 @@ export {
     GAS_LIMIT,
     STORAGE_DEPOSIT_LIMIT,
     CONTRACTS_REGISTRY_CRATE,
-    CONTRACTS_REGISTRY_PROXY_CRATE,
+    CONTRACTS_EIP1967_PROXY_CRATE,
+    CONTRACTS_RESOLVER_CRATE,
 } from "@parity/cdm-utils";
 
 export {

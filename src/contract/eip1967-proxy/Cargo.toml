@@ -1,0 +1,20 @@
+[package]
+name = "contract-eip1967-proxy"
+description = "EIP-1967 proxy: a stable address that delegates every call to an upgradeable implementation; fronts the CDM registry and resolver"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+abi-gen = ["pvm-contract-sdk/abi-gen"]
+
+[dependencies]
+contract-registry-core = { path = "../core" }
+pvm-contract-sdk.workspace = true
+polkavm-derive.workspace = true
+pvm-bump-allocator.workspace = true
+
+[dev-dependencies]
+pvm-contract-sdk = { workspace = true, features = ["std"] }

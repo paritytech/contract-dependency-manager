@@ -115,9 +115,11 @@ export interface SolidityAbiEntry {
 
 export interface SolidityImportContract {
     library: string;
+    /** The name's stable address (its per-name proxy). */
     address: string;
     abi: SolidityAbiEntry[];
-    version?: number;
+    /** Installed semver, recorded in the generated header comment. */
+    version?: string;
 }
 
 export interface SolidityLocalBuildImportContract {
@@ -664,7 +666,7 @@ if (import.meta.vitest) {
             const generated = generateSolidityImport({
                 library: "@example/counter-a",
                 address: "0xccf14cb491b47ee0391b2fefc6991ef9e68e8cba",
-                version: 3,
+                version: "1.2.3",
                 abi: [
                     {
                         type: "function",
@@ -684,6 +686,7 @@ if (import.meta.vitest) {
             });
 
             expect(generated.path).toBe(".cdm/solidity/example/counter-a.sol");
+            expect(generated.content).toContain("// CDM version: 1.2.3");
             expect(generated.content).toContain("interface IExampleCounterA");
             expect(generated.content).toContain("library ExampleCounterA");
             expect(generated.content).toContain(
