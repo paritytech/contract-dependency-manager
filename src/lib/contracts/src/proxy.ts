@@ -48,20 +48,15 @@ export const PROXY_META = {
     admin: "0xf851a440",
 } as const;
 
-/**
- * Meta-call selectors the shim answers itself, sealed or not: two getters,
- * plus `setFastPath` and `seal`, which it accepts from the resolver only.
- */
+/** Meta-call selectors of the two getters the shim answers itself, sealed or not. */
 export const SHIM_META = {
     sealed: "0xe4b203ef",
     resolver: "0x04f3bcec",
-    setFastPath: "0x8682471f",
-    seal: "0xe2e33028",
 } as const;
 
 /** The shim's own storage slot (`keccak256(label) - 1`); every other slot belongs to the name's implementations. */
 export const SHIM_SLOTS = {
-    /** `cdm.shim.fast`: one `packFastPath` word holding the latest version and the sealed flag; all zero when the shim has no shortcut. */
+    /** `cdm.shim.fast`: one word (see `unpackFastPath`) holding the latest version and the sealed flag; all zero when the shim has no shortcut. */
     fast: "0xf0a018d1f0a0c89702867d3b938e95b2525db0fc04b1c93fdac5127d62eef3a2",
 } as const;
 
@@ -316,25 +311,10 @@ export function decodeVersionPair(data: Hex | Uint8Array): { key: bigint; target
 const SEALED_FLAG = 0x80;
 
 /**
- * The word at `SHIM_SLOTS.fast`: `[sealed: 1 bit][version key: 95 bits BE]
- * [implementation: 20 bytes]`. A publishable key has its top 33 bits clear,
- * so 95 bits hold all of it.
+ * Split the word at `SHIM_SLOTS.fast`: `[sealed: 1 bit][version key: 95 bits
+ * BE][implementation: 20 bytes]`. A publishable key has its top 33 bits
+ * clear, so 95 bits hold all of it.
  */
-export function packFastPath(key: bigint, implementation: string, sealed = false): Hex {
-    if (key < 0n || key >> 95n !== 0n) {
-        throw new Error(`Version key does not fit the fast-path word: ${key}`);
-    }
-    const word = concatBytes(
-        u128Bytes(key, "version key").subarray(4),
-        wordAddress(implementation).subarray(12),
-    );
-    if (sealed) {
-        word[0] |= SEALED_FLAG;
-    }
-    return bytesToHex(word);
-}
-
-/** Split a fast-path word into the sealed flag, the version key and the implementation. */
 export function unpackFastPath(word: Hex | Uint8Array): {
     sealed: boolean;
     key: bigint;
@@ -383,8 +363,6 @@ if (import.meta.vitest) {
             const signatures: Record<keyof typeof SHIM_META, string> = {
                 sealed: "sealed()",
                 resolver: "resolver()",
-                setFastPath: "setFastPath(uint128,address)",
-                seal: "seal(uint128,address)",
             };
             for (const [name, selector] of Object.entries(SHIM_META)) {
                 expect(keccakSelector(signatures[name as keyof typeof SHIM_META])).toBe(selector);
@@ -497,40 +475,31 @@ if (import.meta.vitest) {
             expect(keccakSelector("UnknownVersion()")).toBe("0x8da6a6a4");
             expect(keccakSelector("UnsupportedVersion(uint128,uint128)")).toBe("0x4f95b5db");
             expect(keccakSelector("MalformedResolution()")).toBe("0xa0977a0b");
-            expect(keccakSelector("NotResolver()")).toBe("0xba2a9fc2");
-            expect(keccakSelector("Sealed()")).toBe("0x1b2d71eb");
-            expect(keccakSelector("NameSealed()")).toBe("0x60e456c9");
         });
     });
 
     describe("shim fast-path word", () => {
-        it("is the key then the implementation (pinned in Rust core)", () => {
+        it("splits into the sealed flag, the key and the implementation (pinned in Rust core)", () => {
             const key = packVersionKey(1, 2, 3);
             const implementation = `0x${"ab".repeat(20)}`;
-            const word = packFastPath(key, implementation);
-            // Major, minor, patch as big-endian u32s, then the address.
-            expect(word).toBe(`0x000000010000000200000003${"ab".repeat(20)}`);
-            expect(unpackFastPath(word)).toEqual({ sealed: false, key, implementation });
-        });
-
-        it("carries the sealed flag in its top bit (pinned in Rust core)", () => {
-            const key = packVersionKey(1, 2, 3);
-            const implementation = `0x${"ab".repeat(20)}`;
-            const word = packFastPath(key, implementation, true);
-            expect(word).toBe(`0x800000010000000200000003${"ab".repeat(20)}`);
-            expect(unpackFastPath(word)).toEqual({ sealed: true, key, implementation });
-        });
-
-        it("holds the largest publishable key beside the flag", () => {
-            const max = packVersionKey(MAX_MAJOR, 0xffff_ffff, 0xffff_ffff);
-            const implementation = `0x${"01".repeat(20)}`;
-            for (const sealed of [false, true]) {
-                expect(unpackFastPath(packFastPath(max, implementation, sealed))).toEqual({
-                    sealed,
-                    key: max,
-                    implementation,
-                });
-            }
+            // Major, minor, patch as big-endian u32s, then the address; the
+            // sealed flag is the top bit.
+            expect(unpackFastPath(`0x000000010000000200000003${"ab".repeat(20)}`)).toEqual({
+                sealed: false,
+                key,
+                implementation,
+            });
+            expect(unpackFastPath(`0x800000010000000200000003${"ab".repeat(20)}`)).toEqual({
+                sealed: true,
+                key,
+                implementation,
+            });
+            // The largest publishable key, sealed, fills every bit.
+            expect(unpackFastPath(`0x${"ff".repeat(12)}${"ab".repeat(20)}`)).toEqual({
+                sealed: true,
+                key: packVersionKey(MAX_MAJOR, 0xffff_ffff, 0xffff_ffff),
+                implementation,
+            });
         });
     });
 }

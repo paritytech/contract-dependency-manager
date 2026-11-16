@@ -216,8 +216,6 @@ mod contract_proxy {
                 return Err(Sealed.into());
             }
 
-            // Nothing above allocates for the resolver: the request is built
-            // only once the call is known to need it.
             let data_end = resolve::REQUEST_HEADER_LEN + data_len;
             let mut request = vec![0u8; resolve::REQUEST_HEADER_LEN + data_len.div_ceil(32) * 32];
             let mut caller = [0u8; 20];
@@ -269,16 +267,21 @@ mod contract_proxy {
         }
 
         /// `setFastPath`, or `seal` when `seal` is set: resolver-only, never
-        /// on a shim that is already `sealed`, with `(uint128 key, address
+        /// on a shim that is `already_sealed`, with `(uint128 key, address
         /// implementation)` after the meta header.
-        fn store_fast_path(&self, data_len: usize, sealed: bool, seal: bool) -> Result<(), Error> {
+        fn store_fast_path(
+            &self,
+            data_len: usize,
+            already_sealed: bool,
+            seal: bool,
+        ) -> Result<(), Error> {
             let host = self.host();
             let mut caller = [0u8; 20];
             host.caller(&mut caller);
             if caller != self.resolver() {
                 return Err(NotResolver.into());
             }
-            if sealed {
+            if already_sealed {
                 return Err(Sealed.into());
             }
 

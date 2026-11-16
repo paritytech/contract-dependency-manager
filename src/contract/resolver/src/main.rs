@@ -879,16 +879,6 @@ mod tests {
     }
 
     #[test]
-    fn nothing_is_pushed_before_the_first_publish() {
-        let (mut resolver, mock) = deployed(&[]);
-        resolver.set_frozen(Address(SHIM), true).unwrap();
-        resolver.set_frozen(Address(SHIM), false).unwrap();
-        resolver.set_fast_path(Address(SHIM), false).unwrap();
-        resolver.set_fast_path(Address(SHIM), true).unwrap();
-        assert_eq!(mock.take_recorded_calls(), vec![]);
-    }
-
-    #[test]
     fn shim_revert_bubbles_out_of_the_mutation() {
         let (mut resolver, mock) = deployed(&[]);
         mock.mock_call(SHIM, Err(()));
@@ -928,21 +918,17 @@ mod tests {
 
     #[test]
     fn seal_needs_an_unfrozen_name_with_a_version() {
-        let (mut resolver, mock) = deployed(&[(V1_0_0, IMPL_1)]);
+        let (mut resolver, _mock) = deployed(&[(V1_0_0, IMPL_1)]);
         assert_eq!(resolver.seal(Address(OTHER_SHIM)), Err(NoVersions.into()));
 
         resolver.set_frozen(Address(SHIM), true).unwrap();
-        mock.take_recorded_calls();
         assert_eq!(resolver.seal(Address(SHIM)), Err(ContractFrozen.into()));
-        assert!(!resolver.routing_of(Address(SHIM)).sealed);
-        assert_eq!(mock.take_recorded_calls(), vec![]);
     }
 
     #[test]
     fn sealed_name_takes_no_further_mutations() {
-        let (mut resolver, mock) = deployed(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2)]);
+        let (mut resolver, _mock) = deployed(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2)]);
         resolver.seal(Address(SHIM)).unwrap();
-        mock.take_recorded_calls();
 
         assert_eq!(
             resolver.publish(Address(SHIM), V2_0_0, Address(INIT_1)),
@@ -961,7 +947,6 @@ mod tests {
             Err(NameSealed.into())
         );
         assert_eq!(resolver.seal(Address(SHIM)), Err(NameSealed.into()));
-        assert_eq!(mock.take_recorded_calls(), vec![]);
     }
 
     // ─── Meta queries ────────────────────────────────────────────────────

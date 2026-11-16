@@ -165,7 +165,6 @@ export {
     encodeVersionedCall,
     isPublishableKey,
     keyToSemver,
-    packFastPath,
     packVersionKey,
     semverToKey,
     unpackFastPath,

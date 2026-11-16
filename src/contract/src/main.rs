@@ -406,13 +406,8 @@ mod contract_registry {
             contract_name: String,
             version_key: u128,
         ) -> Result<(), Error> {
-            self.require_unfrozen()?;
-            let info = self.info.get(&contract_name);
-            if info.version_count == 0 || info.owner != self.caller() {
-                return Err(Unauthorized.into());
-            }
-
-            self.call_resolver(RESOLVER_SET_MIN_SUPPORTED, &(info.proxy, version_key))?;
+            let proxy = self.owned_proxy(&contract_name)?;
+            self.call_resolver(RESOLVER_SET_MIN_SUPPORTED, &(proxy, version_key))?;
             MinSupportedSet {
                 name: contract_name,
                 version_key,
@@ -439,13 +434,8 @@ mod contract_registry {
         /// every call. Owner-only.
         #[pvm_contract_sdk::method]
         pub fn set_fast_path(&mut self, contract_name: String, enabled: bool) -> Result<(), Error> {
-            self.require_unfrozen()?;
-            let info = self.info.get(&contract_name);
-            if info.version_count == 0 || info.owner != self.caller() {
-                return Err(Unauthorized.into());
-            }
-
-            self.call_resolver(RESOLVER_SET_FAST_PATH, &(info.proxy, enabled))?;
+            let proxy = self.owned_proxy(&contract_name)?;
+            self.call_resolver(RESOLVER_SET_FAST_PATH, &(proxy, enabled))?;
             FastPathSet {
                 name: contract_name,
                 enabled,
@@ -460,13 +450,8 @@ mod contract_registry {
         /// Owner-only.
         #[pvm_contract_sdk::method]
         pub fn seal_contract(&mut self, contract_name: String) -> Result<(), Error> {
-            self.require_unfrozen()?;
-            let info = self.info.get(&contract_name);
-            if info.version_count == 0 || info.owner != self.caller() {
-                return Err(Unauthorized.into());
-            }
-
-            self.call_resolver(RESOLVER_SEAL, &info.proxy)?;
+            let proxy = self.owned_proxy(&contract_name)?;
+            self.call_resolver(RESOLVER_SEAL, &proxy)?;
             ContractSealed {
                 name: contract_name,
             }
@@ -661,19 +646,25 @@ mod contract_registry {
             contract_name: String,
             frozen: bool,
         ) -> Result<(), Error> {
-            self.require_unfrozen()?;
-            let info = self.info.get(&contract_name);
-            if info.version_count == 0 || info.owner != self.caller() {
-                return Err(Unauthorized.into());
-            }
-
-            self.call_resolver(RESOLVER_SET_FROZEN, &(info.proxy, frozen))?;
+            let proxy = self.owned_proxy(&contract_name)?;
+            self.call_resolver(RESOLVER_SET_FROZEN, &(proxy, frozen))?;
             ContractFrozenSet {
                 name: contract_name,
                 frozen,
             }
             .emit(self.host());
             Ok(())
+        }
+
+        /// The proxy of `contract_name`, for its owner only and only while
+        /// the registry is not frozen.
+        fn owned_proxy(&self, contract_name: &String) -> Result<Address, Error> {
+            self.require_unfrozen()?;
+            let info = self.info.get(contract_name);
+            if info.version_count == 0 || info.owner != self.caller() {
+                return Err(Unauthorized.into());
+            }
+            Ok(info.proxy)
         }
 
         fn resolver(&self) -> Result<Address, Error> {

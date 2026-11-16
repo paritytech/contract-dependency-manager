@@ -145,29 +145,14 @@ pub mod meta {
 /// are permanent.
 pub mod shim {
     use super::selector;
-
-    /// `keccak256(label) - 1`, the EIP-1967 slot derivation: no known keccak
-    /// preimage maps to the slot, so an implementation's ordinary storage
-    /// never lands on it.
-    const fn slot(label: &[u8]) -> [u8; 32] {
-        let mut bytes = keccak_const::Keccak256::new().update(label).finalize();
-        let mut i = 31;
-        loop {
-            let (byte, borrow) = bytes[i].overflowing_sub(1);
-            bytes[i] = byte;
-            if !borrow || i == 0 {
-                break;
-            }
-            i -= 1;
-        }
-        bytes
-    }
+    use crate::slots::eip1967_slot;
 
     /// All of the shim's own state, as one [`pack_fast_path`] word: the
     /// version it serves without asking the resolver, and whether it is
-    /// sealed. All zero when it has no shortcut.
+    /// sealed. All zero when it has no shortcut. An EIP-1967-style slot, so
+    /// an implementation's ordinary storage never lands on it.
     /// `0xf0a018d1f0a0c89702867d3b938e95b2525db0fc04b1c93fdac5127d62eef3a2`
-    pub const FAST_SLOT: [u8; 32] = slot(b"cdm.shim.fast");
+    pub const FAST_SLOT: [u8; 32] = eip1967_slot(b"cdm.shim.fast");
 
     /// Set in the first byte of the [`FAST_SLOT`] word once the shim is
     /// sealed.
