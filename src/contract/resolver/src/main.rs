@@ -2,16 +2,22 @@
 //!
 //! Deployed behind `contract-eip1967-proxy` with the registry as admin. It
 //! owns the routing tables and policy for every per-name shim: a shim
-//! forwards each call it receives as `resolve(caller, value, data)` and does
-//! exactly what the answer says, so upgrading this one contract (`setCode`,
-//! driven by the registry's `upgradeResolver`) reaches every name ever
-//! published. Only the registry can change routing state.
+//! forwards each call it does not serve itself as
+//! `resolve(caller, value, data)` and does exactly what the answer says, so
+//! upgrading this one contract (`setCode`, driven by the registry's
+//! `upgradeResolver`) reaches every name that is not sealed. Only the
+//! registry can change routing state.
 //!
 //! Routing is keyed by shim address (`contract_registry_core::versioning`):
 //! plain calldata goes to the name's latest implementation, `[MAGIC][key]`
 //! to that exact version, and `[MAGIC][0][selector]` to the CDM meta plane —
 //! queries, plus `callCode`, honored only when the shim's caller is the
 //! registry.
+//!
+//! The resolver also keeps each shim's own copy of the latest version in
+//! step: it pushes the version on publish, takes it away while the name is
+//! frozen or its owner has opted out, and on `seal` tells the shim to keep it
+//! for good.
 
 #![cfg_attr(all(not(feature = "abi-gen"), not(test)), no_main, no_std)]
 
@@ -36,12 +42,13 @@ mod contract_resolver {
     use alloc::vec::Vec;
     use contract_registry_core::slots::{ADMIN_SLOT, IMPLEMENTATION_SLOT};
     use contract_registry_core::versioning::{
-        CallRoute, META_HEADER_LEN, VERSIONED_HEADER_LEN, is_publishable_key, meta, route_calldata,
+        CallRoute, MAGIC, META_HEADER_LEN, META_KEY, VERSIONED_HEADER_LEN, is_publishable_key,
+        meta, route_calldata, shim,
     };
-    use pvm_contract_sdk::{Address, Bytes, HostApi, Lazy, Mapping, SolEncode, U256};
+    use pvm_contract_sdk::{Address, Bytes, CallFlags, HostApi, Lazy, Mapping, SolEncode, U256};
 
     pub struct ContractResolver {
-        /// Shim → latest version, floor, frozen flag.
+        /// Shim → latest version, floor, frozen, fast-path opt-out, sealed.
         routing: Mapping<Address, Routing>,
         /// Shim → version key → implementation.
         implementations: Mapping<Address, Mapping<u128, Address>>,
@@ -155,7 +162,8 @@ mod contract_resolver {
         // ─── Registry-only mutations ─────────────────────────────────────
 
         /// Register `implementation` as version `version_key` of the name
-        /// behind `proxy`; keys must strictly increase.
+        /// behind `proxy`; keys must strictly increase. The shim gets the
+        /// version as its shortcut unless the name is frozen or opted out.
         #[pvm_contract_sdk::method]
         pub fn publish(
             &mut self,
@@ -164,13 +172,14 @@ mod contract_resolver {
             implementation: Address,
         ) -> Result<(), Error> {
             self.require_admin()?;
+            let mut routing = self.routing.get(&proxy);
+            require_unsealed(&routing)?;
             if !is_publishable_key(version_key) {
                 return Err(InvalidVersionKey.into());
             }
             if implementation == Address::ZERO {
                 return Err(InvalidImplementation.into());
             }
-            let mut routing = self.routing.get(&proxy);
             if routing.latest_key != 0 && version_key <= routing.latest_key {
                 return Err(VersionNotMonotonic {
                     attempted: version_key,
@@ -184,6 +193,9 @@ mod contract_resolver {
             self.implementations
                 .entry(&proxy)
                 .insert(&version_key, &implementation);
+            if !routing.frozen && !routing.fast_path_off {
+                self.fill_fast_path(&proxy, &routing);
+            }
             Ok(())
         }
 
@@ -195,10 +207,11 @@ mod contract_resolver {
             version_key: u128,
         ) -> Result<(), Error> {
             self.require_admin()?;
-            if version_key >> 96 != 0 {
+            let mut routing = self.routing.get(&proxy);
+            require_unsealed(&routing)?;
+            if version_key >> 95 != 0 {
                 return Err(InvalidVersionKey.into());
             }
-            let mut routing = self.routing.get(&proxy);
             if version_key < routing.min_supported {
                 return Err(MinNotMonotonic {
                     requested: version_key,
@@ -222,13 +235,60 @@ mod contract_resolver {
         }
 
         /// While frozen, plain and versioned calls to the name revert
-        /// `ContractFrozen()`; the meta plane keeps answering.
+        /// `ContractFrozen()`; the meta plane keeps answering. Freezing
+        /// empties the shim's shortcut so those calls reach this policy;
+        /// unfreezing fills it again unless the owner has opted out.
         #[pvm_contract_sdk::method]
         pub fn set_frozen(&mut self, proxy: Address, frozen: bool) -> Result<(), Error> {
             self.require_admin()?;
             let mut routing = self.routing.get(&proxy);
+            require_unsealed(&routing)?;
             routing.frozen = frozen;
             self.routing.insert(&proxy, &routing);
+            if routing.latest_key != 0 {
+                if frozen {
+                    self.clear_fast_path(&proxy);
+                } else if !routing.fast_path_off {
+                    self.fill_fast_path(&proxy, &routing);
+                }
+            }
+            Ok(())
+        }
+
+        /// Choose whether the name's shim serves the latest version from its
+        /// own storage (`enabled`, the default) or asks on every call.
+        #[pvm_contract_sdk::method]
+        pub fn set_fast_path(&mut self, proxy: Address, enabled: bool) -> Result<(), Error> {
+            self.require_admin()?;
+            let mut routing = self.routing.get(&proxy);
+            require_unsealed(&routing)?;
+            routing.fast_path_off = !enabled;
+            self.routing.insert(&proxy, &routing);
+            if routing.latest_key != 0 {
+                if enabled && !routing.frozen {
+                    self.fill_fast_path(&proxy, &routing);
+                } else {
+                    self.clear_fast_path(&proxy);
+                }
+            }
+            Ok(())
+        }
+
+        /// Pin the name to its latest version for good: the shim keeps
+        /// serving it and never asks again, and every later change to the
+        /// name reverts `NameSealed()`.
+        #[pvm_contract_sdk::method]
+        pub fn seal(&mut self, proxy: Address) -> Result<(), Error> {
+            self.require_admin()?;
+            let mut routing = self.routing.get(&proxy);
+            require_unsealed(&routing)?;
+            require_unfrozen(&routing)?;
+            if routing.latest_key == 0 {
+                return Err(NoVersions.into());
+            }
+            routing.sealed = true;
+            self.routing.insert(&proxy, &routing);
+            self.call_shim(&proxy, shim::SEAL, routing.latest_key, routing.latest_impl);
             Ok(())
         }
 
@@ -261,8 +321,8 @@ mod contract_resolver {
             self.admin.get()
         }
 
-        /// The name's routing state: `(latestKey, latestImpl, minSupported,
-        /// frozen)`.
+        /// The name's routing state: `(latestKey, minSupported, latestImpl,
+        /// frozen, fastPathOff, sealed)`.
         #[pvm_contract_sdk::method]
         pub fn routing_of(&self, proxy: Address) -> Routing {
             self.routing.get(&proxy)
@@ -288,11 +348,65 @@ mod contract_resolver {
             }
             Ok(())
         }
+
+        /// Give the shim behind `proxy` the name's latest version to serve.
+        fn fill_fast_path(&mut self, proxy: &Address, routing: &Routing) {
+            self.call_shim(
+                proxy,
+                shim::SET_FAST_PATH,
+                routing.latest_key,
+                routing.latest_impl,
+            );
+        }
+
+        /// Make the shim behind `proxy` ask about every call.
+        fn clear_fast_path(&mut self, proxy: &Address) {
+            self.call_shim(proxy, shim::SET_FAST_PATH, 0, Address::ZERO);
+        }
+
+        /// `[MAGIC][0][selector][key word][implementation word]` to the shim
+        /// behind `proxy`, bubbling its revert unchanged.
+        fn call_shim(
+            &mut self,
+            proxy: &Address,
+            selector: [u8; 4],
+            key: u128,
+            implementation: Address,
+        ) {
+            let mut calldata = Vec::with_capacity(META_HEADER_LEN + 64);
+            calldata.extend_from_slice(&MAGIC);
+            calldata.extend_from_slice(&META_KEY.to_be_bytes());
+            calldata.extend_from_slice(&selector);
+            calldata.extend_from_slice(&encode(&(key, implementation)));
+
+            let host = self.host();
+            let result = host.call_evm(
+                CallFlags::empty(),
+                &proxy.0,
+                u64::MAX,
+                &[0u8; 32],
+                &calldata,
+                None,
+            );
+            if result.is_err() {
+                let mut data = vec![0u8; host.return_data_size() as usize];
+                let mut data_ref: &mut [u8] = &mut data;
+                host.return_data_copy(&mut data_ref, 0);
+                host.revert(&data);
+            }
+        }
     }
 
     fn require_unfrozen(routing: &Routing) -> Result<(), Error> {
         if routing.frozen {
             return Err(ContractFrozen.into());
+        }
+        Ok(())
+    }
+
+    fn require_unsealed(routing: &Routing) -> Result<(), Error> {
+        if routing.sealed {
+            return Err(NameSealed.into());
         }
         Ok(())
     }
@@ -333,11 +447,11 @@ mod tests {
     use super::contract_resolver::{self, ContractResolver};
     use super::types::*;
     use contract_registry_core::versioning::{
-        MAGIC, META_HEADER_LEN, META_KEY, VERSIONED_HEADER_LEN, meta, pack_version, resolve,
+        MAGIC, META_HEADER_LEN, META_KEY, VERSIONED_HEADER_LEN, meta, pack_version, resolve, shim,
     };
     use pvm_contract_sdk::{
-        Address, Bytes, MockHost, MockHostBuilder, OutSink, Outcome, SolEncode, SolError, U256,
-        const_selector,
+        Address, Bytes, MockHost, MockHostBuilder, OutSink, Outcome, ReturnFlags, SolEncode,
+        SolError, U256, const_selector, types::ReturnValue,
     };
 
     /// The registry proxy address: admin of the resolver.
@@ -440,6 +554,24 @@ mod tests {
         word
     }
 
+    /// The exact call that stores `(key, implementation)` in `SHIM`'s
+    /// fast-path slot.
+    fn shim_set_fast_path(key: u128, implementation: [u8; 20]) -> ([u8; 20], Vec<u8>) {
+        let args = [word_u128(key), word_addr(implementation)].concat();
+        (SHIM, meta_calldata(shim::SET_FAST_PATH, &args))
+    }
+
+    /// The exact call that empties `SHIM`'s fast-path slot.
+    fn shim_clear_fast_path() -> ([u8; 20], Vec<u8>) {
+        shim_set_fast_path(0, [0u8; 20])
+    }
+
+    /// The exact call that seals `SHIM` on `(key, implementation)`.
+    fn shim_seal(key: u128, implementation: [u8; 20]) -> ([u8; 20], Vec<u8>) {
+        let args = [word_u128(key), word_addr(implementation)].concat();
+        (SHIM, meta_calldata(shim::SEAL, &args))
+    }
+
     const PLAIN: [u8; 36] = [0x77; 36];
 
     // ─── Plain calls ─────────────────────────────────────────────────────
@@ -518,6 +650,8 @@ mod tests {
                 latest_impl: Address(IMPL_2),
                 min_supported: 0,
                 frozen: false,
+                fast_path_off: false,
+                sealed: false,
             }
         );
         assert_eq!(resolver.impl_of(Address(SHIM), V1_0_0), Address(IMPL_1));
@@ -542,7 +676,7 @@ mod tests {
     #[test]
     fn publish_rejects_invalid_keys_and_zero_impl() {
         let (mut resolver, _mock) = deployed(&[]);
-        for key in [0u128, 1u128 << 96] {
+        for key in [0u128, 1u128 << 95, 1u128 << 96] {
             assert_eq!(
                 resolver.publish(Address(SHIM), key, Address(IMPL_1)),
                 Err(InvalidVersionKey.into())
@@ -568,6 +702,14 @@ mod tests {
         );
         assert_eq!(
             as_stranger.set_frozen(Address(SHIM), true),
+            Err(UnauthorizedAdmin.into())
+        );
+        assert_eq!(
+            as_stranger.set_fast_path(Address(SHIM), false),
+            Err(UnauthorizedAdmin.into())
+        );
+        assert_eq!(
+            as_stranger.seal(Address(SHIM)),
             Err(UnauthorizedAdmin.into())
         );
         assert_eq!(
@@ -630,6 +772,181 @@ mod tests {
             .unwrap();
         resolver.set_frozen(Address(SHIM), false).unwrap();
         assert_eq!(resolve_for(&mock, &PLAIN), delegate(INIT_1, 0));
+    }
+
+    // ─── Fast path ───────────────────────────────────────────────────────
+
+    #[test]
+    fn publish_pushes_the_version_to_the_shim() {
+        let (mut resolver, mock) = deployed(&[]);
+
+        resolver
+            .publish(Address(SHIM), V1_0_0, Address(IMPL_1))
+            .unwrap();
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![shim_set_fast_path(V1_0_0, IMPL_1)]
+        );
+
+        resolver
+            .publish(Address(SHIM), V1_2_3, Address(IMPL_2))
+            .unwrap();
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![shim_set_fast_path(V1_2_3, IMPL_2)]
+        );
+    }
+
+    #[test]
+    fn freeze_empties_the_shim_and_unfreeze_restores_the_latest() {
+        let (mut resolver, mock) = deployed(&[(V1_0_0, IMPL_1)]);
+        mock.take_recorded_calls();
+
+        resolver.set_frozen(Address(SHIM), true).unwrap();
+        assert_eq!(mock.take_recorded_calls(), vec![shim_clear_fast_path()]);
+
+        // A publish while frozen leaves the shim's slot empty.
+        resolver
+            .publish(Address(SHIM), V1_2_3, Address(IMPL_2))
+            .unwrap();
+        assert_eq!(mock.take_recorded_calls(), vec![]);
+
+        resolver.set_frozen(Address(SHIM), false).unwrap();
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![shim_set_fast_path(V1_2_3, IMPL_2)]
+        );
+    }
+
+    #[test]
+    fn flag_changes_on_a_published_name_keep_the_same_storage_items() {
+        let (mut resolver, mock) = deployed(&[(V1_0_0, IMPL_1)]);
+        let items = mock.storage_dump().len();
+
+        resolver.set_frozen(Address(SHIM), true).unwrap();
+        assert_eq!(mock.storage_dump().len(), items);
+        resolver.set_frozen(Address(SHIM), false).unwrap();
+        assert_eq!(mock.storage_dump().len(), items);
+        resolver.set_fast_path(Address(SHIM), false).unwrap();
+        assert_eq!(mock.storage_dump().len(), items);
+        resolver.set_fast_path(Address(SHIM), true).unwrap();
+        assert_eq!(mock.storage_dump().len(), items);
+    }
+
+    #[test]
+    fn fast_path_opt_out_survives_a_publish_and_a_freeze_cycle() {
+        let (mut resolver, mock) = deployed(&[(V1_0_0, IMPL_1)]);
+        mock.take_recorded_calls();
+
+        resolver.set_fast_path(Address(SHIM), false).unwrap();
+        assert!(resolver.routing_of(Address(SHIM)).fast_path_off);
+        assert_eq!(mock.take_recorded_calls(), vec![shim_clear_fast_path()]);
+
+        resolver
+            .publish(Address(SHIM), V1_2_3, Address(IMPL_2))
+            .unwrap();
+        assert_eq!(mock.take_recorded_calls(), vec![]);
+
+        resolver.set_frozen(Address(SHIM), true).unwrap();
+        assert_eq!(mock.take_recorded_calls(), vec![shim_clear_fast_path()]);
+        resolver.set_frozen(Address(SHIM), false).unwrap();
+        assert_eq!(mock.take_recorded_calls(), vec![]);
+
+        // Opting back in hands the shim whatever is latest by then.
+        resolver.set_fast_path(Address(SHIM), true).unwrap();
+        assert!(!resolver.routing_of(Address(SHIM)).fast_path_off);
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![shim_set_fast_path(V1_2_3, IMPL_2)]
+        );
+    }
+
+    #[test]
+    fn enabling_the_fast_path_while_frozen_waits_for_the_unfreeze() {
+        let (mut resolver, mock) = deployed(&[(V1_0_0, IMPL_1)]);
+        resolver.set_fast_path(Address(SHIM), false).unwrap();
+        resolver.set_frozen(Address(SHIM), true).unwrap();
+        mock.take_recorded_calls();
+
+        resolver.set_fast_path(Address(SHIM), true).unwrap();
+        assert_eq!(mock.take_recorded_calls(), vec![shim_clear_fast_path()]);
+
+        resolver.set_frozen(Address(SHIM), false).unwrap();
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![shim_set_fast_path(V1_0_0, IMPL_1)]
+        );
+    }
+
+    #[test]
+    fn shim_revert_bubbles_out_of_the_mutation() {
+        let (mut resolver, mock) = deployed(&[]);
+        mock.mock_call(SHIM, Err(()));
+        let rv = mock.expect_revert(|| {
+            let _ = resolver.publish(Address(SHIM), V1_0_0, Address(IMPL_1));
+        });
+        assert_eq!(
+            rv,
+            ReturnValue {
+                flags: ReturnFlags::REVERT,
+                data: vec![],
+            }
+        );
+    }
+
+    // ─── Seal ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn seal_pins_the_shim_to_the_latest_version() {
+        let (mut resolver, mock) = deployed(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2)]);
+        mock.take_recorded_calls();
+
+        assert_eq!(resolver.seal(Address(SHIM)), Ok(()));
+        assert!(resolver.routing_of(Address(SHIM)).sealed);
+        assert_eq!(mock.take_recorded_calls(), vec![shim_seal(V1_2_3, IMPL_2)]);
+    }
+
+    #[test]
+    fn seal_reaches_a_shim_whose_fast_path_is_off() {
+        let (mut resolver, mock) = deployed(&[(V1_0_0, IMPL_1)]);
+        resolver.set_fast_path(Address(SHIM), false).unwrap();
+        mock.take_recorded_calls();
+
+        assert_eq!(resolver.seal(Address(SHIM)), Ok(()));
+        assert_eq!(mock.take_recorded_calls(), vec![shim_seal(V1_0_0, IMPL_1)]);
+    }
+
+    #[test]
+    fn seal_needs_an_unfrozen_name_with_a_version() {
+        let (mut resolver, _mock) = deployed(&[(V1_0_0, IMPL_1)]);
+        assert_eq!(resolver.seal(Address(OTHER_SHIM)), Err(NoVersions.into()));
+
+        resolver.set_frozen(Address(SHIM), true).unwrap();
+        assert_eq!(resolver.seal(Address(SHIM)), Err(ContractFrozen.into()));
+    }
+
+    #[test]
+    fn sealed_name_takes_no_further_mutations() {
+        let (mut resolver, _mock) = deployed(&[(V1_0_0, IMPL_1), (V1_2_3, IMPL_2)]);
+        resolver.seal(Address(SHIM)).unwrap();
+
+        assert_eq!(
+            resolver.publish(Address(SHIM), V2_0_0, Address(INIT_1)),
+            Err(NameSealed.into())
+        );
+        assert_eq!(
+            resolver.set_min_supported(Address(SHIM), V1_2_3),
+            Err(NameSealed.into())
+        );
+        assert_eq!(
+            resolver.set_frozen(Address(SHIM), true),
+            Err(NameSealed.into())
+        );
+        assert_eq!(
+            resolver.set_fast_path(Address(SHIM), false),
+            Err(NameSealed.into())
+        );
+        assert_eq!(resolver.seal(Address(SHIM)), Err(NameSealed.into()));
     }
 
     // ─── Meta queries ────────────────────────────────────────────────────
@@ -868,6 +1185,9 @@ mod tests {
                 encode(&(Address(SHIM), V1_0_0)),
             ),
             ("setFrozen(address,bool)", encode(&(Address(SHIM), false))),
+            ("setFastPath(address,bool)", encode(&(Address(SHIM), true))),
+            // Last of the per-name mutations: a sealed name takes no more.
+            ("seal(address)", encode(&Address(SHIM))),
             ("setCode(address)", encode(&Address(IMPL_2))),
             ("getCode()", vec![]),
             ("getAdmin()", vec![]),

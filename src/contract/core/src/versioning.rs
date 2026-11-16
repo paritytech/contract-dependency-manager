@@ -1,21 +1,30 @@
-//! The versioned-call wire format shared by the resolver, the registry
-//! implementation, and (via mirrored constants) the TypeScript tooling, plus
-//! the protocol between a per-name shim and the resolver.
+//! The versioned-call wire format shared by the per-name shim, the resolver,
+//! the registry implementation, and (via mirrored constants) the TypeScript
+//! tooling, plus the shim's own state and the protocol between a shim and
+//! the resolver.
 //!
-//! The resolver splits a shim's raw calldata into three subspaces:
+//! A shim's raw calldata splits into three subspaces:
 //!
 //! - **plain**: anything not starting with [`MAGIC`] — delegated to the
 //!   latest implementation untouched, so a name reserves zero selectors in
 //!   its own ABI space;
-//! - **versioned**: `[MAGIC][16-byte version key BE][inner calldata]` —
-//!   delegated to that exact version's implementation;
+//! - **versioned**: `[MAGIC][16-byte version key BE][inner calldata]` — the
+//!   inner calldata is delegated to that exact version's implementation;
 //! - **meta**: `[MAGIC][key = 0][4-byte meta selector][ABI args]` — the CDM
-//!   control plane: queries, plus the registry-only `callCode`. Key 0 is
-//!   `0.0.0`, which is therefore unpublishable.
+//!   control plane. The shim answers the selectors in [`shim`] itself; every
+//!   other one goes to the resolver, which serves the queries in [`meta`]
+//!   plus the registry-only `callCode`. Key 0 is `0.0.0`, which is therefore
+//!   unpublishable.
+//!
+//! A shim that holds the latest version in [`shim::FAST_SLOT`] serves plain
+//! calls and versioned calls for that key from it. Every other call it does
+//! not answer itself goes to the resolver as a [`resolve`] request — or, once
+//! the shim is sealed, reverts.
 //!
 //! A version key packs a semver triple as `major << 64 | minor << 32 | patch`
-//! (each a `u32`), so integer order equals semver order and a name's
-//! append-only version list is sorted by construction.
+//! (minor and patch each a `u32`, major at most [`MAX_MAJOR`]), so integer
+//! order equals semver order and a name's append-only version list is sorted
+//! by construction.
 
 /// First 4 calldata bytes marking a CDM versioned or meta call.
 /// `keccak256("cdm.proxy.call.v1")[..4]` = `0xa2264d53`.
@@ -45,10 +54,14 @@ pub const fn unpack_version(key: u128) -> (u32, u32, u32) {
     ((key >> 64) as u32, (key >> 32) as u32, key as u32)
 }
 
-/// A publishable key: non-zero (0.0.0 is the meta namespace) with the top 32
-/// bits clear (the packed form of any real triple).
+/// The largest major version a name can publish. The shim keeps a version
+/// key in 95 bits of its state word, one fewer than three `u32`s.
+pub const MAX_MAJOR: u32 = u32::MAX >> 1;
+
+/// A publishable key: non-zero (0.0.0 is the meta namespace) with the top 33
+/// bits clear (a packed triple whose major is at most [`MAX_MAJOR`]).
 pub const fn is_publishable_key(key: u128) -> bool {
-    key != META_KEY && (key >> 96) == 0
+    key != META_KEY && (key >> 95) == 0
 }
 
 /// Where a piece of raw calldata routes.
@@ -105,8 +118,8 @@ const fn selector(signature: &[u8]) -> [u8; 4] {
 /// delivers to every initialization contract.
 pub const INITIALIZE_SELECTOR: [u8; 4] = selector(b"initialize(uint128,address)");
 
-/// Meta-call selectors: queries, plus `callCode`, which the resolver only
-/// honors when the shim's caller is the registry.
+/// Meta-call selectors the resolver serves: queries, plus `callCode`, which
+/// it only honors when the shim's caller is the registry.
 pub mod meta {
     use super::selector;
 
@@ -117,7 +130,9 @@ pub mod meta {
     pub const FROZEN: [u8; 4] = selector(b"frozen()");
     /// `implOf(uint128)` = `0xdf379e50`.
     pub const IMPL_OF: [u8; 4] = selector(b"implOf(uint128)");
-    /// `latest()` = `0x52bfe789`.
+    /// `latest()` = `0x52bfe789`: `(uint128 key, address implementation)`. A
+    /// shim that holds the latest version answers it from its own
+    /// [`shim::FAST_SLOT`](super::shim::FAST_SLOT) without asking.
     pub const LATEST: [u8; 4] = selector(b"latest()");
     /// `minSupported()` = `0x900fc468`.
     pub const MIN_SUPPORTED: [u8; 4] = selector(b"minSupported()");
@@ -125,9 +140,72 @@ pub mod meta {
     pub const ADMIN: [u8; 4] = selector(b"admin()");
 }
 
-/// The shim ↔ resolver protocol. A shim forwards every call it receives as
-/// one read-only `resolve` request and acts on the `Resolution` it gets back;
-/// the shim blob is frozen, so this layout is permanent.
+/// The shim's own state and the meta calls it answers without the resolver.
+/// The shim blob is frozen, so the slot, the word layout, and the selectors
+/// are permanent.
+pub mod shim {
+    use super::selector;
+    use crate::slots::eip1967_slot;
+
+    /// All of the shim's own state, as one [`pack_fast_path`] word: the
+    /// version it serves without asking the resolver, and whether it is
+    /// sealed. All zero when it has no shortcut. An EIP-1967-style slot, so
+    /// an implementation's ordinary storage never lands on it.
+    /// `0xf0a018d1f0a0c89702867d3b938e95b2525db0fc04b1c93fdac5127d62eef3a2`
+    pub const FAST_SLOT: [u8; 32] = eip1967_slot(b"cdm.shim.fast");
+
+    /// Set in the first byte of the [`FAST_SLOT`] word once the shim is
+    /// sealed.
+    pub const SEALED_FLAG: u8 = 0x80;
+
+    /// `sealed()` = `0xe4b203ef`: `bool`.
+    pub const SEALED: [u8; 4] = selector(b"sealed()");
+    /// `resolver()` = `0x04f3bcec`: the shim's immutable resolver `address`.
+    pub const RESOLVER: [u8; 4] = selector(b"resolver()");
+    /// `setFastPath(uint128,address)` = `0x8682471f`: resolver-only; stores
+    /// `(key, implementation)` in [`FAST_SLOT`], or clears it when
+    /// `implementation` is zero.
+    pub const SET_FAST_PATH: [u8; 4] = selector(b"setFastPath(uint128,address)");
+    /// `seal(uint128,address)` = `0xe2e33028`: resolver-only; stores
+    /// `(key, implementation)` in [`FAST_SLOT`] with [`SEALED_FLAG`] set.
+    pub const SEAL: [u8; 4] = selector(b"seal(uint128,address)");
+
+    /// The [`FAST_SLOT`] word: `[sealed: 1 bit][version key: 95 bits
+    /// big-endian][implementation: 20 bytes]`. `key` must be publishable:
+    /// its top 33 bits are clear, so the 95 bits hold all of it.
+    #[inline]
+    pub fn pack_fast_path(key: u128, implementation: &[u8; 20], sealed: bool) -> [u8; 32] {
+        let mut word = [0u8; 32];
+        // Major and minor, then patch.
+        word[..8].copy_from_slice(&((key >> 32) as u64).to_be_bytes());
+        word[8..12].copy_from_slice(&(key as u32).to_be_bytes());
+        word[12..].copy_from_slice(implementation);
+        if sealed {
+            word[0] |= SEALED_FLAG;
+        }
+        word
+    }
+
+    /// Split a [`FAST_SLOT`] word into `(sealed, version key, implementation)`.
+    #[inline]
+    pub fn unpack_fast_path(word: &[u8; 32]) -> (bool, u128, [u8; 20]) {
+        let mut high = [0u8; 8];
+        high.copy_from_slice(&word[..8]);
+        let sealed = high[0] & SEALED_FLAG != 0;
+        high[0] &= !SEALED_FLAG;
+        let mut low = [0u8; 4];
+        low.copy_from_slice(&word[8..12]);
+        let key = ((u64::from_be_bytes(high) as u128) << 32) | u32::from_be_bytes(low) as u128;
+        let mut implementation = [0u8; 20];
+        implementation.copy_from_slice(&word[12..]);
+        (sealed, key, implementation)
+    }
+}
+
+/// The shim ↔ resolver protocol. A shim forwards every call it does not
+/// serve itself as one read-only `resolve` request and acts on the
+/// `Resolution` it gets back; the shim blob is frozen, so this layout is
+/// permanent.
 pub mod resolve {
     use super::selector;
 
@@ -218,6 +296,10 @@ mod tests {
         bytes.iter().map(|b| format!("{b:02x}")).collect()
     }
 
+    fn hex32(bytes: [u8; 32]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
     #[test]
     fn magic_is_pinned() {
         // Mirrored in src/lib/contracts/src/proxy.ts; changing it strands
@@ -243,6 +325,54 @@ mod tests {
     #[test]
     fn resolve_selector_is_pinned() {
         assert_eq!(hex4(resolve::SELECTOR), "6a418533");
+    }
+
+    #[test]
+    fn shim_slot_is_pinned() {
+        // Every shim ever created keeps its state at this slot.
+        assert_eq!(
+            hex32(shim::FAST_SLOT),
+            "f0a018d1f0a0c89702867d3b938e95b2525db0fc04b1c93fdac5127d62eef3a2"
+        );
+    }
+
+    #[test]
+    fn shim_selectors_are_pinned() {
+        assert_eq!(hex4(shim::SEALED), "e4b203ef");
+        assert_eq!(hex4(shim::RESOLVER), "04f3bcec");
+        assert_eq!(hex4(shim::SET_FAST_PATH), "8682471f");
+        assert_eq!(hex4(shim::SEAL), "e2e33028");
+    }
+
+    #[test]
+    fn fast_path_word_is_the_key_then_the_implementation() {
+        let key = pack_version(1, 2, 3);
+        let word = shim::pack_fast_path(key, &[0xAB; 20], false);
+
+        // Major, minor, patch as big-endian u32s, then the address.
+        let mut expected = vec![0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3];
+        expected.extend_from_slice(&[0xAB; 20]);
+        assert_eq!(word.to_vec(), expected);
+        assert_eq!(shim::unpack_fast_path(&word), (false, key, [0xAB; 20]));
+    }
+
+    #[test]
+    fn sealing_sets_only_the_top_bit_of_the_fast_path_word() {
+        let key = pack_version(1, 2, 3);
+        let mut expected = shim::pack_fast_path(key, &[0xAB; 20], false);
+        expected[0] = 0x80;
+        let sealed = shim::pack_fast_path(key, &[0xAB; 20], true);
+        assert_eq!(sealed, expected);
+        assert_eq!(shim::unpack_fast_path(&sealed), (true, key, [0xAB; 20]));
+
+        // The largest publishable key leaves the flag's bit free.
+        let max = pack_version(MAX_MAJOR, u32::MAX, u32::MAX);
+        for flag in [false, true] {
+            assert_eq!(
+                shim::unpack_fast_path(&shim::pack_fast_path(max, &[0x01; 20], flag)),
+                (flag, max, [0x01; 20])
+            );
+        }
     }
 
     #[test]
@@ -275,10 +405,12 @@ mod tests {
         assert!(!is_publishable_key(META_KEY));
         assert!(is_publishable_key(pack_version(0, 0, 1)));
         assert!(is_publishable_key(pack_version(
-            u32::MAX,
+            MAX_MAJOR,
             u32::MAX,
             u32::MAX
         )));
+        // The next major would land on the shim's sealed flag.
+        assert!(!is_publishable_key(pack_version(MAX_MAJOR + 1, 0, 0)));
         // Anything with the top 32 bits set is not a packed triple.
         assert!(!is_publishable_key(1u128 << 96));
         assert!(!is_publishable_key(u128::MAX));

@@ -7,9 +7,10 @@
 //! The registry is also a factory: the first publish of a name instantiates
 //! that name's shim (`contract-proxy`) at a deterministic CREATE2 address
 //! (`salt = keccak256(name)`, the resolver address as constructor input).
-//! Every publish, floor change, and freeze is then written to the resolver —
-//! the one contract every shim asks how to route — keyed by shim address.
-//! The registry is the resolver's admin and its only writer.
+//! Every publish, floor change, freeze, fast-path choice, and seal is then
+//! written to the resolver — the one contract every shim asks how to route —
+//! keyed by shim address. The registry is the resolver's admin and its only
+//! writer.
 //!
 //! The admin, implementation, and frozen flags live at fixed pseudo-random
 //! slots (see `contract_registry_core::slots`) so future implementations can
@@ -85,6 +86,21 @@ mod contract_registry {
         #[indexed]
         pub name: String,
         pub frozen: bool,
+    }
+
+    /// The owner turned the name's fast path on or off.
+    #[derive(pvm_contract_sdk::SolEvent)]
+    pub struct FastPathSet {
+        #[indexed]
+        pub name: String,
+        pub enabled: bool,
+    }
+
+    /// The owner sealed the name: its latest version is its last.
+    #[derive(pvm_contract_sdk::SolEvent)]
+    pub struct ContractSealed {
+        #[indexed]
+        pub name: String,
     }
 
     /// EIP-1967 standard event, so proxy-aware tooling picks up upgrades.
@@ -221,7 +237,8 @@ mod contract_registry {
         }
 
         /// Point the resolver proxy at a new implementation: one upgrade
-        /// reaches every name ever published. The resolver's errors bubble.
+        /// reaches every call a shim still asks the resolver about, for
+        /// every name that is not sealed. The resolver's errors bubble.
         #[pvm_contract_sdk::method]
         pub fn upgrade_resolver(&mut self, new_implementation: Address) -> Result<(), Error> {
             self.require_admin()?;
@@ -389,13 +406,8 @@ mod contract_registry {
             contract_name: String,
             version_key: u128,
         ) -> Result<(), Error> {
-            self.require_unfrozen()?;
-            let info = self.info.get(&contract_name);
-            if info.version_count == 0 || info.owner != self.caller() {
-                return Err(Unauthorized.into());
-            }
-
-            self.call_resolver(RESOLVER_SET_MIN_SUPPORTED, &(info.proxy, version_key))?;
+            let proxy = self.owned_proxy(&contract_name)?;
+            self.call_resolver(RESOLVER_SET_MIN_SUPPORTED, &(proxy, version_key))?;
             MinSupportedSet {
                 name: contract_name,
                 version_key,
@@ -415,6 +427,36 @@ mod contract_registry {
         #[pvm_contract_sdk::method]
         pub fn unfreeze_contract(&mut self, contract_name: String) -> Result<(), Error> {
             self.set_contract_frozen(contract_name, false)
+        }
+
+        /// Choose whether the name's proxy serves the latest version from
+        /// its own storage (`enabled`, the default) or asks the resolver on
+        /// every call. Owner-only.
+        #[pvm_contract_sdk::method]
+        pub fn set_fast_path(&mut self, contract_name: String, enabled: bool) -> Result<(), Error> {
+            let proxy = self.owned_proxy(&contract_name)?;
+            self.call_resolver(RESOLVER_SET_FAST_PATH, &(proxy, enabled))?;
+            FastPathSet {
+                name: contract_name,
+                enabled,
+            }
+            .emit(self.host());
+            Ok(())
+        }
+
+        /// Seal the name: its proxy serves the latest version forever, and
+        /// every later publish, floor change, freeze, or fast-path choice
+        /// reverts with the resolver's `NameSealed()`. Irreversible.
+        /// Owner-only.
+        #[pvm_contract_sdk::method]
+        pub fn seal_contract(&mut self, contract_name: String) -> Result<(), Error> {
+            let proxy = self.owned_proxy(&contract_name)?;
+            self.call_resolver(RESOLVER_SEAL, &proxy)?;
+            ContractSealed {
+                name: contract_name,
+            }
+            .emit(self.host());
+            Ok(())
         }
 
         // ─── Queries ─────────────────────────────────────────────────────
@@ -604,19 +646,25 @@ mod contract_registry {
             contract_name: String,
             frozen: bool,
         ) -> Result<(), Error> {
-            self.require_unfrozen()?;
-            let info = self.info.get(&contract_name);
-            if info.version_count == 0 || info.owner != self.caller() {
-                return Err(Unauthorized.into());
-            }
-
-            self.call_resolver(RESOLVER_SET_FROZEN, &(info.proxy, frozen))?;
+            let proxy = self.owned_proxy(&contract_name)?;
+            self.call_resolver(RESOLVER_SET_FROZEN, &(proxy, frozen))?;
             ContractFrozenSet {
                 name: contract_name,
                 frozen,
             }
             .emit(self.host());
             Ok(())
+        }
+
+        /// The proxy of `contract_name`, for its owner only and only while
+        /// the registry is not frozen.
+        fn owned_proxy(&self, contract_name: &String) -> Result<Address, Error> {
+            self.require_unfrozen()?;
+            let info = self.info.get(contract_name);
+            if info.version_count == 0 || info.owner != self.caller() {
+                return Err(Unauthorized.into());
+            }
+            Ok(info.proxy)
         }
 
         fn resolver(&self) -> Result<Address, Error> {
@@ -668,6 +716,8 @@ mod contract_registry {
     const RESOLVER_PUBLISH: [u8; 4] = const_selector("publish(address,uint128,address)");
     const RESOLVER_SET_MIN_SUPPORTED: [u8; 4] = const_selector("setMinSupported(address,uint128)");
     const RESOLVER_SET_FROZEN: [u8; 4] = const_selector("setFrozen(address,bool)");
+    const RESOLVER_SET_FAST_PATH: [u8; 4] = const_selector("setFastPath(address,bool)");
+    const RESOLVER_SEAL: [u8; 4] = const_selector("seal(address)");
     const RESOLVER_SET_CODE: [u8; 4] = const_selector("setCode(address)");
 
     /// `[MAGIC][0][selector]`: a CDM meta call to a shim.
@@ -982,7 +1032,7 @@ mod tests {
     fn publish_rejects_invalid_keys() {
         let (mut contract, _mock) = deployed(ALICE);
 
-        for key in [0u128, 1u128 << 96, u128::MAX] {
+        for key in [0u128, 1u128 << 95, 1u128 << 96, u128::MAX] {
             assert_eq!(
                 contract.publish(NAME.into(), key, Address(ADDR_1), URI_1.into()),
                 Err(InvalidVersionKey.into()),
@@ -1266,6 +1316,102 @@ mod tests {
         assert_eq!(
             as_bob.unfreeze_contract("@cdm/missing".into()),
             Err(Unauthorized.into())
+        );
+    }
+
+    // ─── setFastPath / sealContract ──────────────────────────────────────────
+
+    #[test]
+    fn set_fast_path_forwards_to_the_resolver_and_emits() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+        mock.take_recorded_calls();
+
+        assert_eq!(contract.set_fast_path(NAME.into(), false), Ok(()));
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(
+                RESOLVER,
+                resolver_calldata(
+                    "setFastPath(address,bool)",
+                    &[&word_addr(PROXY), &word_bool(false)],
+                ),
+            )]
+        );
+        assert_eq!(
+            mock.events().last(),
+            Some(&(
+                vec![
+                    topic0("FastPathSet(string,bool)"),
+                    keccak256(NAME.as_bytes()),
+                ],
+                word_bool(false).to_vec(),
+            ))
+        );
+    }
+
+    #[test]
+    fn seal_contract_forwards_to_the_resolver_and_emits() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+        mock.take_recorded_calls();
+
+        assert_eq!(contract.seal_contract(NAME.into()), Ok(()));
+        assert_eq!(
+            mock.take_recorded_calls(),
+            vec![(
+                RESOLVER,
+                resolver_calldata("seal(address)", &[&word_addr(PROXY)]),
+            )]
+        );
+        assert_eq!(
+            mock.events().last(),
+            Some(&(
+                vec![topic0("ContractSealed(string)"), keccak256(NAME.as_bytes()),],
+                vec![],
+            ))
+        );
+    }
+
+    #[test]
+    fn set_fast_path_and_seal_contract_require_owner() {
+        let (mut contract, mock) = deployed(ALICE);
+        publish(&mut contract, NAME, V1_0_0, ADDR_1, URI_1);
+
+        // Not the owner (also covers unregistered names, which have no owner).
+        let (mut as_bob, _) = fork_with_caller(&mock, BOB);
+        assert_eq!(
+            as_bob.set_fast_path(NAME.into(), false),
+            Err(Unauthorized.into())
+        );
+        assert_eq!(
+            as_bob.set_fast_path("@cdm/missing".into(), false),
+            Err(Unauthorized.into())
+        );
+        assert_eq!(as_bob.seal_contract(NAME.into()), Err(Unauthorized.into()));
+        assert_eq!(
+            as_bob.seal_contract("@cdm/missing".into()),
+            Err(Unauthorized.into())
+        );
+    }
+
+    #[test]
+    fn set_fast_path_and_seal_contract_stop_while_the_registry_is_frozen() {
+        // The admin is exempt from the freeze, so the name gets another owner.
+        let (_contract, mock) = deployed(ADMIN);
+        let (mut as_alice, mock) = fork_with_caller(&mock, ALICE);
+        publish(&mut as_alice, NAME, V1_0_0, ADDR_1, URI_1);
+        let (mut as_admin, mock) = fork_with_caller(&mock, ADMIN);
+        as_admin.freeze().unwrap();
+
+        let (mut as_alice, _) = fork_with_caller(&mock, ALICE);
+        assert_eq!(
+            as_alice.set_fast_path(NAME.into(), false),
+            Err(ContractFrozen.into())
+        );
+        assert_eq!(
+            as_alice.seal_contract(NAME.into()),
+            Err(ContractFrozen.into())
         );
     }
 
@@ -1730,6 +1876,8 @@ mod tests {
             ),
             ("freezeContract(string)", encode(&name)),
             ("unfreezeContract(string)", encode(&name)),
+            ("setFastPath(string,bool)", encode(&(name.clone(), true))),
+            ("sealContract(string)", encode(&name)),
             ("getAddress(string)", encode(&name)),
             ("getMetadataUri(string)", encode(&name)),
             ("getProxy(string)", encode(&name)),

@@ -8,7 +8,7 @@
 
 /// `keccak256(label) - 1`, the EIP-1967 slot derivation. The `- 1` guarantees
 /// no known keccak preimage maps to the slot.
-const fn eip1967_slot(label: &[u8]) -> [u8; 32] {
+pub(crate) const fn eip1967_slot(label: &[u8]) -> [u8; 32] {
     minus_one(keccak_const::Keccak256::new().update(label).finalize())
 }
 

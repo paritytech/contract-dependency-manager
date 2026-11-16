@@ -335,6 +335,12 @@ function VersionsTab({ pkg, versions, loading, error }: VersionsTabProps) {
                     {minSupportedKey !== null && v.key < minSupportedKey && (
                         <span className="package-version-unsupported">unsupported</span>
                     )}
+                    {v.version === pkg.version && pkg.sealed && (
+                        <span className="package-version-flag">sealed</span>
+                    )}
+                    {v.version === pkg.version && pkg.fastPathOff && (
+                        <span className="package-version-flag">fast path off</span>
+                    )}
                     {v.version === pkg.version && (
                         <span className="package-version-current">current</span>
                     )}
