@@ -252,6 +252,17 @@ describe("multiple versions over one storage", () => {
         expect(Number(count.value)).toBe(4);
     });
 
+    test("empty calldata reaches the implementation on both fast-path routes", async () => {
+        const direct = await dryRunCall(api, implB, "0x");
+        expect(direct.success).toBe(true);
+        for (const input of ["0x", encodeVersionedCall(KEY_1_1_0, "0x")]) {
+            const r = await dryRunCall(api, proxyAddress, input);
+            expect(r.success).toBe(true);
+            expect(r.reverted).toBe(direct.reverted);
+            expect(r.data).toBe(direct.data);
+        }
+    });
+
     test("versioned reads through both versions see the same value", async () => {
         for (const key of [KEY_1_0_0, KEY_1_1_0]) {
             const r = await dryRunCall(api, proxyAddress, encodeVersionedCall(key, GET_COUNT));

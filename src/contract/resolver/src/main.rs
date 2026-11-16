@@ -209,7 +209,7 @@ mod contract_resolver {
             self.require_admin()?;
             let mut routing = self.routing.get(&proxy);
             require_unsealed(&routing)?;
-            if version_key >> 96 != 0 {
+            if version_key >> 95 != 0 {
                 return Err(InvalidVersionKey.into());
             }
             if version_key < routing.min_supported {
@@ -676,7 +676,7 @@ mod tests {
     #[test]
     fn publish_rejects_invalid_keys_and_zero_impl() {
         let (mut resolver, _mock) = deployed(&[]);
-        for key in [0u128, 1u128 << 96] {
+        for key in [0u128, 1u128 << 95, 1u128 << 96] {
             assert_eq!(
                 resolver.publish(Address(SHIM), key, Address(IMPL_1)),
                 Err(InvalidVersionKey.into())

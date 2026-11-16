@@ -59,12 +59,10 @@ export const SHIM_META = {
     seal: "0xe2e33028",
 } as const;
 
-/** The shim's own storage slots (`keccak256(label) - 1`); every other slot belongs to the name's implementations. */
+/** The shim's own storage slot (`keccak256(label) - 1`); every other slot belongs to the name's implementations. */
 export const SHIM_SLOTS = {
-    /** `cdm.shim.fast`: the latest version as one `packFastPath` word; all zero when the shim has no shortcut. */
+    /** `cdm.shim.fast`: one `packFastPath` word holding the latest version and the sealed flag; all zero when the shim has no shortcut. */
     fast: "0xf0a018d1f0a0c89702867d3b938e95b2525db0fc04b1c93fdac5127d62eef3a2",
-    /** `cdm.shim.sealed`: non-zero once the shim is sealed. */
-    sealed: "0x7ae89d045ec485b4c2afaca0f585635101dbf8f05b43a137d6f198bfa339400d",
 } as const;
 
 /** `resolve(address,uint256,bytes)`: the one request every shim makes to the resolver. */
@@ -75,14 +73,17 @@ export const RESOLUTION_KIND = { return: 0, delegate: 1 } as const;
 
 const MAX_COMPONENT = 0xffff_ffffn;
 
+/** The largest major version: the shim keeps a key in 95 bits of its state word, one fewer than three u32s. */
+export const MAX_MAJOR = 0x7fff_ffff;
+
 /** Pack a semver triple into its ordered u128 key: `major<<64|minor<<32|patch`. */
 export function packVersionKey(major: number, minor: number, patch: number): bigint {
-    for (const [component, what] of [
-        [major, "major"],
-        [minor, "minor"],
-        [patch, "patch"],
+    for (const [component, what, max] of [
+        [major, "major", BigInt(MAX_MAJOR)],
+        [minor, "minor", MAX_COMPONENT],
+        [patch, "patch", MAX_COMPONENT],
     ] as const) {
-        if (!Number.isInteger(component) || component < 0 || BigInt(component) > MAX_COMPONENT) {
+        if (!Number.isInteger(component) || component < 0 || BigInt(component) > max) {
             throw new Error(`Invalid semver ${what} component: ${component}`);
         }
     }
@@ -91,7 +92,7 @@ export function packVersionKey(major: number, minor: number, patch: number): big
 
 /** Split a key back into its `{major, minor, patch}` triple. */
 export function unpackVersionKey(key: bigint): { major: number; minor: number; patch: number } {
-    if (key < 0n || key >> 96n !== 0n) {
+    if (key < 0n || key >> 95n !== 0n) {
         throw new Error(`Not a packed semver key: ${key}`);
     }
     return {
@@ -116,9 +117,9 @@ export function keyToSemver(key: bigint): string {
     return `${major}.${minor}.${patch}`;
 }
 
-/** A key is publishable when non-zero with the top 32 bits clear. */
+/** A key is publishable when non-zero with the top 33 bits clear. */
 export function isPublishableKey(key: bigint): boolean {
-    return key !== META_KEY && key >= 0n && key >> 96n === 0n;
+    return key !== META_KEY && key >= 0n && key >> 95n === 0n;
 }
 
 // ─── Byte plumbing ─────────────────────────────────────────────────────────
@@ -311,34 +312,44 @@ export function decodeVersionPair(data: Hex | Uint8Array): { key: bigint; target
 
 // ─── Shim fast-path word ───────────────────────────────────────────────────
 
+/** Set in the first byte of the fast-path word once the shim is sealed. */
+const SEALED_FLAG = 0x80;
+
 /**
- * The word at `SHIM_SLOTS.fast`: `[version key: 12 bytes BE][implementation:
- * 20 bytes]`. A publishable key has its top 32 bits clear, so 12 bytes hold
- * all of it.
+ * The word at `SHIM_SLOTS.fast`: `[sealed: 1 bit][version key: 95 bits BE]
+ * [implementation: 20 bytes]`. A publishable key has its top 33 bits clear,
+ * so 95 bits hold all of it.
  */
-export function packFastPath(key: bigint, implementation: string): Hex {
-    if (key < 0n || key >> 96n !== 0n) {
+export function packFastPath(key: bigint, implementation: string, sealed = false): Hex {
+    if (key < 0n || key >> 95n !== 0n) {
         throw new Error(`Version key does not fit the fast-path word: ${key}`);
     }
-    return bytesToHex(
-        concatBytes(
-            u128Bytes(key, "version key").subarray(4),
-            wordAddress(implementation).subarray(12),
-        ),
+    const word = concatBytes(
+        u128Bytes(key, "version key").subarray(4),
+        wordAddress(implementation).subarray(12),
     );
+    if (sealed) {
+        word[0] |= SEALED_FLAG;
+    }
+    return bytesToHex(word);
 }
 
-/** Split a fast-path word into its version key and implementation. */
-export function unpackFastPath(word: Hex | Uint8Array): { key: bigint; implementation: Hex } {
+/** Split a fast-path word into the sealed flag, the version key and the implementation. */
+export function unpackFastPath(word: Hex | Uint8Array): {
+    sealed: boolean;
+    key: bigint;
+    implementation: Hex;
+} {
     const bytes = typeof word === "string" ? hexToBytes(word, "fast-path word") : word;
     if (bytes.length !== 32) {
         throw new Error(`Fast-path word must be 32 bytes, got ${bytes.length}`);
     }
-    let key = 0n;
-    for (let i = 0; i < 12; i++) {
+    const sealed = (bytes[0] & SEALED_FLAG) !== 0;
+    let key = BigInt(bytes[0] & ~SEALED_FLAG);
+    for (let i = 1; i < 12; i++) {
         key = (key << 8n) | BigInt(bytes[i]);
     }
-    return { key, implementation: bytesToHex(bytes.subarray(12)) };
+    return { sealed, key, implementation: bytesToHex(bytes.subarray(12)) };
 }
 
 // ─── In-source tests ───────────────────────────────────────────────────────
@@ -380,13 +391,12 @@ if (import.meta.vitest) {
             }
         });
 
-        it("shim slots are keccak256(label) - 1 (pinned in Rust core)", () => {
+        it("the shim slot is keccak256(label) - 1 (pinned in Rust core)", () => {
             const slot = (label: string) => {
                 const hash = BigInt(bytesToHex(keccak_256(new TextEncoder().encode(label))));
                 return `0x${(hash - 1n).toString(16).padStart(64, "0")}`;
             };
             expect(slot("cdm.shim.fast")).toBe(SHIM_SLOTS.fast);
-            expect(slot("cdm.shim.sealed")).toBe(SHIM_SLOTS.sealed);
         });
 
         it("initialize and resolve selectors derive from their signatures (pinned in Rust core)", () => {
@@ -427,7 +437,12 @@ if (import.meta.vitest) {
         it("rejects unpublishable keys", () => {
             expect(isPublishableKey(0n)).toBe(false);
             expect(isPublishableKey(1n << 96n)).toBe(false);
+            expect(isPublishableKey(BigInt(MAX_MAJOR + 1) << 64n)).toBe(false);
             expect(isPublishableKey(packVersionKey(0, 0, 1))).toBe(true);
+            expect(isPublishableKey(packVersionKey(MAX_MAJOR, 0xffff_ffff, 0xffff_ffff))).toBe(
+                true,
+            );
+            expect(() => packVersionKey(MAX_MAJOR + 1, 0, 0)).toThrow(/major/);
         });
     });
 
@@ -495,16 +510,27 @@ if (import.meta.vitest) {
             const word = packFastPath(key, implementation);
             // Major, minor, patch as big-endian u32s, then the address.
             expect(word).toBe(`0x000000010000000200000003${"ab".repeat(20)}`);
-            expect(unpackFastPath(word)).toEqual({ key, implementation });
+            expect(unpackFastPath(word)).toEqual({ sealed: false, key, implementation });
         });
 
-        it("holds the largest publishable key", () => {
-            const max = packVersionKey(0xffff_ffff, 0xffff_ffff, 0xffff_ffff);
+        it("carries the sealed flag in its top bit (pinned in Rust core)", () => {
+            const key = packVersionKey(1, 2, 3);
+            const implementation = `0x${"ab".repeat(20)}`;
+            const word = packFastPath(key, implementation, true);
+            expect(word).toBe(`0x800000010000000200000003${"ab".repeat(20)}`);
+            expect(unpackFastPath(word)).toEqual({ sealed: true, key, implementation });
+        });
+
+        it("holds the largest publishable key beside the flag", () => {
+            const max = packVersionKey(MAX_MAJOR, 0xffff_ffff, 0xffff_ffff);
             const implementation = `0x${"01".repeat(20)}`;
-            expect(unpackFastPath(packFastPath(max, implementation))).toEqual({
-                key: max,
-                implementation,
-            });
+            for (const sealed of [false, true]) {
+                expect(unpackFastPath(packFastPath(max, implementation, sealed))).toEqual({
+                    sealed,
+                    key: max,
+                    implementation,
+                });
+            }
         });
     });
 }

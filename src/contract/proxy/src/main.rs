@@ -11,16 +11,16 @@
 //! `set_immutable_data` only from a constructor, so no delegated code can ever
 //! redirect a shim.
 //!
-//! **Own storage** — two slots at `keccak256(label) - 1`
+//! **Own storage** — one slot at `keccak256(label) - 1`
 //! (`contract_registry_core::versioning::shim`); every other slot belongs to
 //! the name's implementations.
 //!
-//! - `FAST_SLOT` (`cdm.shim.fast`): the word `[version key: 12 bytes
-//!   big-endian][implementation: 20 bytes]`. A publishable key has its top
-//!   32 bits clear, so 12 bytes hold all of it. A zero implementation means
-//!   no shortcut, and the whole word is zero then.
-//! - `SEALED_SLOT` (`cdm.shim.sealed`): non-zero once sealed. `seal` sets it
-//!   to 1 and nothing clears it.
+//! `FAST_SLOT` (`cdm.shim.fast`) holds the word `[sealed: 1 bit][version
+//! key: 95 bits big-endian][implementation: 20 bytes]`. A publishable key
+//! has its top 33 bits clear, so 95 bits hold all of it. A zero
+//! implementation means no shortcut. The sealed bit is set by `seal` and
+//! nothing clears it; every decision below reads this one word, so a set
+//! bit always means sealed.
 //!
 //! **Calldata** is classified by `versioning::route_calldata`: *plain* (no
 //! `MAGIC` prefix), *versioned* (`[MAGIC][16-byte key != 0][inner calldata]`),
@@ -38,8 +38,8 @@
 //!      implementation)`: the two fields of `FAST_SLOT` as ABI words, which
 //!      is the resolver's answer for the same version.
 //!
-//!    Reading `FAST_SLOT` is the only storage access on this path: it neither
-//!    reads `SEALED_SLOT` nor calls the resolver.
+//!    Reading `FAST_SLOT` is the only storage access on this path, and the
+//!    resolver is not called.
 //! 2. *Own meta calls.* A meta call with one of these selectors is handled
 //!    here, sealed or not, and never reaches the resolver:
 //!    - `sealed()` `0xe4b203ef` returns `bool`.
@@ -48,12 +48,12 @@
 //!      reverts `NotResolver()` unless the caller is the resolver, then
 //!      `Sealed()` if the shim is sealed. A zero `implementation` clears
 //!      `FAST_SLOT`; a non-zero one is stored with `key`, which must be
-//!      publishable (non-zero, top 32 bits clear), else `MalformedCall()`.
+//!      publishable (non-zero, top 33 bits clear), else `MalformedCall()`.
 //!    - `seal(uint128 key, address implementation)` `0xe2e33028` reverts
 //!      `NotResolver()` unless the caller is the resolver, then `Sealed()` if
 //!      the shim is already sealed. `implementation` must be non-zero and
 //!      `key` publishable, else `MalformedCall()`. It stores them in
-//!      `FAST_SLOT`, then sets `SEALED_SLOT`.
+//!      `FAST_SLOT` with the sealed bit set.
 //!
 //!    The two writes check the caller, then the seal, then their arguments,
 //!    which they read as two ABI words after the 24-byte meta header: a
@@ -61,14 +61,15 @@
 //!    return nothing. Bytes past a selector's arguments are ignored.
 //! 3. *Everything else* — a plain call or `latest()` without a shortcut, a
 //!    versioned call for another key, any other meta selector, malformed
-//!    calldata — reverts `Sealed()` when `SEALED_SLOT` is set, and otherwise
-//!    goes to the resolver. `SEALED_SLOT` is read only when `FAST_SLOT` holds
-//!    an implementation, which a sealed shim always does.
+//!    calldata — reverts `Sealed()` when the sealed bit is set, and otherwise
+//!    goes to the resolver.
 //!
-//! A sealed shim always holds an implementation, so step 1 keeps serving
-//! plain calls, calls pinned to the sealed key and `latest()`, and no other
-//! version is ever served again. An unsealed shim with a zero `FAST_SLOT`
-//! sends every call but its own meta calls to the resolver.
+//! `seal` stores an implementation with the sealed bit, so step 1 keeps
+//! serving plain calls, calls pinned to the sealed key and `latest()`, and no
+//! other version is ever served again. A shim whose sealed bit is set never
+//! calls the resolver, whatever the rest of the word holds. An unsealed shim
+//! with a zero `FAST_SLOT` sends every call but its own meta calls to the
+//! resolver.
 //!
 //! **Request** — one read-only call to the resolver:
 //! `resolve(address caller, uint256 value, bytes data)`, i.e. the selector
@@ -144,7 +145,7 @@ mod contract_proxy {
         MalformedCall(MalformedCall),
     }
 
-    /// No fields: the shim's own state sits at the two fixed slots in
+    /// No fields: the shim's own state sits at the one fixed slot in
     /// `versioning::shim`, and every other slot belongs to the name's
     /// implementations.
     pub struct ContractProxy {}
@@ -169,7 +170,7 @@ mod contract_proxy {
 
             let mut fast = [0u8; 32];
             host.get_storage_or_zero(StorageFlags::empty(), &shim::FAST_SLOT, &mut fast);
-            let (fast_key, implementation) = shim::unpack_fast_path(&fast);
+            let (sealed, fast_key, implementation) = shim::unpack_fast_path(&fast);
             if implementation != [0u8; 20] {
                 let strip = match route {
                     CallRoute::Plain => Some(0),
@@ -189,13 +190,13 @@ mod contract_proxy {
                 // The shim's copy is the pair the resolver would answer with.
                 if selector == meta::LATEST && implementation != [0u8; 20] {
                     let mut words = [0u8; 64];
-                    words[20..32].copy_from_slice(&fast[..12]);
-                    words[44..].copy_from_slice(&fast[12..]);
+                    words[16..32].copy_from_slice(&fast_key.to_be_bytes());
+                    words[44..].copy_from_slice(&implementation);
                     return self.answer(&words);
                 }
                 if selector == shim::SEALED {
                     let mut word = [0u8; 32];
-                    word[31] = self.sealed() as u8;
+                    word[31] = sealed as u8;
                     return self.answer(&word);
                 }
                 if selector == shim::RESOLVER {
@@ -204,16 +205,14 @@ mod contract_proxy {
                     return self.answer(&word);
                 }
                 if selector == shim::SET_FAST_PATH {
-                    return self.store_fast_path(data_len, false);
+                    return self.store_fast_path(data_len, sealed, false);
                 }
                 if selector == shim::SEAL {
-                    return self.store_fast_path(data_len, true);
+                    return self.store_fast_path(data_len, sealed, true);
                 }
             }
 
-            // A sealed shim always holds an implementation, so an empty
-            // `FAST_SLOT` settles it without reading `SEALED_SLOT`.
-            if implementation != [0u8; 20] && self.sealed() {
+            if sealed {
                 return Err(Sealed.into());
             }
 
@@ -270,16 +269,16 @@ mod contract_proxy {
         }
 
         /// `setFastPath`, or `seal` when `seal` is set: resolver-only, never
-        /// on a sealed shim, with `(uint128 key, address implementation)`
-        /// after the meta header.
-        fn store_fast_path(&self, data_len: usize, seal: bool) -> Result<(), Error> {
+        /// on a shim that is already `sealed`, with `(uint128 key, address
+        /// implementation)` after the meta header.
+        fn store_fast_path(&self, data_len: usize, sealed: bool, seal: bool) -> Result<(), Error> {
             let host = self.host();
             let mut caller = [0u8; 20];
             host.caller(&mut caller);
             if caller != self.resolver() {
                 return Err(NotResolver.into());
             }
-            if self.sealed() {
+            if sealed {
                 return Err(Sealed.into());
             }
 
@@ -301,18 +300,13 @@ mod contract_proxy {
                 if !is_publishable_key(key) {
                     return Err(MalformedCall.into());
                 }
-                shim::pack_fast_path(key, &implementation)
+                shim::pack_fast_path(key, &implementation, seal)
             } else if seal {
                 return Err(MalformedCall.into());
             } else {
                 [0u8; 32]
             };
             host.set_storage_or_clear(StorageFlags::empty(), &shim::FAST_SLOT, &word);
-            if seal {
-                let mut flag = [0u8; 32];
-                flag[31] = 1;
-                host.set_storage_or_clear(StorageFlags::empty(), &shim::SEALED_SLOT, &flag);
-            }
             self.answer(&[])
         }
 
@@ -343,14 +337,6 @@ mod contract_proxy {
         }
 
         #[inline(never)]
-        fn sealed(&self) -> bool {
-            let mut word = [0u8; 32];
-            self.host()
-                .get_storage_or_zero(StorageFlags::empty(), &shim::SEALED_SLOT, &mut word);
-            word != [0u8; 32]
-        }
-
-        #[inline(never)]
         fn resolver(&self) -> [u8; 20] {
             let mut resolver = [0u8; 20];
             let mut resolver_ref: &mut [u8] = &mut resolver;
@@ -376,7 +362,7 @@ mod contract_proxy {
 mod tests {
     use super::contract_proxy::{ContractProxy, Error};
     use contract_registry_core::versioning::shim::{
-        FAST_SLOT, SEAL, SEALED, SEALED_SLOT, SET_FAST_PATH, pack_fast_path,
+        FAST_SLOT, SEAL, SEALED, SEALED_FLAG, SET_FAST_PATH, pack_fast_path,
     };
     use contract_registry_core::versioning::{self, MAGIC, META_KEY, meta, pack_version, resolve};
     use pvm_contract_sdk::{
@@ -461,14 +447,16 @@ mod tests {
     fn store_fast_path(mock: &MockHost, key: u128, implementation: [u8; 20]) {
         mock.set_raw_storage(
             FAST_SLOT.to_vec(),
-            pack_fast_path(key, &implementation).to_vec(),
+            pack_fast_path(key, &implementation, false).to_vec(),
         );
     }
 
     /// Seal the shim on `(key, implementation)`.
     fn store_sealed(mock: &MockHost, key: u128, implementation: [u8; 20]) {
-        store_fast_path(mock, key, implementation);
-        mock.set_raw_storage(SEALED_SLOT.to_vec(), word_u128(1).to_vec());
+        mock.set_raw_storage(
+            FAST_SLOT.to_vec(),
+            pack_fast_path(key, &implementation, true).to_vec(),
+        );
     }
 
     fn versioned(key: u128, inner: &[u8]) -> Vec<u8> {
@@ -675,9 +663,9 @@ mod tests {
 
     #[test]
     fn call_pinned_to_another_key_asks_the_resolver() {
-        // A different version, and a key equal to the stored one in its low
-        // 96 bits only.
-        for key in [V2_0_0, V1_2_3 | 1 << 96] {
+        // A different version, and keys equal to the stored one except in
+        // bits the word does not hold.
+        for key in [V2_0_0, V1_2_3 | 1 << 96, V1_2_3 | 1 << 95] {
             let calldata = versioned(key, &INNER);
             let (mut shim, mock) = deployed(
                 &calldata,
@@ -818,6 +806,8 @@ mod tests {
     fn sealed_shim_reverts_everything_else_without_asking_the_resolver() {
         for calldata in [
             versioned(V2_0_0, &INNER),
+            // The sealed key with the flag's bit set is another key.
+            versioned(V1_2_3 | 1 << 95, &INNER),
             meta_call(meta::FROZEN, &[]),
             meta_call(meta::CALL_CODE, &word_addr(OTHER_TARGET)),
             MAGIC.to_vec(),
@@ -825,6 +815,29 @@ mod tests {
             let (mut shim, mock) =
                 deployed(&calldata, 0, resolution(resolve::RETURN, [0u8; 20], 0, &[]));
             store_sealed(&mock, V1_2_3, TARGET);
+            assert!(matches!(shim.fallback(), Err(Error::Sealed(_))));
+            assert!(mock.take_recorded_calls().is_empty());
+        }
+    }
+
+    #[test]
+    fn sealed_flag_without_an_implementation_never_asks_the_resolver() {
+        let flag_only = |mock: &MockHost| {
+            let mut word = [0u8; 32];
+            word[0] = SEALED_FLAG;
+            mock.set_raw_storage(FAST_SLOT.to_vec(), word.to_vec());
+        };
+        assert_eq!(query(SEALED, &[], flag_only), returns(&word_u128(1)));
+
+        for calldata in [
+            CALLDATA.to_vec(),
+            versioned(V1_2_3, &INNER),
+            meta_call(meta::LATEST, &[]),
+            meta_call(meta::CALL_CODE, &word_addr(OTHER_TARGET)),
+        ] {
+            let (mut shim, mock) =
+                deployed(&calldata, 0, resolution(resolve::RETURN, [0u8; 20], 0, &[]));
+            flag_only(&mock);
             assert!(matches!(shim.fallback(), Err(Error::Sealed(_))));
             assert!(mock.take_recorded_calls().is_empty());
         }
@@ -865,9 +878,8 @@ mod tests {
 
         assert_eq!(
             mock.get_raw_storage(&FAST_SLOT),
-            Some(pack_fast_path(V1_2_3, &TARGET).to_vec())
+            Some(pack_fast_path(V1_2_3, &TARGET, false).to_vec())
         );
-        assert_eq!(mock.get_raw_storage(&SEALED_SLOT), None);
         assert_eq!(mock.take_return_value(), returns(&[]));
         assert!(mock.take_recorded_calls().is_empty());
     }
@@ -884,17 +896,13 @@ mod tests {
     }
 
     #[test]
-    fn seal_from_the_resolver_stores_the_word_and_the_flag() {
+    fn seal_from_the_resolver_stores_the_word_with_the_flag() {
         let (mut shim, mock) = written_by(RESOLVER, SEAL, V1_2_3, TARGET);
         assert!(shim.fallback().is_ok());
 
         assert_eq!(
             mock.get_raw_storage(&FAST_SLOT),
-            Some(pack_fast_path(V1_2_3, &TARGET).to_vec())
-        );
-        assert_eq!(
-            mock.get_raw_storage(&SEALED_SLOT),
-            Some(word_u128(1).to_vec())
+            Some(pack_fast_path(V1_2_3, &TARGET, true).to_vec())
         );
         assert_eq!(mock.take_return_value(), returns(&[]));
     }
@@ -938,7 +946,7 @@ mod tests {
             ("padding in the key word", padded_key),
             ("padding in the address word", padded_address),
             ("the reserved key", fast_path_args(0, TARGET)),
-            ("a key past 96 bits", fast_path_args(1 << 96, TARGET)),
+            ("a key past 95 bits", fast_path_args(1 << 95, TARGET)),
         ];
         for selector in [SET_FAST_PATH, SEAL] {
             for (what, args) in &bad {
@@ -964,7 +972,7 @@ mod tests {
         assert!(shim.fallback().is_ok());
         assert_eq!(
             mock.get_raw_storage(&FAST_SLOT),
-            Some(pack_fast_path(V1_2_3, &TARGET).to_vec())
+            Some(pack_fast_path(V1_2_3, &TARGET, false).to_vec())
         );
     }
 }

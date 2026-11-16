@@ -1041,7 +1041,7 @@ mod tests {
     fn publish_rejects_invalid_keys() {
         let (mut contract, _mock) = deployed(ALICE);
 
-        for key in [0u128, 1u128 << 96, u128::MAX] {
+        for key in [0u128, 1u128 << 95, 1u128 << 96, u128::MAX] {
             assert_eq!(
                 contract.publish(NAME.into(), key, Address(ADDR_1), URI_1.into()),
                 Err(InvalidVersionKey.into()),
