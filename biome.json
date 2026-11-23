@@ -11,7 +11,9 @@
             "**/.cdm/**",
             "**/.papi/**",
             "**/target/**",
-            "**/reference-repos/**"
+            "**/reference-repos/**",
+            "src/contract/solidity/out*/**",
+            "src/contract/solidity/cache*/**"
         ]
     },
     "formatter": {
