@@ -108,7 +108,7 @@ contract Registry {
     /// keccak-256 of the frozen per-name shim blob
     /// (`src/contract/proxy/artifacts/contract-proxy.polkavm`). Every name's
     /// shim is created from it, and it is part of each new name's address.
-    bytes32 private constant SHIM_CODE_HASH = 0x7e5df2e36e06a4f78320a5fbdb4443ce4963850f5d2e2b371ea53a633c7c75ec;
+    bytes32 private constant SHIM_CODE_HASH = 0x33ea415cad2e637f584f998e69e54f7611a433bf7ab8175b155fe41c1f17afd1;
 
     /// The PVM contract that instantiates a shim by code hash. EVM bytecode
     /// cannot create a PVM contract, so the registry delegate-calls it and
