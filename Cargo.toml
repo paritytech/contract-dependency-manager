@@ -1,14 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
-    "src/contract",
     "src/contract/core",
     "src/contract/create3/child",
     "src/contract/create3/factory",
     "src/contract/eip1967-proxy",
     "src/contract/host",
     "src/contract/proxy",
-    "src/contract/resolver",
     "src/contract/shim-factory",
     "src/lib/cdm/rust",
     "src/lib/cdm/rust-macros",

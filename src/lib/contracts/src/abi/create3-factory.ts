@@ -1,18 +1,12 @@
 import type { AbiEntry, AbiParam } from "@parity/product-sdk-contracts";
 
 /**
- * ABI for the CREATE3 factory contract.
+ * Hand-written ABI of the CREATE3 factory (`src/contract/create3/factory`).
  *
- * Source of truth: `src/contract/create3/factory` compiled to PolkaVM; this
- * array mirrors the Solidity-ABI export produced by `cargo pvm-contract
- * build` (`target/release/create3-factory.abi.json`). Keep it bit-for-bit
- * identical to the generated metadata — `tests/registry-abi-sync.test.ts`
- * compares it against the built artifact when that exists.
- *
- * NOTE the frozen-artifact rule: the DEPLOYED factory is always the
- * committed blob at `src/contract/create3/artifacts/create3-factory.polkavm`
- * (its bytes pin the factory's CREATE2 address), so this ABI only ever
- * changes together with a deliberate new factory generation.
+ * The DEPLOYED factory is always the committed blob at
+ * `src/contract/create3/artifacts/create3-factory.polkavm` (its bytes pin the
+ * factory's CREATE2 address), so this ABI only ever changes together with a
+ * deliberate new factory generation.
  */
 
 /** Generated-ABI entry shape: `AbiEntry` plus the event-only fields. */
@@ -83,11 +77,6 @@ const FACTORY_ABI: FactoryAbiEntry[] = [
             { indexed: false, name: "code_hash", type: "bytes32" },
         ],
     },
-    { type: "error", name: "InvalidCalldata", inputs: [] },
-    { type: "error", name: "CalldataTooLarge", inputs: [] },
-    { type: "error", name: "NoSelector", inputs: [] },
-    { type: "error", name: "UnknownSelector", inputs: [] },
-    { type: "error", name: "NonPayableValueReceived", inputs: [] },
 ];
 
 export const CREATE3_FACTORY_ABI: AbiEntry[] = FACTORY_ABI;

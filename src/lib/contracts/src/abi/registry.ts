@@ -1,19 +1,20 @@
 import type { AbiEntry, AbiParam } from "@parity/product-sdk-contracts";
 
 /**
- * Hand-mirrored ABIs of `src/contract` (the registry implementation) and
- * `src/contract/eip1967-proxy`, matching `target/release/*.abi.json` from
- * `cargo pvm-contract build`; `tests/registry-abi-sync.test.ts` diffs them
- * against the built artifacts when those exist.
+ * Hand-mirrored ABIs of the registry implementation
+ * (`src/contract/solidity/src/Registry.sol`) and the EIP-1967 proxy
+ * (`src/contract/eip1967-proxy`). `tests/registry-abi-sync.test.ts` diffs the
+ * registry's against forge's artifact when that exists; the proxy is a
+ * constructor only.
  *
  * `CONTRACTS_REGISTRY_ABI` is used at the registry proxy address; the EIP-1967
  * proxy's own ABI is only needed to deploy one (`constructor(address
  * implementation, address admin)`), in front of the registry or the resolver.
  *
  * Multi-value returns are ONE unnamed tuple output with named components.
- * Where the generated JSON says `is_some`, this file keeps `isSome` —
- * product-sdk keys decoded objects by component name and every consumer
- * reads `isSome`/`value`; types, structure, and order stay bit-exact.
+ * product-sdk keys decoded objects by component name, so the names here are
+ * what every consumer reads. `ContractEntry.address` is `addr` in the
+ * Solidity source, where `address` cannot name a field.
  */
 
 /** Generated-ABI entry shape: `AbiEntry` plus the event-only fields. */
@@ -30,7 +31,7 @@ type RegistryAbiEntry = Omit<AbiEntry, "inputs" | "outputs"> & {
 const REGISTRY_ABI: RegistryAbiEntry[] = [
     {
         type: "constructor",
-        inputs: [],
+        inputs: [{ name: "shimFactory", type: "address" }],
         stateMutability: "nonpayable",
     },
     {
@@ -66,7 +67,7 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
         name: "getProxyCodeHash",
         inputs: [],
         outputs: [{ name: "", type: "bytes32" }],
-        stateMutability: "view",
+        stateMutability: "pure",
     },
     {
         type: "function",
@@ -546,31 +547,6 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
         ],
         anonymous: false,
     },
-    {
-        type: "error",
-        name: "InvalidCalldata",
-        inputs: [],
-    },
-    {
-        type: "error",
-        name: "CalldataTooLarge",
-        inputs: [],
-    },
-    {
-        type: "error",
-        name: "NoSelector",
-        inputs: [],
-    },
-    {
-        type: "error",
-        name: "UnknownSelector",
-        inputs: [],
-    },
-    {
-        type: "error",
-        name: "NonPayableValueReceived",
-        inputs: [],
-    },
 ];
 
 export const CONTRACTS_REGISTRY_ABI: AbiEntry[] = REGISTRY_ABI;
@@ -584,11 +560,6 @@ const EIP1967_PROXY_ABI: RegistryAbiEntry[] = [
         ],
         stateMutability: "nonpayable",
     },
-    { type: "error", name: "InvalidCalldata", inputs: [] },
-    { type: "error", name: "CalldataTooLarge", inputs: [] },
-    { type: "error", name: "NoSelector", inputs: [] },
-    { type: "error", name: "UnknownSelector", inputs: [] },
-    { type: "error", name: "NonPayableValueReceived", inputs: [] },
 ];
 
 /** Deploy-time only: the proxy exposes no methods of its own. */

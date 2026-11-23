@@ -2,18 +2,18 @@
 /**
  * Deploy CDM's on-chain contracts to Asset Hub via the CREATE3 factory:
  * (i) bootstrap the frozen CREATE3 factory if the network lacks it,
- * (ii) CREATE2 the registry implementation blob, (iii) upload the EIP-1967
- * proxy code and deploy the registry proxy THROUGH the factory, (iv) deploy
- * the resolver — its implementation blob plus its own EIP-1967 proxy through
- * the factory, admin = the registry — and hand it to the registry
- * (`setResolver`), (v) upload the frozen per-name shim blob, whose hash is
- * compiled into the registry. The two proxy addresses are
+ * (ii) CREATE2 the shim factory and the registry implementation built for
+ * it, (iii) upload the EIP-1967 proxy code and deploy the registry proxy
+ * THROUGH the CREATE3 factory, (iv) deploy the resolver — its implementation
+ * plus its own EIP-1967 proxy through the factory, admin = the registry —
+ * and hand it to the registry (`setResolver`), (v) upload the frozen
+ * per-name shim blob, whose hash is compiled into the registry. The two proxy addresses are
  * the stable registry address (CONTRACTS_REGISTRY_ADDR) and resolver address
  * (CDM_RESOLVER_ADDR) — pure functions of (factory, salt), independent of
  * any bytecode or constructor input.
  *
  * With --upgrade, no factory or proxy is redeployed: the new registry
- * implementation blob is deployed at a fresh CREATE2 salt (numeric suffix
+ * implementation is deployed at a fresh CREATE2 salt (numeric suffix
  * bumped past consumed ones unless --impl-package pins it), `setCode`
  * repoints the live proxy, and the resolver and shim blob are ensured.
  * --upgrade-resolver does the same for the resolver implementation through
@@ -52,12 +52,10 @@ import { getAccount } from "@parity/cdm-utils/accounts";
 import {
     ContractDeployer,
     CONTRACTS_REGISTRY_ABI,
-    CONTRACTS_REGISTRY_CRATE,
-    CONTRACTS_EIP1967_PROXY_CRATE,
-    CONTRACTS_RESOLVER_CRATE,
     CONTRACT_RESOLVER_ABI,
     CREATE3_FACTORY_ABI,
     predictRegistryDeploy,
+    registryArtifacts,
     deployRegistryWithProxy,
     upgradeRegistryImplementation,
     upgradeResolverImplementation,
@@ -93,14 +91,9 @@ if (opts.upgrade && opts["upgrade-resolver"]) {
 }
 
 const rootDir = resolve(import.meta.dir, "../../..");
-const implPvmPath = resolve(rootDir, `target/release/${CONTRACTS_REGISTRY_CRATE}.polkavm`);
-const eip1967ProxyPvmPath = resolve(
-    rootDir,
-    `target/release/${CONTRACTS_EIP1967_PROXY_CRATE}.polkavm`,
-);
-const resolverImplPvmPath = resolve(rootDir, `target/release/${CONTRACTS_RESOLVER_CRATE}.polkavm`);
+const artifacts = registryArtifacts(rootDir);
 
-for (const path of [implPvmPath, eip1967ProxyPvmPath, resolverImplPvmPath]) {
+for (const path of Object.values(artifacts)) {
     if (!existsSync(path)) {
         console.error(`Registry not built: ${path}`);
         console.error("Run: pnpm build:registry");
@@ -150,7 +143,7 @@ if (mapping.ok) {
 // and resolver proxies). The proxy addresses are pure functions of (factory,
 // salt), so all idempotence/preflight checks below compare against
 // `expected.registryAddress`.
-const expected = predictRegistryDeploy(deployer, rootDir, implPvmPath, resolverImplPvmPath);
+const expected = predictRegistryDeploy(deployer, rootDir, artifacts);
 
 /** A contract handle with the admin signer attached, for writes and their verifying reads. */
 function adminContractAt(address: string, abi: AbiEntry[]) {
@@ -181,7 +174,7 @@ async function requireLiveRegistry(): Promise<string> {
     return registryAddress;
 }
 
-// In-place upgrade: deploy the new implementation blob at a fresh CREATE2
+// In-place upgrade: deploy the new implementation at a fresh CREATE2
 // salt, `setCode` through the live proxy, and ensure the resolver and the
 // per-name shim code hash. No factory or proxy redeploy — the registry
 // address never moves.
@@ -190,9 +183,7 @@ if (opts.upgrade) {
     console.log(`Upgrading ContractRegistry implementation behind ${registryAddress}...`);
     const upgraded = await upgradeRegistryImplementation(deployer, {
         rootDir,
-        implPvmPath,
-        eip1967ProxyPvmPath,
-        resolverImplPvmPath,
+        artifacts,
         registryAddress,
         implPackage: opts["impl-package"],
         registryContract: registryContractAt,
@@ -210,13 +201,13 @@ if (opts.upgrade) {
     process.exit(0);
 }
 
-// Resolver upgrade: deploy the new resolver implementation blob at a fresh
+// Resolver upgrade: deploy the new resolver implementation at a fresh
 // CREATE2 salt and repoint the live resolver proxy through the registry.
 if (opts["upgrade-resolver"]) {
     const registryAddress = await requireLiveRegistry();
     console.log(`Upgrading the resolver implementation behind registry ${registryAddress}...`);
     const upgraded = await upgradeResolverImplementation(deployer, {
-        resolverImplPvmPath,
+        resolverArtifactPath: artifacts.resolverArtifactPath,
         registryAddress,
         implPackage: opts["impl-package"],
         registryContract: registryContractAt,
@@ -354,9 +345,7 @@ const { implAddress, proxyAddress, proxyCodeHash, resolverAddress } = await depl
     deployer,
     {
         rootDir,
-        implPvmPath,
-        eip1967ProxyPvmPath,
-        resolverImplPvmPath,
+        artifacts,
         factoryContract: factoryContractAt,
         registryContract: registryContractAt,
         prediction: expected,

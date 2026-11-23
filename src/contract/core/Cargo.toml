@@ -1,6 +1,6 @@
 [package]
 name = "contract-registry-core"
-description = "Host-independent logic shared by the registry, the resolver, and the per-name shim"
+description = "Host-independent logic of CDM's Rust contracts: EIP-1967 slots, the versioned-call wire format, and the shim ↔ resolver protocol"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

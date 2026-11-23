@@ -1,11 +1,12 @@
 import type { AbiEntry, AbiParam } from "@parity/product-sdk-contracts";
 
 /**
- * Hand-mirrored ABI of `src/contract/resolver`, matching
- * `target/release/contract-resolver.abi.json` from `cargo pvm-contract
- * build`; `tests/registry-abi-sync.test.ts` diffs it against the built
- * artifact when that exists. Used at the resolver proxy address, which the
- * registry reports through `getResolver()`.
+ * Hand-mirrored ABI of the resolver implementation
+ * (`src/contract/solidity/src/Resolver.sol`); `tests/registry-abi-sync.test.ts`
+ * diffs it against forge's artifact when that exists. Used at the resolver
+ * proxy address, which the registry reports through `getResolver()`.
+ * `Routing.sealed` is `isSealed` in the Solidity source, where `sealed` is a
+ * reserved word.
  *
  * `resolve` is what a per-name shim calls for everything it does not serve
  * itself; the rest is the registry's write surface (`publish`,
@@ -193,11 +194,6 @@ const RESOLVER_ABI: ResolverAbiEntry[] = [
     { type: "error", name: "ContractFrozen", inputs: [] },
     { type: "error", name: "BadImplementation", inputs: [] },
     { type: "error", name: "NameSealed", inputs: [] },
-    { type: "error", name: "InvalidCalldata", inputs: [] },
-    { type: "error", name: "CalldataTooLarge", inputs: [] },
-    { type: "error", name: "NoSelector", inputs: [] },
-    { type: "error", name: "UnknownSelector", inputs: [] },
-    { type: "error", name: "NonPayableValueReceived", inputs: [] },
 ];
 
 export const CONTRACT_RESOLVER_ABI: AbiEntry[] = RESOLVER_ABI;

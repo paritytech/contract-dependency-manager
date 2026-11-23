@@ -1,4 +1,5 @@
-import { readFileSync } from "fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import {
@@ -6,6 +7,7 @@ import {
     CONTRACTS_REGISTRY_PACKAGE,
     CONTRACTS_RESOLVER_IMPL_PACKAGE,
     CONTRACTS_RESOLVER_PACKAGE,
+    CONTRACTS_SHIM_FACTORY_PACKAGE,
     CREATE3_FACTORY_PACKAGE,
     stringifyBigInt,
 } from "@parity/cdm-utils";
@@ -18,14 +20,13 @@ import {
 } from "./deployer";
 import {
     eoaH160FromPublicKey,
-    keccakCodeHash,
     loadCreate3ChildArtifact,
     loadCreate3FactoryArtifact,
     predictCreate3Address,
     predictReviveCreate2Address,
 } from "./create3";
 import { loadContractProxyArtifact } from "./proxy-artifacts";
-import { hexToBytes } from "./solidity";
+import { extractFoundryBytecode, hexToBytes } from "./solidity";
 
 /**
  * CDM's on-chain bootstrap via the CREATE3 factory:
@@ -33,17 +34,50 @@ import { hexToBytes } from "./solidity";
  * 1. CREATE3 factory (frozen artifact) — plain CREATE2 from the operator's
  *    EOA with the committed child code hash as constructor arg and the
  *    `CREATE3_FACTORY_PACKAGE` salt.
- * 2. Registry implementation — plain CREATE2 (`CONTRACTS_REGISTRY_IMPL_PACKAGE`);
- *    its address is irrelevant, upgrades go through `setCode`.
- * 3. Registry proxy (EIP-1967) — through the factory, so the registry address
- *    is a pure function of `(factory, salt)` and survives proxy bytecode or
- *    constructor changes.
- * 4. Resolver implementation — plain CREATE2 (`CONTRACTS_RESOLVER_IMPL_PACKAGE`).
- * 5. Resolver proxy (the same EIP-1967 blob) — through the factory with the
- *    registry as admin, then handed to the registry via `setResolver`.
- * 6. Per-name shim blob (frozen artifact) — uploaded once its hash matches
+ * 2. Shim factory — plain CREATE2 (`CONTRACTS_SHIM_FACTORY_PACKAGE`). The
+ *    registry is EVM bytecode and cannot create a PVM contract itself, so it
+ *    delegate-calls this to instantiate each name's shim.
+ * 3. Registry implementation (EVM bytecode) — plain CREATE2
+ *    (`CONTRACTS_REGISTRY_IMPL_PACKAGE`) with the shim factory as constructor
+ *    arg; its address is irrelevant, upgrades go through `setCode`.
+ * 4. Registry proxy (EIP-1967) — through the CREATE3 factory, so the registry
+ *    address is a pure function of `(factory, salt)` and survives proxy
+ *    bytecode or constructor changes.
+ * 5. Resolver implementation (EVM bytecode) — plain CREATE2
+ *    (`CONTRACTS_RESOLVER_IMPL_PACKAGE`).
+ * 6. Resolver proxy (the same EIP-1967 blob) — through the CREATE3 factory
+ *    with the registry as admin, then handed to the registry via `setResolver`.
+ * 7. Per-name shim blob (frozen artifact) — uploaded once its hash matches
  *    the one compiled into the registry; never instantiated here.
  */
+
+/** The build outputs a registry deploy or upgrade reads. */
+export interface RegistryArtifacts {
+    /** Forge artifact of the registry implementation. */
+    registryArtifactPath: string;
+    /** Forge artifact of the resolver implementation. */
+    resolverArtifactPath: string;
+    /** The EIP-1967 proxy blob, shared by the registry and the resolver. */
+    eip1967ProxyPvmPath: string;
+    /** The blob the registry delegate-calls to create a name's shim. */
+    shimFactoryPvmPath: string;
+}
+
+/** Where `pnpm build:registry` leaves them in a checkout rooted at `rootDir`. */
+export function registryArtifacts(rootDir: string): RegistryArtifacts {
+    return {
+        registryArtifactPath: resolve(
+            rootDir,
+            "src/contract/solidity/out/Registry.sol/Registry.json",
+        ),
+        resolverArtifactPath: resolve(
+            rootDir,
+            "src/contract/solidity/out/Resolver.sol/Resolver.json",
+        ),
+        eip1967ProxyPvmPath: resolve(rootDir, "target/release/contract-eip1967-proxy.polkavm"),
+        shimFactoryPvmPath: resolve(rootDir, "target/release/contract-shim-factory.polkavm"),
+    };
+}
 
 type ContractHandle = (address: string) => Contract<ContractDef> | Promise<Contract<ContractDef>>;
 type Log = (message: string) => void;
@@ -78,21 +112,43 @@ function readBlob(path: string): Uint8Array {
     return new Uint8Array(readFileSync(path));
 }
 
-function predictImplAddress(
-    deployer: ContractDeployer,
-    implCode: Uint8Array,
-    implPackage: string,
-): string {
+/**
+ * The creation code in a forge artifact with `constructorArgs` appended: an
+ * EVM constructor reads its arguments from the end of the code.
+ */
+function evmCreationCode(
+    artifactPath: string,
+    constructorArgs: Uint8Array = new Uint8Array(0),
+): Uint8Array {
+    const bytecode = extractFoundryBytecode(JSON.parse(readFileSync(artifactPath, "utf8")));
+    if (!bytecode) throw new Error(`No creation bytecode in forge artifact ${artifactPath}`);
+    const code = hexToBytes(bytecode);
+    const out = new Uint8Array(code.length + constructorArgs.length);
+    out.set(code, 0);
+    out.set(constructorArgs, code.length);
+    return out;
+}
+
+/** The registry implementation's creation code: its one constructor arg is the shim factory. */
+function registryImplCode(artifacts: RegistryArtifacts, shimFactoryAddress: string): Uint8Array {
+    return evmCreationCode(
+        artifacts.registryArtifactPath,
+        encodeAddressWord(shimFactoryAddress, "shim factory"),
+    );
+}
+
+/** Where a plain CREATE2 of `code` under `pkg` lands for this deployer. */
+function predictCreate2(deployer: ContractDeployer, code: Uint8Array, pkg: string): string {
     return predictReviveCreate2Address(
         eoaH160FromPublicKey(deployer.signer.publicKey),
-        implCode,
+        code,
         new Uint8Array(0),
-        hexToBytes(computeDeploySalt(implPackage)),
+        hexToBytes(computeDeploySalt(pkg)),
     );
 }
 
 export interface ResolverDeployPrediction {
-    /** CREATE2 address of the resolver implementation blob. */
+    /** CREATE2 address of the resolver implementation. */
     resolverImplAddress: string;
     /** CREATE3 address of the resolver proxy; depends ONLY on (factoryAddress, resolver salt). */
     resolverAddress: string;
@@ -105,11 +161,11 @@ export function predictResolverDeploy(
     deployer: ContractDeployer,
     factoryAddress: string,
     registryAddress: string,
-    resolverImplPvmPath: string,
+    artifacts: RegistryArtifacts,
 ): ResolverDeployPrediction {
-    const resolverImplAddress = predictImplAddress(
+    const resolverImplAddress = predictCreate2(
         deployer,
-        readBlob(resolverImplPvmPath),
+        evmCreationCode(artifacts.resolverArtifactPath),
         CONTRACTS_RESOLVER_IMPL_PACKAGE,
     );
     const resolverAddress = predictCreate3Address(
@@ -126,7 +182,9 @@ export function predictResolverDeploy(
 export interface RegistryDeployPrediction extends ResolverDeployPrediction {
     /** CREATE2 address of the CREATE3 factory (frozen blob, fixed salt). */
     factoryAddress: string;
-    /** CREATE2 address of the registry implementation blob. */
+    /** CREATE2 address of the shim factory the registry implementation is built for. */
+    shimFactoryAddress: string;
+    /** CREATE2 address of the registry implementation. */
     implAddress: string;
     /**
      * CREATE3 address of the registry proxy — the stable registry address.
@@ -149,8 +207,7 @@ export interface RegistryDeployPrediction extends ResolverDeployPrediction {
 export function predictRegistryDeploy(
     deployer: ContractDeployer,
     rootDir: string,
-    implPvmPath: string,
-    resolverImplPvmPath: string,
+    artifacts: RegistryArtifacts,
 ): RegistryDeployPrediction {
     const factoryArtifact = loadCreate3FactoryArtifact(rootDir);
     const childArtifact = loadCreate3ChildArtifact(rootDir);
@@ -162,9 +219,14 @@ export function predictRegistryDeploy(
         hexToBytes(childArtifact.codeHash), // constructor arg: 32 raw bytes
         hexToBytes(computeDeploySalt(CREATE3_FACTORY_PACKAGE)),
     );
-    const implAddress = predictImplAddress(
+    const shimFactoryAddress = predictCreate2(
         deployer,
-        readBlob(implPvmPath),
+        readBlob(artifacts.shimFactoryPvmPath),
+        CONTRACTS_SHIM_FACTORY_PACKAGE,
+    );
+    const implAddress = predictCreate2(
+        deployer,
+        registryImplCode(artifacts, shimFactoryAddress),
         CONTRACTS_REGISTRY_IMPL_PACKAGE,
     );
     const registryAddress = predictCreate3Address(
@@ -173,20 +235,19 @@ export function predictRegistryDeploy(
     );
     return {
         factoryAddress,
+        shimFactoryAddress,
         implAddress,
         registryAddress,
         constructorData: encodeProxyConstructorArgs(implAddress, eoa),
-        ...predictResolverDeploy(deployer, factoryAddress, registryAddress, resolverImplPvmPath),
+        ...predictResolverDeploy(deployer, factoryAddress, registryAddress, artifacts),
     };
 }
 
-/** The blobs and handles every resolver step needs. */
+/** The artifacts and handles every resolver step needs. */
 interface ResolverSetup {
     /** contract-dependency-manager checkout root (for the frozen artifacts). */
     rootDir: string;
-    /** The EIP-1967 proxy blob, shared by the registry and the resolver. */
-    eip1967ProxyPvmPath: string;
-    resolverImplPvmPath: string;
+    artifacts: RegistryArtifacts;
     /**
      * Build a product-sdk contract handle for the CREATE3 factory at the
      * given address (`CREATE3_FACTORY_ABI`); registry-deploy stays free of
@@ -196,7 +257,6 @@ interface ResolverSetup {
 }
 
 export interface DeployRegistryOptions extends ResolverSetup {
-    implPvmPath: string;
     /**
      * Registry handle (`CONTRACTS_REGISTRY_ABI` at the proxy address) with the
      * admin signer, for `setResolver`. When omitted, the resolver is not
@@ -265,26 +325,58 @@ async function verifyAddress(
     }
 }
 
-/** CREATE2-deploy `code` under `implPackage` unless its address already holds code. */
-async function ensureImplementation(
+/** CREATE2-deploy `code` under `pkg` unless its address already holds code. */
+async function ensureCreate2(
     deployer: ContractDeployer,
     code: Uint8Array,
+    pkg: string,
+    what: string,
+    log: Log,
+): Promise<string> {
+    const address = predictCreate2(deployer, code, pkg);
+    if ((await deployer.getOnChainCode(address)) !== null) {
+        log(`${what} already deployed at ${address} (salt "${pkg}")`);
+        return address;
+    }
+    const deployed = await deployer.deploy(code, pkg);
+    if (deployed.address.toLowerCase() !== address.toLowerCase()) {
+        throw new Error(
+            `${what} address mismatch: deployed ${deployed.address}, offline prediction says ${address}`,
+        );
+    }
+    log(`${what} deployed at ${address} (salt "${pkg}")`);
+    return address;
+}
+
+/** The shim factory, then the registry implementation built for it. */
+async function ensureRegistryImplementation(
+    deployer: ContractDeployer,
+    artifacts: RegistryArtifacts,
     implPackage: string,
     log: Log,
 ): Promise<string> {
-    const address = predictImplAddress(deployer, code, implPackage);
-    if ((await deployer.getOnChainCode(address)) !== null) {
-        log(`Implementation already deployed at ${address} (salt "${implPackage}")`);
-        return address;
-    }
-    const deployed = await deployer.deploy(code, implPackage);
-    if (deployed.address.toLowerCase() !== address.toLowerCase()) {
-        throw new Error(
-            `Implementation address mismatch: deployed ${deployed.address}, offline prediction says ${address}`,
-        );
-    }
-    log(`Implementation deployed at ${address} (salt "${implPackage}")`);
-    return address;
+    const shimFactoryAddress = await ensureShimFactory(deployer, artifacts, log);
+    return ensureCreate2(
+        deployer,
+        registryImplCode(artifacts, shimFactoryAddress),
+        implPackage,
+        "Registry implementation",
+        log,
+    );
+}
+
+function ensureShimFactory(
+    deployer: ContractDeployer,
+    artifacts: RegistryArtifacts,
+    log: Log,
+): Promise<string> {
+    return ensureCreate2(
+        deployer,
+        readBlob(artifacts.shimFactoryPvmPath),
+        CONTRACTS_SHIM_FACTORY_PACKAGE,
+        "Shim factory",
+        log,
+    );
 }
 
 /** Deploy the EIP-1967 proxy blob through the factory at `expected` unless code is there. */
@@ -302,7 +394,7 @@ async function ensureProxyViaFactory(
         log(`${what} already deployed at ${expected}`);
         return;
     }
-    const { codeHash } = await deployer.uploadCode(readBlob(setup.eip1967ProxyPvmPath));
+    const { codeHash } = await deployer.uploadCode(readBlob(setup.artifacts.eip1967ProxyPvmPath));
     const factory = await setup.factoryContract(factoryAddress);
     await deployer.deployViaCreate3Factory(
         factory,
@@ -332,12 +424,7 @@ async function ensureResolver(
     setup: ResolverSetup,
     log: Log,
 ): Promise<string> {
-    const plan = predictResolverDeploy(
-        deployer,
-        factoryAddress,
-        registryAddress,
-        setup.resolverImplPvmPath,
-    );
+    const plan = predictResolverDeploy(deployer, factoryAddress, registryAddress, setup.artifacts);
     const live = String(
         await expectQuery(
             registry.getResolver.query(),
@@ -350,10 +437,11 @@ async function ensureResolver(
         );
     }
 
-    await ensureImplementation(
+    await ensureCreate2(
         deployer,
-        readBlob(setup.resolverImplPvmPath),
+        evmCreationCode(setup.artifacts.resolverArtifactPath),
         CONTRACTS_RESOLVER_IMPL_PACKAGE,
+        "Resolver implementation",
         log,
     );
     await ensureProxyViaFactory(
@@ -423,9 +511,7 @@ export async function deployRegistryWithProxy(
     proxyCodeHash?: `0x${string}`;
 }> {
     const log = opts.log ?? (() => {});
-    const plan =
-        opts.prediction ??
-        predictRegistryDeploy(deployer, opts.rootDir, opts.implPvmPath, opts.resolverImplPvmPath);
+    const plan = opts.prediction ?? predictRegistryDeploy(deployer, opts.rootDir, opts.artifacts);
     const done = {
         factoryAddress: plan.factoryAddress,
         implAddress: plan.implAddress,
@@ -486,15 +572,15 @@ export async function deployRegistryWithProxy(
         log(`CREATE3 factory already deployed at ${plan.factoryAddress}`);
     }
 
-    // (ii) Registry implementation — plain CREATE2.
-    await ensureImplementation(
+    // (ii) Shim factory and registry implementation — plain CREATE2 each.
+    await ensureRegistryImplementation(
         deployer,
-        readBlob(opts.implPvmPath),
+        opts.artifacts,
         CONTRACTS_REGISTRY_IMPL_PACKAGE,
         log,
     );
 
-    // (iii) The registry proxy, through the factory.
+    // (iii) The registry proxy, through the CREATE3 factory.
     await ensureProxyViaFactory(
         deployer,
         opts,
@@ -523,6 +609,25 @@ export function bumpPackageSuffix(pkg: string): string {
 const MAX_IMPL_SALT_PROBES = 100;
 
 /**
+ * The first of `basePackage` and its suffix bumps for which `visit` returns a
+ * value. Each candidate comes with the address `code` deploys to under it.
+ */
+async function probeSalts<T>(
+    deployer: ContractDeployer,
+    code: Uint8Array,
+    basePackage: string,
+    visit: (candidate: string, address: string) => Promise<T | undefined>,
+): Promise<T | undefined> {
+    let candidate = basePackage;
+    for (let probes = 0; probes < MAX_IMPL_SALT_PROBES; probes++) {
+        const found = await visit(candidate, predictCreate2(deployer, code, candidate));
+        if (found !== undefined) return found;
+        candidate = bumpPackageSuffix(candidate);
+    }
+    return undefined;
+}
+
+/**
  * Deploy `code` under `implPackage`, or under the first suffix bump of
  * `basePackage` whose predicted address holds no code.
  */
@@ -531,50 +636,57 @@ async function deployAtFreeSalt(
     code: Uint8Array,
     basePackage: string,
     implPackage: string | undefined,
+    what: string,
     log: Log,
 ): Promise<{ implAddress: string; implPackage: string }> {
-    if (implPackage !== undefined) {
-        // CREATE2 commits to the code, so code at this address is this blob.
-        return {
-            implAddress: await ensureImplementation(deployer, code, implPackage, log),
-            implPackage,
-        };
+    const free =
+        implPackage ??
+        (await probeSalts(deployer, code, basePackage, async (candidate, address) => {
+            if ((await deployer.getOnChainCode(address)) === null) return candidate;
+            log(`Implementation salt "${candidate}" already consumed at ${address} — bumping`);
+            return undefined;
+        }));
+    if (free === undefined) {
+        throw new Error(
+            `No free implementation salt within ${MAX_IMPL_SALT_PROBES} bumps of "${basePackage}"`,
+        );
     }
-    let candidate = basePackage;
-    for (let probes = 0; probes < MAX_IMPL_SALT_PROBES; probes++) {
-        const address = predictImplAddress(deployer, code, candidate);
-        if ((await deployer.getOnChainCode(address)) === null) {
-            return {
-                implAddress: await ensureImplementation(deployer, code, candidate, log),
-                implPackage: candidate,
-            };
-        }
-        log(`Implementation salt "${candidate}" already consumed at ${address} — bumping`);
-        candidate = bumpPackageSuffix(candidate);
-    }
-    throw new Error(
-        `No free implementation salt within ${MAX_IMPL_SALT_PROBES} bumps of "${basePackage}"`,
-    );
+    // CREATE2 commits to the code, so code at this address is this code.
+    return {
+        implAddress: await ensureCreate2(deployer, code, free, what, log),
+        implPackage: free,
+    };
 }
 
-/** Whether the contract at `address` runs exactly `code`. */
-async function liveCodeMatches(
+/**
+ * Whether the contract at `address` was created from `code`. CREATE2 commits
+ * to the creation code, so it was iff `address` is where `code` lands under
+ * `implPackage`, or under `basePackage` or one of its bumps.
+ */
+async function createdFrom(
     deployer: ContractDeployer,
     address: string,
     code: Uint8Array,
+    basePackage: string,
+    implPackage: string | undefined,
 ): Promise<boolean> {
-    const live = await deployer.getOnChainCode(address);
-    return live !== null && keccakCodeHash(live) === keccakCodeHash(code);
+    const live = address.toLowerCase();
+    if (implPackage !== undefined) {
+        return predictCreate2(deployer, code, implPackage).toLowerCase() === live;
+    }
+    const found = await probeSalts(deployer, code, basePackage, async (_, candidate) =>
+        candidate.toLowerCase() === live ? true : undefined,
+    );
+    return found === true;
 }
 
+/** `artifacts` holds the NEW registry implementation to upgrade to. */
 export interface UpgradeRegistryOptions extends ResolverSetup {
-    /** The NEW implementation blob to upgrade to. */
-    implPvmPath: string;
     /** Address of the live registry proxy being upgraded. */
     registryAddress: string;
     /** Registry handle with the admin signer (`setCode` and the setup writes are admin-only). */
     registryContract: ContractHandle;
-    /** Salt package for the new blob; default: first free suffix bump of `CONTRACTS_REGISTRY_IMPL_PACKAGE`. */
+    /** Salt package for the new implementation; default: first free suffix bump of `CONTRACTS_REGISTRY_IMPL_PACKAGE`. */
     implPackage?: string;
     log?: Log;
 }
@@ -582,15 +694,15 @@ export interface UpgradeRegistryOptions extends ResolverSetup {
 /**
  * Upgrade a live registry in place: new implementation at a fresh CREATE2
  * salt, `setCode`, then the resolver and the shim blob are ensured.
- * Idempotent — a matching live implementation skips the deploy and `setCode`
- * (`upgraded: false`).
+ * Idempotent — a live implementation created from this code skips the deploy
+ * and `setCode` (`upgraded: false`).
  */
 export async function upgradeRegistryImplementation(
     deployer: ContractDeployer,
     opts: UpgradeRegistryOptions,
 ): Promise<{
     implAddress: string;
-    /** Salt package the new blob was deployed under; undefined when skipped. */
+    /** Salt package the new implementation was deployed under; undefined when skipped. */
     implPackage?: string;
     resolverAddress: string;
     proxyCodeHash: `0x${string}`;
@@ -598,14 +710,16 @@ export async function upgradeRegistryImplementation(
 }> {
     const log = opts.log ?? (() => {});
     const registry = await opts.registryContract(opts.registryAddress);
-    const implCode = readBlob(opts.implPvmPath);
+    const implCode = registryImplCode(
+        opts.artifacts,
+        await ensureShimFactory(deployer, opts.artifacts, log),
+    );
 
     const finish = async (implAddress: string, implPackage?: string, upgraded = false) => {
         const factoryAddress = predictRegistryDeploy(
             deployer,
             opts.rootDir,
-            opts.implPvmPath,
-            opts.resolverImplPvmPath,
+            opts.artifacts,
         ).factoryAddress;
         const resolverAddress = await ensureResolver(
             deployer,
@@ -620,8 +734,18 @@ export async function upgradeRegistryImplementation(
     };
 
     const liveAddress = String(await expectQuery(registry.getCode.query(), "getCode()"));
-    if (await liveCodeMatches(deployer, liveAddress, implCode)) {
-        log(`Implementation at ${liveAddress} already matches ${opts.implPvmPath}`);
+    if (
+        await createdFrom(
+            deployer,
+            liveAddress,
+            implCode,
+            CONTRACTS_REGISTRY_IMPL_PACKAGE,
+            opts.implPackage,
+        )
+    ) {
+        log(
+            `Implementation at ${liveAddress} already matches ${opts.artifacts.registryArtifactPath}`,
+        );
         return finish(liveAddress);
     }
 
@@ -630,6 +754,7 @@ export async function upgradeRegistryImplementation(
         implCode,
         CONTRACTS_REGISTRY_IMPL_PACKAGE,
         opts.implPackage,
+        "Registry implementation",
         log,
     );
     await submit(registry.setCode.tx(implAddress), "setCode");
@@ -639,15 +764,15 @@ export async function upgradeRegistryImplementation(
 }
 
 export interface UpgradeResolverOptions {
-    /** The NEW resolver implementation blob to upgrade to. */
-    resolverImplPvmPath: string;
+    /** Forge artifact of the NEW resolver implementation to upgrade to. */
+    resolverArtifactPath: string;
     /** Address of the live registry proxy, the resolver's admin. */
     registryAddress: string;
     /** Registry handle with the admin signer (`upgradeResolver` is admin-only). */
     registryContract: ContractHandle;
     /** Resolver handle (`CONTRACT_RESOLVER_ABI`) for the verifying reads. */
     resolverContract: ContractHandle;
-    /** Salt package for the new blob; default: first free suffix bump of `CONTRACTS_RESOLVER_IMPL_PACKAGE`. */
+    /** Salt package for the new implementation; default: first free suffix bump of `CONTRACTS_RESOLVER_IMPL_PACKAGE`. */
     implPackage?: string;
     log?: Log;
 }
@@ -677,12 +802,20 @@ export async function upgradeResolverImplementation(
         );
     }
     const resolver = await opts.resolverContract(resolverAddress);
-    const implCode = readBlob(opts.resolverImplPvmPath);
+    const implCode = evmCreationCode(opts.resolverArtifactPath);
 
     const liveAddress = String(await expectQuery(resolver.getCode.query(), "getCode()"));
-    if (await liveCodeMatches(deployer, liveAddress, implCode)) {
+    if (
+        await createdFrom(
+            deployer,
+            liveAddress,
+            implCode,
+            CONTRACTS_RESOLVER_IMPL_PACKAGE,
+            opts.implPackage,
+        )
+    ) {
         log(
-            `Resolver implementation at ${liveAddress} already matches ${opts.resolverImplPvmPath}`,
+            `Resolver implementation at ${liveAddress} already matches ${opts.resolverArtifactPath}`,
         );
         return { resolverAddress, implAddress: liveAddress, upgraded: false };
     }
@@ -692,6 +825,7 @@ export async function upgradeResolverImplementation(
         implCode,
         CONTRACTS_RESOLVER_IMPL_PACKAGE,
         opts.implPackage,
+        "Resolver implementation",
         log,
     );
     await submit(registry.upgradeResolver.tx(implAddress), "upgradeResolver");
@@ -747,23 +881,28 @@ if (import.meta.vitest) {
     });
 
     describe("predictRegistryDeploy", () => {
-        // The committed CREATE3 blobs double as stand-in implementation blobs.
         const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
         const fakeDeployer = {
             signer: { publicKey: new Uint8Array(32).fill(0x11) },
         } as unknown as ContractDeployer;
-        const implPvmPath = resolve(
-            repoRoot,
-            "src/contract/create3/artifacts/create3-child.polkavm",
-        );
-        const otherPvmPath = resolve(
-            repoRoot,
-            "src/contract/create3/artifacts/create3-factory.polkavm",
-        );
+        const dir = mkdtempSync(resolve(tmpdir(), "cdm-registry-artifacts-"));
+        const forgeArtifact = (name: string, bytecode: string) => {
+            const path = resolve(dir, `${name}.json`);
+            writeFileSync(path, JSON.stringify({ bytecode: { object: bytecode } }));
+            return path;
+        };
+        // The committed CREATE3 child blob stands in for the PVM blobs.
+        const blob = resolve(repoRoot, "src/contract/create3/artifacts/create3-child.polkavm");
+        const artifacts = (registry: string, resolver: string): RegistryArtifacts => ({
+            registryArtifactPath: forgeArtifact(`registry-${registry}`, `0x${registry}`),
+            resolverArtifactPath: forgeArtifact(`resolver-${resolver}`, `0x${resolver}`),
+            eip1967ProxyPvmPath: blob,
+            shimFactoryPvmPath: blob,
+        });
 
         test("is deterministic and internally consistent", () => {
-            const a = predictRegistryDeploy(fakeDeployer, repoRoot, implPvmPath, otherPvmPath);
-            const b = predictRegistryDeploy(fakeDeployer, repoRoot, implPvmPath, otherPvmPath);
+            const a = predictRegistryDeploy(fakeDeployer, repoRoot, artifacts("6001", "6002"));
+            const b = predictRegistryDeploy(fakeDeployer, repoRoot, artifacts("6001", "6002"));
             expect(a).toEqual(b);
             expect(a.registryAddress).toBe(
                 predictCreate3Address(
@@ -795,13 +934,26 @@ if (import.meta.vitest) {
         });
 
         test("proxy addresses are bytecode-independent of the implementations", () => {
-            const a = predictRegistryDeploy(fakeDeployer, repoRoot, implPvmPath, otherPvmPath);
-            const b = predictRegistryDeploy(fakeDeployer, repoRoot, otherPvmPath, implPvmPath);
+            const a = predictRegistryDeploy(fakeDeployer, repoRoot, artifacts("6001", "6002"));
+            const b = predictRegistryDeploy(fakeDeployer, repoRoot, artifacts("6002", "6001"));
             expect(b.factoryAddress).toBe(a.factoryAddress);
             expect(b.registryAddress).toBe(a.registryAddress);
             expect(b.resolverAddress).toBe(a.resolverAddress);
             expect(b.implAddress).not.toBe(a.implAddress);
             expect(b.resolverImplAddress).not.toBe(a.resolverImplAddress);
+        });
+
+        test("the registry implementation address commits to the shim factory", () => {
+            const base = artifacts("6001", "6002");
+            const a = predictRegistryDeploy(fakeDeployer, repoRoot, base);
+            const b = predictRegistryDeploy(fakeDeployer, repoRoot, {
+                ...base,
+                shimFactoryPvmPath: resolve(
+                    repoRoot,
+                    "src/contract/create3/artifacts/create3-factory.polkavm",
+                ),
+            });
+            expect(b.implAddress).not.toBe(a.implAddress);
         });
     });
 }

@@ -20,7 +20,7 @@
 //    the first publish, and a reverting initialization rolls the whole
 //    publish back.
 //
-// Requires a running PPN and `forge` (foundry-polkadot fork) on PATH.
+// Requires a running PPN and `forge` on PATH.
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import {

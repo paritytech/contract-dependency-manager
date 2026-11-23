@@ -49,3 +49,15 @@ jobs:
               run: |
                   cargo fmt --all -- --check
                   cargo fmt --all --manifest-path src/templates/shared-counter/Cargo.toml -- --check
+
+    format-sol:
+        name: Solidity
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: foundry-rs/foundry-toolchain@v1
+              with:
+                  version: stable
+            # Same target as local `pnpm format:check`.
+            - name: Check formatting
+              run: forge fmt --root src/contract/solidity --check

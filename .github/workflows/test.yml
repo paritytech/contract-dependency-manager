@@ -50,7 +50,7 @@ jobs:
             # default target to PolkaVM, so an explicit host target is required.
             - name: Run host-side tests
               run: |
-                  cargo test -p cdm-macros -p pvm-cdm -p pvm-cdm-macros -p contract-registry-core -p contract-registry -p contract-eip1967-proxy -p contract-resolver -p contract-proxy -p create3-factory -p create3-child --target "$(rustc -vV | sed -n 's/^host: //p')"
+                  cargo test -p cdm-macros -p pvm-cdm -p pvm-cdm-macros -p contract-registry-core -p contract-host -p contract-eip1967-proxy -p contract-shim-factory -p contract-proxy -p create3-factory -p create3-child --target "$(rustc -vV | sed -n 's/^host: //p')"
 
     templates:
         name: Templates
@@ -119,6 +119,11 @@ jobs:
               run: pnpm test:macro
             - name: Build template contracts
               run: pnpm build:template
+            # The registry and resolver are Solidity, built and tested with
+            # forge (solc is auto-fetched on first build).
+            - uses: foundry-rs/foundry-toolchain@v1
+              with:
+                  version: stable
             # Build the registry contracts and prove the embedded TS ABIs
             # match the generated ones; under CI the drift test fails when
             # the artifacts are missing instead of skipping.
@@ -126,6 +131,8 @@ jobs:
               run: pnpm build:registry
             - name: Check embedded registry ABI against generated ABI
               run: pnpm vitest run src/lib/contracts/tests/registry-abi-sync.test.ts
+            - name: Run Solidity contract tests
+              run: pnpm test:sol
 
     e2e:
         name: E2E
@@ -186,17 +193,13 @@ jobs:
                   rustup toolchain install "$toolchain" --profile minimal
                   host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
                   cargo "+$toolchain" install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
+            # The registry build and the Solidity e2e suite both drive plain
+            # `forge build` (solc is auto-fetched on first build).
+            - uses: foundry-rs/foundry-toolchain@v1
+              with:
+                  version: stable
             - name: Build registry contracts
               run: pnpm build:registry
-            # The Solidity e2e suite drives the real foundry pipeline (plain
-            # `forge build`; solc is auto-fetched on first build).
-            - name: Install foundry-polkadot
-              run: |
-                  # The installer defaults to $XDG_CONFIG_HOME/.foundry, which the runner sets.
-                  export FOUNDRY_DIR="$HOME/.foundry"
-                  curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash
-                  "$FOUNDRY_DIR/bin/foundryup-polkadot"
-                  echo "$FOUNDRY_DIR/bin" >> "$GITHUB_PATH"
             # The suite runs against a full local product environment (relay +
             # Asset Hub + Bulletin + IPFS gateway) that @parity/ppn spawns from
             # prebuilt binaries. The version is resolved up front so the binary
