@@ -1,117 +1,156 @@
 //! EIP-1967 proxy: the stable on-chain address of an upgradeable CDM
 //! contract. The registry and the resolver are each deployed behind one.
 //!
-//! It holds no logic of its own: every call is forwarded via `delegate_call`
-//! to the implementation address stored at the EIP-1967 implementation slot,
-//! so the implementation's methods run against this proxy's storage.
+//! It holds no logic of its own: every call is forwarded by tail
+//! delegate-call to the implementation stored at the EIP-1967 implementation
+//! slot, so the implementation's methods run against this proxy's storage.
 //! Upgrades go through the implementation's `setCode`, which rewrites that
-//! slot — the proxy itself never needs to change.
+//! slot; the proxy itself never changes.
+//!
+//! **Constructor** — `(address implementation, address admin)` as two ABI
+//! words, stored at the EIP-1967 implementation and admin slots
+//! (`contract_registry_core::slots`). An address is the low 20 bytes of its
+//! word; the other 12 are not read. Input shorter than two words reverts.
+//!
+//! The admin is an argument and not the caller: deployed through the CREATE3
+//! factory, the caller is the single-use child deployer, which could never
+//! act as admin. A CREATE3 address does not commit to constructor input, so
+//! passing the admin costs nothing.
+//!
+//! **Calls** — the calldata goes to the implementation unchanged, and the
+//! implementation's return data or revert data comes back unchanged. The
+//! proxy has no methods, so it takes no selector from the implementation.
+//!
+//! Neither the constructor nor a call accepts value. Every revert the proxy
+//! raises itself carries no data.
 
-#![cfg_attr(all(not(feature = "abi-gen"), not(test)), no_main, no_std)]
+#![cfg_attr(target_arch = "riscv64", no_std, no_main)]
 
-// polkavm-linker defaults guest stacks to 8 KiB, which deep call chains
-// overflow as a raw VM trap. Match resolc's production default.
+use contract_host::{Host, reject_value};
+use contract_registry_core::slots::{ADMIN_SLOT, IMPLEMENTATION_SLOT};
+
+/// pallet-revive caps calldata and return data at this many bytes each.
+pub const MAX_DATA: usize = 128 * 1024;
+
+/// The constructor: pins the implementation and the admin from the calldata.
+pub fn construct<H: Host>(host: &H) {
+    reject_value(host);
+    if host.call_data_size() < 64 {
+        host.revert(&[]);
+    }
+    let mut implementation = [0u8; 32];
+    let mut admin = [0u8; 32];
+    host.call_data_copy(&mut implementation[12..], 12);
+    host.call_data_copy(&mut admin[12..], 44);
+    host.store(&IMPLEMENTATION_SLOT, &implementation);
+    host.store(&ADMIN_SLOT, &admin);
+}
+
+/// Every call lands here: forward the calldata to the implementation and end
+/// with its result. `buffer` is scratch space of [`MAX_DATA`] bytes, used for
+/// the calldata and then for the return data.
+pub fn fallback<H: Host>(host: &H, buffer: &mut [u8]) {
+    reject_value(host);
+    let len = host.call_data_size();
+    host.call_data_copy(&mut buffer[..len], 0);
+
+    let word = host.load(&IMPLEMENTATION_SLOT);
+    let mut implementation = [0u8; 20];
+    implementation.copy_from_slice(&word[12..]);
+
+    let ok = host.delegate_call(&implementation, &buffer[..len]);
+    // On chain a tail call that ran never returns here.
+    let len = host.return_data_size();
+    host.return_data_copy(&mut buffer[..len]);
+    if !ok {
+        host.revert(&buffer[..len]);
+    }
+    host.answer(&buffer[..len]);
+}
+
+#[cfg(not(target_arch = "riscv64"))]
+fn main() {}
+
+/// The contract's entry points.
 #[cfg(target_arch = "riscv64")]
-polkavm_derive::min_stack_size!(131072);
+mod entry {
+    use super::{MAX_DATA, construct, fallback};
+    use contract_host::Chain;
+    use core::ptr::addr_of_mut;
 
-#[pvm_contract_sdk::contract(allocator = "bump", allocator_size = 262144)]
-mod eip1967_proxy {
-    use alloc::vec;
-    use contract_registry_core::slots::{ADMIN_SLOT, IMPLEMENTATION_SLOT};
-    use pvm_contract_sdk::{Address, CallFlags, EmptyError, HostApi, Lazy};
+    static mut BUFFER: [u8; MAX_DATA] = [0; MAX_DATA];
 
-    pub struct Eip1967Proxy {
-        /// No ordinary fields: slots 0.. belong to the implementation's
-        /// storage, reached through `delegate_call`.
-        #[slot(raw = IMPLEMENTATION_SLOT)]
-        implementation: Lazy<Address>,
-        #[slot(raw = ADMIN_SLOT)]
-        admin: Lazy<Address>,
+    #[polkavm_derive::polkavm_export]
+    extern "C" fn deploy() {
+        construct(&Chain);
     }
 
-    impl Eip1967Proxy {
-        /// `admin` is an explicit argument, NOT `caller()`: deployed through
-        /// the CREATE3 factory, this constructor's caller is the single-use
-        /// child deployer — pinning admin to it would lock the admin surface
-        /// to a dead contract forever. CREATE3 addresses don't commit to
-        /// constructor input, so passing the admin is free.
-        #[pvm_contract_sdk::constructor]
-        pub fn new(&mut self, implementation: Address, admin: Address) {
-            self.implementation.set(&implementation);
-            self.admin.set(&admin);
-        }
-
-        /// Forward any call — the proxy declares no methods, so every
-        /// selector lands here — and bubble the implementation's return or
-        /// revert data unchanged.
-        #[pvm_contract_sdk::fallback]
-        pub fn fallback(&mut self) -> Result<(), EmptyError> {
-            let host = self.host();
-
-            let input_len = host.call_data_size() as usize;
-            let mut input = vec![0u8; input_len];
-            host.call_data_copy(&mut input, 0);
-
-            let target = self.implementation.get();
-            let result =
-                host.delegate_call_evm(CallFlags::TAIL_CALL, &target.0, u64::MAX, &input, None);
-
-            // On-chain a successful tail call never returns here; a revert
-            // does, with the callee's return data staged.
-            let output_len = host.return_data_size() as usize;
-            let mut output = vec![0u8; output_len];
-            let mut output_ref: &mut [u8] = &mut output;
-            host.return_data_copy(&mut output_ref, 0);
-
-            if result.is_err() {
-                host.revert(&output);
-            }
-            host.return_value(&output);
-
-            // `return_value` diverges on-chain; on host targets (unit tests)
-            // it records the payload and control returns here.
-            #[cfg(not(target_arch = "riscv64"))]
-            Ok(())
-        }
+    #[polkavm_derive::polkavm_export]
+    extern "C" fn call() {
+        // SAFETY: a call runs alone on a fresh instance, so nothing else
+        // holds this buffer.
+        fallback(&Chain, unsafe { &mut *addr_of_mut!(BUFFER) });
     }
 }
 
-/// The proxy has exactly two behaviors: the constructor pins the
-/// implementation and admin into their EIP-1967 slots, and the fallback
-/// forwards any calldata to the implementation via delegate-call, bubbling
-/// the return or revert data unchanged.
 #[cfg(test)]
 mod tests {
-    use super::eip1967_proxy::Eip1967Proxy;
+    use super::{MAX_DATA, construct, fallback};
+    use contract_host::mock::{MockHost, MockHostBuilder, ReturnFlags, ReturnValue, U256};
     use contract_registry_core::slots::{ADMIN_SLOT, IMPLEMENTATION_SLOT};
-    use pvm_contract_sdk::{Address, MockHost, MockHostBuilder, ReturnFlags, types::ReturnValue};
 
     const DEPLOYER: [u8; 20] = [0xAA; 20];
+    const ADMIN: [u8; 20] = [0xAD; 20];
     const IMPL: [u8; 20] = [0x1C; 20];
 
-    /// A 20-byte address right-aligned in a 32-byte storage word, the layout
-    /// `Lazy<Address>` uses for raw slots (and solc uses for EIP-1967 slots).
+    /// A 20-byte address right-aligned in a 32-byte word: an ABI `address`,
+    /// and the layout solc uses for the EIP-1967 slots.
     fn word_addr(address: [u8; 20]) -> [u8; 32] {
         let mut word = [0u8; 32];
         word[12..].copy_from_slice(&address);
         word
     }
 
-    /// Deploy the proxy pointing at `IMPL`, with `calldata` staged for the
-    /// fallback to forward.
-    fn deployed_proxy(calldata: Vec<u8>) -> (Eip1967Proxy, MockHost) {
-        let mock = MockHostBuilder::new()
+    /// A host about to run the constructor with `input`, sent by `DEPLOYER`.
+    fn constructing(input: Vec<u8>) -> MockHost {
+        MockHostBuilder::new()
             .caller(DEPLOYER)
-            .calldata(calldata)
-            .build();
-        let mut proxy = Eip1967Proxy::with_host(mock.clone());
-        proxy.new(Address(IMPL), Address(DEPLOYER));
-        (proxy, mock)
+            .calldata(input)
+            .build()
     }
+
+    /// A proxy constructed over `IMPL` and `ADMIN`, with `calldata` staged
+    /// for the fallback to forward.
+    fn deployed_proxy(calldata: Vec<u8>) -> MockHost {
+        let constructor = constructing([word_addr(IMPL), word_addr(ADMIN)].concat());
+        construct(&constructor);
+        MockHostBuilder::new()
+            .calldata(calldata)
+            .storage(constructor.storage_dump())
+            .build()
+    }
+
+    /// Run the fallback over scratch space that is not zeroed.
+    fn run(mock: &MockHost) {
+        fallback(mock, &mut vec![0xA5; MAX_DATA]);
+    }
+
+    fn returned(data: Vec<u8>) -> Option<ReturnValue> {
+        Some(ReturnValue {
+            flags: ReturnFlags::empty(),
+            data,
+        })
+    }
+
+    const EMPTY_REVERT: ReturnValue = ReturnValue {
+        flags: ReturnFlags::REVERT,
+        data: vec![],
+    };
 
     #[test]
     fn constructor_pins_implementation_and_admin_slots() {
-        let (_proxy, mock) = deployed_proxy(vec![]);
+        let mock = constructing([word_addr(IMPL), word_addr(ADMIN)].concat());
+        construct(&mock);
 
         assert_eq!(
             mock.get_raw_storage(&IMPLEMENTATION_SLOT),
@@ -119,8 +158,32 @@ mod tests {
         );
         assert_eq!(
             mock.get_raw_storage(&ADMIN_SLOT),
-            Some(word_addr(DEPLOYER).to_vec())
+            Some(word_addr(ADMIN).to_vec())
         );
+    }
+
+    #[test]
+    fn constructor_reads_each_address_from_the_low_20_bytes_of_its_word() {
+        let mut input = [0xFF; 64];
+        input[12..32].copy_from_slice(&IMPL);
+        input[44..].copy_from_slice(&ADMIN);
+        let mock = constructing(input.to_vec());
+        construct(&mock);
+
+        assert_eq!(
+            mock.get_raw_storage(&IMPLEMENTATION_SLOT),
+            Some(word_addr(IMPL).to_vec())
+        );
+        assert_eq!(
+            mock.get_raw_storage(&ADMIN_SLOT),
+            Some(word_addr(ADMIN).to_vec())
+        );
+    }
+
+    #[test]
+    fn constructor_input_shorter_than_two_words_reverts_empty() {
+        let mock = constructing(vec![0x11; 63]);
+        assert_eq!(mock.expect_revert(|| construct(&mock)), EMPTY_REVERT);
     }
 
     #[test]
@@ -130,62 +193,37 @@ mod tests {
             .into_iter()
             .chain([0x11; 64])
             .collect();
-        let (mut proxy, mock) = deployed_proxy(calldata.clone());
+        let mock = deployed_proxy(calldata.clone());
         let payload = vec![0xEE; 96];
         mock.mock_call(IMPL, Ok(payload.clone()));
 
-        assert!(proxy.fallback().is_ok());
+        run(&mock);
 
-        // Exactly one delegate-call, to the implementation, with the calldata
-        // byte-for-byte.
         assert_eq!(mock.take_recorded_calls(), vec![(IMPL, calldata)]);
-        // The callee's success payload is returned unchanged.
-        assert_eq!(
-            mock.take_return_value(),
-            Some(ReturnValue {
-                flags: ReturnFlags::empty(),
-                data: payload,
-            })
-        );
+        assert_eq!(mock.take_return_value(), returned(payload));
     }
 
     #[test]
     fn fallback_bubbles_callee_revert() {
         let calldata = vec![1, 2, 3, 4];
-        let (mut proxy, mock) = deployed_proxy(calldata.clone());
+        let mock = deployed_proxy(calldata.clone());
         // MockHost's `Err(())` models a revert with no payload, so the bubbled
         // revert data must be empty.
         mock.mock_call(IMPL, Err(()));
 
-        let rv = mock.expect_revert(|| {
-            let _ = proxy.fallback();
-        });
-
-        assert_eq!(
-            rv,
-            ReturnValue {
-                flags: ReturnFlags::REVERT,
-                data: vec![],
-            }
-        );
+        assert_eq!(mock.expect_revert(|| run(&mock)), EMPTY_REVERT);
         assert_eq!(mock.take_recorded_calls(), vec![(IMPL, calldata)]);
     }
 
     #[test]
     fn fallback_forwards_empty_calldata() {
-        let (mut proxy, mock) = deployed_proxy(vec![]);
+        let mock = deployed_proxy(vec![]);
         mock.mock_call(IMPL, Ok(vec![]));
 
-        assert!(proxy.fallback().is_ok());
+        run(&mock);
 
         assert_eq!(mock.take_recorded_calls(), vec![(IMPL, vec![])]);
-        assert_eq!(
-            mock.take_return_value(),
-            Some(ReturnValue {
-                flags: ReturnFlags::empty(),
-                data: vec![],
-            })
-        );
+        assert_eq!(mock.take_return_value(), returned(vec![]));
     }
 
     #[test]
@@ -193,19 +231,32 @@ mod tests {
         // After an upgrade rewrites the implementation slot, the fallback must
         // target the new address.
         const NEW_IMPL: [u8; 20] = [0x2D; 20];
-        let (mut proxy, mock) = deployed_proxy(vec![0xAB]);
+        let mock = deployed_proxy(vec![0xAB]);
         mock.set_raw_storage(IMPLEMENTATION_SLOT.to_vec(), word_addr(NEW_IMPL).to_vec());
         mock.mock_call(NEW_IMPL, Ok(vec![0x01]));
 
-        assert!(proxy.fallback().is_ok());
+        run(&mock);
 
         assert_eq!(mock.take_recorded_calls(), vec![(NEW_IMPL, vec![0xAB])]);
+        assert_eq!(mock.take_return_value(), returned(vec![0x01]));
+    }
+
+    #[test]
+    fn value_sent_to_the_constructor_or_a_call_reverts_empty() {
+        let constructor = MockHostBuilder::new()
+            .calldata([word_addr(IMPL), word_addr(ADMIN)].concat())
+            .value_transferred(U256::from(1))
+            .build();
         assert_eq!(
-            mock.take_return_value(),
-            Some(ReturnValue {
-                flags: ReturnFlags::empty(),
-                data: vec![0x01],
-            })
+            constructor.expect_revert(|| construct(&constructor)),
+            EMPTY_REVERT
         );
+
+        let call = MockHostBuilder::new()
+            .calldata(vec![1, 2, 3, 4])
+            .storage(deployed_proxy(vec![]).storage_dump())
+            .value_transferred(U256::from(1))
+            .build();
+        assert_eq!(call.expect_revert(|| run(&call)), EMPTY_REVERT);
     }
 }
