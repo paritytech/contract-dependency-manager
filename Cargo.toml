@@ -9,6 +9,7 @@ members = [
     "src/contract/host",
     "src/contract/proxy",
     "src/contract/resolver",
+    "src/contract/shim-factory",
     "src/lib/cdm/rust",
     "src/lib/cdm/rust-macros",
     "src/lib/cdm/rust-macros/pvm-cdm",
