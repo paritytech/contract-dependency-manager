@@ -15,6 +15,8 @@ target = create1(child, 1)                       # code-blind: commits only to t
 - **factory** (`factory/src/main.rs`) — owner-gated `deploy(salt, codeHash, input)`: CREATE2s one child per salt, then has the child CREATE1 the target from pre-uploaded code. `predict(salt)` returns the same derivation as a view.
 - **child** (`child/src/main.rs`) — performs the single CREATE1 and stays on-chain forever, permanently burning its salt (revive rejects instantiation over an existing contract).
 
+Both are Rust on PolkaVM written against `contract-host` (`src/contract/host`), a trait over the pallet-revive host functions: each reads its calldata by hand and dispatches on the selector. The unit tests run them against the pvm-contract-sdk mock host, which `contract-host`'s `mock` feature brings in from dev-dependencies only, so no SDK code is in either blob. A call with value, with an unknown selector, or with calldata too short to hold its arguments reverts with empty data. Each `main.rs` module doc lists the methods, selectors, storage and errors.
+
 Deploys go through the pallet's *deploy-by-code-hash* path, so **every blob must be pre-uploaded with `Revive.upload_code` first** — the child blob before the factory can deploy anything, and any target blob (e.g. the registry proxy) before `factory.deploy` references its hash.
 
 ## The frozen-artifact rule
@@ -24,7 +26,7 @@ Deploys go through the pallet's *deploy-by-code-hash* path, so **every blob must
 - the **child blob's hash** feeds the create2 step — a changed child moves every future salt's address;
 - the **factory blob's bytes** (plus the child hash constructor argument and the fixed `CREATE3_FACTORY_PACKAGE` salt) pin the factory's own CREATE2 address — a changed factory blob is a different factory, and every address it derives moves with it.
 
-Never rebuild or replace them casually. The TS loaders (`@parity/cdm-builder`'s `create3.ts`) verify blob bytes against the manifest on every load and throw on mismatch; `CREATE3_CHILD_CODE_HASH` / `CREATE3_FACTORY_CODE_HASH` mirror the manifest as embedded constants. Deliberately shipping a new generation means bumping `CREATE3_FACTORY_PACKAGE` in `@parity/cdm-utils` and accepting a brand-new address universe.
+Never rebuild or replace them casually. The TS loaders (`@parity/cdm-builder`'s `create3.ts`) verify blob bytes against the manifest on every load and throw on mismatch; `CREATE3_CHILD_CODE_HASH` / `CREATE3_FACTORY_CODE_HASH` mirror the manifest as embedded constants. Deliberately shipping a new generation means accepting a brand-new address universe: `bun run src/lib/scripts/freeze-create3-artifacts.ts` rebuilds both crates with `cargo pvm-contract build`, copies the blobs here and rewrites the manifest, and the two embedded constants are then updated by hand. Bumping `CREATE3_FACTORY_PACKAGE` in `@parity/cdm-utils` moves the factory, and every address it derives, without touching the blobs.
 
 ## Per-network bootstrap
 

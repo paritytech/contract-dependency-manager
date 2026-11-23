@@ -2,7 +2,7 @@
 
 Deploy the CDM ContractRegistry to W3S/Summit Asset Hub, register the shared CDM contracts, and prepare the frontend deploy path.
 
-Assumes Node.js 22, pnpm, Bun, Rust/Cargo, and a funded W3S/Summit deployer mnemonic are available.
+Assumes Node.js 22, pnpm, Bun, Rust/Cargo, Foundry (`forge`), and a funded W3S/Summit deployer mnemonic are available.
 
 ## 1. Get The Code
 
@@ -15,7 +15,7 @@ pnpm install
 
 ## 2. Install Registry Build Tooling
 
-The on-chain contracts (registry implementation, EIP-1967 proxy, resolver implementation) are built with the mainline `cargo-pvm-contract`:
+The on-chain contracts need two tools. The PolkaVM contracts (EIP-1967 proxy, shim factory, per-name shim) are Rust, compiled and linked with the mainline `cargo-pvm-contract`:
 
 ```bash
 cargo install --force --locked \
@@ -23,21 +23,24 @@ cargo install --force --locked \
   cargo-pvm-contract
 ```
 
-`pnpm build:registry` then builds the blobs to `target/release/contract-registry.polkavm`, `target/release/contract-eip1967-proxy.polkavm`, and `target/release/contract-resolver.polkavm` (each with a matching `.abi.json`). The per-name shim is a frozen artifact under `src/contract/proxy/artifacts/` and is never rebuilt here.
+The registry and resolver implementations are Solidity compiled to EVM bytecode with `forge` from upstream Foundry (stable release), which fetches solc 0.8.34 on its first build. `forge` must be on `PATH`.
+
+`pnpm build:registry` then builds the blobs `target/release/contract-eip1967-proxy.polkavm`, `target/release/contract-shim-factory.polkavm`, and `target/release/contract-proxy.polkavm`, and runs `forge build`, which writes `src/contract/solidity/out/Registry.sol/Registry.json` and `src/contract/solidity/out/Resolver.sol/Resolver.json`. The deploy takes the per-name shim from the frozen artifact under `src/contract/proxy/artifacts/`, not from this build.
 
 ## 3. Deploy Registry
 
 Use a funded W3S/Summit Asset Hub deployer mnemonic. CDM saves this account later so registry queries use a mapped origin.
 
-The deploy is idempotent and runs up to five steps, skipping any that already happened:
+The deploy is idempotent and runs up to six steps, skipping any that already happened:
 
 1. **CREATE3 factory bootstrap** (first deploy on a network only): the frozen factory/child blobs committed at `src/contract/create3/artifacts/` are uploaded/deployed — the child via `Revive.upload_code`, the factory via CREATE2 from the deployer EOA. Same EOA ⇒ same factory address on every network. See [src/contract/create3/README.md](src/contract/create3/README.md).
-2. **Implementation blob** via plain CREATE2 — its address doesn't matter.
-3. **EIP-1967 proxy THROUGH the factory**: proxy code is uploaded (`upload_code`), then `factory.deploy(salt, proxyCodeHash, implAddress)` lands it at an address that is a pure function of `(factory, salt)` — independent of the proxy bytecode and the implementation address.
-4. **Resolver**: the resolver implementation via plain CREATE2, then its own EIP-1967 proxy through the factory with the registry as admin, handed to the registry with `setResolver`. Every per-name shim bakes this address in, so it is as permanent as the registry's.
-5. **Per-name shim blob**: the frozen shim blob is uploaded. Its code hash is compiled into the registry implementation (`getProxyCodeHash()`), and the deploy stops if the two differ.
+2. **Shim factory** via plain CREATE2: a small PolkaVM contract. The registry implementation is EVM bytecode, which cannot create a PolkaVM contract, so it delegate-calls the shim factory to instantiate each name's shim.
+3. **Registry implementation** (EVM bytecode) via plain CREATE2, with the shim factory address as its constructor argument — its address doesn't matter.
+4. **EIP-1967 proxy THROUGH the CREATE3 factory**: proxy code is uploaded (`upload_code`), then `factory.deploy(salt, proxyCodeHash, constructorInput)` (the input being `(implementation, admin)`) lands it at an address that is a pure function of `(factory, salt)` — independent of the proxy bytecode and its constructor input.
+5. **Resolver**: the resolver implementation (EVM bytecode) via plain CREATE2, then its own EIP-1967 proxy through the CREATE3 factory with the registry as admin, handed to the registry with `setResolver`. Every per-name shim bakes this address in, so it is as permanent as the registry's.
+6. **Per-name shim blob**: the frozen shim blob is uploaded. Its code hash is compiled into the registry implementation (`getProxyCodeHash()`), and the deploy stops if the two differ.
 
-The **proxy address is the registry address** — it never changes, even across proxy bytecode revisions. The proxy's deployer becomes the registry admin; later implementation upgrades are done by the admin calling `setCode(<new implementation address>)` through the proxy — the proxy is never redeployed (`pnpm deploy:registry -- --name w3s --upgrade --suri "$CDM_DEPLOY_SURI"`). The resolver is upgraded the same way through the registry's `upgradeResolver` (`--upgrade-resolver`), and one upgrade reaches every call a shim still asks the resolver about, for every name that is not sealed.
+The **proxy address is the registry address** — it never changes, even across proxy bytecode revisions. The proxy's deployer becomes the registry admin; later implementation upgrades are done by the admin calling `setCode(<new implementation address>)` through the proxy — the proxy is never redeployed (`pnpm deploy:registry -- --name w3s --upgrade --suri "$CDM_DEPLOY_SURI"`). An upgrade first deploys the shim factory from the same build, unless that blob is already on-chain, and gives its address to the new implementation. The resolver is upgraded the same way through the registry's `upgradeResolver` (`--upgrade-resolver`), and one upgrade reaches every call a shim still asks the resolver about, for every name that is not sealed.
 
 ```bash
 export CDM_DEPLOY_SURI="<deployer-mnemonic>"
@@ -50,7 +53,7 @@ Copy the deployed proxy address from:
 CONTRACTS_REGISTRY_ADDR=0x...
 ```
 
-(The script also prints `CONTRACTS_REGISTRY_IMPL_ADDR=0x...` — the implementation blob the proxy currently delegates to — `CDM_RESOLVER_ADDR=0x...` — the resolver proxy every per-name shim asks — and `CREATE3_FACTORY_ADDR=0x...` — the factory both proxies were deployed through; you normally don't need any of them.)
+(The script also prints `CONTRACTS_REGISTRY_IMPL_ADDR=0x...` — the implementation the proxy currently delegates to — `CDM_RESOLVER_ADDR=0x...` — the resolver proxy every per-name shim asks — and `CREATE3_FACTORY_ADDR=0x...` — the CREATE3 factory both proxies were deployed through; you normally don't need any of them.)
 
 ## 4. Open Address PR
 

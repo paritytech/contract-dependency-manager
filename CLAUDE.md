@@ -53,16 +53,24 @@ src/
     scripts/                   # @parity/cdm-scripts — Standalone bun scripts
       embed-templates.ts       #   Generate src/apps/cli/src/generated/templates.ts
       deploy-registry.ts       #   Deploy registry on-chain
-      build-registry.sh        #   Build registry impl, EIP-1967 proxy, resolver and shim with mainline cargo-pvm-contract
+      build-registry.sh        #   Build the EIP-1967 proxy, shim factory and shim (mainline cargo-pvm-contract) and the registry + resolver (forge)
+      freeze-proxy-artifact.ts #   Rebuild and re-freeze the per-name shim blob
+      freeze-create3-artifacts.ts  # Rebuild and re-freeze the CREATE3 factory and child blobs
     cdm/
       rust/                    # cdm crate — re-exports cdm::import!() macro
       rust-macros/             # cdm-macros — Proc-macro crate, provides cdm::import!()
       typescript/              # @parity/cdm-codegen package (stub)
-  contract/                    # contract-registry Rust crate (PolkaVM implementation contract)
-    core/                      # contract-registry-core — pure shared logic (slots, name validation, wire format, shim state, shim ↔ resolver protocol)
+  contract/                    # CDM's on-chain contracts
+    solidity/                  # Foundry project — the upgradeable contracts, Solidity compiled to EVM bytecode
+      src/Registry.sol         #   ContractRegistry implementation — also creates the per-name shims (through the shim factory) and is the resolver's admin
+      src/Resolver.sol         #   Resolver implementation — routing tables + policy for every shim (upgradeable, registry-owned)
+      test/                    #   forge tests (Registry.t.sol, Resolver.t.sol, Storage.t.sol) and their test doubles
+    host/                      # contract-host — the pallet-revive host calls the Rust contracts make, behind one `Host` trait
+    core/                      # contract-registry-core — pure logic shared by the Rust contracts (EIP-1967 slots, wire format, shim state, shim ↔ resolver protocol)
     proxy/                     # contract-proxy — the frozen per-name shim (stable address + storage; serves the latest version itself, asks the resolver for the rest; sealable)
-    resolver/                  # contract-resolver — routing tables + policy for every shim (upgradeable, registry-owned)
+    shim-factory/              # contract-shim-factory — instantiates a name's shim when the registry delegate-calls it
     eip1967-proxy/             # contract-eip1967-proxy — stable address in front of the registry and the resolver
+    create3/                   # create3-factory + create3-child — the frozen CREATE3 pair (see its README.md)
   templates/                   # Scaffolding templates (shared-counter, instagram)
   stubs/                       # Stub packages (react-devtools-core)
 ```
@@ -78,11 +86,13 @@ src/
 | `@parity/cdm-env` | `src/lib/env` | Chain connections, signer, chain presets |
 | `@parity/cdm-scripts` | `src/lib/scripts` | Standalone bun scripts (embed-templates, deploy-registry) |
 | `@parity/cdm-codegen` | `src/lib/cdm/typescript` | Stub TS library |
-| `contract-registry` | `src/contract` | On-chain ContractRegistry implementation (Rust/PolkaVM) — also the per-name shim factory and the resolver's admin |
-| `contract-registry-core` | `src/contract/core` | Pure shared logic — EIP-1967 slots, name validation, versioned-call wire format, shim state, shim ↔ resolver protocol |
+| Foundry project (not a workspace package) | `src/contract/solidity` | The upgradeable contracts, Solidity compiled to EVM bytecode. `Registry.sol` — on-chain ContractRegistry implementation, also the creator of the per-name shims and the resolver's admin. `Resolver.sol` — routing tables + policy for every shim; one upgrade reaches every call a shim asks about |
+| `contract-host` | `src/contract/host` | What the Rust contracts share — a `Host` trait over the pallet-revive host functions, its on-chain implementation and panic handler, a few ABI helpers, and a `mock` feature that implements `Host` for the pvm-contract-sdk `MockHost` |
+| `contract-registry-core` | `src/contract/core` | Pure logic shared by the Rust contracts — EIP-1967 slots, versioned-call wire format, shim state, shim ↔ resolver protocol |
 | `contract-proxy` | `src/contract/proxy` | Per-name shim (frozen) — a contract name's stable address + storage; serves the latest version from its own fast-path slot, asks the resolver about every other call, and can be sealed on one version for good |
-| `contract-resolver` | `src/contract/resolver` | Resolver — routing tables + policy for every shim; one upgrade reaches every call a shim asks about |
+| `contract-shim-factory` | `src/contract/shim-factory` | Shim factory — instantiates a PolkaVM contract by code hash for whoever delegate-calls it; the registry uses it to create each name's shim |
 | `contract-eip1967-proxy` | `src/contract/eip1967-proxy` | EIP-1967 proxy — the stable address in front of the registry and the resolver |
+| `create3-factory`, `create3-child` | `src/contract/create3/factory`, `src/contract/create3/child` | CREATE3 pair (frozen) — deploys a contract at an address that depends only on (factory, salt) |
 | `cdm` | `src/lib/cdm/rust` | CDM crate — re-exports cdm::import!() macro |
 | `cdm-macros` | `src/lib/cdm/rust-macros` | Proc-macro crate — cdm::import!() resolves ABI from cdm.json |
 
@@ -99,7 +109,7 @@ bun run src/apps/cli/src/cli.ts  # Run CLI directly
 # Building
 pnpm build                    # build:ts + build:registry
 pnpm build:ts                 # turbo build (all TS workspace packages)
-pnpm build:registry           # Build registry impl, EIP-1967 proxy, resolver and shim via src/lib/scripts/build-registry.sh (mainline cargo-pvm-contract)
+pnpm build:registry           # src/lib/scripts/build-registry.sh: EIP-1967 proxy, shim factory and shim with mainline cargo-pvm-contract, then forge build for the registry and resolver
 pnpm build:template           # Build shared-counter template contracts
 pnpm compile:cli              # build:ts + embed:templates + compile CLI to dist/cdm
 pnpm compile:all              # Cross-compile (darwin-arm64, darwin-x64, linux-x64, linux-arm64)
@@ -110,16 +120,17 @@ pnpm embed:templates          # bun run src/lib/scripts/embed-templates.ts
 pnpm deploy:registry -- --name local  # bun run src/lib/scripts/deploy-registry.ts
 
 # Testing
-pnpm test                     # vitest + test:macro + test:rust
+pnpm test                     # vitest + test:macro + test:rust + test:sol
 pnpm test:e2e                 # end-to-end tests (requires a running local PPN: `npm install -g @parity/ppn && ppn start --ephemeral` — see src/lib/contracts/tests/e2e/harness.ts)
 pnpm test:macro               # Compile cdm::import! consumer to PolkaVM
 pnpm test:rust                # Host-side Rust unit tests
+pnpm test:sol                 # forge test for the registry and resolver (src/contract/solidity)
 
 # Full gate
 pnpm check                    # embed:templates + format:check + typecheck + build + test
 
 # Formatting
-pnpm format                   # Format all TS and Rust code
+pnpm format                   # Format all TS, Rust and Solidity code (biome, cargo fmt, forge fmt)
 pnpm format:check             # Check formatting
 
 # Cleanup
@@ -168,25 +179,35 @@ React 19 + Vite + React Router DOM (HashRouter). Uses product-sdk descriptors an
 - `useRegistry.ts` — On-chain contract queries + IPFS metadata fetching (two-phase loading)
 - DOMPurify + marked for XSS-safe markdown rendering
 
-## Rust Contracts
+## On-Chain Contracts
 
-Target: PolkaVM (`riscv64emac-unknown-none-polkavm`) via `.cargo/config.toml`. Requires `cargo-pvm-contract` for building. Cannot `cargo check --workspace` without the PolkaVM target toolchain — use `cargo pvm-contract build` instead.
+Two toolchains, both required. The Rust contracts target PolkaVM (`riscv64emac-unknown-none-polkavm`) via `.cargo/config.toml` and need `cargo-pvm-contract` for building. Cannot `cargo check --workspace` without the PolkaVM target toolchain — use `cargo pvm-contract build` instead. The root `Cargo.toml` release profile optimizes for size (`opt-level = "s"`, fat LTO, one codegen unit): every byte of a contract blob is loaded and proven on each call. The Solidity contracts are a Foundry project at `src/contract/solidity/` (`foundry.toml` pins solc 0.8.34 and appends no metadata hash, so identical source gives byte-identical output) and need `forge`: `pnpm build:registry`, `pnpm test`, `pnpm format` and `pnpm format:check` all call it.
 
-The ContractRegistry stores name → semver-versioned history (version keys pack `major<<64|minor<<32|patch` into u128; major is capped at 2^31 − 1 so a key fits 95 bits of the shim's state word) and metadata URIs on-chain, and acts as a factory for per-name shims. It ships as four contracts on the mainline pvm-contract-sdk:
+The ContractRegistry stores name → semver-versioned history (version keys pack `major<<64|minor<<32|patch` into u128; major is capped at 2^31 − 1 so a key fits 95 bits of the shim's state word) and metadata URIs on-chain, and creates the per-name shims. The upgradeable contracts — the registry and the resolver — are Solidity compiled to EVM bytecode. The contracts that are deployed once and stay — the per-name shim, the EIP-1967 proxy, the CREATE3 factory and child — are Rust on PolkaVM, and so is the shim factory. The Rust contracts are written against `contract-host`, not the pvm-contract-sdk: they enable its `mock` feature from dev-dependencies only, so the SDK is a test-only dependency and none of its code is in a blob.
 
-- `src/contract/src/main.rs` — the implementation: `publish(name, versionKey, target, metadataUri)` (strictly-increasing keys; first publish CREATE2-instantiates the name's shim with `salt = keccak256(name)` and the resolver address as constructor input), `setMinSupported`/`freezeContract`/`setFastPath`/`sealContract` written to the resolver, queries, plus longevity controls: `setCode(address)` (UUPS-style upgrade — repoints the registry proxy, keeping address and state), `getProxyCodeHash()` (the shim blob's hash, a compiled-in constant pinned to the frozen artifact by a unit test — a new shim blob takes a registry upgrade), `setResolver(address)` (write-once) / `upgradeResolver(address)` (repoints the resolver proxy — one upgrade reaches every call a shim asks about), `freeze()`/`unfreeze()` (blocks all non-admin mutations with `ContractFrozen()`).
-- `src/contract/proxy/src/main.rs` — `contract-proxy`, the per-name shim: owns a name's permanent address, storage, and balance. Fast path: it keeps the latest version (key + implementation) in its own `FAST_SLOT` and tail-delegate-calls it for plain calls and for calls pinned to that key, and answers the `latest()` meta query from it, without asking the resolver. It answers four meta selectors itself whatever its state — `sealed()`, `resolver()`, and the resolver-only `setFastPath`/`seal` — and forwards every other call to the resolver as `resolve(caller, value, data)` (read-only; the resolver address is pallet immutable data set by the constructor), doing what the `Resolution` says — kind 0 returns the payload, kind 1 delegate-calls `target` with `payload ++ data[strip..]`. Resolver reverts bubble unchanged; anything else is `MalformedResolution()`. Seal: once the sealed bit of the `FAST_SLOT` word is set (irreversible) the shim never asks the resolver again — it serves the sealed version, `latest()` and its two getters, and every other call reverts `Sealed()`. The module doc is the protocol spec; the blob is frozen at `src/contract/proxy/artifacts/` and is the only part of the design that can never change.
-- `src/contract/resolver/src/main.rs` — `contract-resolver`, behind an EIP-1967 proxy with the registry as admin: the routing tables (`routing: shim → latest/floor/frozen/fastPathOff/sealed`, `implementations: shim → key → implementation`) and the policy for every call a shim asks about. Plain calldata → latest implementation, `[MAGIC][u128 key]` → that exact version (below the owner's floor → `UnsupportedVersion()`), `[MAGIC][0][selector]` → the CDM meta plane: queries (`implOf`, `latest`, `minSupported`, `frozen`, `admin`) plus `callCode`, honored only when the shim's caller is the registry (the initializations primitive, live while frozen). Mutations (`publish`, `setMinSupported`, `setFrozen`, `setFastPath`, `seal`, `setCode`) are registry-only, and keep each shim's fast-path copy in step: pushed on publish, emptied while the name is frozen or its owner has opted out (`setFastPath(proxy, false)`), and pinned for good by `seal`, after which every mutation of the name reverts `NameSealed()`. Wire format + protocol constants live in `contract-registry-core::versioning` and are mirrored (and drift-tested) in `src/lib/contracts/src/proxy.ts`.
+- `src/contract/solidity/src/Registry.sol` — the registry implementation: `publish(name, versionKey, target, metadataUri)` (strictly-increasing keys; first publish instantiates the name's shim by delegate-calling the shim factory with `salt = keccak256(name)`, the shim code hash and the resolver address as constructor input), `setMinSupported`/`freezeContract`/`setFastPath`/`sealContract` written to the resolver, queries, plus longevity controls: `setCode(address)` (UUPS-style upgrade — repoints the registry proxy, keeping address and state), `getProxyCodeHash()` (the shim blob's hash, the constant `SHIM_CODE_HASH`, pinned to the frozen artifact by a forge test — a new shim blob takes a registry upgrade), `setResolver(address)` (write-once) / `upgradeResolver(address)` (repoints the resolver proxy — one upgrade reaches every call a shim asks about), `freeze()`/`unfreeze()` (blocks all non-admin mutations with `ContractFrozen()`). The constructor takes the shim factory address and keeps it as an immutable.
+- `src/contract/proxy/src/main.rs` — `contract-proxy`, the per-name shim: owns a name's permanent address, storage, and balance. Fast path: it keeps the latest version (key + implementation) in its own `FAST_SLOT` and tail-delegate-calls it for plain calls and for calls pinned to that key, and answers the `latest()` meta query from it, without asking the resolver. It answers four meta selectors itself whatever its state — `sealed()`, `resolver()`, and the resolver-only `setFastPath`/`seal` — and forwards every other call to the resolver as `resolve(caller, value, data)` (read-only; the resolver address is pallet immutable data set by the constructor), doing what the `Resolution` says — kind 0 returns the payload, kind 1 delegate-calls `target` with `payload ++ data[strip..]`. Resolver reverts bubble unchanged; anything else is `MalformedResolution()`. Seal: once the sealed bit of the `FAST_SLOT` word is set (irreversible) the shim never asks the resolver again — it serves the sealed version, `latest()` and its two getters, and every other call reverts `Sealed()`. The module doc is the protocol spec; the blob is frozen at `src/contract/proxy/artifacts/` and, once a name is created from it, can never change.
+- `src/contract/solidity/src/Resolver.sol` — the resolver implementation, behind an EIP-1967 proxy with the registry as admin: the routing tables (`routing: shim → latest/floor/frozen/fastPathOff/sealed`, `implementations: shim → key → implementation`) and the policy for every call a shim asks about. Plain calldata → latest implementation, `[MAGIC][u128 key]` → that exact version (below the owner's floor → `UnsupportedVersion()`), `[MAGIC][0][selector]` → the CDM meta plane: queries (`implOf`, `latest`, `minSupported`, `frozen`, `admin`) plus `callCode`, honored only when the shim's caller is the registry (the initializations primitive, live while frozen). Mutations (`publish`, `setMinSupported`, `setFrozen`, `setFastPath`, `seal`, `setCode`) are registry-only, and keep each shim's fast-path copy in step: pushed on publish, emptied while the name is frozen or its owner has opted out (`setFastPath(proxy, false)`), and pinned for good by `seal`, after which every mutation of the name reverts `NameSealed()`. Wire format + protocol constants live in `contract-registry-core::versioning` and are mirrored (and drift-tested) in `src/lib/contracts/src/proxy.ts`; `Registry.sol` and `Resolver.sol` declare the ones they use themselves.
+- `src/contract/shim-factory/src/main.rs` — `contract-shim-factory`: EVM bytecode cannot create a PolkaVM contract, so the registry delegate-calls this with `[salt][code hash][constructor input]` and gets the new contract's address back as one ABI word. pallet-revive attributes an instantiation made inside a delegate call to the delegating contract, so a shim's address derives from the registry and not from the shim factory. It holds no state and checks no caller. Its address is a constructor argument of the registry implementation, so a new shim factory ships with a registry upgrade.
 - `src/contract/eip1967-proxy/src/main.rs` — a method-less EIP-1967 proxy that owns a stable address and tail-delegate-calls everything to the implementation; one instance fronts the registry, one the resolver. Deployed through the CREATE3 factory with `(implementation, admin)` constructor args (`src/lib/contracts/src/registry-deploy.ts`); the registry proxy address is the registry address consumers use.
-- `src/contract/core/` — `contract-registry-core`, host-independent shared logic (EIP-1967 slot constants, contract-name validation, versioned-call wire format, the shim's slots and meta selectors, the `resolve` request/response layout) unit-tested with plain `cargo test`.
+- `src/contract/create3/` — `create3-factory` and `create3-child`, the frozen pair that gives both proxies an address depending only on (factory, salt); see `src/contract/create3/README.md`.
+- `src/contract/host/` — `contract-host`, what the Rust contracts are written against: the `Host` trait over the pallet-revive host functions (`pallet-revive-uapi`), `Chain` (its on-chain implementation) and the panic handler every blob needs, the `abi` helpers for reading calldata by hand, and the `mock` feature, which implements `Host` for the pvm-contract-sdk `MockHost`.
+- `src/contract/core/` — `contract-registry-core`, host-independent logic shared by the Rust contracts (the EIP-1967 implementation and admin slot constants, versioned-call wire format, the shim's slot and meta selectors, the `resolve` request/response layout) unit-tested with plain `cargo test`.
 
-Admin/upgrade state (admin, implementation, frozen) lives at fixed EIP-1967-style slots so implementations can reshape ordinary storage freely — the shim's own slot sits at `keccak256(label) - 1` too, so user contracts behind it keep plain auto-numbered slots and need no slot attributes at all. Contract unit tests run on the host via `MockHost` and are included in `pnpm test:rust`. The dispatch-level tests inline in `src/contract/src/main.rs` lock the `getAddress(string)` selector + 64-byte return layout that `pvm-cdm-macros` hardcodes, and the registry→resolver/shim calldata bytes — do not change those wire formats without updating every side.
+Registry deploys and upgrades (`src/lib/contracts/src/registry-deploy.ts`; its header comment is the exact sequence) find their build outputs through `registryArtifacts(rootDir)`: forge's artifacts for the registry and the resolver, whose EVM creation code goes on-chain by plain CREATE2, and the EIP-1967 proxy and shim factory blobs under `target/release/`. The shim factory is deployed before the registry implementation, which takes its address as constructor argument.
+
+The shim blob (`src/contract/proxy/artifacts/`) and the two CREATE3 blobs (`src/contract/create3/artifacts/`) are frozen: committed, hash-pinned by the `manifest.json` beside them, and the bytes a deploy uploads. A regenerated blob has a new code hash, and every address derived from it moves. Regenerate one only with `src/lib/scripts/freeze-proxy-artifact.ts` or `src/lib/scripts/freeze-create3-artifacts.ts`, then update the hash constants by hand: `CONTRACT_PROXY_CODE_HASH` (`src/lib/contracts/src/proxy-artifacts.ts`) and `SHIM_CODE_HASH` (`Registry.sol`) for the shim, `CREATE3_CHILD_CODE_HASH` and `CREATE3_FACTORY_CODE_HASH` (`src/lib/contracts/src/create3.ts`) for the CREATE3 pair.
+
+Admin/upgrade state (admin, implementation, frozen) lives at fixed EIP-1967-style slots, and everything else the registry and the resolver store sits in one ERC-7201 struct each (`cdm.registry.v1`, `cdm.resolver.v1`); an upgraded implementation reads the same keys again, and `test/Storage.t.sol` pins every key a first publish writes. The shim's own slot sits at `keccak256(label) - 1` too, so user contracts behind it keep plain auto-numbered slots and need no slot attributes at all. The Rust contracts' unit tests run on the host via `MockHost` and are included in `pnpm test:rust`; the Solidity contracts' tests run under forge (`pnpm test:sol`), with Solidity doubles standing in for the shim and the shim factory, which are PolkaVM contracts forge cannot run. The dispatch-level tests at the end of `src/contract/solidity/test/Registry.t.sol` lock the `getAddress(string)` selector + 64-byte return layout that `pvm-cdm-macros` hardcodes, and `Registry.t.sol` and `Resolver.t.sol` compare the registry→resolver/shim calldata, the `resolve` request and its answer as raw bytes — do not change those wire formats without updating every side. A call to the registry or the resolver with an unknown selector or calldata that does not decode reverts with empty data.
 
 ## Testing
 
 Tests use `vitest`. Run from project root:
 - `detection.test.ts` — Contract detection, dependency graph, toposort (at `src/lib/contracts/tests/`)
 - `commands.test.ts` — CLI help output, template scaffolding (at `src/apps/cli/tests/`)
+- `registry-abi-sync.test.ts` — the hand-written registry and resolver ABI mirrors (`src/abi/registry.ts`, `src/abi/resolver.ts`) against forge's artifacts (at `src/lib/contracts/tests/`); skipped locally when `pnpm build:registry` has not run, a failure in CI
+
+The on-chain contracts have their own suites: `pnpm test:rust` (host-side `cargo test`) for the Rust contracts and `pnpm test:sol` (`forge test`) for the registry and resolver.
 
 ## Path Conventions
 
@@ -194,5 +215,6 @@ Tests use `vitest`. Run from project root:
 - Stubs (e.g., react-devtools-core) at `src/stubs/`
 - No local papi codegen: typed chain APIs/descriptors come prebuilt from `@parity/product-sdk-descriptors` (e.g. `@parity/product-sdk-descriptors/paseo-asset-hub`), version-pinned in the `pnpm-workspace.yaml` catalog
 - Rust build artifacts at `target/` (project root, shared by Cargo workspace)
+- Forge build output at `src/contract/solidity/out/` (gitignored, with `cache/`)
 - Local imports use no `.js` extensions (moduleResolution: "bundler"); exception: `@noble/hashes/blake2.js`
 - From `src/apps/cli/tests/`: `../../../..` = project root, `../../..` = `src/`
