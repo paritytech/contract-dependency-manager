@@ -6,6 +6,7 @@ members = [
     "src/contract/create3/child",
     "src/contract/create3/factory",
     "src/contract/eip1967-proxy",
+    "src/contract/host",
     "src/contract/proxy",
     "src/contract/resolver",
     "src/lib/cdm/rust",
@@ -36,3 +37,10 @@ proc-macro2 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 keccak-const = "0.2"
+pallet-revive-uapi = { version = "0.15", default-features = false }
+
+# Every byte of a contract blob is loaded and proven on each call.
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
