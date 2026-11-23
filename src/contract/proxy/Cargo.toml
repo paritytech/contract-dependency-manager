@@ -7,14 +7,11 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
-[features]
-abi-gen = ["pvm-contract-sdk/abi-gen"]
-
 [dependencies]
+contract-host = { path = "../host" }
 contract-registry-core = { path = "../core" }
-pvm-contract-sdk.workspace = true
 polkavm-derive.workspace = true
-pvm-bump-allocator.workspace = true
 
 [dev-dependencies]
+contract-host = { path = "../host", features = ["mock"] }
 pvm-contract-sdk = { workspace = true, features = ["std"] }
