@@ -26,11 +26,18 @@
 
 #![cfg_attr(target_arch = "riscv64", no_std, no_main)]
 
+// polkavm-linker gives a contract an 8 KiB stack unless it asks for more;
+// 128 KiB is resolc's default.
+#[cfg(target_arch = "riscv64")]
+polkavm_derive::min_stack_size!(131072);
+
 use contract_host::{Host, reject_value};
 use contract_registry_core::slots::{ADMIN_SLOT, IMPLEMENTATION_SLOT};
 
-/// pallet-revive caps calldata and return data at this many bytes each.
-pub const MAX_DATA: usize = 128 * 1024;
+/// The longest calldata or return data the buffer holds. pallet-revive caps
+/// each at 128 KiB; a deployed proxy's code never changes, so it has room for
+/// twice that.
+pub const MAX_DATA: usize = 256 * 1024;
 
 /// The constructor: pins the implementation and the admin from the calldata.
 pub fn construct<H: Host>(host: &H) {

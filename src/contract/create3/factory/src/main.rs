@@ -57,6 +57,11 @@
 
 #![cfg_attr(target_arch = "riscv64", no_std, no_main)]
 
+// polkavm-linker gives a contract an 8 KiB stack unless it asks for more;
+// 128 KiB is resolc's default.
+#[cfg(target_arch = "riscv64")]
+polkavm_derive::min_stack_size!(131072);
+
 use contract_host::abi::{SELECTOR_LEN, bytes_argument, keccak, selector};
 use contract_host::{Host, reject_value};
 
