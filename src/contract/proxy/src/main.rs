@@ -7,9 +7,10 @@
 //! below is permanent.
 //!
 //! **Resolver address** — pallet immutable data, 20 bytes, written by the
-//! constructor `new(address resolver)`. pallet-revive accepts
-//! `set_immutable_data` only from a constructor, so no delegated code can ever
-//! redirect a shim.
+//! constructor `new(address resolver)` from the low 20 bytes of its one ABI
+//! word; input shorter than a word reverts with empty data. pallet-revive
+//! accepts `set_immutable_data` only from a constructor, so no delegated code
+//! can ever redirect a shim.
 //!
 //! **Own storage** — one slot at `keccak256(label) - 1`
 //! (`contract_registry_core::versioning::shim`); every other slot belongs to
@@ -103,6 +104,11 @@
 
 #![cfg_attr(target_arch = "riscv64", no_std, no_main)]
 
+// polkavm-linker gives a contract an 8 KiB stack unless it asks for more;
+// 128 KiB is resolc's default.
+#[cfg(target_arch = "riscv64")]
+polkavm_derive::min_stack_size!(131072);
+
 use contract_host::Host;
 use contract_host::abi::selector;
 use contract_registry_core::versioning::{
@@ -110,8 +116,10 @@ use contract_registry_core::versioning::{
     route_calldata, shim,
 };
 
-/// pallet-revive caps calldata and return data at this many bytes each.
-const MAX_DATA: usize = 128 * 1024;
+/// The longest calldata or return data the buffers hold. pallet-revive caps
+/// each at 128 KiB; a shim can never be replaced, so it has room for twice
+/// that.
+const MAX_DATA: usize = 256 * 1024;
 /// The `resolve` request: its header, then the calldata padded to a word.
 pub const REQUEST_LEN: usize = resolve::REQUEST_HEADER_LEN + MAX_DATA;
 /// The resolver's answer, with room to append the calldata tail to its payload.
@@ -130,13 +138,13 @@ pub enum Error {
 }
 
 impl Error {
-    /// The Solidity error selector this reverts with.
+    /// The Solidity error selector this reverts with, hashed at compile time.
     pub const fn selector(&self) -> [u8; 4] {
         match self {
-            Error::MalformedResolution => selector(b"MalformedResolution()"),
-            Error::NotResolver => selector(b"NotResolver()"),
-            Error::Sealed => selector(b"Sealed()"),
-            Error::MalformedCall => selector(b"MalformedCall()"),
+            Error::MalformedResolution => const { selector(b"MalformedResolution()") },
+            Error::NotResolver => const { selector(b"NotResolver()") },
+            Error::Sealed => const { selector(b"Sealed()") },
+            Error::MalformedCall => const { selector(b"MalformedCall()") },
         }
     }
 }
@@ -158,9 +166,16 @@ impl<'a, H: Host> Shim<'a, H> {
         }
     }
 
-    /// The constructor: pins the resolver as immutable data.
-    pub fn construct(&mut self, resolver: &[u8; 20]) {
-        self.host.set_immutable_data(resolver);
+    /// The constructor, `new(address resolver)`: pins the low 20 bytes of the
+    /// calldata's one word as immutable data. Calldata shorter than a word
+    /// reverts with empty data.
+    pub fn construct(&mut self) {
+        if self.host.call_data_size() < 32 {
+            self.host.revert(&[]);
+        }
+        let mut resolver = [0u8; 20];
+        self.host.call_data_copy(&mut resolver, 12);
+        self.host.set_immutable_data(&resolver);
     }
 
     /// Every call lands here. Payable: value accrues to this address.
@@ -373,14 +388,9 @@ mod entry {
         }
     }
 
-    /// `new(address resolver)`: one ABI word.
     #[polkavm_derive::polkavm_export]
     extern "C" fn deploy() {
-        let mut word = [0u8; 32];
-        Chain.call_data_copy(&mut word, 0);
-        let mut resolver = [0u8; 20];
-        resolver.copy_from_slice(&word[12..]);
-        shim().construct(&resolver);
+        shim().construct();
     }
 
     #[polkavm_derive::polkavm_export]
@@ -462,13 +472,17 @@ mod tests {
             .value_transferred(U256::from(value))
             .mock_call(RESOLVER, response)
             .build();
-        let mut shim = Shim::new(
+        HostApi::set_immutable_data(&mock, &RESOLVER);
+        (shim_on(&mock), mock)
+    }
+
+    /// A shim running on `mock`, over fresh scratch space.
+    fn shim_on(mock: &MockHost) -> Shim<'static, MockHost> {
+        Shim::new(
             mock.clone(),
             Box::leak(vec![0u8; REQUEST_LEN].into_boxed_slice()),
             Box::leak(vec![0u8; RESPONSE_LEN].into_boxed_slice()),
-        );
-        shim.construct(&RESOLVER);
-        (shim, mock)
+        )
     }
 
     /// The exact bytes the shim must send the resolver.
@@ -535,12 +549,29 @@ mod tests {
     }
 
     #[test]
-    fn constructor_pins_the_resolver_as_immutable_data() {
-        let (_shim, mock) = deployed(&[], 0, Ok(vec![]));
+    fn constructor_pins_the_low_20_bytes_of_its_word_as_immutable_data() {
+        let mut input = [0xFF; 32];
+        input[12..].copy_from_slice(&RESOLVER);
+        let mock = MockHostBuilder::new().calldata(input.to_vec()).build();
+        shim_on(&mock).construct();
+
         let mut immutable = [0u8; 32];
         let mut immutable_ref: &mut [u8] = &mut immutable;
         mock.get_immutable_data(&mut immutable_ref);
         assert_eq!(*immutable_ref, RESOLVER);
+    }
+
+    #[test]
+    fn constructor_input_shorter_than_a_word_reverts_empty() {
+        let mock = MockHostBuilder::new().calldata(vec![0x5E; 31]).build();
+        let mut shim = shim_on(&mock);
+        assert_eq!(
+            mock.expect_revert(|| shim.construct()),
+            ReturnValue {
+                flags: ReturnFlags::REVERT,
+                data: vec![],
+            }
+        );
     }
 
     #[test]
