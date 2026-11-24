@@ -383,6 +383,16 @@ const REGISTRY_ABI: RegistryAbiEntry[] = [
         inputs: [],
     },
     {
+        type: "error",
+        name: "InvalidShimFactory",
+        inputs: [],
+    },
+    {
+        type: "error",
+        name: "Reentrancy",
+        inputs: [],
+    },
+    {
         type: "event",
         name: "Published",
         inputs: [

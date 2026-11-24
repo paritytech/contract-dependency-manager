@@ -67,6 +67,8 @@ contract Registry {
     error ResolverAlreadySet();
     error InvalidResolver();
     error InvalidInitTarget();
+    error InvalidShimFactory();
+    error Reentrancy();
 
     event Published(string indexed name, uint128 versionKey, address target);
     event ProxyCreated(string indexed name, address proxy);
@@ -115,9 +117,23 @@ contract Registry {
     /// the new shim's address derives from the registry.
     address private immutable SHIM_FACTORY;
 
+    /// Set while a state-changing call runs. Transient: it lasts for the
+    /// transaction and takes no storage.
+    bool private transient entered;
+
+    /// A publish runs the publisher's initialization code, which may call
+    /// the registry: it can read, and every state-changing call reverts.
+    modifier nonReentrant() {
+        if (entered) revert Reentrancy();
+        entered = true;
+        _;
+        entered = false;
+    }
+
     /// Runs only when the implementation itself is deployed. Through the
     /// proxy, admin is initialized by the proxy's constructor instead.
     constructor(address shimFactory) {
+        if (shimFactory.code.length == 0) revert InvalidShimFactory();
         SHIM_FACTORY = shimFactory;
         _store(ADMIN_SLOT, uint256(uint160(msg.sender)));
     }
@@ -128,14 +144,14 @@ contract Registry {
         return address(uint160(_load(ADMIN_SLOT)));
     }
 
-    function setAdmin(address newAdmin) external {
+    function setAdmin(address newAdmin) external nonReentrant {
         _requireAdmin();
         emit AdminChanged(getAdmin(), newAdmin);
         _store(ADMIN_SLOT, uint256(uint160(newAdmin)));
     }
 
     /// Upgrade in place: point the proxy at a new implementation.
-    function setCode(address newImplementation) external {
+    function setCode(address newImplementation) external nonReentrant {
         _requireAdmin();
         if (newImplementation.code.length == 0) revert BadImplementation();
         _store(IMPLEMENTATION_SLOT, uint256(uint160(newImplementation)));
@@ -152,7 +168,7 @@ contract Registry {
     }
 
     /// Set once: every shim bakes the resolver address into its address.
-    function setResolver(address resolver) external {
+    function setResolver(address resolver) external nonReentrant {
         _requireAdmin();
         if (resolver == address(0)) revert InvalidResolver();
         RegistryStorage storage $ = _state();
@@ -164,18 +180,18 @@ contract Registry {
         return _state().resolver;
     }
 
-    function upgradeResolver(address newImplementation) external {
+    function upgradeResolver(address newImplementation) external nonReentrant {
         _requireAdmin();
         _resolver().setCode(newImplementation);
     }
 
-    function freeze() external {
+    function freeze() external nonReentrant {
         _requireAdmin();
         _store(FROZEN_SLOT, 1);
         emit FrozenSet(true);
     }
 
-    function unfreeze() external {
+    function unfreeze() external nonReentrant {
         _requireAdmin();
         _store(FROZEN_SLOT, 0);
         emit FrozenSet(false);
@@ -189,6 +205,7 @@ contract Registry {
 
     function publish(string calldata contractName, uint128 versionKey, address target, string calldata metadataUri)
         external
+        nonReentrant
     {
         _publish(contractName, versionKey, target, metadataUri, address(0));
     }
@@ -199,7 +216,7 @@ contract Registry {
         address target,
         string calldata metadataUri,
         address initTarget
-    ) external {
+    ) external nonReentrant {
         if (initTarget == address(0) || initTarget.code.length == 0) revert InvalidInitTarget();
         _publish(contractName, versionKey, target, metadataUri, initTarget);
     }
@@ -268,27 +285,27 @@ contract Registry {
         }
     }
 
-    function setMinSupported(string calldata contractName, uint128 versionKey) external {
+    function setMinSupported(string calldata contractName, uint128 versionKey) external nonReentrant {
         address proxy = _ownedProxy(contractName);
         _resolver().setMinSupported(proxy, versionKey);
         emit MinSupportedSet(contractName, versionKey);
     }
 
-    function freezeContract(string calldata contractName) external {
+    function freezeContract(string calldata contractName) external nonReentrant {
         _setContractFrozen(contractName, true);
     }
 
-    function unfreezeContract(string calldata contractName) external {
+    function unfreezeContract(string calldata contractName) external nonReentrant {
         _setContractFrozen(contractName, false);
     }
 
-    function setFastPath(string calldata contractName, bool enabled) external {
+    function setFastPath(string calldata contractName, bool enabled) external nonReentrant {
         address proxy = _ownedProxy(contractName);
         _resolver().setFastPath(proxy, enabled);
         emit FastPathSet(contractName, enabled);
     }
 
-    function sealContract(string calldata contractName) external {
+    function sealContract(string calldata contractName) external nonReentrant {
         address proxy = _ownedProxy(contractName);
         _resolver().seal(proxy);
         emit ContractSealed(contractName);

@@ -3,7 +3,7 @@ pragma solidity 0.8.34;
 
 import {Registry} from "../src/Registry.sol";
 import {Resolver} from "../src/Resolver.sol";
-import {ShimDouble, ShimFactoryDouble} from "./Doubles.sol";
+import {ReentrantShimDouble, ReentrantShimFactoryDouble, ShimDouble, ShimFactoryDouble} from "./Doubles.sol";
 import {ResolverSpy} from "./RegistryDoubles.sol";
 import {Test, Vm} from "./Test.sol";
 
@@ -228,6 +228,11 @@ contract RegistryTest is Test {
         assertEq(registry.getAdmin(), ALICE);
     }
 
+    function test_constructor_rejects_a_shim_factory_without_code() public {
+        vm.expectRevert(Registry.InvalidShimFactory.selector);
+        new Registry(BOB);
+    }
+
     // ─── Publishing ──────────────────────────────────────────────────────────
 
     function test_first_publish_registers_name_and_creates_proxy() public {
@@ -422,6 +427,50 @@ contract RegistryTest is Test {
         vm.startPrank(BOB);
         vm.expectRevert(Registry.Unauthorized.selector);
         registry.publishWithInit(NAME, V2_0_0, ADDR_2, URI_2, INIT_1);
+    }
+
+    // ─── Calls from an initialization ────────────────────────────────────────
+
+    /// A registry whose shims call back, with `NAME` published by `ALICE` at
+    /// `V1_0_0`. Returns the shim of `NAME`.
+    function deployedWithReentrantShim() private returns (ReentrantShimDouble) {
+        factory = address(new ReentrantShimFactoryDouble());
+        deployed(ALICE);
+        registry.publish(NAME, V1_0_0, ADDR_1, URI_1);
+        return ReentrantShimDouble(registry.getProxy(NAME).value);
+    }
+
+    function test_state_changing_calls_revert_while_a_publish_runs() public {
+        ReentrantShimDouble shim = deployedWithReentrantShim();
+        bytes[] memory calls = new bytes[](13);
+        calls[0] = abi.encodeCall(Registry.publish, ("@cdm/other", V1_0_0, ADDR_1, URI_1));
+        calls[1] = abi.encodeCall(Registry.publishWithInit, ("@cdm/other", V1_0_0, ADDR_1, URI_1, INIT_1));
+        calls[2] = abi.encodeCall(Registry.setMinSupported, (NAME, V1_0_0));
+        calls[3] = abi.encodeCall(Registry.freezeContract, (NAME));
+        calls[4] = abi.encodeCall(Registry.unfreezeContract, (NAME));
+        calls[5] = abi.encodeCall(Registry.setFastPath, (NAME, false));
+        calls[6] = abi.encodeCall(Registry.sealContract, (NAME));
+        calls[7] = abi.encodeCall(Registry.setAdmin, (BOB));
+        calls[8] = abi.encodeCall(Registry.setCode, (NEW_IMPL));
+        calls[9] = abi.encodeCall(Registry.setResolver, (BOB));
+        calls[10] = abi.encodeCall(Registry.upgradeResolver, (NEW_IMPL));
+        calls[11] = abi.encodeCall(Registry.freeze, ());
+        calls[12] = abi.encodeCall(Registry.unfreeze, ());
+
+        for (uint128 i = 0; i < calls.length; i++) {
+            shim.willSend(address(registry), calls[i]);
+            registry.publishWithInit(NAME, V2_0_0 + i, ADDR_2, URI_2, INIT_1);
+            assertEq(shim.answer(), abi.encodeWithSelector(Registry.Reentrancy.selector));
+        }
+    }
+
+    function test_an_initialization_reads_the_finished_publish() public {
+        ReentrantShimDouble shim = deployedWithReentrantShim();
+        shim.willSend(address(registry), abi.encodeCall(Registry.getLatestKey, (NAME)));
+
+        registry.publishWithInit(NAME, V2_0_0, ADDR_2, URI_2, INIT_1);
+
+        assertEq(shim.answer(), abi.encode(V2_0_0));
     }
 
     // ─── setMinSupported ─────────────────────────────────────────────────────

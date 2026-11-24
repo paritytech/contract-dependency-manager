@@ -43,3 +43,29 @@ contract ShimFactoryDouble {
         return abi.encode(address(new ShimDouble{salt: bytes32(input[:32])}(resolver)));
     }
 }
+
+/// Stands in for a shim whose initialization calls the registry: once told
+/// what to send, it answers every call it receives by sending that, and keeps
+/// what came back.
+contract ReentrantShimDouble {
+    address private target;
+    bytes private reentry;
+    bytes public answer;
+
+    function willSend(address to, bytes calldata data) external {
+        target = to;
+        reentry = data;
+    }
+
+    fallback() external {
+        if (target == address(0)) return;
+        (, answer) = target.call(reentry);
+    }
+}
+
+/// A shim factory double whose shims are `ReentrantShimDouble`s.
+contract ReentrantShimFactoryDouble {
+    fallback(bytes calldata input) external returns (bytes memory) {
+        return abi.encode(address(new ReentrantShimDouble{salt: bytes32(input[:32])}()));
+    }
+}
