@@ -1,11 +1,11 @@
 {
     "comment": "FROZEN CREATE3 artifacts. These exact bytes are part of every CREATE3-derived address: the child code hash feeds create2, and the factory blob pins the factory address. Never rebuild or replace them casually — regenerate deliberately with src/lib/scripts/freeze-create3-artifacts.ts and see src/contract/create3/README.md.",
     "create3-factory.polkavm": {
-        "codeHash": "0x7e8bd54f2a04eb52de272972edadfe202f3d17914ab0987129b30be77a7bbed2",
-        "bytes": 4331
+        "codeHash": "0xadbea1dd833e5a89d701d306cf52321538d5b07ffd2c04fde3519627aa5804e5",
+        "bytes": 4332
     },
     "create3-child.polkavm": {
-        "codeHash": "0xee8a1b9f4a9e0883346db1a864b67fc9f5479a420df18bf8dd76f7a1df047f97",
-        "bytes": 2110
+        "codeHash": "0x094b1bce00e05a3dc3591c84e9e3d0aa184755c1dbfc484d505eb896a744398f",
+        "bytes": 2111
     }
 }

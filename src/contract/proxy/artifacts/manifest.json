@@ -1,7 +1,7 @@
 {
     "comment": "FROZEN per-name shim artifact. The registry CREATE2-instantiates one shim per contract name from this blob's code hash (salt = keccak256(name), constructor input = the resolver address, deployer = the registry proxy), so these exact bytes are part of every FUTURE per-name address. Never rebuild or replace casually — regenerate deliberately with src/lib/scripts/freeze-proxy-artifact.ts and see src/contract/proxy/src/main.rs.",
     "contract-proxy.polkavm": {
-        "codeHash": "0x33ea415cad2e637f584f998e69e54f7611a433bf7ab8175b155fe41c1f17afd1",
-        "bytes": 6128
+        "codeHash": "0x02056c921c83c187dde6ab5203db8a679ec282235771ec333ef67596efb327ea",
+        "bytes": 4482
     }
 }
