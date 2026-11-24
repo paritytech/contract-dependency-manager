@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "src/contract",
     "src/contract/core",
     "src/contract/create3/child",
     "src/contract/create3/factory",
     "src/contract/eip1967-proxy",
+    "src/contract/host",
     "src/contract/proxy",
-    "src/contract/resolver",
+    "src/contract/shim-factory",
     "src/lib/cdm/rust",
     "src/lib/cdm/rust-macros",
     "src/lib/cdm/rust-macros/pvm-cdm",
@@ -27,7 +27,6 @@ pvm-contract-sdk = { git = "https://github.com/paritytech/cargo-pvm-contract", b
 pvm-cdm = { path = "src/lib/cdm/rust-macros/pvm-cdm" }
 polkavm-derive = "0.35"
 picoalloc = "5.2"
-pvm-bump-allocator = { git = "https://github.com/paritytech/cargo-pvm-contract", branch = "main" }
 cdm = { path = "src/lib/cdm/rust" }
 cdm-macros = { path = "src/lib/cdm/rust-macros" }
 syn = "2"
@@ -36,3 +35,10 @@ proc-macro2 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 keccak-const = "0.2"
+pallet-revive-uapi = { version = "0.15", default-features = false }
+
+# Every byte of a contract blob is loaded and proven on each call.
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1

@@ -1,0 +1,15 @@
+[package]
+name = "contract-shim-factory"
+description = "Creates a PVM contract by code hash on behalf of whoever delegate-calls it: the one host call an EVM-bytecode registry cannot make itself"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+contract-host = { path = "../host" }
+polkavm-derive.workspace = true
+
+[dev-dependencies]
+contract-host = { path = "../host", features = ["mock"] }

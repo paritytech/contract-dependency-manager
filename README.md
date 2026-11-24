@@ -390,7 +390,8 @@ bun run src/apps/cli/src/cli.ts --help
 pnpm dev
 
 # Run tests
-pnpm test                # unit tests: vitest + macro + host-side Rust
+pnpm test                # unit tests: vitest + macro + host-side Rust + Solidity
+                         # (needs Foundry's `forge` on PATH)
 pnpm test:e2e            # end-to-end against a local PPN (Product Preview Network):
                          # deploys the registry and exercises Asset Hub +
                          # Bulletin + IPFS gateway alignment. Requires `bun`
@@ -424,7 +425,8 @@ src/
     utils/                @parity/cdm-utils: shared constants and utilities
     scripts/              build/deploy helper scripts
     cdm/                  Rust macro + TypeScript compatibility package
-  contract/               ContractRegistry (Rust/PolkaVM)
+  contract/               On-chain contracts: registry + resolver (Solidity/EVM),
+                          per-name shim, proxy and factories (Rust/PolkaVM)
   templates/              Project scaffolding templates
 ```
 

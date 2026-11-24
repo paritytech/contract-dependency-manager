@@ -1,0 +1,18 @@
+[package]
+name = "contract-host"
+description = "The pallet-revive host calls CDM's Rust contracts make, behind one trait: the chain in a contract build, a mock host in unit tests"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+# Implements `Host` for the pvm-contract-sdk mock host. Contracts enable it
+# from their dev-dependencies only, so no SDK code reaches a contract blob.
+mock = ["dep:pvm-contract-sdk"]
+
+[dependencies]
+keccak-const.workspace = true
+pallet-revive-uapi.workspace = true
+pvm-contract-sdk = { workspace = true, features = ["std"], optional = true }

@@ -7,9 +7,10 @@
 //! below is permanent.
 //!
 //! **Resolver address** — pallet immutable data, 20 bytes, written by the
-//! constructor `new(address resolver)`. pallet-revive accepts
-//! `set_immutable_data` only from a constructor, so no delegated code can ever
-//! redirect a shim.
+//! constructor `new(address resolver)` from the low 20 bytes of its one ABI
+//! word; input shorter than a word reverts with empty data. pallet-revive
+//! accepts `set_immutable_data` only from a constructor, so no delegated code
+//! can ever redirect a shim.
 //!
 //! **Own storage** — one slot at `keccak256(label) - 1`
 //! (`contract_registry_core::versioning::shim`); every other slot belongs to
@@ -101,269 +102,308 @@
 //! constructor argument, so a name's address is a pure function of
 //! (registry, this blob, resolver address, name).
 
-#![cfg_attr(all(not(feature = "abi-gen"), not(test)), no_main, no_std)]
+#![cfg_attr(target_arch = "riscv64", no_std, no_main)]
 
-// polkavm-linker defaults guest stacks to 8 KiB, which deep call chains
-// overflow as a raw VM trap. Match resolc's production default.
+// polkavm-linker gives a contract an 8 KiB stack unless it asks for more;
+// 128 KiB is resolc's default.
 #[cfg(target_arch = "riscv64")]
 polkavm_derive::min_stack_size!(131072);
 
-// Calldata and return data are each capped at 128 KiB: the SDK dispatcher
-// copies the calldata once, the request holds it again, and a bubbled revert
-// payload is copied once more.
-#[pvm_contract_sdk::contract(allocator = "bump", allocator_size = 524288)]
-mod contract_proxy {
-    use alloc::vec;
-    use alloc::vec::Vec;
-    use contract_registry_core::versioning::{
-        CallRoute, META_HEADER_LEN, VERSIONED_HEADER_LEN, is_publishable_key, meta, resolve,
-        route_calldata, shim,
-    };
-    use pvm_contract_sdk::{Address, CallFlags, HostApi, SolError, StorageFlags};
+use contract_host::Host;
+use contract_host::abi::selector;
+use contract_registry_core::versioning::{
+    CallRoute, META_HEADER_LEN, VERSIONED_HEADER_LEN, is_publishable_key, meta, resolve,
+    route_calldata, shim,
+};
 
+/// The longest calldata or return data the buffers hold. pallet-revive caps
+/// each at 128 KiB; a shim can never be replaced, so it has room for twice
+/// that.
+const MAX_DATA: usize = 256 * 1024;
+/// The `resolve` request: its header, then the calldata padded to a word.
+pub const REQUEST_LEN: usize = resolve::REQUEST_HEADER_LEN + MAX_DATA;
+/// The resolver's answer, with room to append the calldata tail to its payload.
+pub const RESPONSE_LEN: usize = 2 * MAX_DATA;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Error {
     /// The resolver answered with something other than a `Resolution`.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct MalformedResolution;
-
+    MalformedResolution,
     /// `setFastPath` or `seal` from anyone but the resolver.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct NotResolver;
-
+    NotResolver,
     /// The shim is sealed: it serves its sealed version and nothing else.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct Sealed;
-
+    Sealed,
     /// `setFastPath` or `seal` with undecodable or invalid arguments.
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub struct MalformedCall;
+    MalformedCall,
+}
 
-    #[derive(Debug, PartialEq, Eq, SolError)]
-    pub enum Error {
-        MalformedResolution(MalformedResolution),
-        NotResolver(NotResolver),
-        Sealed(Sealed),
-        MalformedCall(MalformedCall),
-    }
-
-    /// No fields: the shim's own state sits at the one fixed slot in
-    /// `versioning::shim`, and every other slot belongs to the name's
-    /// implementations.
-    pub struct ContractProxy {}
-
-    impl ContractProxy {
-        #[pvm_contract_sdk::constructor]
-        pub fn new(&mut self, resolver: Address) {
-            self.host().set_immutable_data(&resolver.0);
-        }
-
-        /// Every call lands here. Payable: value accrues to this address.
-        #[pvm_contract_sdk::fallback]
-        #[pvm_contract_sdk::payable]
-        pub fn fallback(&mut self) -> Result<(), Error> {
-            let host = self.host();
-
-            let data_len = host.call_data_size() as usize;
-            let mut head = [0u8; META_HEADER_LEN];
-            let head_len = data_len.min(META_HEADER_LEN);
-            host.call_data_copy(&mut head[..head_len], 0);
-            let route = route_calldata(&head[..head_len]);
-
-            let mut fast = [0u8; 32];
-            host.get_storage_or_zero(StorageFlags::empty(), &shim::FAST_SLOT, &mut fast);
-            let (sealed, fast_key, implementation) = shim::unpack_fast_path(&fast);
-            if implementation != [0u8; 20] {
-                let strip = match route {
-                    CallRoute::Plain => Some(0),
-                    CallRoute::Versioned(key) if key == fast_key => Some(VERSIONED_HEADER_LEN),
-                    _ => None,
-                };
-                if let Some(strip) = strip {
-                    let mut input = vec![0u8; data_len - strip];
-                    host.call_data_copy(&mut input, strip as u32);
-                    return self.delegate(&implementation, &input);
-                }
-            }
-
-            // Selectors are compared whole: an array `match` would test them
-            // byte by byte, and every byte of this blob is proof size.
-            if let CallRoute::Meta(selector) = route {
-                // The shim's copy is the pair the resolver would answer with.
-                if selector == meta::LATEST && implementation != [0u8; 20] {
-                    let mut words = [0u8; 64];
-                    words[16..32].copy_from_slice(&fast_key.to_be_bytes());
-                    words[44..].copy_from_slice(&implementation);
-                    return self.answer(&words);
-                }
-                if selector == shim::SEALED {
-                    let mut word = [0u8; 32];
-                    word[31] = sealed as u8;
-                    return self.answer(&word);
-                }
-                if selector == shim::RESOLVER {
-                    let mut word = [0u8; 32];
-                    word[12..].copy_from_slice(&self.resolver());
-                    return self.answer(&word);
-                }
-                if selector == shim::SET_FAST_PATH {
-                    return self.store_fast_path(data_len, sealed, false);
-                }
-                if selector == shim::SEAL {
-                    return self.store_fast_path(data_len, sealed, true);
-                }
-            }
-
-            if sealed {
-                return Err(Sealed.into());
-            }
-
-            let data_end = resolve::REQUEST_HEADER_LEN + data_len;
-            let mut request = vec![0u8; resolve::REQUEST_HEADER_LEN + data_len.div_ceil(32) * 32];
-            let mut caller = [0u8; 20];
-            host.caller(&mut caller);
-            let mut value = [0u8; 32];
-            host.value_transferred(&mut value);
-            value.reverse();
-            request[..resolve::REQUEST_HEADER_LEN]
-                .copy_from_slice(&resolve::request_header(&caller, &value, data_len));
-            host.call_data_copy(&mut request[resolve::REQUEST_HEADER_LEN..data_end], 0);
-
-            let asked = host.call_evm(
-                CallFlags::READ_ONLY,
-                &self.resolver(),
-                u64::MAX,
-                &[0u8; 32],
-                &request,
-                None,
-            );
-            let response = self.return_data();
-            if asked.is_err() {
-                host.revert(&response);
-            }
-
-            let resolved = resolve::decode_response(&response).ok_or(MalformedResolution)?;
-            let start = resolve::REQUEST_HEADER_LEN + resolved.strip;
-            if start > data_end {
-                return Err(MalformedResolution.into());
-            }
-            match resolved.kind {
-                resolve::RETURN => self.answer(resolved.payload),
-                resolve::DELEGATE => {
-                    // The header and the stripped prefix are dead once the
-                    // resolver has answered, so a payload that fits there is
-                    // prepended in place.
-                    let owned;
-                    let input = if resolved.payload.len() <= start {
-                        let from = start - resolved.payload.len();
-                        request[from..start].copy_from_slice(resolved.payload);
-                        &request[from..data_end]
-                    } else {
-                        owned = [resolved.payload, &request[start..data_end]].concat();
-                        &owned
-                    };
-                    self.delegate(&resolved.target, input)
-                }
-                _ => Err(MalformedResolution.into()),
-            }
-        }
-
-        /// `setFastPath`, or `seal` when `seal` is set: resolver-only, never
-        /// on a shim that is `already_sealed`, with `(uint128 key, address
-        /// implementation)` after the meta header.
-        fn store_fast_path(
-            &self,
-            data_len: usize,
-            already_sealed: bool,
-            seal: bool,
-        ) -> Result<(), Error> {
-            let host = self.host();
-            let mut caller = [0u8; 20];
-            host.caller(&mut caller);
-            if caller != self.resolver() {
-                return Err(NotResolver.into());
-            }
-            if already_sealed {
-                return Err(Sealed.into());
-            }
-
-            let mut args = [0u8; 64];
-            if data_len < META_HEADER_LEN + args.len() {
-                return Err(MalformedCall.into());
-            }
-            host.call_data_copy(&mut args, META_HEADER_LEN as u32);
-            if args[..16] != [0u8; 16] || args[32..44] != [0u8; 12] {
-                return Err(MalformedCall.into());
-            }
-            let mut key = [0u8; 16];
-            key.copy_from_slice(&args[16..32]);
-            let key = u128::from_be_bytes(key);
-            let mut implementation = [0u8; 20];
-            implementation.copy_from_slice(&args[44..]);
-
-            let word = if implementation != [0u8; 20] {
-                if !is_publishable_key(key) {
-                    return Err(MalformedCall.into());
-                }
-                shim::pack_fast_path(key, &implementation, seal)
-            } else if seal {
-                return Err(MalformedCall.into());
-            } else {
-                [0u8; 32]
-            };
-            host.set_storage_or_clear(StorageFlags::empty(), &shim::FAST_SLOT, &word);
-            self.answer(&[])
-        }
-
-        /// Tail delegate-call `target` with `input` and bubble its result
-        /// unchanged.
-        fn delegate(&self, target: &[u8; 20], input: &[u8]) -> Result<(), Error> {
-            let host = self.host();
-            let result =
-                host.delegate_call_evm(CallFlags::TAIL_CALL, target, u64::MAX, input, None);
-            // On-chain a successful tail call never returns here.
-            let output = self.return_data();
-            if result.is_err() {
-                host.revert(&output);
-            }
-            self.answer(&output)
-        }
-
-        // The helpers below stay out of line so the blob carries one copy of
-        // each instead of one per call site.
-
-        /// End the call returning `data`. On-chain this never returns.
-        #[inline(never)]
-        fn answer(&self, data: &[u8]) -> Result<(), Error> {
-            self.host().return_value(data);
-
-            #[cfg(not(target_arch = "riscv64"))]
-            Ok(())
-        }
-
-        #[inline(never)]
-        fn resolver(&self) -> [u8; 20] {
-            let mut resolver = [0u8; 20];
-            let mut resolver_ref: &mut [u8] = &mut resolver;
-            self.host().get_immutable_data(&mut resolver_ref);
-            resolver
-        }
-
-        #[inline(never)]
-        fn return_data(&self) -> Vec<u8> {
-            let host = self.host();
-            let mut data = vec![0u8; host.return_data_size() as usize];
-            let mut data_ref: &mut [u8] = &mut data;
-            host.return_data_copy(&mut data_ref, 0);
-            data
+impl Error {
+    /// The Solidity error selector this reverts with, hashed at compile time.
+    pub const fn selector(&self) -> [u8; 4] {
+        match self {
+            Error::MalformedResolution => const { selector(b"MalformedResolution()") },
+            Error::NotResolver => const { selector(b"NotResolver()") },
+            Error::Sealed => const { selector(b"Sealed()") },
+            Error::MalformedCall => const { selector(b"MalformedCall()") },
         }
     }
 }
 
-/// Everything goes through `fallback()` with staged calldata, seeded storage,
-/// and a mocked resolver, so these lock the protocol bytes as well as the
-/// behavior.
+pub struct Shim<'a, H> {
+    host: H,
+    request: &'a mut [u8],
+    response: &'a mut [u8],
+}
+
+impl<'a, H: Host> Shim<'a, H> {
+    /// `request` and `response` are scratch space of at least
+    /// [`REQUEST_LEN`] and [`RESPONSE_LEN`] bytes.
+    pub fn new(host: H, request: &'a mut [u8], response: &'a mut [u8]) -> Self {
+        Self {
+            host,
+            request,
+            response,
+        }
+    }
+
+    /// The constructor, `new(address resolver)`: pins the low 20 bytes of the
+    /// calldata's one word as immutable data. Calldata shorter than a word
+    /// reverts with empty data.
+    pub fn construct(&mut self) {
+        if self.host.call_data_size() < 32 {
+            self.host.revert(&[]);
+        }
+        let mut resolver = [0u8; 20];
+        self.host.call_data_copy(&mut resolver, 12);
+        self.host.set_immutable_data(&resolver);
+    }
+
+    /// Every call lands here. Payable: value accrues to this address.
+    pub fn fallback(&mut self) -> Result<(), Error> {
+        let Self {
+            host,
+            request,
+            response,
+        } = self;
+
+        let data_len = host.call_data_size();
+        let mut head = [0u8; META_HEADER_LEN];
+        let head_len = data_len.min(META_HEADER_LEN);
+        host.call_data_copy(&mut head[..head_len], 0);
+        let route = route_calldata(&head[..head_len]);
+
+        let fast = host.load(&shim::FAST_SLOT);
+        let (sealed, fast_key, implementation) = shim::unpack_fast_path(&fast);
+        if implementation != [0u8; 20] {
+            let strip = match route {
+                CallRoute::Plain => Some(0),
+                CallRoute::Versioned(key) if key == fast_key => Some(VERSIONED_HEADER_LEN),
+                _ => None,
+            };
+            if let Some(strip) = strip {
+                let len = data_len - strip;
+                host.call_data_copy(&mut request[..len], strip);
+                return delegate(host, &implementation, request, 0, len);
+            }
+        }
+
+        if let CallRoute::Meta(selector) = route {
+            // The shim's copy is the pair the resolver would answer with.
+            if selector == meta::LATEST && implementation != [0u8; 20] {
+                let mut words = [0u8; 64];
+                words[16..32].copy_from_slice(&fast_key.to_be_bytes());
+                words[44..].copy_from_slice(&implementation);
+                host.answer(&words);
+                return Ok(());
+            }
+            if selector == shim::SEALED {
+                let mut word = [0u8; 32];
+                word[31] = sealed as u8;
+                host.answer(&word);
+                return Ok(());
+            }
+            if selector == shim::RESOLVER {
+                let mut word = [0u8; 32];
+                word[12..].copy_from_slice(&resolver(host));
+                host.answer(&word);
+                return Ok(());
+            }
+            if selector == shim::SET_FAST_PATH {
+                return store_fast_path(host, data_len, sealed, false);
+            }
+            if selector == shim::SEAL {
+                return store_fast_path(host, data_len, sealed, true);
+            }
+        }
+
+        if sealed {
+            return Err(Error::Sealed);
+        }
+
+        let data_end = resolve::REQUEST_HEADER_LEN + data_len;
+        let padded_end = resolve::REQUEST_HEADER_LEN + data_len.div_ceil(32) * 32;
+        request[..resolve::REQUEST_HEADER_LEN].copy_from_slice(&resolve::request_header(
+            &host.caller(),
+            &host.value(),
+            data_len,
+        ));
+        host.call_data_copy(&mut request[resolve::REQUEST_HEADER_LEN..data_end], 0);
+        request[data_end..padded_end].fill(0);
+
+        let asked = host.static_call(&resolver(host), &request[..padded_end]);
+        let response_len = host.return_data_size();
+        host.return_data_copy(&mut response[..response_len]);
+        if !asked {
+            host.revert(&response[..response_len]);
+        }
+
+        let resolved = resolve::decode_response(&response[..response_len])
+            .ok_or(Error::MalformedResolution)?;
+        let (kind, target) = (resolved.kind, resolved.target);
+        let payload_end = resolve::RESPONSE_HEAD_LEN + resolved.payload.len();
+        let start = resolve::REQUEST_HEADER_LEN + resolved.strip;
+        if start > data_end {
+            return Err(Error::MalformedResolution);
+        }
+        let payload = resolve::RESPONSE_HEAD_LEN..payload_end;
+        match kind {
+            resolve::RETURN => {
+                host.answer(&response[payload]);
+                Ok(())
+            }
+            resolve::DELEGATE => {
+                // The header and the stripped prefix are dead once the
+                // resolver has answered, so a payload that fits there is
+                // prepended in place; a longer one gets the calldata tail
+                // appended behind it instead.
+                if payload.len() <= start {
+                    let from = start - payload.len();
+                    request[from..start].copy_from_slice(&response[payload]);
+                    delegate(host, &target, request, from, data_end)
+                } else {
+                    let end = payload_end + (data_end - start);
+                    response[payload_end..end].copy_from_slice(&request[start..data_end]);
+                    delegate(host, &target, response, payload.start, end)
+                }
+            }
+            _ => Err(Error::MalformedResolution),
+        }
+    }
+}
+
+/// `setFastPath`, or `seal` when `seal` is set: resolver-only, never on a shim
+/// that is `already_sealed`, with `(uint128 key, address implementation)`
+/// after the meta header.
+fn store_fast_path<H: Host>(
+    host: &H,
+    data_len: usize,
+    already_sealed: bool,
+    seal: bool,
+) -> Result<(), Error> {
+    if host.caller() != resolver(host) {
+        return Err(Error::NotResolver);
+    }
+    if already_sealed {
+        return Err(Error::Sealed);
+    }
+
+    let mut args = [0u8; 64];
+    if data_len < META_HEADER_LEN + args.len() {
+        return Err(Error::MalformedCall);
+    }
+    host.call_data_copy(&mut args, META_HEADER_LEN);
+    if args[..16] != [0u8; 16] || args[32..44] != [0u8; 12] {
+        return Err(Error::MalformedCall);
+    }
+    let mut key = [0u8; 16];
+    key.copy_from_slice(&args[16..32]);
+    let key = u128::from_be_bytes(key);
+    let mut implementation = [0u8; 20];
+    implementation.copy_from_slice(&args[44..]);
+
+    let word = if implementation != [0u8; 20] {
+        if !is_publishable_key(key) {
+            return Err(Error::MalformedCall);
+        }
+        shim::pack_fast_path(key, &implementation, seal)
+    } else if seal {
+        return Err(Error::MalformedCall);
+    } else {
+        [0u8; 32]
+    };
+    host.store(&shim::FAST_SLOT, &word);
+    host.answer(&[]);
+    Ok(())
+}
+
+/// Tail delegate-call `target` with `buffer[from..to]` and bubble its result
+/// unchanged. The buffer is reused for the return data.
+fn delegate<H: Host>(
+    host: &H,
+    target: &[u8; 20],
+    buffer: &mut [u8],
+    from: usize,
+    to: usize,
+) -> Result<(), Error> {
+    let ok = host.delegate_call(target, &buffer[from..to]);
+    // On chain a successful tail call never returns here.
+    let len = host.return_data_size();
+    host.return_data_copy(&mut buffer[..len]);
+    if !ok {
+        host.revert(&buffer[..len]);
+    }
+    host.answer(&buffer[..len]);
+    Ok(())
+}
+
+/// The shim's resolver: its immutable data, written by the constructor.
+fn resolver<H: Host>(host: &H) -> [u8; 20] {
+    let mut resolver = [0u8; 20];
+    host.immutable_data(&mut resolver);
+    resolver
+}
+
+#[cfg(not(target_arch = "riscv64"))]
+fn main() {}
+
+/// The contract's entry points.
+#[cfg(target_arch = "riscv64")]
+mod entry {
+    use super::{REQUEST_LEN, RESPONSE_LEN, Shim};
+    use contract_host::{Chain, Host};
+    use core::ptr::addr_of_mut;
+
+    static mut REQUEST: [u8; REQUEST_LEN] = [0; REQUEST_LEN];
+    static mut RESPONSE: [u8; RESPONSE_LEN] = [0; RESPONSE_LEN];
+
+    fn shim() -> Shim<'static, Chain> {
+        // SAFETY: a call runs alone on a fresh instance, so nothing else
+        // holds these buffers.
+        unsafe {
+            Shim::new(
+                Chain,
+                &mut *addr_of_mut!(REQUEST),
+                &mut *addr_of_mut!(RESPONSE),
+            )
+        }
+    }
+
+    #[polkavm_derive::polkavm_export]
+    extern "C" fn deploy() {
+        shim().construct();
+    }
+
+    #[polkavm_derive::polkavm_export]
+    extern "C" fn call() {
+        if let Err(error) = shim().fallback() {
+            Chain.revert(&error.selector());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::contract_proxy::{ContractProxy, Error};
+    use super::{Error, REQUEST_LEN, RESPONSE_LEN, Shim};
     use contract_registry_core::versioning::shim::{
         FAST_SLOT, SEAL, SEALED, SEALED_FLAG, SET_FAST_PATH, pack_fast_path,
     };
@@ -411,7 +451,11 @@ mod tests {
 
     /// A shim pointed at `RESOLVER` with `calldata` and `value` staged, the
     /// resolver answering `response`.
-    fn deployed(calldata: &[u8], value: u64, response: Answer) -> (ContractProxy, MockHost) {
+    fn deployed(
+        calldata: &[u8],
+        value: u64,
+        response: Answer,
+    ) -> (Shim<'static, MockHost>, MockHost) {
         deployed_as(CALLER, calldata, value, response)
     }
 
@@ -421,16 +465,24 @@ mod tests {
         calldata: &[u8],
         value: u64,
         response: Answer,
-    ) -> (ContractProxy, MockHost) {
+    ) -> (Shim<'static, MockHost>, MockHost) {
         let mock = MockHostBuilder::new()
             .caller(caller)
             .calldata(calldata.to_vec())
             .value_transferred(U256::from(value))
             .mock_call(RESOLVER, response)
             .build();
-        let mut proxy = ContractProxy::with_host(mock.clone());
-        proxy.new(Address(RESOLVER));
-        (proxy, mock)
+        HostApi::set_immutable_data(&mock, &RESOLVER);
+        (shim_on(&mock), mock)
+    }
+
+    /// A shim running on `mock`, over fresh scratch space.
+    fn shim_on(mock: &MockHost) -> Shim<'static, MockHost> {
+        Shim::new(
+            mock.clone(),
+            Box::leak(vec![0u8; REQUEST_LEN].into_boxed_slice()),
+            Box::leak(vec![0u8; RESPONSE_LEN].into_boxed_slice()),
+        )
     }
 
     /// The exact bytes the shim must send the resolver.
@@ -497,12 +549,29 @@ mod tests {
     }
 
     #[test]
-    fn constructor_pins_the_resolver_as_immutable_data() {
-        let (_shim, mock) = deployed(&[], 0, Ok(vec![]));
+    fn constructor_pins_the_low_20_bytes_of_its_word_as_immutable_data() {
+        let mut input = [0xFF; 32];
+        input[12..].copy_from_slice(&RESOLVER);
+        let mock = MockHostBuilder::new().calldata(input.to_vec()).build();
+        shim_on(&mock).construct();
+
         let mut immutable = [0u8; 32];
         let mut immutable_ref: &mut [u8] = &mut immutable;
         mock.get_immutable_data(&mut immutable_ref);
         assert_eq!(*immutable_ref, RESOLVER);
+    }
+
+    #[test]
+    fn constructor_input_shorter_than_a_word_reverts_empty() {
+        let mock = MockHostBuilder::new().calldata(vec![0x5E; 31]).build();
+        let mut shim = shim_on(&mock);
+        assert_eq!(
+            mock.expect_revert(|| shim.construct()),
+            ReturnValue {
+                flags: ReturnFlags::REVERT,
+                data: vec![],
+            }
+        );
     }
 
     #[test]
@@ -628,10 +697,7 @@ mod tests {
         let strip_past_end = resolution(resolve::DELEGATE, TARGET, CALLDATA.len() as u32 + 1, &[]);
         for answer in [short, unknown_kind, strip_past_end] {
             let (mut shim, mock) = deployed(&CALLDATA, 0, answer);
-            assert!(matches!(
-                shim.fallback(),
-                Err(Error::MalformedResolution(_))
-            ));
+            assert!(matches!(shim.fallback(), Err(Error::MalformedResolution)));
             assert_eq!(mock.take_recorded_calls().len(), 1);
         }
     }
@@ -818,7 +884,7 @@ mod tests {
             let (mut shim, mock) =
                 deployed(&calldata, 0, resolution(resolve::RETURN, [0u8; 20], 0, &[]));
             store_sealed(&mock, V1_2_3, TARGET);
-            assert!(matches!(shim.fallback(), Err(Error::Sealed(_))));
+            assert!(matches!(shim.fallback(), Err(Error::Sealed)));
             assert!(mock.take_recorded_calls().is_empty());
         }
     }
@@ -841,7 +907,7 @@ mod tests {
             let (mut shim, mock) =
                 deployed(&calldata, 0, resolution(resolve::RETURN, [0u8; 20], 0, &[]));
             flag_only(&mock);
-            assert!(matches!(shim.fallback(), Err(Error::Sealed(_))));
+            assert!(matches!(shim.fallback(), Err(Error::Sealed)));
             assert!(mock.take_recorded_calls().is_empty());
         }
     }
@@ -869,7 +935,7 @@ mod tests {
         selector: [u8; 4],
         key: u128,
         implementation: [u8; 20],
-    ) -> (ContractProxy, MockHost) {
+    ) -> (Shim<'static, MockHost>, MockHost) {
         let calldata = meta_call(selector, &fast_path_args(key, implementation));
         deployed_as(caller, &calldata, 0, Err(()))
     }
@@ -914,12 +980,12 @@ mod tests {
     fn writes_are_resolver_only() {
         for selector in [SET_FAST_PATH, SEAL] {
             let (mut shim, _mock) = written_by(CALLER, selector, V1_2_3, TARGET);
-            assert!(matches!(shim.fallback(), Err(Error::NotResolver(_))));
+            assert!(matches!(shim.fallback(), Err(Error::NotResolver)));
 
             // Checked before anything else: sealed, with no arguments at all.
             let (mut shim, mock) = deployed(&meta_call(selector, &[]), 0, Err(()));
             store_sealed(&mock, V1_2_3, TARGET);
-            assert!(matches!(shim.fallback(), Err(Error::NotResolver(_))));
+            assert!(matches!(shim.fallback(), Err(Error::NotResolver)));
         }
     }
 
@@ -928,12 +994,12 @@ mod tests {
         for selector in [SET_FAST_PATH, SEAL] {
             let (mut shim, mock) = written_by(RESOLVER, selector, V2_0_0, OTHER_TARGET);
             store_sealed(&mock, V1_2_3, TARGET);
-            assert!(matches!(shim.fallback(), Err(Error::Sealed(_))));
+            assert!(matches!(shim.fallback(), Err(Error::Sealed)));
 
             // Checked before the arguments are read.
             let (mut shim, mock) = deployed_as(RESOLVER, &meta_call(selector, &[]), 0, Err(()));
             store_sealed(&mock, V1_2_3, TARGET);
-            assert!(matches!(shim.fallback(), Err(Error::Sealed(_))));
+            assert!(matches!(shim.fallback(), Err(Error::Sealed)));
         }
     }
 
@@ -956,7 +1022,7 @@ mod tests {
                 let (mut shim, _mock) =
                     deployed_as(RESOLVER, &meta_call(selector, args), 0, Err(()));
                 assert!(
-                    matches!(shim.fallback(), Err(Error::MalformedCall(_))),
+                    matches!(shim.fallback(), Err(Error::MalformedCall)),
                     "{what}"
                 );
             }
@@ -964,7 +1030,7 @@ mod tests {
 
         // `seal` never takes the zero implementation `setFastPath` clears with.
         let (mut shim, _mock) = written_by(RESOLVER, SEAL, V1_2_3, [0u8; 20]);
-        assert!(matches!(shim.fallback(), Err(Error::MalformedCall(_))));
+        assert!(matches!(shim.fallback(), Err(Error::MalformedCall)));
     }
 
     #[test]

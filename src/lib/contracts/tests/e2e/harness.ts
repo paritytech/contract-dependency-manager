@@ -44,13 +44,13 @@ const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // src/lib/contracts/tests/e2e -> repo root is 5 levels up
 const ROOT_DIR = resolve(__dirname, "../../../../..");
-// Keep these aligned with the paths `deploy-registry.ts` reads from.
-const REGISTRY_BLOBS = [
-    "contract-registry",
-    "contract-eip1967-proxy",
-    "contract-resolver",
-    "contract-proxy",
-].map((crate) => resolve(ROOT_DIR, `target/release/${crate}.polkavm`));
+// Keep these aligned with `registryArtifacts` in `registry-deploy.ts`.
+const REGISTRY_ARTIFACTS = [
+    "src/contract/solidity/out/Registry.sol/Registry.json",
+    "src/contract/solidity/out/Resolver.sol/Resolver.json",
+    "target/release/contract-eip1967-proxy.polkavm",
+    "target/release/contract-shim-factory.polkavm",
+].map((path) => resolve(ROOT_DIR, path));
 
 /** The shared-counter template's counter blob — a real, callable implementation
  * contract for per-name proxy e2e (its own Cargo workspace, own target dir). */
@@ -174,14 +174,14 @@ export async function connectPpn(): Promise<PpnHandle> {
 }
 
 async function ensureRegistryBuilt(): Promise<void> {
-    if (REGISTRY_BLOBS.every((pvm) => existsSync(pvm))) return;
+    if (REGISTRY_ARTIFACTS.every((path) => existsSync(path))) return;
     await execFileAsync("pnpm", ["build:registry"], {
         cwd: ROOT_DIR,
         maxBuffer: 16 * 1024 * 1024,
     });
-    for (const pvm of REGISTRY_BLOBS) {
-        if (!existsSync(pvm)) {
-            throw new Error(`Registry .polkavm not produced at ${pvm} after pnpm build:registry`);
+    for (const path of REGISTRY_ARTIFACTS) {
+        if (!existsSync(path)) {
+            throw new Error(`Registry artifact not produced at ${path} after pnpm build:registry`);
         }
     }
 }
@@ -340,7 +340,7 @@ async function runDeployScript(wsUrl: string, attempts = 3): Promise<string> {
 export interface DeployedRegistry {
     /** The stable registry address — the EIP-1967 proxy, CREATE3-derived. */
     address: HexString;
-    /** The implementation blob the proxy delegates to. */
+    /** The implementation the proxy delegates to. */
     implAddress: HexString;
     /** The CREATE3 factory the proxy was deployed through. */
     factoryAddress: HexString;
@@ -349,10 +349,10 @@ export interface DeployedRegistry {
 }
 
 /**
- * Build the registry blobs (if needed) and deploy them against `wsUrl` —
- * CREATE3 factory bootstrap first (frozen artifacts), then the
- * implementation blob (plain CREATE2), the registry proxy THROUGH the
- * factory, then the resolver pair. Idempotent: on a network that already has
+ * Build the registry artifacts (if needed) and deploy them against `wsUrl` —
+ * CREATE3 factory bootstrap first (frozen artifacts), then the shim factory
+ * and the implementation (plain CREATE2), the registry proxy THROUGH the
+ * CREATE3 factory, then the resolver pair. Idempotent: on a network that already has
  * the registry it verifies and returns the existing addresses.
  *
  * Spawns `bun run src/lib/scripts/deploy-registry.ts`. See the import-site

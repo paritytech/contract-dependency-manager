@@ -31,11 +31,11 @@ export const CREATE3_ARTIFACTS_DIR = "src/contract/create3/artifacts";
  * `artifacts/manifest.json` and with the blob bytes themselves.
  */
 export const CREATE3_CHILD_CODE_HASH =
-    "0xaad31d44ab9f4d37f4b1ea94f87a8cbcd332fb1ae94bced7cbdde7e87857e94a";
+    "0x094b1bce00e05a3dc3591c84e9e3d0aa184755c1dbfc484d505eb896a744398f";
 
 /** keccak-256 of the committed `create3-factory.polkavm` blob. */
 export const CREATE3_FACTORY_CODE_HASH =
-    "0x325b451797bd0c8b5c174778ffe7fb711e23396908c592b5e475b860c53e0330";
+    "0xadbea1dd833e5a89d701d306cf52321538d5b07ffd2c04fde3519627aa5804e5";
 
 function toBytes(hex: string, expectedLength: number, what: string): Uint8Array {
     const clean = hex.startsWith("0x") ? hex.slice(2) : hex;

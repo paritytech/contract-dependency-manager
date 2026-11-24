@@ -97,12 +97,14 @@ export {
     type DeployRegistryOptions,
     type RegistryDeployPrediction,
     type ResolverDeployPrediction,
+    type RegistryArtifacts,
     type UpgradeRegistryOptions,
     type UpgradeResolverOptions,
     bumpPackageSuffix,
     encodeProxyConstructorArgs,
     predictRegistryDeploy,
     predictResolverDeploy,
+    registryArtifacts,
     deployRegistryWithProxy,
     upgradeRegistryImplementation,
     upgradeResolverImplementation,
@@ -177,8 +179,6 @@ export {
     GAS_LIMIT,
     STORAGE_DEPOSIT_LIMIT,
     CONTRACTS_REGISTRY_CRATE,
-    CONTRACTS_EIP1967_PROXY_CRATE,
-    CONTRACTS_RESOLVER_CRATE,
 } from "@parity/cdm-utils";
 
 export {

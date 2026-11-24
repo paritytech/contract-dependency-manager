@@ -6,16 +6,8 @@ export const GAS_LIMIT = { refTime: 500_000_000_000n, proofSize: 2_000_000n };
 
 export const STORAGE_DEPOSIT_LIMIT = 100_000_000_000_000n;
 
-// The contracts registry is the bootstrap - it's deployed first and has no CDM macro
+// The key the registry's address is saved under in `target/.addresses.json`.
 export const CONTRACTS_REGISTRY_CRATE = "contract-registry";
-
-// EIP-1967 proxy crate: one instance holds the stable registry address, one
-// the stable resolver address; all calls delegate to the implementation.
-export const CONTRACTS_EIP1967_PROXY_CRATE = "contract-eip1967-proxy";
-
-// Resolver implementation crate: the routing tables and policy every
-// per-name shim asks.
-export const CONTRACTS_RESOLVER_CRATE = "contract-resolver";
 
 // Salt material for the ContractRegistry PROXY deployment — this is the
 // stable address every consumer uses. The proxy is deployed THROUGH the
@@ -31,9 +23,15 @@ export const CONTRACTS_REGISTRY_PACKAGE = "@cdm/registry.2";
 // factory AND every future CREATE3 address — never do it casually.
 export const CREATE3_FACTORY_PACKAGE = "@cdm/create3-factory.1";
 
-// CREATE2 salt material for the registry IMPLEMENTATION blob the proxy
-// delegates to. Bump independently when shipping a new implementation build
-// (upgrades go through `setCode`, never a proxy redeploy).
+// CREATE2 salt material for the shim factory: the PVM contract the registry
+// delegate-calls to create a name's shim. Its address is a constructor
+// argument of the registry implementation, so a new one ships with a
+// registry upgrade.
+export const CONTRACTS_SHIM_FACTORY_PACKAGE = "@cdm/shim-factory.1";
+
+// CREATE2 salt material for the registry IMPLEMENTATION the proxy delegates
+// to. Bump independently when shipping a new implementation build (upgrades
+// go through `setCode`, never a proxy redeploy).
 export const CONTRACTS_REGISTRY_IMPL_PACKAGE = "@cdm/registry-impl.1";
 
 // Salt material for the resolver PROXY, deployed THROUGH the CREATE3 factory
@@ -41,7 +39,7 @@ export const CONTRACTS_REGISTRY_IMPL_PACKAGE = "@cdm/registry-impl.1";
 // it is as permanent as the registry's.
 export const CONTRACTS_RESOLVER_PACKAGE = "@cdm/resolver.1";
 
-// CREATE2 salt material for the resolver IMPLEMENTATION blob. Bump when
+// CREATE2 salt material for the resolver IMPLEMENTATION. Bump when
 // shipping a new build (upgrades go through the registry's `upgradeResolver`).
 export const CONTRACTS_RESOLVER_IMPL_PACKAGE = "@cdm/resolver-impl.1";
 
